@@ -76,7 +76,7 @@ python tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output 
 python tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
 
 # 自动投递（规划中，尚未实现）
-# 参考流程文档：workflow/phases/submission.md
+# 参考流程文档：AIEF/workflow/phases/submission.md
 # python tools/run_pdf_generation.py --profile candidate_profile.yaml --input outputs/resume_mr-2026-002_A.md --output outputs/resume_mr-2026-002_A.pdf
 # python tools/submission/run_submission.py --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-002_A.pdf --profile candidate_profile.yaml
 
@@ -92,10 +92,25 @@ python tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profil
 python tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
 
 # AIEF L3 检查
-python tools/check_aief_l3.py --root .
+python tools/check_aief_l3.py --root . --base-dir AIEF
+
+# GitFlow 自动发布（跨平台）
+# 流程：main -> feature -> develop -> release -> main
+# 默认策略：feature 合并后删除，release 保留
+python3 tools/run_gitflow_release.py --feature auto-submission-liepin --release v0.3.0 --create-feature
+
+# 预演模式（不执行）
+python3 tools/run_gitflow_release.py --feature auto-submission-liepin --release v0.3.0 --create-feature --dry-run
+
+# GitHub 版本发布（打 tag + 创建 release）
+git checkout main
+git pull --ff-only origin main
+git tag v0.3.0
+git push origin v0.3.0
+gh release create v0.3.0 --title "v0.3.0" --generate-notes
 ```
 
 ## CI 校验
 
 - GitHub Actions: `.github/workflows/aief-l3-check.yml`
-- 在 PR 与 main/master push 时自动执行 `tools/check_aief_l3.py`
+- 在 PR 与 main/master push 时自动执行 `tools/check_aief_l3.py --root . --base-dir AIEF`
