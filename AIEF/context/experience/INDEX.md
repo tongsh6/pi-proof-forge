@@ -25,6 +25,7 @@
 - context/experience/lessons/2026-03-02-aief-l1-retrofit.md
 - context/experience/lessons/2026-03-02-three-tools-integration.md
 - context/experience/lessons/2026-03-04-direct-invocation-publish-skill.md
+- context/experience/lessons/2026-03-04-doc-consistency-and-pruning.md
 
 ## 主题摘要
 - context/experience/summaries/pipeline.md

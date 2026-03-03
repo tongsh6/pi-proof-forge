@@ -14,3 +14,5 @@
 - 生成：`tools/run_generation.py`
 - 评测：`tools/run_evaluation.py`
 - 一键：`tools/run_pipeline.py`
+- GitFlow：`tools/run_gitflow_release.py`
+- 发布：`tools/run_github_publish.py`

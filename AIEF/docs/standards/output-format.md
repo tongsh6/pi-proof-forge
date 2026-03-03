@@ -5,7 +5,8 @@
 - 顶层包含 `evidence_card` 与 `gaps`
 
 ## 字段约束
-- `evidence_card.results` 与 `evidence_card.artifacts` 允许为空，但必须显式给出
+- `evidence_card.results` 与 `evidence_card.artifacts` 必须显式给出（可为空数组）
+- 候选池门控规则：仅当 `results` 与 `artifacts` 均为非空时，证据卡可进入匹配/生成候选池
 - `gaps` 必须是数组
 
 ## 示例
