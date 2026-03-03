@@ -107,13 +107,16 @@ git checkout main
 git pull --ff-only origin main
 git tag v0.3.0
 git push origin v0.3.0
-gh release create v0.3.0 --title "v0.3.0" --generate-notes
+gh release create v0.3.0 --title "v0.3.0" --notes-file release-notes/v0.3.0.md
 
-# 一键发布（GitFlow + tag + GitHub Release）
-python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0
+# 一键发布（GitFlow + tag + GitHub Release + release notes）
+python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --release-notes-file release-notes/v0.3.0.md
 
 # 一键发布预演
-python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --dry-run
+python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --release-notes-file release-notes/v0.3.0.md --dry-run
+
+# 无 notes 文件时可显式允许自动生成（不推荐）
+python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --allow-generate-notes
 ```
 
 ## CI 校验
