@@ -6,6 +6,7 @@
 ## 标准列表
 - 命名规范：docs/standards/naming.md
 - 文档规范：docs/standards/doc-format.md
+- GitFlow 规范：docs/standards/gitflow.md
 - 提炼输出规范：docs/standards/output-format.md
 - Agent 规范：docs/standards/agent-spec.md
 - Command 规范：docs/standards/command-spec.md

@@ -34,9 +34,12 @@ def check_min_files(root: Path, rel_dir: str, pattern: str, min_count: int, labe
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check AIEF L3 readiness")
     _ = parser.add_argument("--root", default=".", help="Project root path")
+    _ = parser.add_argument("--base-dir", default="AIEF", help="AIEF base directory under root")
     args = parser.parse_args()
 
     root = Path(cast(str, args.root)).resolve()
+    base_dir = cast(str, args.base_dir).strip()
+    aief_root = root / base_dir if base_dir else root
 
     checks: list[tuple[bool, str]] = []
 
@@ -57,12 +60,12 @@ def main() -> int:
     ]
 
     for rel_path in required_files:
-        checks.append(check_exists(root, rel_path))
+        checks.append(check_exists(aief_root, rel_path))
 
-    checks.append(check_contains(root, "AGENTS.md", "L3", "AIEF level"))
-    checks.append(check_contains(root, "context/tech/REPO_SNAPSHOT.md", "Current: L3", "snapshot level"))
-    checks.append(check_min_files(root, "context/experience/lessons", "*.md", 1, "lessons"))
-    checks.append(check_min_files(root, "context/experience/summaries", "*.md", 1, "summaries"))
+    checks.append(check_contains(aief_root, "AGENTS.md", "L3", "AIEF level"))
+    checks.append(check_contains(aief_root, "context/tech/REPO_SNAPSHOT.md", "Current: L3", "snapshot level"))
+    checks.append(check_min_files(aief_root, "context/experience/lessons", "*.md", 1, "lessons"))
+    checks.append(check_min_files(aief_root, "context/experience/summaries", "*.md", 1, "summaries"))
 
     all_ok = True
     for ok, message in checks:
