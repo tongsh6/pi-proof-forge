@@ -5,6 +5,14 @@ description: Project-specific skill for publishing this repository to GitHub wit
 
 # Publish This Repository to GitHub
 
+## Direct Invocation
+
+Use one command to execute publish flow:
+
+```bash
+python3 tools/run_github_publish.py --feature <feature> --release <release> --version <version>
+```
+
 ## When to Use
 
 Use this skill when the user asks to:
