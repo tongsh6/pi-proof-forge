@@ -1,0 +1,26 @@
+job_profile_id: "jp-2026-001"
+evidence_card_ids:
+  - "ec-2026-001"
+  - "ec-2026-002"
+  - "ec-2026-003"
+score_total: 85
+score_breakdown:
+  K: { score: 19, reason: "关键词覆盖 10/12" }
+  D: { score: 12, reason: "电商领域匹配" }
+  S: { score: 14, reason: "Owner + 跨团队推进" }
+  Q: { score: 16, reason: "3 条量化结果" }
+  E: { score: 15, reason: "含复盘/监控/成本报告" }
+  R: { score: 9, reason: "近 18 个月 3 张卡" }
+top_cards:
+  - id: "ec-2026-001"
+    reason: "稳定性治理 + 高峰期场景"
+  - id: "ec-2026-002"
+    reason: "高并发优化 + 一致性约束"
+  - id: "ec-2026-003"
+    reason: "成本优化 + Owner 责任"
+gaps:
+  - "缺少容量规划相关证据"
+gap_tasks:
+  - "补充容量规划指标或压测报告"
+generated_at: "2026-02-27T23:10:00+08:00"
+version_id: "mr-2026-001"

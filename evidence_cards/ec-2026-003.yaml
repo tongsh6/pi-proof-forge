@@ -1,0 +1,23 @@
+id: "ec-2026-003"
+title: "成本优化与资源治理"
+time_range: "2024-11 ~ 2025-03"
+context: "集群资源使用率不均，成本持续上升"
+role_scope: "Owner"
+actions:
+  - "梳理服务画像与弹性策略"
+  - "推动核心服务降配与调度优化"
+  - "建立成本周报与异常回滚机制"
+results:
+  - "月度成本下降 18%"
+stack:
+  - "Kubernetes"
+  - "Prometheus"
+  - "Grafana"
+artifacts:
+  - "cost-report-2025-01.pdf"
+  - "capacity-plan.xlsx"
+tags:
+  - "成本"
+  - "治理"
+interview_hooks:
+  - "如何平衡成本优化与稳定性风险？"

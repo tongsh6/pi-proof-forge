@@ -1,0 +1,39 @@
+target_role: "Java技术专家（电商交易）"
+company: "得物App"
+source_jd: "jd_inputs/jd-2026-002.txt"
+
+must_have:
+  - "Java微服务开发（Spring Boot / Spring Cloud）"
+  - "MySQL数据库设计与SQL优化"
+  - "Redis缓存设计与应用"
+  - "5年以上Java后端开发经验"
+  - "电商业务系统设计与开发"
+  - "独立担当功能模块架构设计"
+
+nice_to_have:
+  - "高并发系统处理经验"
+  - "电商交易/清结算经验"
+  - "shell/python脚本能力"
+  - "大型互联网平台型服务经验"
+
+keywords:
+  - "Java"
+  - "Spring Boot"
+  - "Spring Cloud"
+  - "Redis"
+  - "MySQL"
+  - "微服务"
+  - "高并发"
+  - "电商"
+  - "Mybatis"
+  - "多线程"
+  - "设计模式"
+
+business_domain: "电商"
+
+seniority_signal:
+  - "owner"
+  - "跨团队"
+  - "决策"
+
+tone: "偏交付"

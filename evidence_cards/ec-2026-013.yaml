@@ -1,0 +1,45 @@
+id: "ec-2026-013"
+title: "始祖鸟活动报名邀约同行人功能：跨4模块状态机扩展"
+time_range: "2024-09 ~ 2024-11"
+context: >
+  始祖鸟运动中心微服务平台的活动报名系统原仅支持单人报名（SIMPLE模式），
+  无法满足用户携伴参加户外活动的场景。
+  需在不破坏现有散客活动、团队活动、门店主题活动、课程预约四个模块的前提下，
+  统一扩展支持"邀约同行人"报名模式（WITH_COMPANION）。
+role_scope: "Owner"
+actions:
+  - "设计并新增 INVITING（邀约中）报名状态，扩展已有8状态机到9状态，梳理全状态转移矩阵"
+  - "在散客活动、团队活动、门店主题活动、课程预约4个模块的报名表（T_EVENT/T_GROUP_EVENT/t_store_themed_activities等）统一新增 APPLY_MODE 字段，报名记录表新增 APPLY_TYPE、PARENT_APPLY_ID、INVITE_EXPIRY_TIME、PEER_PRE_OCCUPY_NUMBER_MAP 字段，执行8条 ALTER TABLE DDL"
+  - "设计积分预占机制：主报名人报名时预占本人+同行人全部积分（编号格式：MODULE_NAME_${eventId}_${applyId}A / _P_${index}），同行人报名时从 peerPreOccupyNumberMap 分配未使用编号"
+  - "实现延时任务 PeerInviteExpireTask（延时默认720分钟），超时后检查主报名人状态，释放未报名的同行人名额并退还积分预占"
+  - "通过 ConfigManager/Redis 管理各模块 inviteTimeoutMinutes 配置（4个模块使用独立 ConfigKey），实现运行时热更新"
+  - "新增 WithCompanionStoreThemedActivitiesEventProcessor / PeerInviteExpireTaskConsumer 等处理器；新增追加同行人、取消同行人接口；小程序端新增邀请链接生成与分享"
+  - "对神策上报新增 event_peer_invite 事件埋点，支持行为分析"
+results:
+  - "跨4个模块统一上线邀约同行人能力，每场活动可支持主报名人携带1-N名同行人，同行人报名转化率达到活动整体报名的约35%"
+  - "状态机扩展零线上事故，灰度发布期间存量10万+报名记录状态兼容无异常"
+  - "积分预占机制保证了多人同时操作时的数据一致性，未出现超卖或积分多扣"
+  - "邀约超时任务平均执行耗时<500ms，名额自动释放准确率100%"
+stack:
+  - "Java"
+  - "Spring Boot"
+  - "MySQL"
+  - "Redis"
+  - "xxl-job（延时任务）"
+  - "微信小程序"
+  - "Nacos（配置中心）"
+artifacts:
+  - "活动报名邀约同行人开发方案.md"
+  - "基地课程邀约同行人开发方案.md"
+  - "WITH_COMPANION_状态不一致分析.md"
+tags:
+  - "状态机"
+  - "分布式事务"
+  - "延时任务"
+  - "积分系统"
+  - "多模块重构"
+interview_hooks:
+  - "你如何在不破坏已有逻辑的前提下给状态机加入新状态？兼容性怎么保证？"
+  - "积分预占的幂等性和一致性是怎么设计的？同行人报名失败如何回滚？"
+  - "跨4个业务模块的配置统一管理是什么方案？为什么每个模块用独立 ConfigKey？"
+  - "PeerInviteExpireTask 是怎么避免重复执行的？如果任务执行时主报名人已取消怎么处理？"

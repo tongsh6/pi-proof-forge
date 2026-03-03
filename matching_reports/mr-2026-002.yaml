@@ -1,0 +1,27 @@
+job_profile_id: "jp-2026-001"
+evidence_card_ids:
+  - "ec-2026-001"
+  - "ec-2026-002"
+  - "ec-2026-003"
+  - "ec-2026-010"
+score_total: 80
+score_breakdown:
+  K: { score: 16, reason: "placeholder" }
+  D: { score: 12, reason: "placeholder" }
+  S: { score: 14, reason: "placeholder" }
+  Q: { score: 14, reason: "placeholder" }
+  E: { score: 14, reason: "placeholder" }
+  R: { score: 10, reason: "placeholder" }
+top_cards:
+  - id: "ec-2026-001"
+    reason: "placeholder"
+  - id: "ec-2026-002"
+    reason: "placeholder"
+  - id: "ec-2026-003"
+    reason: "placeholder"
+gaps:
+  - "placeholder gap"
+gap_tasks:
+  - "placeholder task"
+generated_at: "2026-02-27T23:13:29+08:00"
+version_id: "mr-2026-002"

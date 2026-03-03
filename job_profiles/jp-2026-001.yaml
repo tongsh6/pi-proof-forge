@@ -1,0 +1,19 @@
+target_role: "Backend Tech Lead"
+must_have:
+  - "高并发系统设计"
+  - "稳定性治理"
+  - "跨团队协作"
+nice_to_have:
+  - "数据治理"
+  - "成本优化"
+keywords:
+  - "Java"
+  - "Redis"
+  - "Kafka"
+  - "SLA"
+  - "SLO"
+business_domain: "电商"
+seniority_signal:
+  - "Owner"
+  - "跨团队推进"
+tone: "偏架构"

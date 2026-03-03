@@ -1,0 +1,29 @@
+job_profile_id: "jp-2026-001"
+evidence_card_ids:
+  - "ec-2026-001"
+  - "ec-2026-002"
+  - "ec-2026-003"
+  - "ec-2026-010"
+  - "ec-20260227235900"
+  - "ec-20260228000000"
+score_total: 76
+score_breakdown:
+  K: { score: 20, reason: "关键词覆盖 4/5" }
+  D: { score: 8, reason: "业务域信号命中 3/6" }
+  S: { score: 8, reason: "级别信号命中 1/2" }
+  Q: { score: 15, reason: "量化结果条数 3" }
+  E: { score: 15, reason: "证据附件条数 6" }
+  R: { score: 10, reason: "最近经历距今 1 月" }
+top_cards:
+  - id: "ec-2026-001"
+    reason: "关键词命中 4，量化 1，证据 2"
+  - id: "ec-2026-002"
+    reason: "关键词命中 1，量化 1，证据 2"
+  - id: "ec-2026-003"
+    reason: "关键词命中 0，量化 1，证据 2"
+gaps:
+  - "缺少关键词覆盖: SLA"
+gap_tasks:
+  - "补充包含缺失关键词的经历卡或证据"
+generated_at: "2026-02-27T23:51:16+08:00"
+version_id: "mr-20260228003000"

@@ -1,0 +1,23 @@
+id: "ec-2026-002"
+title: "大促期间库存同步链路优化"
+time_range: "2025-06 ~ 2025-09"
+context: "峰值 3k QPS，库存一致性要求 2 秒内"
+role_scope: "Tech Lead"
+actions:
+  - "重构库存同步为异步队列"
+  - "引入幂等与补偿机制"
+  - "建立延迟指标与报警"
+results:
+  - "同步延迟 P95 从 6s 降至 1.8s"
+stack:
+  - "Go"
+  - "Kafka"
+  - "MySQL"
+artifacts:
+  - "design-inventory-sync.md"
+  - "latency-metrics.png"
+tags:
+  - "性能"
+  - "一致性"
+interview_hooks:
+  - "为什么选择异步而不是分片锁？"

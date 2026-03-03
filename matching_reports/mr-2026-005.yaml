@@ -1,0 +1,33 @@
+job_profile_id: "jp-2026-002"
+evidence_card_ids:
+  - "ec-2026-001"
+  - "ec-2026-002"
+  - "ec-2026-003"
+  - "ec-2026-011"
+  - "ec-2026-012"
+  - "ec-2026-013"
+  - "ec-2026-014"
+  - "ec-2026-015"
+  - "ec-2026-016"
+  - "ec-2026-017"
+score_total: 84
+score_breakdown:
+  K: { score: 14, reason: "关键词覆盖 6/11" }
+  D: { score: 10, reason: "业务域信号命中 4/6" }
+  S: { score: 15, reason: "级别信号命中 3/3" }
+  Q: { score: 20, reason: "量化结果条数 21" }
+  E: { score: 15, reason: "证据附件条数 33" }
+  R: { score: 10, reason: "最近经历距今 2 月" }
+top_cards:
+  - id: "ec-2026-016"
+    reason: "关键词命中 4，量化 5，证据 2"
+  - id: "ec-2026-014"
+    reason: "关键词命中 4，量化 4，证据 5"
+  - id: "ec-2026-011"
+    reason: "关键词命中 6，量化 0，证据 6"
+gaps:
+  - "缺少关键词覆盖: Spring Cloud, 高并发, 电商, 多线程, 设计模式"
+gap_tasks:
+  - "补充包含缺失关键词的经历卡或证据"
+generated_at: "2026-03-02T23:28:44+08:00"
+version_id: "mr-2026-005"

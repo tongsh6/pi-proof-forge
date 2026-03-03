@@ -1,0 +1,13 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+
+# Generated artifacts
+outputs/
+
+# Local environment
+.env
+.env.*

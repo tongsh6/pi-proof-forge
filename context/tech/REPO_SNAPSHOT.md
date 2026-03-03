@@ -1,0 +1,80 @@
+# Repo Snapshot
+
+## Tech Stack
+- Language: Markdown + YAML + Python (tools)
+- Framework: n/a
+- Build Tool: n/a
+- Runtime: Python 3
+
+## Repo Layout (Top Level)
+- /
+  - .github/
+  - .opencode/         # OpenSpec commands + superpowers/openspec skills (opencode)
+  - .claude/            # OpenSpec commands + superpowers/openspec skills (claude)
+  - .cursor/            # OpenSpec commands + superpowers/openspec skills (cursor)
+  - .specify/           # spec-kit 配置
+  - AGENTS.md
+  - constitution.md    # spec-kit 项目宪法
+  - PLAN.md
+  - openspec/           # OpenSpec 规范与变更归档
+  - context/
+  - workflow/
+  - docs/
+  - evidence_cards/
+  - job_profiles/
+  - jd_inputs/
+  - matching_reports/
+  - outputs/
+  - templates/
+  - tools/
+  - ui/
+
+## Modules / Services
+- name: core-docs
+  - path: context/
+  - responsibility: 项目知识与技术文档入口
+- name: data-samples
+  - path: evidence_cards/, job_profiles/, jd_inputs/, matching_reports/
+  - responsibility: Phase 0 样例数据
+- name: tools
+  - path: tools/
+  - responsibility: 提炼、匹配、生成、评测与一键流水线 CLI
+- name: workflow
+  - path: workflow/
+  - responsibility: 阶段流程定义与执行顺序
+- name: standards
+  - path: docs/standards/
+  - responsibility: 命名、文档、输出规范与模式沉淀
+- name: ui-prototype
+  - path: ui/prototype/
+  - responsibility: GUI 原型与交互评审入口
+- name: toolchain-integration
+  - path: .opencode/, .claude/, .cursor/, .github/, openspec/, .specify/
+  - responsibility: 三工具集成（OpenSpec + superpowers + spec-kit）
+
+## Infra & CI
+- CI: GitHub Actions (`.github/workflows/aief-l3-check.yml`)
+- Docker: n/a
+- Deploy: n/a
+
+## Commands (If Known)
+- build: n/a
+- test: n/a
+- run: python3 tools/extract_evidence.py --input <file>
+- run-pipeline: python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
+- run-pipeline-llm: python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm
+- run-pipeline-llm-strict: python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
+
+## AIEF Entry
+- AGENTS.md
+- context/INDEX.md
+- context/tech/REPO_SNAPSHOT.md
+- workflow/INDEX.md
+- docs/standards/INDEX.md
+
+## AIEF Level
+- Current: L3 (continuous operation)
+- Evidence:
+  - cross-cutting patterns: docs/standards/patterns/
+  - continuous lessons: context/experience/lessons/
+  - summaries: context/experience/summaries/

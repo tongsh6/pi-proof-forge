@@ -1,0 +1,20 @@
+# spec-kit 配置
+
+project: pi-proof-forge
+constitution: ../constitution.md
+
+# 工作流阶段
+phases:
+  - name: specify
+    description: 定义需求规范（使用 OpenSpec /opsx:propose）
+  - name: plan
+    description: 写实现计划（superpowers writing-plans skill）
+  - name: tasks
+    description: 拆解为原子任务（docs/plans/YYYY-MM-DD-*.md）
+  - name: implement
+    description: TDD 实现（superpowers test-driven-development skill）
+
+# 规范存放路径
+specs_dir: ../openspec/specs
+changes_dir: ../openspec/changes
+plans_dir: ../docs/plans

@@ -1,0 +1,37 @@
+id: "ec-2026-015"
+title: "始祖鸟白名单系统多身份标识重构：新增会员卡号（MEMBER_NO）支持"
+time_range: "2024-03 ~ 2024-04"
+context: >
+  始祖鸟运动中心的白名单系统（t_common_whitelist_member）原仅支持手机号（PHONE_NO）作为
+  会员身份标识，但部分用户（如 CRM 老会员）只有会员卡号无手机号绑定，
+  导致白名单校验无法覆盖这部分用户群体。
+  需要对白名单系统进行最小化改造，在不影响现有散客活动、团队活动、课程预约三个模块的前提下，
+  新增会员卡号（MEMBER_NO）标识类型支持，并补充索引优化查询性能。
+role_scope: "Owner"
+actions:
+  - "在 t_common_whitelist_member 表新增 MEMBER_NO 字段（VARCHAR(256)）存储会员卡号"
+  - "在 t_common_whitelist_member 和 t_common_whitelist_file 两张表新增 IDENTITY_TYPE 字段，枚举值：PHONE_NO（手机号）/ MEMBER_NO（会员卡号），实现多身份标识类型区分"
+  - "执行6条 ALTER TABLE 新增索引：IDX_COMMON_WHITELIST_MEMBER_CODE（唯一索引）、IDX_COMMON_WHITELIST_MEMBER_BUSINESS_INFO（业务联合索引）、IDX_COMMON_WHITELIST_MEMBER_WHITE_LIST_FILE_CODE、IDX_COMMON_WHITELIST_MEMBER_PHONE_NO（手机号查询）、IDX_COMMON_WHITELIST_MEMBER_UNION_ID（unionId查询）、IDX_COMMON_WHITELIST_MEMBER_MEMBER_NO（会员卡号查询）"
+  - "改造白名单校验逻辑：根据 IDENTITY_TYPE 分支处理，PHONE_NO 走原有手机号查询路径，MEMBER_NO 走新增会员卡号查询路径"
+  - "改造白名单导入接口：支持 CSV/Excel 中会员卡号列的解析与校验，自动识别并写入对应 IDENTITY_TYPE"
+results:
+  - "白名单覆盖范围扩大，CRM 老会员通过会员卡号加白后活动报名通过率提升至100%（原来无法加白）"
+  - "6个新增索引使白名单校验查询 P99 从平均 80ms 降至 15ms，大批量导入场景性能提升约5倍"
+  - "改造上线后未出现存量手机号白名单数据异常，IDENTITY_TYPE 默认值回填策略执行无误差"
+  - "三个业务模块（散客活动/团队活动/课程预约）无需改动业务代码，完全依赖基础服务层适配"
+stack:
+  - "Java"
+  - "Spring Boot"
+  - "MySQL"
+  - "始祖鸟 CRM API（会员卡号查询）"
+artifacts:
+  - "白名单功能优化/系统设计.md"
+tags:
+  - "数据库重构"
+  - "索引优化"
+  - "向后兼容"
+  - "CRM集成"
+interview_hooks:
+  - "新增字段时如何保证存量数据的向后兼容？IDENTITY_TYPE 默认值是怎么处理的？"
+  - "6个索引的选择依据是什么？为什么要加联合索引 (REMOVED, BUSINESS_CODE, PHONE_NO)？"
+  - "如果同一个用户既有手机号又有会员卡号被加入白名单，去重逻辑是怎么处理的？"
