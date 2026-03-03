@@ -11,5 +11,7 @@
 5. 生成版本号
 
 ## 产出
-- outputs/*.pdf / *.docx
+- outputs/resume_*.md
 - resume_version_id
+
+注：PDF/DOCX 导出属于后置发布/投递阶段能力，不是当前 generation 阶段默认产物。
