@@ -30,6 +30,12 @@ npx --yes @tongsh6/aief-init@latest retrofit --level L1 --base-dir AIEF
 3. 在 `main` 打 tag（`vX.Y.Z`）
 4. 创建 GitHub Release
 
+## 一键发布入口
+
+```bash
+python3 tools/run_github_publish.py --feature <feature> --release <release> --version <version>
+```
+
 ## 命令示例
 
 ```bash
