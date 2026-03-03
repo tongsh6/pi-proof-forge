@@ -10,7 +10,7 @@ description: Project-specific skill for publishing this repository to GitHub wit
 Use one command to execute publish flow:
 
 ```bash
-python3 tools/run_github_publish.py --feature <feature> --release <release> --version <version>
+python3 tools/run_github_publish.py --feature <feature> --release <release> --version <version> --release-notes-file release-notes/<version>.md
 ```
 
 ## When to Use
@@ -77,7 +77,7 @@ git checkout main
 git pull --ff-only origin main
 git tag vX.Y.Z
 git push origin vX.Y.Z
-gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
+gh release create vX.Y.Z --title "vX.Y.Z" --notes-file release-notes/vX.Y.Z.md
 ```
 
 ## Guardrails
