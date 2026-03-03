@@ -108,6 +108,12 @@ git pull --ff-only origin main
 git tag v0.3.0
 git push origin v0.3.0
 gh release create v0.3.0 --title "v0.3.0" --generate-notes
+
+# 一键发布（GitFlow + tag + GitHub Release）
+python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0
+
+# 一键发布预演
+python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --dry-run
 ```
 
 ## CI 校验
