@@ -18,7 +18,7 @@
   - 脚本：tools/run_evaluation.py
 - github-release-publishing
   - 文档：context/tech/GITHUB_RELEASE.md
-  - 脚本：tools/run_gitflow_release.py
+  - 脚本：tools/run_github_publish.py, tools/run_gitflow_release.py
 
 ## 规则
 - 新增技能必须同步：文档、脚本、README 示例。
