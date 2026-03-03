@@ -20,4 +20,4 @@ jobs:
           python-version: "3.11"
 
       - name: Run AIEF L3 checker
-        run: python3 tools/check_aief_l3.py --root .
+        run: python3 tools/check_aief_l3.py --root . --base-dir AIEF

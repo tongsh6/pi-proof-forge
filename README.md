@@ -23,11 +23,11 @@ Raw materials -> Evidence cards -> Matching report -> Resume generation -> Evalu
 
 流程文档：
 
-- `workflow/phases/evidence-extraction.md`
-- `workflow/phases/matching-scoring.md`
-- `workflow/phases/generation.md`
-- `workflow/phases/evaluation.md`
-- `workflow/phases/submission.md`（自动投递阶段：规划中）
+- `AIEF/workflow/phases/evidence-extraction.md`
+- `AIEF/workflow/phases/matching-scoring.md`
+- `AIEF/workflow/phases/generation.md`
+- `AIEF/workflow/phases/evaluation.md`
+- `AIEF/workflow/phases/submission.md`（自动投递阶段：规划中）
 
 ## 快速开始
 
@@ -59,12 +59,22 @@ python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output
 
 更多命令示例：`tools/README.md`
 
+### AIEF 单目录模式（--base-dir）
+
+如果需要把 AIEF 资产直接生成到独立目录（例如 `AIEF/`）：
+
+```bash
+npx --yes @tongsh6/aief-init@latest retrofit --level L1 --base-dir AIEF
+```
+
+会生成：`AIEF/context/`、`AIEF/workflow/`、`AIEF/docs/standards/`、`AIEF/templates/`、`AIEF/scripts/`
+
 ## 目录结构
 
 ```text
-context/            项目知识库与技术文档
-workflow/           阶段流程定义
-docs/standards/     标准与模式
+AIEF/context/       项目知识库与技术文档
+AIEF/workflow/      阶段流程定义
+AIEF/docs/standards/标准与模式
 evidence_cards/     结构化证据资产
 job_profiles/       岗位画像
 jd_inputs/          JD 原文输入
@@ -81,10 +91,10 @@ ui/prototype/       GUI 原型
 
 ## 约定
 
-- 项目入口：`AGENTS.md`
-- 上下文入口：`context/INDEX.md`
-- 标准索引：`docs/standards/INDEX.md`
-- 命名规范：`docs/standards/naming.md`
+- 项目入口：`AIEF/AGENTS.md`
+- 上下文入口：`AIEF/context/INDEX.md`
+- 标准索引：`AIEF/docs/standards/INDEX.md`
+- 命名规范：`AIEF/docs/standards/naming.md`
 
 ## 注意
 
@@ -120,11 +130,11 @@ Raw materials -> Evidence cards -> Matching report -> Resume generation -> Evalu
 
 Workflow docs:
 
-- `workflow/phases/evidence-extraction.md`
-- `workflow/phases/matching-scoring.md`
-- `workflow/phases/generation.md`
-- `workflow/phases/evaluation.md`
-- `workflow/phases/submission.md` (submission automation design, implementation in progress)
+- `AIEF/workflow/phases/evidence-extraction.md`
+- `AIEF/workflow/phases/matching-scoring.md`
+- `AIEF/workflow/phases/generation.md`
+- `AIEF/workflow/phases/evaluation.md`
+- `AIEF/workflow/phases/submission.md` (submission automation design, implementation in progress)
 
 ### Quick Start
 
@@ -140,12 +150,22 @@ python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profi
 
 For phase-by-phase commands, see `tools/README.md`.
 
+### AIEF Single-Directory Mode (`--base-dir`)
+
+To generate AIEF assets directly under a dedicated base folder (for example `AIEF/`):
+
+```bash
+npx --yes @tongsh6/aief-init@latest retrofit --level L1 --base-dir AIEF
+```
+
+Generated paths: `AIEF/context/`, `AIEF/workflow/`, `AIEF/docs/standards/`, `AIEF/templates/`, `AIEF/scripts/`.
+
 ### Repository Layout
 
 ```text
-context/            Knowledge base and technical docs
-workflow/           Phase workflows
-docs/standards/     Standards and patterns
+AIEF/context/       Knowledge base and technical docs
+AIEF/workflow/      Phase workflows
+AIEF/docs/standards/ Standards and patterns
 evidence_cards/     Structured evidence assets
 job_profiles/       Target role profiles
 jd_inputs/          Raw JD inputs
