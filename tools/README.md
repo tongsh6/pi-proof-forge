@@ -75,10 +75,9 @@ python tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output 
 # 质量评测（严格 LLM，不允许回退）
 python tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
 
-# 自动投递（规划中，尚未实现）
+# 自动投递（MVP 脚手架）
 # 参考流程文档：AIEF/workflow/phases/submission.md
-# python tools/run_pdf_generation.py --profile candidate_profile.yaml --input outputs/resume_mr-2026-002_A.md --output outputs/resume_mr-2026-002_A.pdf
-# python tools/submission/run_submission.py --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-002_A.pdf --profile candidate_profile.yaml
+python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume release-notes/TEMPLATE.md --profile release-notes/TEMPLATE.md --dry-run
 
 # 一键流水线（rule 模式）
 python tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
