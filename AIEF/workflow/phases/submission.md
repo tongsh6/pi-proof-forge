@@ -37,7 +37,7 @@ python tools/run_pdf_generation.py \
   --output outputs/resume_mr-2026-005_A.pdf
 
 # 2) 自动投递（规划）
-python tools/submission/run_submission.py \
+python3 -m tools.submission.run_submission \
   --platform liepin \
   --job-url "https://www.liepin.com/job/xxxx" \
   --resume outputs/resume_mr-2026-005_A.pdf \
