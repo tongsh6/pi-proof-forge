@@ -39,6 +39,8 @@ def parse_args() -> argparse.Namespace:
         help="Allow fallback to GitHub auto-generated notes when no release notes file is found.",
     )
     _ = parser.add_argument("--base-dir", default="AIEF", help="AIEF base directory for checks")
+    _ = parser.add_argument("--require-submission-ready", action="store_true")
+    _ = parser.add_argument("--submission-platform", default="liepin")
     _ = parser.add_argument("--skip-check", action="store_true", help="Skip AIEF L3 check")
     _ = parser.add_argument("--dry-run", action="store_true", help="Print planned steps only")
     return parser.parse_args()
@@ -67,6 +69,8 @@ def main() -> int:
     notes_arg = cast(str, args.release_notes_file)
     allow_generate_notes = bool(cast(bool, args.allow_generate_notes))
     base_dir = cast(str, args.base_dir)
+    require_submission_ready = bool(cast(bool, args.require_submission_ready))
+    submission_platform = cast(str, args.submission_platform)
     skip_check = bool(cast(bool, args.skip_check))
     dry_run = bool(cast(bool, args.dry_run))
 
@@ -94,6 +98,10 @@ def main() -> int:
             print(f"[DRY-RUN] release notes file: {notes_path}")
         else:
             print("[DRY-RUN] release notes: GitHub auto-generated")
+        if require_submission_ready:
+            print(
+                f"[DRY-RUN] python3 tools/check_submission_readiness.py --platform {submission_platform} --require-status success --min-screenshots 1"
+            )
         if not skip_check:
             print(f"[DRY-RUN] python3 tools/check_aief_l3.py --root . --base-dir {base_dir}")
         print(f"[DRY-RUN] python3 tools/run_gitflow_release.py --feature {feature} --release {release}")
@@ -108,6 +116,20 @@ def main() -> int:
         return 0
 
     try:
+        if require_submission_ready:
+            run(
+                [
+                    "python3",
+                    "tools/check_submission_readiness.py",
+                    "--platform",
+                    submission_platform,
+                    "--require-status",
+                    "success",
+                    "--min-screenshots",
+                    "1",
+                ]
+            )
+
         if not skip_check:
             run(["python3", "tools/check_aief_l3.py", "--root", ".", "--base-dir", base_dir])
 

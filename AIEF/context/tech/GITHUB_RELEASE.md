@@ -6,8 +6,9 @@
 ## 工具与脚本
 - GitHub CLI：`gh`
 - Git：`git`
-- AIEF 校验：`python3 tools/check_aief_l3.py --root .`
+- AIEF 校验：`python3 tools/check_aief_l3.py --root . --base-dir AIEF`
 - GitFlow 自动化：`python3 tools/run_gitflow_release.py`
+- Submission 门禁：`python3 tools/check_submission_readiness.py`
 
 ## AIEF 单目录模式（--base-dir）
 
@@ -35,13 +36,19 @@ npx --yes @tongsh6/aief-init@latest retrofit --level L1 --base-dir AIEF
 
 ```bash
 python3 tools/run_github_publish.py --feature <feature> --release <release> --version <version> --release-notes-file release-notes/<version>.md
+
+# 如果发布必须绑定自动投递成功证据，增加门禁参数
+python3 tools/run_github_publish.py --feature <feature> --release <release> --version <version> --release-notes-file release-notes/<version>.md --require-submission-ready --submission-platform liepin
 ```
 
 ## 命令示例
 
 ```bash
 # 1) 质量检查
-python3 tools/check_aief_l3.py --root .
+python3 tools/check_aief_l3.py --root . --base-dir AIEF
+
+# 1.1) 自动投递门禁（可选但推荐）
+python3 tools/check_submission_readiness.py --root outputs/submissions --platform liepin --require-status success --min-screenshots 1
 
 # 2) GitFlow 推进（feature 合并后删除，release 保留）
 python3 tools/run_gitflow_release.py --feature auto-submission-liepin --release v0.3.0 --create-feature
