@@ -18,8 +18,22 @@ PiProofForge 补的是前半段关键链路：
 ## 核心流程
 
 ```text
-Raw materials -> Evidence cards -> Matching report -> Resume generation -> Evaluation
+Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -> Resume generation -> Evaluation
 ```
+
+## 架构状态
+
+- 当前规范目标：统一核心引擎 v2
+- 架构方向：`domain/` + `infra/` + `engines/` + `orchestration/` + `config/` + `channels/` + `cli/`
+- GUI 终版路线：`Tauri desktop app + React/TypeScript frontend + Python sidecar`
+- 设计原则：高内聚、低耦合、组合优于继承、扩展优于修改、evidence-first
+- 迁移策略：旧 CLI 保持兼容，逐步迁移到底层 v2 架构
+
+关键文档：
+
+- `openspec/specs/pi-proof-forge-core.md`
+- `openspec/changes/autonomous-agent-delivery-loop/design.md`
+- `docs/plans/autonomous-agent-delivery-loop-v2.md`
 
 流程文档：
 
@@ -27,7 +41,21 @@ Raw materials -> Evidence cards -> Matching report -> Resume generation -> Evalu
 - `AIEF/workflow/phases/matching-scoring.md`
 - `AIEF/workflow/phases/generation.md`
 - `AIEF/workflow/phases/evaluation.md`
+- `AIEF/workflow/phases/job-discovery.md`（多源职位发现）
 - `AIEF/workflow/phases/submission.md`（自动投递阶段：规划中）
+
+GUI 关键文档：
+
+- `ui/design/DESIGN.md`
+- `ui/design/piproofforge.pen`
+- `AIEF/context/tech/GUI_ARCHITECTURE.md`
+
+## GUI 当前状态
+
+- GUI 产品规范已定版，采用桌面应用路线：Tauri + React/TypeScript + Python sidecar
+- 当前 GUI 真源为 `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen`
+- 当前 GUI 信息架构为 9 页：Overview、Resumes、Evidence、Jobs、Quick Run、Agent Run、Submissions、Policy、System Settings
+- 当前仓库尚未提交正式的桌面端实现代码；后续实现、验收与拆解均以终版设计文档为准
 
 ## 快速开始
 
@@ -75,19 +103,38 @@ npx --yes @tongsh6/aief-init@latest retrofit --level L1 --base-dir AIEF
 AIEF/context/       项目知识库与技术文档
 AIEF/workflow/      阶段流程定义
 AIEF/docs/standards/标准与模式
+docs/plans/         实现前计划与设计拆分
 evidence_cards/     结构化证据资产
 job_profiles/       岗位画像
 jd_inputs/          JD 原文输入
 matching_reports/   匹配报告
+profiles/           求职者档案
+release-notes/      发版记录
 tools/              CLI 工具
-ui/prototype/       GUI 原型
+ui/design/          GUI 设计主线（Pencil 设计资产 + 设计文档）
+```
+
+## v2 目标代码结构
+
+```text
+tools/
+  domain/           领域核心（零外部依赖）
+  infra/            基础设施唯一实现层
+  engines/          提炼/匹配/生成/评测/发现引擎
+  orchestration/    Stage 组合编排与 Agent Loop
+  config/           配置切片与 Composer 组装
+  errors/           不可恢复异常与错误路由
+  channels/         投递通道
+  cli/              薄入口层
 ```
 
 ## 当前状态
 
 - AIEF Level: L3
 - extraction/matching/generation/evaluation 已可端到端运行
+- job-discovery 多源职位发现流程已定义，自动化采集实现中
 - submission 自动投递已完成流程设计，代码实现进行中
+- GUI 终版规范已冻结，桌面端实现待按终版文档落地
 
 ## 约定
 
@@ -125,8 +172,22 @@ PiProofForge focuses on the missing front-half:
 ### Core Workflow
 
 ```text
-Raw materials -> Evidence cards -> Matching report -> Resume generation -> Evaluation
+Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -> Resume generation -> Evaluation
 ```
+
+### Architecture Status
+
+- Current target spec: Unified Core Engine v2
+- Architecture direction: `domain/` + `infra/` + `engines/` + `orchestration/` + `config/` + `channels/` + `cli/`
+- Final GUI path: `Tauri desktop app + React/TypeScript frontend + Python sidecar`
+- Design principles: high cohesion, low coupling, composition over inheritance, extension over modification, evidence-first
+- Migration strategy: keep legacy CLI compatible while moving the core to v2
+
+Key docs:
+
+- `openspec/specs/pi-proof-forge-core.md`
+- `openspec/changes/autonomous-agent-delivery-loop/design.md`
+- `docs/plans/autonomous-agent-delivery-loop-v2.md`
 
 Workflow docs:
 
@@ -134,7 +195,21 @@ Workflow docs:
 - `AIEF/workflow/phases/matching-scoring.md`
 - `AIEF/workflow/phases/generation.md`
 - `AIEF/workflow/phases/evaluation.md`
+- `AIEF/workflow/phases/job-discovery.md` (multi-source job discovery)
 - `AIEF/workflow/phases/submission.md` (submission automation design, implementation in progress)
+
+GUI key docs:
+
+- `ui/design/DESIGN.md`
+- `ui/design/piproofforge.pen`
+- `AIEF/context/tech/GUI_ARCHITECTURE.md`
+
+### GUI Status
+
+- The GUI product spec is finalized as a desktop application: Tauri + React/TypeScript + Python sidecar
+- The GUI source of truth is `ui/design/DESIGN.md` plus `ui/design/piproofforge.pen`
+- The GUI information architecture now contains 9 pages: Overview, Resumes, Evidence, Jobs, Quick Run, Agent Run, Submissions, Policy, and System Settings
+- The formal desktop implementation is not yet committed; future implementation and acceptance should follow the finalized GUI docs
 
 ### Quick Start
 
@@ -166,19 +241,24 @@ Generated paths: `AIEF/context/`, `AIEF/workflow/`, `AIEF/docs/standards/`, `AIE
 AIEF/context/       Knowledge base and technical docs
 AIEF/workflow/      Phase workflows
 AIEF/docs/standards/ Standards and patterns
+docs/plans/         Pre-implementation plans
 evidence_cards/     Structured evidence assets
 job_profiles/       Target role profiles
 jd_inputs/          Raw JD inputs
 matching_reports/   Match/scoring outputs
+profiles/           Candidate profiles
+release-notes/      Release notes
 tools/              CLI scripts
-ui/prototype/       GUI prototype
+ui/design/          GUI design mainline (Pencil design assets + design docs)
 ```
 
 ### Status
 
 - AIEF level: L3
 - End-to-end extraction/matching/generation/evaluation is runnable
+- Job discovery workflow is defined; automation implementation is in progress
 - Submission automation is documented and planned for implementation
+- The final GUI specification is frozen; desktop implementation remains to be built against the final docs
 
 ### License
 

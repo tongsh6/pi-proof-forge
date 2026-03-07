@@ -12,6 +12,6 @@
 ## 快速导航示例
 
 - 业务知识：context/business/DOMAIN.md
-- 技术架构：context/tech/ARCHITECTURE.md
+- 技术架构：context/tech/architecture.md
 - 仓库快照：context/tech/REPO_SNAPSHOT.md
 - 经验库：context/experience/INDEX.md

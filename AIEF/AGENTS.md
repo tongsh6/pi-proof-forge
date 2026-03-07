@@ -21,11 +21,14 @@
 快速命令：
 - build: n/a（暂未设置）
 - test: n/a（暂未设置）
-- run: python3 tools/extract_evidence.py --input <file>
+- run: python3 tools/run_evidence_extraction.py --input <file>
 - pipeline: python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
 
 上下文入口：
 - context/INDEX.md
+
+说明：
+- `tools/run_evidence_extraction.py` 是推荐工作流入口；`tools/extract_evidence.py` 仍保留为底层规则实现/兼容脚本。
 
 知识库：
 

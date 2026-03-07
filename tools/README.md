@@ -4,9 +4,13 @@
 
 从原始语料提炼 evidence card（基于规则的最小实现）。
 
+说明：
+- `tools/run_evidence_extraction.py` 是推荐工作流入口。
+- `tools/extract_evidence.py` 是底层规则脚本，适合直接调试或最小调用。
+
 ### 用法
 ```bash
-python tools/extract_evidence.py --input tools/sample_raw.txt --id ec-2026-010 --output evidence_cards/ec-2026-010.yaml
+python3 tools/extract_evidence.py --input tools/sample_raw.txt --id ec-2026-010 --output evidence_cards/ec-2026-010.yaml
 ```
 
 ### 参数
@@ -23,7 +27,7 @@ python tools/extract_evidence.py --input tools/sample_raw.txt --id ec-2026-010 -
 ```bash
 export LLM_API_KEY="your_key"
 export LLM_MODEL="gpt-4o-mini"
-python tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evidence_cards/ec-2026-011.yaml
+python3 tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evidence_cards/ec-2026-011.yaml
 ```
 
 ### 参数
@@ -37,61 +41,74 @@ python tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evide
 ## Workflow 脚本
 
 ```bash
+# 职位发现（规划，多源渠道）
+python3 -m tools.discovery.run_job_discovery --city 上海 --cbd "陆家嘴,漕河泾" --output job_leads/jl-2026-001.yaml
+
 # 证据提炼
-python tools/run_evidence_extraction.py --input tools/sample_raw.txt --output evidence_cards/ec-2026-010.yaml
+python3 tools/run_evidence_extraction.py --input tools/sample_raw.txt --output evidence_cards/ec-2026-010.yaml
 
 # 匹配评分
-python tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-002.yaml
+python3 tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-002.yaml
 
 # 说明：默认规则打分（K/D/S/Q/E/R），可复现
 
 # 匹配评分（LLM 版）
 export LLM_API_KEY="your_key"
 export LLM_MODEL="gpt-4o-mini"
-python tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-003.yaml --use-llm
+python3 tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-003.yaml --use-llm
 
 # 匹配评分（严格 LLM，不允许回退）
-python tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-003.yaml --use-llm --require-llm
+python3 tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-003.yaml --use-llm --require-llm
 
 # 简历生成（模板输出）
-python tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs
+python3 tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs
 
 # 简历生成（LLM 版）
 export LLM_API_KEY="your_key"
 export LLM_MODEL="gpt-4o-mini"
-python tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs --use-llm
+python3 tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs --use-llm
 
 # 简历生成（严格 LLM，不允许回退）
-python tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs --use-llm --require-llm
+python3 tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs --use-llm --require-llm
 
 # 质量评测（占位输出）
-python tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml
+python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml
 
 # 质量评测（LLM 版）
 export LLM_API_KEY="your_key"
 export LLM_MODEL="gpt-4o-mini"
-python tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml --use-llm
+python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml --use-llm
 
 # 质量评测（严格 LLM，不允许回退）
-python tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
+python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
 
-# 自动投递（MVP 脚手架）
+# 自动投递（Liepin）
 # 参考流程文档：AIEF/workflow/phases/submission.md
-python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume release-notes/TEMPLATE.md --profile release-notes/TEMPLATE.md --dry-run
+# dry-run：仅生成执行计划与日志，不打开浏览器
+python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --dry-run
+
+# check mode：打开页面、校验登录态并执行上传/填表，但不点击提交
+python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir .sessions --output-dir outputs/submissions --timeout-ms 45000
+
+# submit mode：真实点击投递（要求 --resume 为 PDF）
+python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir .sessions --output-dir outputs/submissions --submit
+
+# 投递就绪门禁（要求最新一次 run 为 submit + success + 至少 1 张截图）
+python3 tools/check_submission_readiness.py --root outputs/submissions --platform liepin --require-status success --min-screenshots 1
 
 # 一键流水线（rule 模式）
-python tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
+python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
 
 # 一键流水线（LLM 模式）
 export LLM_API_KEY="your_key"
 export LLM_MODEL="gpt-4o-mini"
-python tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm
+python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm
 
 # 一键流水线（严格 LLM，不允许任何阶段回退）
-python tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
+python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
 
 # AIEF L3 检查
-python tools/check_aief_l3.py --root . --base-dir AIEF
+python3 tools/check_aief_l3.py --root . --base-dir AIEF
 
 # GitFlow 自动发布（跨平台）
 # 流程：main -> feature -> develop -> release -> main
@@ -110,6 +127,9 @@ gh release create v0.3.0 --title "v0.3.0" --notes-file release-notes/v0.3.0.md
 
 # 一键发布（GitFlow + tag + GitHub Release + release notes）
 python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --release-notes-file release-notes/v0.3.0.md
+
+# 一键发布（启用自动投递门禁）
+python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --release-notes-file release-notes/v0.3.0.md --require-submission-ready --submission-platform liepin
 
 # 一键发布预演
 python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --release-notes-file release-notes/v0.3.0.md --dry-run

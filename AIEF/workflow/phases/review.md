@@ -15,6 +15,15 @@
 - [ ] REPO_SNAPSHOT.md 是否需要更新？
 - [ ] workflow/INDEX.md 是否需要更新？
 
+### GUI 变更附加清单
+
+当本次变更涉及 GUI 设计、GUI 代码、GUI schema 或 sidecar 集成时，评审必须额外执行 `docs/plans/gui-review-checklist.md`，并至少确认：
+
+- [ ] `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen` 是否同步
+- [ ] GUI 实现是否同时对齐文档与 `.pen` 资产
+- [ ] Design review / code review / 实现验收 是否都执行了对应 GUI 检查项
+- [ ] 若存在文档、`.pen`、实现三方任一不一致，是否已判定该变更不能通过评审
+
 ## 输出
 
 - 审查结论（通过 / 有条件通过 / 需返工）

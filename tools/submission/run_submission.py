@@ -14,6 +14,10 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--job-url", required=True)
     _ = parser.add_argument("--resume", required=True)
     _ = parser.add_argument("--profile", required=True)
+    _ = parser.add_argument("--submit", action="store_true", help="Execute actual submission")
+    _ = parser.add_argument("--output-dir", default="outputs/submissions")
+    _ = parser.add_argument("--session-dir", default=".sessions")
+    _ = parser.add_argument("--timeout-ms", type=int, default=45000)
     _ = parser.add_argument(
         "--headless",
         action=argparse.BooleanOptionalAction,
@@ -36,6 +40,18 @@ def validate_args(args: argparse.Namespace) -> None:
     if not profile_path.exists() or not profile_path.is_file():
         raise RuntimeError(f"profile file not found: {profile_path}")
 
+    if bool(cast(bool, args.submit)) and resume_path.suffix.lower() != ".pdf":
+        raise RuntimeError("--resume must be a PDF file when --submit is enabled")
+
+    if profile_path.suffix.lower() not in {".yaml", ".yml"}:
+        raise RuntimeError("--profile must be a YAML file")
+
+    if int(cast(int, args.timeout_ms)) < 1000:
+        raise RuntimeError("--timeout-ms must be >= 1000")
+
+    if bool(cast(bool, args.dry_run)) and bool(cast(bool, args.submit)):
+        raise RuntimeError("--dry-run and --submit cannot be used together")
+
 
 def main() -> int:
     args = parse_args()
@@ -53,6 +69,10 @@ def main() -> int:
             profile_path=cast(str, args.profile),
             headless=bool(cast(bool, args.headless)),
             dry_run=bool(cast(bool, args.dry_run)),
+            submit=bool(cast(bool, args.submit)),
+            output_dir=cast(str, args.output_dir),
+            session_dir=cast(str, args.session_dir),
+            timeout_ms=int(cast(int, args.timeout_ms)),
         )
         return run_liepin_submission(config)
 
