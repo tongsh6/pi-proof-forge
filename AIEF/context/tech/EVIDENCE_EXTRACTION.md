@@ -20,7 +20,8 @@
 4. 生成缺口任务：提示用户补证据
 
 ## CLI 入口
-- 规则版：`tools/extract_evidence.py`
+- 推荐工作流入口：`tools/run_evidence_extraction.py`
+- 底层规则脚本：`tools/extract_evidence.py`
 - LLM 版：`tools/extract_evidence_llm.py`
 
 ## 规则约束

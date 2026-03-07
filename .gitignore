@@ -11,3 +11,6 @@ outputs/
 # Local environment
 .env
 .env.*
+
+# Local browser/session state
+.sessions/

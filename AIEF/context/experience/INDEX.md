@@ -28,6 +28,10 @@
 - context/experience/lessons/2026-03-04-doc-consistency-and-pruning.md
 - context/experience/lessons/2026-03-04-release-notes-in-publish-flow.md
 - context/experience/lessons/2026-03-04-submission-mvp-scaffold.md
+- context/experience/lessons/2026-03-04-submission-readiness-gate.md
+- context/experience/lessons/2026-03-04-liepin-upload-fallback-diagnostics.md
+- context/experience/lessons/2026-03-04-liepin-page-mode-and-dom-snapshot.md
+- context/experience/lessons/2026-03-04-liepin-job-page-health-check.md
 
 ## 主题摘要
 - context/experience/summaries/pipeline.md
