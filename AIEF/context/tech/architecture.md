@@ -47,12 +47,16 @@
 - Desktop GUI
   - 形态：Tauri + React/TypeScript + Python sidecar
   - 职责：承载终版 9 页信息架构、运行状态、证据管理、结果预览、投递跟踪、策略配置与系统设置
+- Sidecar Bridge
+  - 职责：承载 JSON-RPC 2.0 over stdio 协议、将 RPC 方法路由到 v2 内部 service、管理事件流推送、统一错误码映射
+  - 子组件：rpc_server / method_handlers / event_bus / lifecycle / error_mapper
 
 ## 分层与依赖方向
 
 ```text
-cli -> orchestration -> engines -> domain <- infra
-channels ----------------------^ 
+GUI (Tauri) --JSON-RPC--> sidecar -> orchestration -> engines -> domain <- infra
+cli ----------------------------------------^
+channels -----------------------------------^
 config/composer 负责统一组装
 ```
 
@@ -71,6 +75,7 @@ config/composer 负责统一组装
 4. Selected cards → template assembly → controlled rewrite → output document
 5. Output → scorecard → evidence gap tasks
 6. Desktop GUI 读取、驱动并展示 pipeline 与 agent loop 产物
+7. GUI 通过 JSON-RPC 调用 sidecar，sidecar 将请求路由到 v2 内部 service 并将事件流推送回 GUI
 
 ## 数据存储（MVP）
 - Evidence cards：YAML/Markdown + Git 版本管理
@@ -81,7 +86,7 @@ config/composer 负责统一组装
 - LLM provider
 - Embedding provider
 - Exporter（PDF/DOCX）
-- Desktop GUI bridge（Tauri host 与 Python sidecar 调用层）
+- Desktop GUI bridge（Tauri host 与 Python sidecar 调用层；具体实现：Sidecar Bridge，JSON-RPC 2.0 over stdio）
 - Delivery channel
 - Matching / generation / evaluation strategy
 - Run store backend（当前仅文件实现）
