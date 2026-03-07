@@ -161,7 +161,16 @@ ui/
 首批完成后，再进入以下批次：
 
 1. Shared components batch：DataTable / FormField / Modal / OfflineIndicator
+   - 依赖：sidecar 无强依赖，可与 Sidecar L1 并行
 2. Page shell batch：Overview / Evidence / Jobs 主态页面
-3. Runtime integration batch：Quick Run / Agent Run bridge + event stream
-4. State completion batch：Loading / Empty / Error / 断连态
-5. Full acceptance batch：按 `.pen` 与 checklist 做终验
+   - 依赖：至少完成 Sidecar L1（`system.handshake` / `system.ping` / `evidence.list` / `evidence.get` / `settings.get`）
+   - 说明：Overview 若未补齐 `overview.get` contract，则只允许静态占位，不进入真实数据接线
+3. Management integration batch：Resumes / Policy / System Settings / Jobs Leads 管理页
+   - 依赖：完成 Sidecar L2（CRUD、分页/筛选、`settings.update`、`resume.list`、`jobs.*`）
+4. Runtime integration batch：Quick Run / Agent Run bridge + event stream
+   - 依赖：完成 Sidecar L3（`run.quick.*` / `run.agent.*` / `submission.retry` + event stream）
+   - 说明：未完成 L3 前，不得把 Quick Run / Agent Run 做成“伪实时”页面冒充可运行版本
+5. State completion batch：Loading / Empty / Error / 断连态
+   - 依赖：L1-L3 的错误码、sidecar lifecycle、最小数据契约已冻结
+6. Full acceptance batch：按 `.pen` 与 checklist 做终验
+   - 依赖：Sidecar L1-L3 与 GUI 主态页面全部接通，且 contract、设计稿、实现三者一致

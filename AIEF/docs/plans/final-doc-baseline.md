@@ -80,6 +80,12 @@ constitution.md
 - `AIEF/docs/plans/m1-first-batch-tdd-checklist.md`
   - 作用：首个开发批次的最小 TDD 用例清单
 
+- `AIEF/docs/plans/backend-ui-bridge-plan.md`
+  - 作用：定义 GUI 与 v2 后端之间的桥接层、Sidecar L1-L3 分级路径与 UI/Backend 对齐关系
+
+- `AIEF/docs/plans/sidecar-l1-kickoff.md`
+  - 作用：Sidecar 第一批最小实现清单，冻结 L1 的允许范围、禁止范围、测试边界与退出条件
+
 ### D. 项目导航层（帮助定位，不裁决架构）
 
 - `AIEF/context/tech/architecture.md`
@@ -118,6 +124,18 @@ constitution.md
 
 - 这 6 份已经足够覆盖原则、终态、迁移顺序、首批实现范围和 TDD 起点。
 
+若当前任务涉及 GUI bridge / sidecar，再追加这 4 份：
+
+7. `AIEF/context/tech/GUI_ARCHITECTURE.md`
+8. `ui/design/contracts/sidecar-rpc.md`
+9. `AIEF/docs/plans/backend-ui-bridge-plan.md`
+10. `AIEF/docs/plans/sidecar-l1-kickoff.md`
+
+原因：
+
+- GUI/sidecar 任务除了 v2 主线外，还需要明确通信协议、桥接分层与 L1 执行边界
+- 未读这 4 份时，不应直接开始 `tools/sidecar/` 或 GUI 真数据接线
+
 ## 5. 当前已稳定的关键口径
 
 以下口径已完成统一，可直接作为实现依据：
@@ -130,6 +148,8 @@ constitution.md
 - 不可恢复错误：使用 `PiProofError` 子类
 - 状态恢复：`RunState.replay(events)`
 - evidence extraction 入口：`tools/run_evidence_extraction.py` 为推荐入口；`tools/extract_evidence.py` 为底层规则/兼容脚本
+- GUI bridge 路线：通过 `Sidecar Bridge Layer` 承载 JSON-RPC 2.0 over stdio，而不是让 GUI 直接调用 CLI subprocess
+- Sidecar 首批范围：先做 L1 只读方法（`system.*`、`evidence.list/get`、`settings.get`），再进入 L2/L3
 
 ## 6. 当前仍应注意的边界
 
@@ -141,5 +161,6 @@ constitution.md
 
 - [ ] 先读最小阅读集
 - [ ] 先按 `AIEF/docs/plans/m1-first-batch-tdd-checklist.md` 启动 TDD
+- [ ] 若任务涉及 GUI bridge / sidecar，先读 `backend-ui-bridge-plan.md` 与 `sidecar-l1-kickoff.md`
 - [ ] 任何新文档都沿用 v2 稳定口径
 - [ ] 发现文档冲突时按优先级裁决，不以 README 反向覆盖 OpenSpec

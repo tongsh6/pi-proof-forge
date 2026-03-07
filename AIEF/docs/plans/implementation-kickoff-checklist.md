@@ -26,8 +26,10 @@
 7. `AIEF/docs/plans/m1-first-batch-tdd-checklist.md`
 8. 若任务涉及 GUI：`AIEF/context/tech/GUI_ARCHITECTURE.md`
 9. 若任务涉及 GUI：`ui/design/contracts/sidecar-rpc.md`
-10. 若任务涉及 GUI：`AIEF/docs/plans/gui-review-checklist.md`
-11. 若任务涉及 GUI：`AIEF/docs/plans/gui-first-batch-kickoff.md`
+10. 若任务涉及 GUI：`AIEF/docs/plans/backend-ui-bridge-plan.md`
+11. 若任务涉及 GUI sidecar：`AIEF/docs/plans/sidecar-l1-kickoff.md`
+12. 若任务涉及 GUI：`AIEF/docs/plans/gui-review-checklist.md`
+13. 若任务涉及 GUI：`AIEF/docs/plans/gui-first-batch-kickoff.md`
 
 读完后应能明确回答：
 
@@ -36,6 +38,7 @@
 - 首个开发批次只做哪 6 个文件，或若为 GUI 任务则只做哪一批脚手架文件
 - 哪些内容当前明确“不做”
 - 若涉及 GUI，GUI 架构真源是什么、RPC contract 真源是什么，以及哪些设计/代码/验收检查项必须重复执行
+- 若涉及 GUI sidecar，Sidecar L1 的允许范围、禁止范围、必做方法与退出条件是什么
 
 ## 3. 开工前必须确认的口径
 
@@ -60,6 +63,13 @@
 - GUI 变更必须纳入 design review、code review、实现验收三次重复检查
 - GUI 配置页必须按 `Policy / 策略配置` 与 `System Settings / 系统设置` 两个正式页面实现，不得回退为单个 `Settings`
 
+若当前任务涉及 GUI sidecar，还必须额外确认：
+
+- `backend-ui-bridge-plan.md` 是 Sidecar L1-L3 分级路径真源
+- `sidecar-l1-kickoff.md` 是 Sidecar 第一批范围真源；L1 阶段只允许实现 `system.*`、`evidence.list/get`、`settings.get`
+- 未完成 L1 前，不得把 GUI 页面接到真实写操作或运行时方法
+- 未完成 L2/L3 前，不得把 Quick Run / Agent Run 做成“伪实时”可运行版本
+
 ## 4. 首个实现批次的范围锁定
 
 首个开发批次只允许进入以下 6 个生产文件：
@@ -83,6 +93,7 @@
 
 - issue #1（企业例外清单）不在首批 6 文件里落地；它会在后续 `PolicyConfig + DiscoveryEngine + GateEngine` 阶段接入。
 - 若当前任务为 GUI 首批实施，本节后端 6 文件范围不适用，改按 `AIEF/docs/plans/gui-first-batch-kickoff.md` 执行。
+- 若当前任务为 Sidecar L1，本节后端 6 文件范围同样不适用，改按 `AIEF/docs/plans/sidecar-l1-kickoff.md` 执行。
 
 ## 5. 开工前先创建的测试目录
 
@@ -191,6 +202,7 @@ tests/
 - 想在 `domain/` 引入 `Path`、HTTP、环境变量读取
 - 想把异常和 `Result` 混着用但说不清边界
 - 想新增字段但 OpenSpec 里没有定义
+- 想在 Sidecar L1 里提前加入写操作、事件流或运行时方法
 
 ## 9. 首批完成后的直接下一步
 
@@ -217,3 +229,8 @@ tests/
 
 1. 建 `tests/unit/domain/` 和 `tests/unit/infra/` 的 6 个测试文件
 2. 从 `test_result.py` 开始红灯，而不是先写任何生产代码
+
+若现在就要启动 Sidecar L1，则先做这两件事：
+
+1. 读完 `backend-ui-bridge-plan.md` 与 `sidecar-l1-kickoff.md`
+2. 从 `tests/unit/sidecar/test_router.py` 开始红灯，而不是先写 `server.py`
