@@ -4,6 +4,7 @@
 为 PiProofForge 的核心任务提供标准化执行路径。
 
 ## 工作流
+- 职位发现（多源）：workflow/phases/job-discovery.md
 - 证据提炼：workflow/phases/evidence-extraction.md
 - 匹配评分：workflow/phases/matching-scoring.md
 - 简历生成：workflow/phases/generation.md
@@ -17,6 +18,7 @@
 - 审查阶段：workflow/phases/review.md
 
 ## 执行脚本映射
+- 职位发现（规划）：tools/discovery/run_job_discovery.py
 - 证据提炼：tools/run_evidence_extraction.py
 - 匹配评分：tools/run_matching_scoring.py
 - 简历生成：tools/run_generation.py

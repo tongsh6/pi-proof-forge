@@ -4,6 +4,7 @@
 - evidence cards：`ec-YYYY-NNN.yaml`
 - job profiles：`jp-YYYY-NNN.yaml`
 - jd inputs：`jd-YYYY-NNN.txt`
+- job leads：`jl-YYYY-NNN.yaml`
 - matching reports：`mr-YYYY-NNN.yaml`
 - workflow phases：`workflow/phases/<name>.md`
 

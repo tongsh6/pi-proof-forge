@@ -6,7 +6,7 @@
 ## 技能项
 - evidence-extraction
   - 文档：context/tech/EVIDENCE_EXTRACTION.md
-  - 脚本：tools/extract_evidence.py, tools/extract_evidence_llm.py
+  - 脚本：tools/run_evidence_extraction.py（推荐入口）, tools/extract_evidence.py（底层规则脚本）, tools/extract_evidence_llm.py
 - matching-scoring
   - 文档：context/tech/SCORING.md
   - 脚本：tools/run_matching_scoring.py

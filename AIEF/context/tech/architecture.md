@@ -6,15 +6,30 @@
 - 事实保真生成与来源可追踪。
 - 模块化设计，便于开源扩展。
 
+## 当前架构目标（v2）
+
+- 采用六边形领域核心：`domain/` 为零外部依赖核心。
+- 基础设施唯一实现：`infra/` 集中 LLM、YAML、日志、RunStore。
+- 引擎通过 `EngineRegistry` 创建，消除业务层 `if use_llm` 分支。
+- 编排层通过 `Stage` 组合统一 pipeline 与 agent loop。
+- 配置通过 `LLMConfig / PathConfig / PolicyConfig / EngineSelection` 切片传递，由 `Composer` 统一组装。
+- 可恢复错误通过 `Result[T, E]` 表达，不可恢复错误才使用异常。
+- Run 状态通过不可变事件回放重建，支持恢复与审计。
+
 ## MVP 不做
 - 端到端自动填表。
-- 复杂 UI 平台（仅做轻量 GUI 工作台）。
 - 多 Agent 辩论。
 
 ## 系统组件
+- Domain Core
+  - 不可变领域模型、值对象、协议接口、不变式、Result 类型、RunEvent/RunState
+- Infrastructure
+  - LLM client、YAML IO、结构化日志、文件存储、RunStore
 - Evidence Extraction
   - 输入：原始材料
   - 输出：验证后的 evidence cards
+- Engine Registry
+  - 管理 rule/llm/template 等策略实现
 - Indexing & Retrieval
   - 关键词/标签检索（可选 BM25）
   - 可选 embeddings/rerank
@@ -29,9 +44,25 @@
   - 缺口任务生成
 - Tracking（可选）
   - 版本化输出与结果
-- GUI Workspace
-  - 输入：raw materials + job profile
-  - 输出：pipeline 执行状态 + 结果预览
+- Desktop GUI
+  - 形态：Tauri + React/TypeScript + Python sidecar
+  - 职责：承载终版 9 页信息架构、运行状态、证据管理、结果预览、投递跟踪、策略配置与系统设置
+
+## 分层与依赖方向
+
+```text
+cli -> orchestration -> engines -> domain <- infra
+channels ----------------------^ 
+config/composer 负责统一组装
+```
+
+约束：
+
+- `domain/` 不依赖 `infra/`、`engines/`、`cli/`
+- `channels/` 实现 `domain/protocols.py` 中定义的 `DeliveryChannel`，由 `orchestration/` 调用，不直接承载编排逻辑
+- `infra/` 可以依赖 `domain/`，不得承载业务规则
+- `engines/` 实现 `domain/protocols.py` 中定义的接口
+- `orchestration/` 只负责 Stage 调度、状态流转和 Result 消费
 
 ## 数据流（高层）
 1. Raw materials → evidence extraction → evidence cards
@@ -39,7 +70,7 @@
 3. Evidence cards + job profile → matching report
 4. Selected cards → template assembly → controlled rewrite → output document
 5. Output → scorecard → evidence gap tasks
-6. GUI 工作台读取与展示 pipeline 产物
+6. Desktop GUI 读取、驱动并展示 pipeline 与 agent loop 产物
 
 ## 数据存储（MVP）
 - Evidence cards：YAML/Markdown + Git 版本管理
@@ -50,9 +81,13 @@
 - LLM provider
 - Embedding provider
 - Exporter（PDF/DOCX）
-- GUI adapter（CLI pipeline 调用层）
+- Desktop GUI bridge（Tauri host 与 Python sidecar 调用层）
+- Delivery channel
+- Matching / generation / evaluation strategy
+- Run store backend（当前仅文件实现）
 
 ## 未决问题
 - Fact-attribution 的约束与校验策略
 - 受控改写的 diff 校验方法
 - 最小可用 exporter 选型
+- 事件回放是否需要进一步演进为完整 CQRS/Event Sourcing

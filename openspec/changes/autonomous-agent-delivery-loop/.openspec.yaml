@@ -1,0 +1,16 @@
+change: autonomous-agent-delivery-loop
+title: Trigger-based autonomous delivery agent with unified core engine
+status: proposed
+owner: pi-proof-forge team
+created_at: 2026-03-05
+updated_at: 2026-03-06
+architecture: unified-core-engine
+artifacts:
+  - proposal.md
+  - design.md
+  - tasks.md
+notes: |
+  架构方案经审核后由"薄编排层+subprocess"升级为"统一核心引擎"（方案二）。
+  核心变更：彻底消除 subprocess 串联，建立 tools/core/ 纯 Python 引擎，
+  通过 Protocol 定义接口，规则/LLM 策略通过构造器注入，不在业务逻辑中出现 if/else。
+  设计详见 design.md Section 1 & 8 & 13。
