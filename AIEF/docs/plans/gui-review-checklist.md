@@ -45,7 +45,7 @@
 - [ ] Quick Run / Agent Run 的状态、日志、门禁、信息密度是否仍按终版规范分离
 - [ ] Evidence artifacts、Submissions screenshots、sidecar 生命周期、错误态是否符合终版约束
 - [ ] JSON-RPC schema、错误码、事件流字段变更是否已同步更新文档
-- [ ] 若当前仍处于 GUI 首批实施阶段，是否遵守 `docs/plans/gui-first-batch-kickoff.md` 的允许/禁止范围
+- [ ] 若当前仍处于 GUI 首批实施阶段，是否遵守 `AIEF/docs/plans/gui-first-batch-kickoff.md` 的允许/禁止范围
 
 ## 4. 实现验收 Checklist
 

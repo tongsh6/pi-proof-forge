@@ -30,7 +30,7 @@ GUI 首批实施包只做以下事情：
 2. `ui/design/piproofforge.pen`
 3. `AIEF/context/tech/GUI_ARCHITECTURE.md`
 4. `ui/design/contracts/sidecar-rpc.md`
-5. `docs/plans/gui-review-checklist.md`
+5. `AIEF/docs/plans/gui-review-checklist.md`
 
 进入编码前，必须显式确认：
 
@@ -144,7 +144,7 @@ ui/
 - JSON-RPC bridge 没有统一 envelope 与 typed 接口
 - Token 没有真正接入 CSS variables / Tailwind
 - 实现与 `DESIGN.md` 或 `.pen` 任一不一致
-- 未执行 `docs/plans/gui-review-checklist.md`
+- 未执行 `AIEF/docs/plans/gui-review-checklist.md`
 
 ## 8. 推荐实施顺序
 

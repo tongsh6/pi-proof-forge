@@ -239,7 +239,7 @@ M1 -> M2 -> M3 -> M4 -> M5
 
 - 旧脚本中的重复 `TypedDict` / `post_json` / `parse_simple_yaml` 已有可迁移目标
 - 新文件具备最小测试覆盖
-- 逐文件顺序、测试优先级与完成判据见 `docs/plans/m1-slice-1-breakdown.md`
+- 逐文件顺序、测试优先级与完成判据见 `AIEF/docs/plans/m1-slice-1-breakdown.md`
 
 ### Slice 2 - 四大引擎最小可运行版
 

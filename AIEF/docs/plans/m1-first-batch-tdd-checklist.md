@@ -1,7 +1,7 @@
 # M1 首个开发批次 TDD 用例清单
 
 > 状态：draft
-> 对应范围：`docs/plans/m1-slice-1-breakdown.md` 中的最小先行批次
+> 对应范围：`AIEF/docs/plans/m1-slice-1-breakdown.md` 中的最小先行批次
 > 目标：只锁定领域边界与重复实现归一，不进入引擎、编排、CLI
 
 ## 1. 批次范围

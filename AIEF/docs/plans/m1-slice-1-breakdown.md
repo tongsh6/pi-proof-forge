@@ -1,7 +1,7 @@
 # M1 / Slice 1 逐文件实施清单
 
 > 状态：draft
-> 对应里程碑：`docs/plans/autonomous-agent-delivery-loop-v2.md` → M1 / Slice 1
+> 对应里程碑：`AIEF/docs/plans/autonomous-agent-delivery-loop-v2.md` → M1 / Slice 1
 > 范围：仅实现前拆分，不进入开发
 
 ## 1. 目标
@@ -319,5 +319,5 @@ issue #1 衔接：
 
 ## 7. 首个开发批次入口
 
-- 若要先以最小范围启动 TDD，请先执行 `docs/plans/m1-first-batch-tdd-checklist.md`
+- 若要先以最小范围启动 TDD，请先执行 `AIEF/docs/plans/m1-first-batch-tdd-checklist.md`
 - 该文档只覆盖 6 个最小内核文件，不进入引擎、编排、CLI

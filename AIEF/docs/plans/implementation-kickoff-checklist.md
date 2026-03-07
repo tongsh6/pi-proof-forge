@@ -21,13 +21,13 @@
 2. `openspec/specs/pi-proof-forge-core.md`
 3. `openspec/changes/autonomous-agent-delivery-loop/design.md`
 4. `openspec/changes/autonomous-agent-delivery-loop/tasks.md`
-5. `docs/plans/final-doc-baseline.md`
-6. `docs/plans/m1-slice-1-breakdown.md`
-7. `docs/plans/m1-first-batch-tdd-checklist.md`
+5. `AIEF/docs/plans/final-doc-baseline.md`
+6. `AIEF/docs/plans/m1-slice-1-breakdown.md`
+7. `AIEF/docs/plans/m1-first-batch-tdd-checklist.md`
 8. 若任务涉及 GUI：`AIEF/context/tech/GUI_ARCHITECTURE.md`
 9. 若任务涉及 GUI：`ui/design/contracts/sidecar-rpc.md`
-10. 若任务涉及 GUI：`docs/plans/gui-review-checklist.md`
-11. 若任务涉及 GUI：`docs/plans/gui-first-batch-kickoff.md`
+10. 若任务涉及 GUI：`AIEF/docs/plans/gui-review-checklist.md`
+11. 若任务涉及 GUI：`AIEF/docs/plans/gui-first-batch-kickoff.md`
 
 读完后应能明确回答：
 
@@ -82,7 +82,7 @@
 说明：
 
 - issue #1（企业例外清单）不在首批 6 文件里落地；它会在后续 `PolicyConfig + DiscoveryEngine + GateEngine` 阶段接入。
-- 若当前任务为 GUI 首批实施，本节后端 6 文件范围不适用，改按 `docs/plans/gui-first-batch-kickoff.md` 执行。
+- 若当前任务为 GUI 首批实施，本节后端 6 文件范围不适用，改按 `AIEF/docs/plans/gui-first-batch-kickoff.md` 执行。
 
 ## 5. 开工前先创建的测试目录
 

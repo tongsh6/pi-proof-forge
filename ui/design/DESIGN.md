@@ -1064,7 +1064,7 @@ app-data/
 2. 落地 DataTable / FormField / Modal / OfflineIndicator 的代码抽象
 3. 将 Design Tokens 导出为 CSS variables 与 Tailwind theme 配置
 4. 在 `.pen` 设计稿中补齐 Loading / Empty / Error 三态与断连态
-5. 依据 `docs/plans/gui-first-batch-kickoff.md` 建立 GUI 首批脚手架与实现边界
+5. 依据 `AIEF/docs/plans/gui-first-batch-kickoff.md` 建立 GUI 首批脚手架与实现边界
 6. 将窗口尺寸、分页/排序/筛选和 sidecar 生命周期约束写入实现验收清单
 
 ### 文档口径

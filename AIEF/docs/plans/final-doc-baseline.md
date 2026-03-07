@@ -23,7 +23,7 @@ constitution.md
   > openspec/specs/pi-proof-forge-core.md
   > openspec/changes/autonomous-agent-delivery-loop/design.md
   > openspec/changes/autonomous-agent-delivery-loop/tasks.md
-  > docs/plans/*.md
+  > AIEF/docs/plans/*.md
   > AIEF/context/tech/*.md
   > README.md / tools/README.md
 ```
@@ -34,7 +34,7 @@ constitution.md
 - **最终架构冲突**：以 `openspec/specs/pi-proof-forge-core.md` 为准
 - **设计细节冲突**：以 `openspec/changes/autonomous-agent-delivery-loop/design.md` 为准
 - **任务顺序冲突**：以 `openspec/changes/autonomous-agent-delivery-loop/tasks.md` 为准
-- **实施粒度冲突**：以 `docs/plans/*.md` 为准
+- **实施粒度冲突**：以 `AIEF/docs/plans/*.md` 为准
 - **导航/说明冲突**：README 和 AIEF 文档需回收对齐，不得反向覆盖 OpenSpec
 
 ## 3. 核心文档集合
@@ -71,13 +71,13 @@ constitution.md
 
 ### C. 计划层（指导如何开始做）
 
-- `docs/plans/autonomous-agent-delivery-loop-v2.md`
+- `AIEF/docs/plans/autonomous-agent-delivery-loop-v2.md`
   - 作用：总体实施计划，里程碑与风险控制
 
-- `docs/plans/m1-slice-1-breakdown.md`
+- `AIEF/docs/plans/m1-slice-1-breakdown.md`
   - 作用：M1 / Slice 1 的逐文件拆分
 
-- `docs/plans/m1-first-batch-tdd-checklist.md`
+- `AIEF/docs/plans/m1-first-batch-tdd-checklist.md`
   - 作用：首个开发批次的最小 TDD 用例清单
 
 ### D. 项目导航层（帮助定位，不裁决架构）
@@ -111,8 +111,8 @@ constitution.md
 2. `openspec/specs/pi-proof-forge-core.md`
 3. `openspec/changes/autonomous-agent-delivery-loop/design.md`
 4. `openspec/changes/autonomous-agent-delivery-loop/tasks.md`
-5. `docs/plans/m1-slice-1-breakdown.md`
-6. `docs/plans/m1-first-batch-tdd-checklist.md`
+5. `AIEF/docs/plans/m1-slice-1-breakdown.md`
+6. `AIEF/docs/plans/m1-first-batch-tdd-checklist.md`
 
 原因：
 
@@ -140,6 +140,6 @@ constitution.md
 ## 7. 实施前检查清单
 
 - [ ] 先读最小阅读集
-- [ ] 先按 `docs/plans/m1-first-batch-tdd-checklist.md` 启动 TDD
+- [ ] 先按 `AIEF/docs/plans/m1-first-batch-tdd-checklist.md` 启动 TDD
 - [ ] 任何新文档都沿用 v2 稳定口径
 - [ ] 发现文档冲突时按优先级裁决，不以 README 反向覆盖 OpenSpec

@@ -18,7 +18,6 @@
   - PLAN.md
   - openspec/           # OpenSpec 规范与变更归档
   - AIEF/
-  - docs/
   - evidence_cards/
   - job_profiles/
   - jd_inputs/
@@ -33,7 +32,7 @@
   - path: AIEF/context/
   - responsibility: 项目知识与技术文档入口
 - name: implementation-plans
-  - path: docs/plans/
+  - path: AIEF/docs/plans/
   - responsibility: 实施前计划、里程碑与任务拆分
 - name: data-samples
   - path: evidence_cards/, job_profiles/, jd_inputs/, matching_reports/
