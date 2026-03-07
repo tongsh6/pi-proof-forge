@@ -46,6 +46,10 @@ Use Task tool with superpowers:code-reviewer type, fill template at `code-review
 - Note Minor issues for later
 - Push back if reviewer is wrong (with reasoning)
 
+**GUI add-on rule:**
+- If the change touches GUI design, GUI code, GUI schema, or sidecar integration, include `docs/plans/gui-review-checklist.md` in the review requirements
+- Explicitly verify `ui/design/DESIGN.md`, `ui/design/piproofforge.pen`, and the implementation stay in sync
+
 ## Example
 
 ```
@@ -88,6 +92,10 @@ You: [Fix progress indicators]
 **Ad-Hoc Development:**
 - Review before merge
 - Review when stuck
+
+**GUI Changes:**
+- Run the normal review plus the GUI-specific checklist
+- Block approval if docs, `.pen`, and implementation diverge
 
 ## Red Flags
 
