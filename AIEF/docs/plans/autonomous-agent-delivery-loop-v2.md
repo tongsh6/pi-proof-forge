@@ -25,7 +25,17 @@
 
 1. `tools/domain/`
    - `models.py`
+     - 新增 GUI 所需实体（Sidecar Bridge Layer 依赖）：
+       - `PersonalProfile` — 姓名/手机/邮箱/城市/当前职位（Resumes 页面）
+       - `JobLead` — 来源/URL/公司/职位/状态/收藏（Jobs 页面）
+       - `UploadedResume` — 文件名/语言/上传时间/来源渠道（Resumes 页面）
+       - `ActivityLog` — 类型/时间/描述/关联资源（Overview 页面）
    - `value_objects.py`
+     - 新增 GUI 所需值对象：
+       - `MatchTrendPoint` — 日期/分数/job_profile_id（Overview 页面）
+       - `GapItem` — 类型/描述/严重度/关联证据（Overview 页面）
+       - `SubmissionStep` — 步骤名/状态/时间/截图 ID（Submissions 页面）
+       - `ScreenshotRef` — resource_id/文件名/mime/大小（Submissions 页面）
    - `protocols.py`
    - `invariants.py`
    - `result.py`
@@ -34,6 +44,9 @@
 2. `tools/infra/`
    - `llm/client.py`
    - `persistence/yaml_io.py`
+   - `persistence/file_storage.py` — Artifacts + 截图的受控存储/读取/删除
+   - `credential_store.py` — OS keychain 读写（api_key 等敏感信息）
+   - `export/pdf_exporter.py` — 简历 PDF 导出（可为占位接口）
    - `logging.py`
 3. `tools/config/`
    - `fragments.py`
@@ -50,6 +63,7 @@
 - `domain/` 不依赖 `infra/`、`engines/`、`cli/`
 - `Composer` 可创建最小空 pipeline
 - 核心不可变模型测试通过
+- 新增 GUI 实体（`PersonalProfile` / `JobLead` / `UploadedResume` / `ActivityLog`）与值对象（`MatchTrendPoint` / `GapItem` / `SubmissionStep` / `ScreenshotRef`）的 frozen 不可变性测试通过
 
 ### Milestone M2 - 引擎迁移与去分支化
 
@@ -234,6 +248,9 @@ M1 -> M2 -> M3 -> M4 -> M5
 - `tools/domain/result.py`
 - `tools/infra/llm/client.py`
 - `tools/infra/persistence/yaml_io.py`
+- `tools/infra/persistence/file_storage.py`
+- `tools/infra/credential_store.py`
+- `tools/infra/export/pdf_exporter.py`
 
 完成标志：
 

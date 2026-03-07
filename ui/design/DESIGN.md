@@ -903,10 +903,19 @@ StatusChip 4 个变体建议在代码中合并为参数化组件:
 | `system.handshake` | UI -> sidecar | 版本协商、能力声明 |
 | `system.ping` | UI -> sidecar | 心跳检测 |
 | `system.shutdown` | UI -> sidecar | 请求优雅停止 |
+| `overview.get` | UI -> sidecar | 拉取 Overview 页面聚合数据 |
+| `evidence.create` | UI -> sidecar | 创建空白证据卡 |
 | `evidence.list` | UI -> sidecar | 拉取证据卡列表 |
 | `evidence.get` | UI -> sidecar | 拉取单个证据卡详情 |
+| `evidence.update` | UI -> sidecar | 更新证据卡字段 |
+| `evidence.delete` | UI -> sidecar | 删除证据卡 |
 | `evidence.import` | UI -> sidecar | 导入文件并创建/更新证据卡 |
+| `profile.get` | UI -> sidecar | 拉取个人资料 |
+| `profile.update` | UI -> sidecar | 保存个人资料 |
 | `jobs.listProfiles` | UI -> sidecar | 拉取 Job Profiles |
+| `jobs.createProfile` | UI -> sidecar | 创建 Job Profile |
+| `jobs.updateProfile` | UI -> sidecar | 更新 Job Profile |
+| `jobs.deleteProfile` | UI -> sidecar | 删除 Job Profile |
 | `jobs.listLeads` | UI -> sidecar | 拉取 Job Leads |
 | `jobs.convertLead` | UI -> sidecar | Lead 转 Job Profile |
 | `run.quick.start` | UI -> sidecar | 启动 Quick Run |
@@ -914,12 +923,19 @@ StatusChip 4 个变体建议在代码中合并为参数化组件:
 | `run.agent.start` | UI -> sidecar | 启动 Agent Run |
 | `run.agent.stop` | UI -> sidecar | 停止 Agent Run |
 | `run.agent.get` | UI -> sidecar | 获取 Agent Run 当前状态 |
+| `resume.upload` | UI -> sidecar | 上传用户简历 |
 | `resume.list` | UI -> sidecar | 拉取已上传/已生成简历列表 |
+| `resume.getPreview` | UI -> sidecar | 拉取简历预览结构化数据 |
 | `resume.exportPdf` | UI -> sidecar | 导出 PDF |
 | `submission.list` | UI -> sidecar | 拉取投递记录 |
 | `submission.retry` | UI -> sidecar | 重试投递 |
 | `settings.get` | UI -> sidecar | 拉取聚合配置载荷（供 Policy / System Settings 页面分流消费） |
 | `settings.update` | UI -> sidecar | 保存聚合配置载荷或局部切片（首版 bridge 可保持聚合接口） |
+
+说明：
+- 字段级 contract 现已覆盖 31 个方法；本表只保留产品级职责摘要
+- 证据卡、个人资料、岗位画像的写操作 contract 与字段约束以 `ui/design/contracts/sidecar-rpc.md` 为准
+- `overview.get` 为 Overview 页面唯一聚合入口；不得由前端通过多次 list 请求自行拼装趋势、缺口与活动流
 
 Request / Response Schema:
 ```json

@@ -72,6 +72,7 @@
 职责：
 
 - 定义 `Score`、`GapTask`、`Candidate`、`GateDecision`、`DeliveryResult`、`GateFailure`、`ChannelFailure`
+- 预留 GUI 侧值对象：`MatchTrendPoint`、`GapItem`、`SubmissionStep`、`ScreenshotRef`
 - 全部为 frozen dataclass
 
 先写测试：
@@ -79,6 +80,7 @@
 1. 值对象可比较
 2. 值对象不可变
 3. `Candidate` 聚合字段完整（`merged_sources` 等）
+4. GUI 值对象可表达 Overview / Submissions 最小载荷
 
 完成判据：
 
@@ -90,12 +92,14 @@
 职责：
 
 - 定义核心模型：`EvidenceCard`、`JobProfile`、`MatchingReport`、`ResumeOutput`、`Scorecard`
+- 补充 GUI 侧实体：`PersonalProfile`、`JobLead`、`UploadedResume`、`ActivityLog`
 
 先写测试：
 
 1. `EvidenceCard.is_eligible()` 在缺 `results`/`artifacts` 时返回 `False`
 2. 所有模型默认不可变
 3. `MatchingReport` 和 `Scorecard` 可表达最小必要字段
+4. GUI 实体字段能覆盖 Resumes / Jobs / Overview 的最小读取契约
 
 完成判据：
 
@@ -199,6 +203,59 @@
 完成判据：
 
 - 与现有样例 YAML 保持兼容
+
+### 3.9a `tools/infra/persistence/file_storage.py`
+
+职责：
+
+- 提供 Artifacts 与 Submissions screenshots 的受控存储、读取、删除
+- 对外暴露 `resource_id`，不把用户原始绝对路径持久化为长期展示字段
+
+先写测试：
+
+1. 文件写入后可通过 `resource_id` 读取
+2. 删除遵循软删除或引用计数语义
+3. 缺失资源返回稳定错误而不是静默失败
+
+完成判据：
+
+- 能承载 Evidence Artifacts 与 Submission Screenshots 的共同存储语义
+- 不把路径拼接逻辑暴露给 UI 或业务层
+
+### 3.9b `tools/infra/credential_store.py`
+
+职责：
+
+- 提供 OS credential store（macOS Keychain / Windows Credential Manager / Secret Service）读写接口
+- 负责 `api_key` 等敏感字段的保存、更新、清除与配置状态查询
+
+先写测试：
+
+1. 可返回 `configured / masked / updated_at` 的最小状态对象
+2. 明文 secret 不进入日志或普通配置读取返回值
+3. clear 后状态可正确回落为未配置
+
+完成判据：
+
+- 与 `System Settings` 页面的 secret status 契约兼容
+- 不把 secret 持久化到普通 YAML / JSON 文件
+
+### 3.9c `tools/infra/export/pdf_exporter.py`
+
+职责：
+
+- 提供最小 PDF 导出接口，供 `resume.exportPdf` 与 CLI 导出路径复用
+- 首轮允许占位实现，但接口必须稳定
+
+先写测试：
+
+1. 能接收 `ResumeOutput` 或等价渲染输入
+2. 导出结果返回稳定 `resource_id` 或文件引用
+3. 导出失败时返回明确错误
+
+完成判据：
+
+- 为 Resumes 页面的 PDF 导出 contract 提供唯一后端出口
 
 ### 3.10 `tools/infra/logging.py`
 
