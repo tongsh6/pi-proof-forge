@@ -1,75 +1,175 @@
-# PiProofForge GUI Architecture & Integration Plan
+# PiProofForge GUI Architecture
 
 ## 1. Overview
-This document outlines the architecture and integration plan to connect the existing HTML/JS GUI prototype (`ui/prototype/index.html`) with the Python backend pipeline (`tools/run_pipeline.py`). The goal is to provide a seamless, real-time experience for users to configure job profiles, upload raw materials, and visualize the "reasoning trace" and final generated resumes.
 
-## 2. Tech Stack
-- **Frontend**: Vanilla HTML/JS/CSS (Existing prototype).
-- **Backend**: **FastAPI** (Python). Chosen for its lightweight nature, native async support, and ease of implementing Server-Sent Events (SSE) for log streaming.
-- **Communication**: REST API for standard requests, **Server-Sent Events (SSE)** for streaming reasoning traces and pipeline logs.
+This document defines the final GUI architecture for PiProofForge.
 
-## 3. Data Flow
-1. **Configuration & Upload**: User selects raw files and configures the job profile in the GUI.
-2. **Submission**: Frontend sends a `POST` request to `/api/run_pipeline` with files (multipart/form-data) and configuration parameters.
-3. **Initialization**: FastAPI backend receives the request, saves uploaded files to a temporary workspace, and generates a `job_profile.yaml`.
-4. **Execution & Streaming**: Backend spawns `tools/run_pipeline.py` as an async subprocess. It reads the subprocess `stdout`/`stderr` line by line and yields them as SSE messages to the frontend.
-5. **Real-time UI Update**: Frontend receives SSE messages, parses them, and appends them to the "Reasoning Trace" panel.
-6. **Result Retrieval**: Once the subprocess completes, the backend reads the generated output files (Match Report, Resumes, Scorecard) and sends them as the final SSE event (or frontend makes a separate fetch). Frontend renders the results in the preview tabs.
+- Product form: desktop application
+- Shell: Tauri
+- Frontend: React 18 + TypeScript + Tailwind CSS + Zustand
+- Backend runtime: Python sidecar reusing the existing `tools/` capabilities
+- Source of truth: `ui/design/DESIGN.md` and `ui/design/piproofforge.pen`
 
-## 4. API Schema
+The GUI is the final desktop interaction layer for the evidence-first workflow: evidence extraction, matching, resume generation, evaluation, job lead management, and submission tracking.
 
-### 4.1 `POST /api/run_pipeline`
-**Purpose**: Start the pipeline execution and stream logs/results.
-**Content-Type**: `multipart/form-data` (to handle file uploads and JSON config).
+## 2. Architecture Principles
 
-**Request Payload**:
-- `files`: List of uploaded files (raw materials).
-- `profile`: JSON string containing the job profile (target_role, must_have, keywords, business_domain, tone).
-- `config`: JSON string containing run configuration (`run_id`, `use_llm`, `require_llm`, `strict_gate`).
+- Single product baseline: all GUI implementation and review follow `ui/design/DESIGN.md`
+- Evidence-first: the Evidence page is the core asset hub, not an auxiliary screen
+- Explicit separation: Quick Run and Agent Run are different products flows and must stay separate
+- Desktop-native orchestration: the frontend communicates with the Python sidecar through a local desktop bridge, not through a remote-style web API
+- Single-language runtime UI: bilingual labels are design annotations only; runtime text comes from i18n resources
 
-**Response**: `text/event-stream` (Server-Sent Events)
-**Event Types**:
-- `event: log`: Standard pipeline log or reasoning trace.
-  - `data: {"timestamp": "...", "level": "info|action|thought|success|error", "message": "..."}`
-- `event: step`: Pipeline step transition.
-  - `data: {"step": "extract|match|gen|eval", "status": "running|done"}`
-- `event: result`: Final execution results.
-  - `data: {"match_report": "...", "resume_a": "...", "resume_b": "...", "scorecard": "..."}`
-- `event: done`: Stream completion signal.
+## 3. Tech Stack
 
-### 4.2 `GET /api/profiles`
-**Purpose**: Fetch available job profile presets.
-**Response**: `application/json`
-```json
-{
-  "presets": [
-    {
-      "id": "jp-2026-001",
-      "name": "Backend Tech Lead",
-      "target_role": "Backend Tech Lead",
-      "must_have": ["高并发系统设计", "稳定性治理", "跨团队协作"],
-      "keywords": ["Java", "Redis", "Kafka", "SLA", "SLO"],
-      "business_domain": "电商",
-      "tone": "A"
-    }
-  ]
-}
-```
+### Frontend
 
-## 5. Integration Steps (Action Plan)
-1. **Setup FastAPI Project**: Create `api/main.py` and configure CORS for the frontend.
-2. **Implement `/api/profiles`**: Read existing YAML profiles from `job_profiles/` and return them as JSON.
-3. **Implement `/api/run_pipeline`**:
-   - Handle `multipart/form-data` parsing.
-   - Create a temporary directory for the run (`/tmp/piproof_run_<id>`).
-   - Save uploaded files to the temp directory.
-   - Generate `job_profile.yaml` from the request payload.
-   - Use `asyncio.create_subprocess_exec` to run `python3 tools/run_pipeline.py`.
-4. **Implement SSE Streaming**:
-   - Read `stdout` and `stderr` from the subprocess asynchronously.
-   - Parse log lines to categorize them (system, action, thought, success, error) based on keywords or prefixes.
-   - Yield formatted SSE strings.
-5. **Frontend Adaptation**:
-   - Replace the mock `runPipeline` function in `index.html` with a `fetch` call to `/api/run_pipeline`.
-   - Use a custom SSE reader (handling multipart fetch streams) or `EventSource` (if GET, but we need POST for files, so use `fetch` with `ReadableStream` reader) to process incoming logs and update the UI dynamically.
-   - Fetch presets from `/api/profiles` on page load.
+- React 18
+- TypeScript
+- Tailwind CSS
+- Zustand
+- i18n resource files under `ui/src/i18n/`
+
+### Desktop Shell
+
+- Tauri
+- Rust shell for window lifecycle, native menus, file dialogs, and sidecar process control
+
+### Backend Execution Layer
+
+- Python sidecar
+- Reuse existing domain and pipeline capabilities from `tools/`
+
+## 4. Communication Model
+
+The final communication model is `JSON-RPC over stdio` between the Tauri host and the Python sidecar.
+
+### Why this is the final choice
+
+- Fits desktop deployment without adding HTTP service lifecycle complexity
+- Avoids introducing a second server runtime solely for GUI integration
+- Supports request/response, streaming-style progress events, heartbeats, and structured error handling
+- Keeps the bridge local to the desktop app process model
+
+### Protocol requirements
+
+- Version negotiation on sidecar startup
+- Heartbeat messages for liveness detection
+- Request timeout handling and retry policy where safe
+- Structured error handling follows the error code baseline in `ui/design/contracts/sidecar-rpc.md`
+- Suggested higher-level grouping for UI presentation:
+  - connectivity: `SIDECAR_UNAVAILABLE`
+  - timeout: `TIMEOUT`
+  - business: `VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT`, `PERMISSION_DENIED`
+  - system: `INTERNAL_ERROR`, `STORAGE_ERROR`, `UNSUPPORTED_VERSION`
+- Correlation IDs for every request and event stream
+
+## 5. Runtime Topology
+
+1. Tauri starts the desktop shell.
+2. The shell boots the web frontend.
+3. The shell launches the Python sidecar.
+4. The shell establishes a JSON-RPC stdio bridge.
+5. The React app issues typed commands through the Tauri bridge.
+6. The Python sidecar executes evidence, matching, generation, evaluation, discovery, and submission tasks.
+7. Progress, logs, status transitions, and results stream back into the frontend state store.
+
+## 6. Frontend Application Model
+
+### Navigation model
+
+The GUI follows the final nine-page information architecture defined in `ui/design/DESIGN.md`:
+
+1. Overview
+2. Resumes
+3. Evidence
+4. Jobs
+5. Quick Run
+6. Agent Run
+7. Submissions
+8. Policy
+9. System Settings
+
+### State model
+
+Use Zustand stores to manage:
+
+- sidecar connection state
+- active language
+- page-level loading, empty, and error states
+- quick run execution state
+- agent run state machine and gate state
+- evidence selection and artifacts state
+- jobs, resumes, and submissions view state
+- policy and system settings view state
+
+### Internationalization model
+
+- All user-visible runtime text must come from translation keys
+- Language switcher lives at the bottom of SideNav
+- Bilingual labels such as `Overview / 概览` are design-only annotations and must not appear in runtime UI
+- Technical tags, codes, and status keywords that are intentionally English remain untranslated where specified by `ui/design/DESIGN.md`
+
+## 7. Domain-to-UI Mapping
+
+### Evidence
+
+- Evidence cards are first-class domain assets
+- `artifacts` are visible and operable in the detail panel
+- Import, preview, delete, and re-upload are part of the product requirement
+
+### Quick Run
+
+- Represents a single-pass pipeline visualization
+- Covers extract, match, generate, evaluate
+- No multi-round gate system
+
+### Agent Run
+
+- Represents the autonomous multi-round execution loop
+- Shows the nine-state machine, gate progress, and event stream
+- Must not collapse into the Quick Run model
+
+### Jobs / Resumes / Submissions / Policy / System Settings
+
+- Jobs manages job profiles and job leads
+- Resumes acts as the personal asset hub for personal profile data, uploaded resumes, and generated resumes
+- Submissions tracks delivery outcomes, screenshots, retries, and failure detail
+- Policy owns gate policy and exclusions
+- System Settings owns channels, model configuration, credential status, and connectivity checks
+
+## 8. Shared UI Requirements
+
+The following are mandatory implementation requirements for all pages:
+
+- Loading state
+- Empty state
+- Error state
+- Shared design tokens from the final design spec
+- Reusable components for repeated patterns such as tables, form fields, modals, overlays, and status chips
+
+## 9. Sidecar Lifecycle Requirements
+
+- Launch sidecar during app bootstrap
+- Surface startup failure in the UI immediately
+- Monitor heartbeat continuously
+- Mark the app offline when heartbeat or process health fails
+- Support controlled shutdown from the desktop shell
+- Avoid silent process restarts without UI visibility
+
+## 10. Security and Configuration Requirements
+
+- Secrets such as model API keys must not be stored as plain visible values in UI state snapshots
+- System Settings UI must mask secrets by default
+- Connection tests must report success and failure explicitly
+- File import flows must validate type and size before sidecar submission
+
+## 11. Implementation Baseline
+
+The final implementation baseline is:
+
+- Product spec: `ui/design/DESIGN.md`
+- Design asset: `ui/design/piproofforge.pen`
+- Architecture doc: `AIEF/context/tech/GUI_ARCHITECTURE.md`
+
+Any future GUI implementation, review checklist, or delivery plan must align with these three artifacts.
