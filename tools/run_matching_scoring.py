@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import TypedDict, cast
 from urllib import request
 
+from tools.domain.result import Err
+from tools.domain.value_objects import Candidate
+from tools.policy.audit import write_exclusion_audit
+from tools.policy.exclusions import load_exclusion_list
+from tools.policy.gate import evaluate_candidate_exclusion
+
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
@@ -62,7 +68,10 @@ def parse_simple_yaml(text: str) -> ParsedDoc:
 
 
 def unquote(value: str) -> str:
-    if len(value) >= 2 and ((value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))):
+    if len(value) >= 2 and (
+        (value.startswith('"') and value.endswith('"'))
+        or (value.startswith("'") and value.endswith("'"))
+    ):
         return value[1:-1]
     return value
 
@@ -73,7 +82,9 @@ def load_prompt(template_path: str, job_profile_text: str, evidence_text: str) -
     return content.replace("<EVIDENCE_CARDS>", evidence_text)
 
 
-def post_json(url: str, headers: dict[str, str], payload: Mapping[str, object]) -> dict[str, object]:
+def post_json(
+    url: str, headers: dict[str, str], payload: Mapping[str, object]
+) -> dict[str, object]:
     data = json.dumps(payload).encode("utf-8")
     req = request.Request(url, data=data, headers=headers, method="POST")
     response = cast(HTTPResponse, request.urlopen(req, timeout=120))
@@ -107,7 +118,9 @@ def extract_content(response: dict[str, object]) -> str:
 
 
 def parse_end_month(time_range: str) -> tuple[int, int] | None:
-    matches = cast(list[tuple[str, str]], re.findall(r"(20\d{2})[-/.](0[1-9]|1[0-2])", time_range))
+    matches = cast(
+        list[tuple[str, str]], re.findall(r"(20\d{2})[-/.](0[1-9]|1[0-2])", time_range)
+    )
     if not matches:
         return None
     year, month = matches[-1]
@@ -123,7 +136,9 @@ def contains_any(text: str, terms: list[str]) -> bool:
     return any(term.lower() in lower for term in terms)
 
 
-def build_rule_report(job_profile_path: str, evidence_files: list[Path], output_path: str) -> str:
+def build_rule_report(
+    job_profile_path: str, evidence_files: list[Path], output_path: str
+) -> str:
     now_dt = datetime.datetime.now().astimezone()
     now_iso = now_dt.isoformat(timespec="seconds")
     job_doc = parse_simple_yaml(read_text(job_profile_path))
@@ -152,7 +167,9 @@ def build_rule_report(job_profile_path: str, evidence_files: list[Path], output_
         end_month = parse_end_month(time_range)
         if end_month is not None:
             diff = months_ago(end_month[0], end_month[1], now_dt)
-            latest_months_ago = diff if latest_months_ago is None else min(latest_months_ago, diff)
+            latest_months_ago = (
+                diff if latest_months_ago is None else min(latest_months_ago, diff)
+            )
 
     all_text = "\n\n".join(card_texts)
 
@@ -166,7 +183,9 @@ def build_rule_report(job_profile_path: str, evidence_files: list[Path], output_
         "零售": ["门店", "库存", "促销", "会员"],
         "金融": ["风控", "交易", "清算", "合规"],
     }
-    domain_signals = domain_signals_map.get(business_domain, [business_domain] if business_domain else [])
+    domain_signals = domain_signals_map.get(
+        business_domain, [business_domain] if business_domain else []
+    )
     domain_hit_count = sum(1 for token in domain_signals if token and token in all_text)
     domain_ratio = (domain_hit_count / len(domain_signals)) if domain_signals else 0.0
     d_score = int(round(domain_ratio * 15)) if business_domain else 8
@@ -181,7 +200,9 @@ def build_rule_report(job_profile_path: str, evidence_files: list[Path], output_
             seniority_hits += 1
         elif "决策" in signal and contains_any(all_text, ["决策", "取舍", "方案"]):
             seniority_hits += 1
-    seniority_ratio = (seniority_hits / len(seniority_signals)) if seniority_signals else 0.0
+    seniority_ratio = (
+        (seniority_hits / len(seniority_signals)) if seniority_signals else 0.0
+    )
     s_score = int(round(seniority_ratio * 15)) if seniority_signals else 8
 
     numeric_results_count = 0
@@ -209,12 +230,24 @@ def build_rule_report(job_profile_path: str, evidence_files: list[Path], output_
         r_score = 2
 
     score_breakdown: dict[str, ScoreItem] = {
-        "K": {"score": k_score, "reason": f"关键词覆盖 {len(covered_keywords)}/{len(keywords) if keywords else 0}"},
-        "D": {"score": d_score, "reason": f"业务域信号命中 {domain_hit_count}/{len(domain_signals) if domain_signals else 0}"},
-        "S": {"score": s_score, "reason": f"级别信号命中 {seniority_hits}/{len(seniority_signals) if seniority_signals else 0}"},
+        "K": {
+            "score": k_score,
+            "reason": f"关键词覆盖 {len(covered_keywords)}/{len(keywords) if keywords else 0}",
+        },
+        "D": {
+            "score": d_score,
+            "reason": f"业务域信号命中 {domain_hit_count}/{len(domain_signals) if domain_signals else 0}",
+        },
+        "S": {
+            "score": s_score,
+            "reason": f"级别信号命中 {seniority_hits}/{len(seniority_signals) if seniority_signals else 0}",
+        },
         "Q": {"score": q_score, "reason": f"量化结果条数 {numeric_results_count}"},
         "E": {"score": e_score, "reason": f"证据附件条数 {artifact_count}"},
-        "R": {"score": r_score, "reason": f"最近经历距今 {latest_months_ago if latest_months_ago is not None else 'unknown'} 月"},
+        "R": {
+            "score": r_score,
+            "reason": f"最近经历距今 {latest_months_ago if latest_months_ago is not None else 'unknown'} 月",
+        },
     }
     total_score = sum(item["score"] for item in score_breakdown.values())
 
@@ -223,11 +256,20 @@ def build_rule_report(job_profile_path: str, evidence_files: list[Path], output_
         card_id = evidence_ids[idx]
         card_text = card_texts[idx]
         card_keyword_hits = sum(1 for kw in keywords if kw.lower() in card_text.lower())
-        card_numeric = sum(1 for item in doc["lists"].get("results", []) if re.search(r"\d", item))
+        card_numeric = sum(
+            1 for item in doc["lists"].get("results", []) if re.search(r"\d", item)
+        )
         card_artifacts = len(doc["lists"].get("artifacts", []))
         role_scope = doc["scalars"].get("role_scope", "")
-        role_bonus = 2 if contains_any(role_scope, ["Owner", "Tech Lead", "负责人"]) else 0
-        card_score = card_keyword_hits * 3 + card_numeric * 2 + min(3, card_artifacts) + role_bonus
+        role_bonus = (
+            2 if contains_any(role_scope, ["Owner", "Tech Lead", "负责人"]) else 0
+        )
+        card_score = (
+            card_keyword_hits * 3
+            + card_numeric * 2
+            + min(3, card_artifacts)
+            + role_bonus
+        )
         card_reason = f"关键词命中 {card_keyword_hits}，量化 {card_numeric}，证据 {card_artifacts}"
         card_rank.append((card_id, card_score, card_reason))
 
@@ -259,47 +301,69 @@ def build_rule_report(job_profile_path: str, evidence_files: list[Path], output_
     version_id = Path(output_path).stem
 
     lines = [
-        f"job_profile_id: \"{Path(job_profile_path).stem}\"",
+        f'job_profile_id: "{Path(job_profile_path).stem}"',
         "evidence_card_ids:",
     ]
     for evidence_id in evidence_ids:
-        lines.append(f"  - \"{evidence_id}\"")
+        lines.append(f'  - "{evidence_id}"')
 
     lines.append(f"score_total: {total_score}")
     lines.append("score_breakdown:")
     for key in ["K", "D", "S", "Q", "E", "R"]:
         item = score_breakdown[key]
-        lines.append(f"  {key}: {{ score: {item['score']}, reason: \"{item['reason']}\" }}")
+        lines.append(
+            f'  {key}: {{ score: {item["score"]}, reason: "{item["reason"]}" }}'
+        )
 
     lines.append("top_cards:")
     for card_id, _score, reason in top_cards:
-        lines.append(f"  - id: \"{card_id}\"")
-        lines.append(f"    reason: \"{reason}\"")
+        lines.append(f'  - id: "{card_id}"')
+        lines.append(f'    reason: "{reason}"')
 
     lines.append("gaps:")
     for gap in gaps:
-        lines.append(f"  - \"{gap}\"")
+        lines.append(f'  - "{gap}"')
 
     lines.append("gap_tasks:")
     for task in gap_tasks:
-        lines.append(f"  - \"{task}\"")
+        lines.append(f'  - "{task}"')
 
-    lines.append(f"generated_at: \"{now_iso}\"")
-    lines.append(f"version_id: \"{version_id}\"")
+    lines.append(f'generated_at: "{now_iso}"')
+    lines.append(f'version_id: "{version_id}"')
     return "\n".join(lines) + "\n"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run matching & scoring workflow")
     _ = parser.add_argument("--job-profile", required=True, help="Job profile path")
-    _ = parser.add_argument("--evidence-dir", required=True, help="Evidence cards directory")
-    _ = parser.add_argument("--output", required=True, help="Matching report output path")
-    _ = parser.add_argument("--use-llm", action="store_true", help="Use LLM for scoring")
-    _ = parser.add_argument("--require-llm", action="store_true", help="Fail if LLM path is unavailable")
-    _ = parser.add_argument("--prompt", default="tools/prompts/matching-scoring.md", help="Prompt template path")
-    _ = parser.add_argument("--model", default=os.getenv("LLM_MODEL", ""), help="Model name")
-    _ = parser.add_argument("--base-url", default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL), help="OpenAI-compatible base URL")
-    _ = parser.add_argument("--api-key", default=os.getenv("LLM_API_KEY", ""), help="API key")
+    _ = parser.add_argument(
+        "--evidence-dir", required=True, help="Evidence cards directory"
+    )
+    _ = parser.add_argument(
+        "--output", required=True, help="Matching report output path"
+    )
+    _ = parser.add_argument(
+        "--use-llm", action="store_true", help="Use LLM for scoring"
+    )
+    _ = parser.add_argument(
+        "--require-llm", action="store_true", help="Fail if LLM path is unavailable"
+    )
+    _ = parser.add_argument(
+        "--prompt",
+        default="tools/prompts/matching-scoring.md",
+        help="Prompt template path",
+    )
+    _ = parser.add_argument(
+        "--model", default=os.getenv("LLM_MODEL", ""), help="Model name"
+    )
+    _ = parser.add_argument(
+        "--base-url",
+        default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
+        help="OpenAI-compatible base URL",
+    )
+    _ = parser.add_argument(
+        "--api-key", default=os.getenv("LLM_API_KEY", ""), help="API key"
+    )
     args = parser.parse_args()
 
     evidence_dir = cast(str, args.evidence_dir)
@@ -319,6 +383,24 @@ def main() -> int:
     evidence_files = sorted(Path(evidence_dir).glob("*.yaml"))
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    job_doc = parse_simple_yaml(read_text(job_profile))
+    candidate = Candidate(
+        candidate_id=f"cand-{Path(job_profile).stem}",
+        direction=job_doc["scalars"].get("target_role", ""),
+        company=job_doc["scalars"].get("company", ""),
+        job_url=job_doc["scalars"].get("source_jd", ""),
+        confidence=0.5,
+        source="job_profiles",
+        merged_sources=("job_profiles",),
+    )
+    exclusions = load_exclusion_list()
+    gate_result = evaluate_candidate_exclusion(candidate, exclusions)
+    if isinstance(gate_result, Err):
+        run_log = output_file.parent / "run_log.json"
+        write_exclusion_audit(run_log, candidate, "gate_fallback")
+        print(f"[matching] skipped: {gate_result.error.details}")
+        return 2
 
     if use_llm:
         if not model or not api_key:

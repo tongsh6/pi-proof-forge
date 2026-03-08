@@ -6,6 +6,15 @@ import subprocess
 from pathlib import Path
 from typing import cast
 
+from tools.discovery.filters import filter_candidates_by_policy
+
+from tools.domain.result import Err
+from tools.domain.value_objects import Candidate
+from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.policy.audit import write_exclusion_audit
+from tools.policy.exclusions import load_exclusion_list
+from tools.policy.gate import evaluate_candidate_exclusion
+
 
 def has_llm_env() -> bool:
     return bool(os.getenv("LLM_API_KEY")) and bool(os.getenv("LLM_MODEL"))
@@ -22,21 +31,56 @@ def run_step(cmd: list[str], name: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run end-to-end PiProofForge pipeline")
     _ = parser.add_argument("--raw", required=True, help="Raw material input path")
-    _ = parser.add_argument("--job-profile", required=True, help="Job profile yaml path")
+    _ = parser.add_argument(
+        "--job-profile", required=True, help="Job profile yaml path"
+    )
     _ = parser.add_argument("--run-id", help="Run id, default timestamp")
-    _ = parser.add_argument("--use-llm", action="store_true", help="Enable LLM for extraction/matching/generation/evaluation")
-    _ = parser.add_argument("--require-llm", action="store_true", help="Fail if any LLM step is unavailable")
+    _ = parser.add_argument(
+        "--use-llm",
+        action="store_true",
+        help="Enable LLM for extraction/matching/generation/evaluation",
+    )
+    _ = parser.add_argument(
+        "--require-llm", action="store_true", help="Fail if any LLM step is unavailable"
+    )
     args = parser.parse_args()
 
     raw_path = cast(str, args.raw)
     job_profile = cast(str, args.job_profile)
-    run_id = cast(str | None, args.run_id) or datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    run_id = cast(str | None, args.run_id) or datetime.datetime.now().strftime(
+        "%Y%m%d%H%M%S"
+    )
     use_llm = cast(bool, args.use_llm)
     require_llm = cast(bool, args.require_llm)
 
     if require_llm and not use_llm:
         print("[pipeline] --require-llm requires --use-llm")
         return 1
+
+    job_doc = parse_simple_yaml(Path(job_profile).read_text(encoding="utf-8"))
+    company = job_doc["scalars"].get("company", "")
+    candidate = Candidate(
+        candidate_id=f"cand-{Path(job_profile).stem}",
+        direction=job_doc["scalars"].get("target_role", ""),
+        company=company,
+        job_url=job_doc["scalars"].get("source_jd", ""),
+        confidence=0.5,
+        source="job_profiles",
+        merged_sources=("job_profiles",),
+    )
+    exclusions = load_exclusion_list()
+    _kept, excluded = filter_candidates_by_policy([candidate], exclusions)
+    if excluded:
+        run_log = Path("outputs") / run_id / "run_log.json"
+        write_exclusion_audit(run_log, candidate, "discovery_filter")
+        print(f"[pipeline] skipped: job profile company excluded: {company}")
+        return 2
+    gate_result = evaluate_candidate_exclusion(candidate, exclusions)
+    if isinstance(gate_result, Err):
+        run_log = Path("outputs") / run_id / "run_log.json"
+        write_exclusion_audit(run_log, candidate, "gate_fallback")
+        print(f"[pipeline] skipped: {gate_result.error.details}")
+        return 2
 
     evidence_output = Path("evidence_cards") / f"ec-{run_id}.yaml"
     matching_output = Path("matching_reports") / f"mr-{run_id}.yaml"
