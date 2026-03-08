@@ -175,3 +175,31 @@ export interface OverviewGetResult extends RpcResultBase {
   match_trend: OverviewTrendPoint[];
   gaps: OverviewGap[];
 }
+
+/** One candidate in REVIEW state (design: ReviewCandidate). */
+export interface ReviewCandidateItem {
+  job_lead_id: string;
+  company: string;
+  position: string;
+  matching_score: number;
+  evaluation_score: number;
+  round_index: number;
+  resume_version: string;
+  job_url?: string;
+}
+
+export interface GetPendingReviewResult extends RpcResultBase {
+  candidates: ReviewCandidateItem[];
+}
+
+export interface ReviewDecisionItem {
+  job_lead_id: string;
+  action: "approve" | "reject" | "skip" | "skip_all";
+  decided_by: string;
+  decided_at: string;
+  note?: string;
+}
+
+export interface SubmitReviewResult extends RpcResultBase {
+  accepted: number;
+}
