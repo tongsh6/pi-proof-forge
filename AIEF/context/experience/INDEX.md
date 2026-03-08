@@ -32,6 +32,8 @@
 - context/experience/lessons/2026-03-04-liepin-upload-fallback-diagnostics.md
 - context/experience/lessons/2026-03-04-liepin-page-mode-and-dom-snapshot.md
 - context/experience/lessons/2026-03-04-liepin-job-page-health-check.md
+- context/experience/lessons/2026-03-08-ci-path-filters-and-packaged-doc-copies.md
 
 ## 主题摘要
 - context/experience/summaries/pipeline.md
+- context/experience/summaries/ci-and-packaging.md

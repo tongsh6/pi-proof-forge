@@ -71,7 +71,7 @@
 ### 任务路由（三工具版）
 
 - 新功能提案 → `/opsx:propose "你的想法"` → brainstorming skill
-- 设计阶段 → brainstorming skill → writing-plans skill → `docs/plans/`
+- 设计阶段 → brainstorming skill → writing-plans skill → `AIEF/docs/plans/`
 - 实现阶段 → test-driven-development skill（强制 TDD）
 - 审查阶段 → requesting-code-review skill
 - 规范变更归档 → `/opsx:archive`
@@ -87,6 +87,6 @@
 
 - OpenSpec 规范目录：`openspec/specs/`
 - 变更目录：`openspec/changes/`
-- 实现计划目录：`docs/plans/`
+- 实现计划目录：`AIEF/docs/plans/`
 - 项目宪法：`constitution.md`
 - spec-kit 配置：`.specify/config.yaml`

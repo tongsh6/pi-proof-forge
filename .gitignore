@@ -4,9 +4,26 @@ __pycache__/
 .venv/
 venv/
 node_modules/
+dist/
+target/
+ui/src-tauri/resources/python/**
+ui/src-tauri/resources/sidecar/bin/python3
+ui/src-tauri/resources/tools/**
+ui/src-tauri/resources/evidence_cards/**
+ui/src-tauri/resources/matching_reports/**
+ui/src-tauri/resources/job_profiles/**
 
 # Generated artifacts
 outputs/
+ui/src-tauri/gen/
+
+!ui/src-tauri/resources/python/.gitkeep
+!ui/src-tauri/resources/sidecar/.gitkeep
+!ui/src-tauri/resources/sidecar/bin/.gitkeep
+!ui/src-tauri/resources/tools/.gitkeep
+!ui/src-tauri/resources/evidence_cards/.gitkeep
+!ui/src-tauri/resources/matching_reports/.gitkeep
+!ui/src-tauri/resources/job_profiles/.gitkeep
 
 # Local environment
 .env

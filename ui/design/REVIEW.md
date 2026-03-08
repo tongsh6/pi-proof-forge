@@ -104,7 +104,7 @@ Overview -> Resumes -> Evidence -> Jobs -> Quick Run -> Agent Run -> Submissions
 
 ### 设计审查执行要求
 
-凡是涉及 GUI 页面结构、共享组件、Design Tokens、状态页、导航或交互规则的变更，设计审查必须显式执行 `docs/plans/gui-review-checklist.md` 的 Design Review Checklist。
+凡是涉及 GUI 页面结构、共享组件、Design Tokens、状态页、导航或交互规则的变更，设计审查必须显式执行 `AIEF/docs/plans/gui-review-checklist.md` 的 Design Review Checklist。
 
 若 `ui/design/DESIGN.md`、`ui/design/piproofforge.pen`、实现验收标准三者存在任一不同步，该次设计审查不得通过。
 

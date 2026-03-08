@@ -1,0 +1,121 @@
+{
+  "nav": {
+    "overview": "总览",
+    "resumes": "简历中心",
+    "evidence": "证据管理",
+    "jobs": "职位管理",
+    "quickRun": "快速运行",
+    "agentRun": "智能运行",
+    "submissions": "投递记录",
+    "policy": "策略配置",
+    "systemSettings": "系统设置"
+  },
+  "shell": {
+    "sidecar": "Sidecar 连接",
+    "lastHeartbeat": "最近心跳",
+    "waitingForHeartbeat": "等待心跳"
+  },
+  "sidecar": {
+    "state": {
+      "starting": "启动中",
+      "ready": "已就绪",
+      "degraded": "降级",
+      "reconnecting": "重连中",
+      "disconnected": "未连接",
+      "stopped": "已停止"
+    }
+  },
+  "common": {
+    "loading": "加载中...",
+    "empty": "暂无数据",
+    "error": "出错了",
+    "retry": "重试"
+  },
+  "pages": {
+    "overview": {
+      "title": "概览",
+      "subtitle": "由本地 sidecar 聚合驱动的桌面首页。",
+      "metrics": {
+        "evidence_count": {
+          "label": "证据卡",
+          "hint": "当前工作区中可复用的结构化证据"
+        },
+        "matched_jobs_count": {
+          "label": "匹配岗位",
+          "hint": "当前工作区中的匹配报告数量"
+        },
+        "resume_count": {
+          "label": "简历版本",
+          "hint": "本地检测到的生成简历版本"
+        },
+        "submission_count": {
+          "label": "投递次数",
+          "hint": "outputs/submissions 中记录的投递尝试"
+        }
+      },
+      "recentActivity": {
+        "title": "最近活动",
+        "subtitle": "最近的证据、简历和投递事件"
+      },
+      "matchTrend": {
+        "title": "匹配趋势",
+        "subtitle": "最近匹配报告分数走势"
+      },
+      "gaps": {
+        "title": "缺口待办",
+        "subtitle": "最新报告里仍需补齐的证据与投递缺口"
+      },
+      "activityTypes": {
+        "resume_generated": "简历",
+        "submission_sent": "投递",
+        "evidence_imported": "证据",
+        "agent_run_completed": "Agent"
+      }
+    },
+    "evidence": {
+      "title": "证据卡",
+      "subtitle": "由 Python sidecar 驱动的首个只读垂直切片。",
+      "listTitle": "证据列表",
+      "listCount": "已加载 {{count}} 张证据卡",
+      "detailTitle": "详情面板",
+      "artifactFallback": "附件",
+      "fields": {
+        "timeRange": "时间范围",
+        "role": "角色范围",
+        "context": "背景",
+        "actions": "行动",
+        "results": "成果",
+        "stack": "技术栈",
+        "tags": "标签",
+        "artifacts": "附件"
+      }
+    },
+    "systemSettings": {
+      "title": "系统设置",
+      "subtitle": "读取桌面 sidecar 返回的实时配置快照。",
+      "secretConfigured": "已配置（掩码）",
+      "secretMissing": "未配置",
+      "exclusions": "排除项",
+      "channels": "通道数",
+      "gatePolicy": {
+        "title": "门禁策略",
+        "subtitle": "当前只读策略快照",
+        "nPassRequired": "通过轮数要求",
+        "matchingThreshold": "匹配阈值",
+        "evaluationThreshold": "评估阈值",
+        "maxRounds": "最大轮次",
+        "mode": "门禁模式"
+      },
+      "llm": {
+        "title": "LLM 配置",
+        "subtitle": "来自 settings.get 的掩码模型配置",
+        "provider": "提供方",
+        "model": "模型",
+        "baseUrl": "基础地址",
+        "apiKey": "API Key",
+        "timeout": "超时",
+        "temperature": "温度"
+      }
+    }
+  }
+}
