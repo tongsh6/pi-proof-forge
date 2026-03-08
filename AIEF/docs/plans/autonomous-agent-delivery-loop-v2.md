@@ -36,6 +36,8 @@
        - `GapItem` — 类型/描述/严重度/关联证据（Overview 页面）
        - `SubmissionStep` — 步骤名/状态/时间/截图 ID（Submissions 页面）
        - `ScreenshotRef` — resource_id/文件名/mime/大小（Submissions 页面）
+       - `ReviewCandidate` — 投递候选/job_lead_id/匹配分数/待审批轮次（manual 模式审批队列）
+- `ReviewDecision` — 决策类型（approve/reject/skip/skip_all）/操作人/决策时间/备注（用户审批结果）
    - `protocols.py`
    - `invariants.py`
    - `result.py`
@@ -50,6 +52,9 @@
    - `logging.py`
 3. `tools/config/`
    - `fragments.py`
+     - `PolicyConfig` 描述中补充：
+       - `delivery_mode: str  # auto | manual`（auto 模式全自动投递，manual 模式投递前须用户确认）
+       - `batch_review: bool  # 仅 manual 时生效；True 表示跑完所有轮次后批量审批，False 表示逐轮审批）
    - `loader.py`
    - `validator.py`
    - `composer.py`
@@ -108,9 +113,19 @@
 1. `tools/orchestration/stage.py`
 2. `tools/orchestration/pipeline.py`
 3. `tools/orchestration/state_machine.py`
+   - 状态从 9 扩展到 10，新增 `REVIEW` 状态，放置在 GATE 和 DELIVER 之间
+   - 状态转换规则：
+     - `GATE → REVIEW`：通过 gate 校验后，如果 delivery_mode=manual 则进入 REVIEW；如果 delivery_mode=auto 则 REVIEW 为 pass-through，直接转 DELIVER
+    - `REVIEW → DELIVER`：用户对候选采用 approve 决策，进入投递
+    - `REVIEW → LEARN`：用户对候选采用 reject/skip 决策，进入下一轮
+    - `REVIEW → DONE`：用户 skip_all 或 review_buffer 为空时直接结束
 4. `tools/orchestration/gate_engine.py`
 5. `tools/orchestration/agent_loop.py`
 6. `tools/run_agent.py`
+7. `tools/orchestration/review_stage.py`
+   - auto 模式：REVIEW 是 pass-through，直接转入 DELIVER，行为与现有完全一致
+   - manual + batch_review=false 模式：每轮完成后暂停，展示本轮 TopN 候选的 `ReviewCandidate` 列表，等待用户逐个确认（approve/reject/skip）后确定进入 DELIVER 的实际候选集
+   - manual + batch_review=true 模式：全部轮次跑完后批量汇集所有 `ReviewCandidate`，然后一次性展示给用户确认，确认结果对应回嵌各轮的 DELIVER 阶段
 
 验收：
 
@@ -119,6 +134,7 @@
 - `GateEngine` 返回 `Result[GateDecision, GateFailure]`
 - `run_agent --dry-run` 可完成至少 1 轮
 - `GateEngine` 对命中企业例外清单的 candidate 返回 `excluded_company`，阻止进入 `DELIVER`
+- `ReviewStage` 在 auto 模式下不改变任何现有行为，在 manual 模式下能正确拦截并等待用户审批决策
 
 ### Milestone M4 - 通道、运行存储与恢复
 
@@ -217,6 +233,7 @@ M1 -> M2 -> M3 -> M4 -> M5
 7. 旧 CLI 兼容层通过回归测试
 8. `run_agent --dry-run` 至少完成 1 轮并产出日志
 9. 企业例外清单已在 discovery 主过滤 + gate 兜底两层生效
+10. auto/manual 双模式行为可通过 `delivery_mode` 配置切换，且两种模式均有测试覆盖（auto 的 pass-through 路径、manual 的逐轮审批路径、manual 的批量审批路径）
 
 ## 6. 建议开发节奏
 
@@ -283,6 +300,7 @@ M1 -> M2 -> M3 -> M4 -> M5
 - `tools/orchestration/pipeline.py`
 - `tools/config/composer.py`
 - `tools/run_agent.py`
+- `tools/orchestration/review_stage.py`
 
 完成标志：
 
@@ -325,7 +343,7 @@ M1 -> M2 -> M3 -> M4 -> M5
 | domain | models / value_objects / result / run_state | 不可变性、比较、回放正确性 |
 | infra | llm client / yaml io / file run store | 唯一实现、边界输入、错误处理 |
 | engines | evidence / matching / generation / evaluation / discovery | 规则行为、LLM 注入、registry 创建 |
-| orchestration | stage / pipeline / state_machine / agent_loop | 组合执行、状态迁移、Result 消费 |
+| orchestration | stage / pipeline / state_machine / agent_loop / review_stage | 组合执行、状态迁移、Result 消费； REVIEW 状态在 auto 下为 pass-through、manual+batch_review=false 下逐轮审批、manual+batch_review=true 下批量审批 |
 | channels | liepin / email | 重试、降级、artifact 记录 |
 | compatibility | legacy CLI wrappers | 参数语义与输出不破坏 |
 
@@ -340,6 +358,7 @@ M1 -> M2 -> M3 -> M4 -> M5
 5. `Stage` + `LinearPipeline`
 6. `Composer`
 7. `run_agent.py --dry-run` 的 rule-only 版本
+8. `ReviewStage`（廻次批次）—骨架验证后再接入，优先完成 auto 模式下的 pass-through 实现，再展开 manual 模式
 
 这个批次完成后，就能验证 v2 架构骨架是否成立，而不必等到 LLM、通道、事件回放全部完成。
 

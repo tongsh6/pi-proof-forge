@@ -102,6 +102,7 @@ required_fields:
 
 - `DISCOVER`：从 `job_leads` / `jd_inputs` / `evidence_cards` 推导候选方向与 JD
 - `GATE`：联合判定 matching / evaluation / channel readiness
+- `REVIEW`：投递前审批（auto 模式 pass-through；manual 模式暂停展示 TopN 候选，等待用户 approve/reject/skip）
 - `DELIVER`：通过通道执行投递
 - `LEARN`：根据本轮失败原因调整下一轮输入与策略
 
@@ -110,6 +111,7 @@ required_fields:
 - 所有投递与门禁结论必须写入可追溯 run log
 - policy 必须支持企业例外清单（company exclusion list），用于排除不应进入投递链路的目标企业
 - 企业例外清单应在 `DISCOVER` 阶段主过滤，在 `GATE` 阶段做兜底校验
+- REVIEW 阶段在 auto 模式下为 pass-through，不影响既有行为；manual 模式下暂停等待用户决策
 
 ---
 
@@ -226,8 +228,9 @@ tools/
     stage.py                # Stage Protocol + StageResult + RunContext
     pipeline.py             # LinearPipeline（Stage 序列组合）
     agent_loop.py           # AgentLoop（复用 pipeline 的 Stage，驱动状态机循环）
-    gate_engine.py          # GateStage（独立于编排的 N-pass 门禁）
-    state_machine.py        # StateMachine 纯函数（9 状态迁移）
+    review_stage.py        # ReviewStage（auto pass-through / manual 审批）
+    gate_engine.py         # GateStage（独立于编排的 N-pass 门禁）
+    state_machine.py       # StateMachine 纯函数（10 状态迁移（含 REVIEW））
   config/                   # 配置层
     fragments.py            # LLMConfig, PathConfig, PolicyConfig, EngineSelection（独立切片）
     composer.py             # Composer（唯一了解全部配置的组装点）
@@ -276,6 +279,13 @@ class GateEngine(Protocol):
 class DeliveryChannel(Protocol):
     channel_id: str
     def deliver(self, request: DeliveryRequest) -> Result[DeliveryResult, ChannelFailure]: ...
+
+class ReviewStage(Stage):
+    """REVIEW 阶段。auto 模式 pass-through；manual 模式暂停等待用户审批。"""
+    name: str = "REVIEW"
+    def execute(self, context: RunContext) -> StageResult: ...
+    # ReviewCandidate: frozen dataclass — job_lead_id, company, position, matching_score, evaluation_score, round_index, resume_version
+    # ReviewDecision: frozen dataclass — job_lead_id, action(approve/reject/skip/skip_all), decided_by, decided_at, note
 
 class RunStore(Protocol):
     def append_event(self, event: RunEvent) -> None: ...
@@ -342,7 +352,7 @@ class LinearPipeline:
 # orchestration/agent_loop.py — 循环编排：复用 Stage，不重写业务逻辑
 class AgentLoop:
     def __init__(self, pipeline: LinearPipeline, gate: Stage,
-                 discovery: Stage, learn: Stage, policy: PolicyConfig):
+                 discovery: Stage, learn: Stage, review: Stage, policy: PolicyConfig):
         self.pipeline = pipeline  # 组合，不继承
         self.gate = gate
         # ...
@@ -455,6 +465,8 @@ class PolicyConfig:
     max_deliveries: int
     gate_mode: str           # strict | simulate
     n_pass_required: int
+    delivery_mode: str       # auto | manual
+    batch_review: bool = False  # 仅 manual 时生效
     excluded_companies: tuple[CompanyExclusionRule, ...] = ()
     excluded_legal_entities: tuple[str, ...] = ()
 

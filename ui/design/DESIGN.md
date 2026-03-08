@@ -176,14 +176,14 @@ Dashboard + Chat 混合模式（方案 B+C）：
 
 ### 6. Agent Run / 自主运行
 
-**职责**: 9 状态机、多轮追踪、门禁可视化、事件流
+**职责**: 10 状态机、多轮追踪、门禁可视化、事件流
 
 **布局**:
 - 顶部: 页面标题（含 Run ID / 开始时间 / 轮次） + Running 状态标签 + "Stop / 停止" 按钮
-- 状态机条 (9 节点, 水平排列, space_between):
+- 状态机条 (10 节点, 水平排列, space_between):
   - 已完成: 绿色背景 + circle-check 图标 (INIT, DISCOVER, SCORE, GENERATE)
   - 进行中: accent-bg 背景 + cyan 边框 + loader 图标 (EVALUATE)
-  - 等待中: bg-inset 背景 + muted 文字 (GATE, DELIVER, LEARN, DONE)
+  - 等待中: bg-inset 背景 + muted 文字 (GATE, REVIEW, DELIVER, LEARN, DONE)
 - 下方两栏:
   - 左栏 (fill): N-Pass Gate / 多轮门禁
     - 头部: 标题 + "pass_round: 2 / n_pass_required: 3"
@@ -194,8 +194,15 @@ Dashboard + Chat 混合模式（方案 B+C）：
       4. Company Exclusion / 企业排除 — Not in exclusion list — PASS (绿色)
   - 右栏 (420px): Event Stream / 事件流
     - 带时间戳的事件列表（JetBrains Mono 时间 + 彩色圆点 + 事件描述）
+  - 审批面板 (仅 delivery_mode=manual 时在左栏替换 N-Pass Gate 显示):
+    - 头部: "Review Candidates / 候选审批" + 当前模式标签 (per-round / batch)
+    - 候选卡片列表 (bg-inset 圆角卡片):
+      - 每张卡片: 公司名 + 职位 + 匹配分 + 评测分 + 轮次 + 简历版本
+      - 操作: Approve (绿色) / Reject (红色) / Skip (灰色)
+    - 底部: "Submit Decisions / 提交决策" 按钮 + 已审批/待审批计数
+    - auto 模式下此面板不显示，左栏保持 N-Pass Gate 视图
 
-**状态机状态**: INIT → DISCOVER → SCORE → GENERATE → EVALUATE → GATE → DELIVER → LEARN → DONE
+**状态机状态**: INIT → DISCOVER → SCORE → GENERATE → EVALUATE → GATE → REVIEW → DELIVER → LEARN → DONE
 
 ### 7. Submissions / 投递记录
 
@@ -236,6 +243,8 @@ Dashboard + Chat 混合模式（方案 B+C）：
       - evaluation_threshold / 评估阈值: 75
       - max_rounds / 最大轮次: 5
       - gate_mode / 门禁模式: strict
+      - delivery_mode / 投递模式: auto（下拉选择: auto | manual）
+      - batch_review / 批量审批: false（开关，仅 delivery_mode=manual 时可用）
     - Exclusion List / 排除:
       - 企业名列表 + 添加/删除 + 导入/导出
       - 命中说明: 为什么被排除、命中时间、备注
@@ -391,6 +400,7 @@ PiProofForge
 │   │   ├── GENERATE
 │   │   ├── EVALUATE
 │   │   ├── GATE
+│   │   ├── REVIEW
 │   │   ├── DELIVER
 │   │   ├── LEARN
 │   │   └── DONE
@@ -401,6 +411,10 @@ PiProofForge
 │       │       ├── Evaluation Gate
 │       │       ├── Channel Ready
 │       │       └── Company Exclusion
+│       ├── Review Panel (manual mode only)
+│       │   └── Candidate Cards
+│       │       ├── Candidate Info
+│       │       └── Actions (Approve / Reject / Skip)
 │       └── Event Stream
 │           └── Event Items
 │
@@ -849,7 +863,7 @@ StatusChip 4 个变体建议在代码中合并为参数化组件:
 - Jobs/Profiles: 返回 `{ items[], next_cursor }`，支持 `status/query/tags` 筛选，支持 `match_score/updated_at` 排序
 - Jobs/Leads: 返回 `{ items[], next_cursor }`，支持 `source/status/favorited/query` 筛选，支持 `updated_at/created_at` 排序
 - Quick Run: 输入契约至少包含 `evidence_id`, `job_profile_id`, `options`；结果契约至少包含 `stage_results[]`, `scores`, `logs[]`
-- Agent Run: 返回 `{ run, gate_checks[], events[], next_event_cursor }`；事件流分页必须支持 `cursor + limit`
+- Agent Run: 返回 { run, gate_checks[], events[], next_event_cursor, review_candidates[], review_decisions[] }；事件流分页必须支持 cursor + limit；review_candidates 仅在 delivery_mode=manual 且状态为 REVIEW 时有值
 - Resumes: 页面至少需要 `personal_profile`、`uploaded_resumes[]`、`generated_resumes[]` 与当前选中版本的 `preview` 载荷；首版 bridge 可通过聚合现有 profile 源与 resume list 完成，不强制在本轮冻结为单一 RPC 方法
 - Submissions: 返回 `{ items[], next_cursor }`，支持 `company/channel/status/date_range` 筛选，支持 `submitted_at/status` 排序；详情需返回 `steps[]`, `screenshots[]`, `failure_detail`
 - Policy: 返回 `{ gate_policy, exclusion_list }`；无分页；两个子模块需支持独立保存结果与错误反馈
@@ -868,7 +882,7 @@ StatusChip 4 个变体建议在代码中合并为参数化组件:
 - Evidence: `Loading` 为表格骨架 + 详情面板骨架；`Empty` 为无证据卡，主 CTA 指向 `Import / 导入`；`Error` 为列表/详情加载失败或导入失败，需保留最近一次错误原因
 - Jobs: `Loading` 为卡片骨架或 leads 表格骨架；`Empty` 为无 Job Profile / Lead，CTA 指向 `New Profile / 新建`；`Error` 为查询或转化失败
 - Quick Run: `Loading` 为阶段条初始化态；`Empty` 为未执行前的空准备态；`Error` 为单次运行失败，需在日志面板显示错误摘要与重试入口
-- Agent Run: `Loading` 为连接/恢复运行态；`Empty` 为当前无活跃 run；`Error` 为状态机拉取失败、事件流中断或 gate 计算失败
+- Agent Run: `Loading` 为连接/恢复运行态；`Empty` 为当前无活跃 run；`Error` 为状态机拉取失败、事件流中断或 gate 计算失败；REVIEW 状态下 Loading 为候选数据加载中，展示后等待用户操作
 - Resumes: `Loading` 为个人资料卡、已上传简历列表、系统生成简历预览三栏骨架；`Empty` 为尚未完善个人资料且无简历资产，CTA 指向 `Edit Info / 编辑资料` 或 `Upload Resume / 上传简历`；`Error` 为资料读取、简历列表读取或 PDF 导出失败
 - Submissions: `Loading` 为统计卡片 + 表格骨架；`Empty` 为暂无投递记录；`Error` 为记录拉取失败、截图读取失败或重试失败
 - Policy: `Loading` 为策略表单 skeleton；`Empty` 仅用于 exclusion list 为空；`Error` 为保存失败、导入失败或 policy 校验失败
@@ -923,6 +937,8 @@ StatusChip 4 个变体建议在代码中合并为参数化组件:
 | `run.agent.start` | UI -> sidecar | 启动 Agent Run |
 | `run.agent.stop` | UI -> sidecar | 停止 Agent Run |
 | `run.agent.get` | UI -> sidecar | 获取 Agent Run 当前状态 |
+| `run.agent.getPendingReview` | UI -> sidecar | 获取 REVIEW 状态下待审批的候选列表（仅 delivery_mode=manual） |
+| `run.agent.submitReview` | UI -> sidecar | 提交审批决策（approve/reject/skip 列表；批量模式支持 skip_all） |
 | `resume.upload` | UI -> sidecar | 上传用户简历 |
 | `resume.list` | UI -> sidecar | 拉取已上传/已生成简历列表 |
 | `resume.getPreview` | UI -> sidecar | 拉取简历预览结构化数据 |
@@ -933,7 +949,7 @@ StatusChip 4 个变体建议在代码中合并为参数化组件:
 | `settings.update` | UI -> sidecar | 保存聚合配置载荷或局部切片（首版 bridge 可保持聚合接口） |
 
 说明：
-- 字段级 contract 现已覆盖 31 个方法；本表只保留产品级职责摘要
+- 字段级 contract 现已覆盖 33 个方法；本表只保留产品级职责摘要
 - 证据卡、个人资料、岗位画像的写操作 contract 与字段约束以 `ui/design/contracts/sidecar-rpc.md` 为准
 - `overview.get` 为 Overview 页面唯一聚合入口；不得由前端通过多次 list 请求自行拼装趋势、缺口与活动流
 

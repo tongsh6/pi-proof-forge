@@ -7,6 +7,7 @@
 2. 无闭环循环：评测失败后无法自动回流并重试至通过。
 3. 无多通道统一投递：现有仅有 Liepin 通道，没有邮件投递抽象。
 4. 无一次触发自动执行：无法按规则自动从线索到投递完成全链路。
+5. 无自动/手动模式切换：只能全自动或完全手工，缺少「系统推荐 + 人工审批」的半自动路径。
 
 ## Goals
 1. 提供一个单入口触发的 Autonomous Agent（一次触发，自动执行多轮）。
@@ -15,6 +16,10 @@
 4. 支持至少两种投递通道：招聘平台（Liepin）和 Email。
 5. 自动从已有资料中推导可投递方向/公司/JD（在 `job_leads` 缺失时仍可工作）。
 6. 输出可追溯运行日志，记录每轮决策、得分、投递结果。
+7. 支持 auto/manual 双投递模式：
+   - **auto**（自动模式）：门禁通过后自动投递，行为与现有一致。
+   - **manual**（手动模式）：门禁通过后进入 REVIEW 状态，系统展示 TopN 候选（含匹配分数、缺口、简历评分），由用户审批后选择性投递。
+   - 手动模式支持逐轮审批（每轮 GATE 通过后暂停）和批量审批（所有轮次跑完后一次性展示 TopN）两种策略。
 
 ## Non-Goals
 1. 大规模爬虫与反爬绕过（本阶段不做，后续可按触发条件进入范围）。
@@ -39,6 +44,9 @@
 - 新增 policy 配置文件与运行日志结构。
 - 新增 Email 通道最小可用实现。
 - 新增从已有资料推导方向/公司/JD 的 discovery 回退路径（`evidence_cards`、`jd_inputs`、`job_profiles`）。
+- 新增 REVIEW 状态与 ReviewStage，支持 auto/manual 双投递模式。
+- 新增 Policy `delivery_mode` 与 `batch_review` 配置项。
+- 新增审批相关 RPC 方法与事件（`run.agent.getPendingReview`、`run.agent.submitReview`、`agent.review.pending`、`agent.review.resolved`）。
 
 ## Expected Outcomes
 1. 用户可通过单条命令触发 Agent 执行全流程。
@@ -46,3 +54,6 @@
 3. 在预算范围内自动选择候选方向/公司/JD 并执行投递（优先 `job_leads`，缺失时自动从已有资料推导）。
 4. Email 与招聘渠道至少一个通道可实际投递成功。
 5. 产出完整 run log，支持复盘和后续优化。
+6. `delivery_mode=manual` 时，GATE 通过的候选进入 REVIEW 等待用户审批，未经审批不投递。
+7. `batch_review=true` 时，所有轮次自动跑完后一次性展示 TopN 候选供用户选择。
+8. 审批结果（approve/reject/skip/skip_all）写入 run log，支持追溯与复盘。

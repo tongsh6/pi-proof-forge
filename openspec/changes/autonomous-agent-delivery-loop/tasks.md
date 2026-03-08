@@ -16,10 +16,11 @@
   - `EvidenceCard.is_eligible()` 强制体现 evidence-first 约束（缺 `results/artifacts` 不进入候选池）
 - [ ] A2 新增 `tools/domain/value_objects.py`
   - 定义 `Score`、`GapTask`、`Candidate`、`ScoreBreakdown`、`GateDecision`、`DeliveryResult`
+- 新增 ReviewCandidate（job_lead_id / company / position / matching_score / evaluation_score / round_index / resume_version）和 ReviewDecision（job_lead_id / action: approve|reject|skip|skip_all / decided_by / decided_at / note）
   - 所有值对象不可变、可比较、可序列化
 - [ ] A3 新增 `tools/domain/protocols.py`
   - 定义 `EvidenceExtractor`、`MatchingEngine`、`GenerationEngine`、`EvaluationEngine`
-  - 定义 `DiscoveryEngine`、`GateEngine`、`DeliveryChannel`、`RunStore`、`Stage`
+  - 定义 `DiscoveryEngine`、`GateEngine`、`DeliveryChannel`、`RunStore`、`Stage`、`ReviewStage`
   - 规则：接口定义只能出现在 `domain/`，不得散落在 `engines/` 或 `infra/`
 - [ ] A4 新增 `tools/domain/invariants.py`
   - 实现 evidence-first 守卫、事实保真守卫
@@ -42,6 +43,7 @@
   - 结构化日志（JSON 格式，含 `run_id` / `round` / `state` 字段）
 - [ ] A10 新增 `tools/config/fragments.py`
   - 定义 `LLMConfig`、`PathConfig`、`PolicyConfig`、`EngineSelection`
+  - PolicyConfig 必须包含 delivery_mode（auto|manual）和 batch_review（bool，仅 manual 时生效）字段
   - 禁止保留上帝对象 `Config`
   - `PolicyConfig` 必须包含企业例外清单语义（如 `excluded_companies`、`excluded_legal_entities`）
 - [ ] A10a 同步 GUI 配置承载边界文档
@@ -153,14 +155,20 @@
   - `LinearPipeline` 由 `Sequence[Stage]` 组合而成
   - 线性流水线：extraction → matching → generation → evaluation
 - [ ] C3 新增 `tools/orchestration/state_machine.py`
-  - 实现 Section 2 的 9 状态迁移规则
+  - 实现 Section 2 的 10 状态迁移规则（含 REVIEW）
   - 纯函数，可独立单元测试
 - [ ] C4 新增 `tools/orchestration/gate_engine.py`
   - `GateEngine.evaluate()` 返回 `Result[GateDecision, GateFailure]`
   - readiness 判定必须绑定当前 `run_id + round_index`
   - 对命中企业例外清单的 candidate 做兜底校验，返回 `excluded_company` 原因，禁止进入 `DELIVER`
+- [ ] C4a 新增 `tools/orchestration/review_stage.py`
+  - ReviewStage 实现 Stage Protocol
+  - auto 模式：REVIEW 为 pass-through，直接返回 success，不暂停
+  - manual + batch_review=false：逐轮审批，GATE 通过后暂停，发出 agent.review.pending 事件，等待用户通过 RPC 提交 ReviewDecision
+  - manual + batch_review=true：批量审批，所有轮次跑完后一次性展示 TopN 候选
+  - 测试须覆盖三种模式的行为差异
 - [ ] C5 新增 `tools/orchestration/agent_loop.py`
-  - 驱动完整 INIT→DISCOVER→SCORE→GENERATE→EVALUATE→GATE→DELIVER→LEARN→DONE 循环
+  - 驱动完整 INIT→DISCOVER→SCORE→GENERATE→EVALUATE→GATE→REVIEW→DELIVER→LEARN→DONE 循环
   - 复用 pipeline 的 Stage，不重复实现阶段逻辑
   - 幂等键：`run_id + candidate_id + channel + resume_version`
 - [ ] C6 新增 `tools/run_agent.py`
@@ -226,6 +234,10 @@
   - `FabricationGuardError`：无证据内容被拦截
   - 新增一个虚拟 strategy 只需注册即可接入
   - `RunState.replay(events)` 能恢复到最新状态
+  - delivery_mode=auto 时 REVIEW pass-through，不暂停不阻塞
+  - delivery_mode=manual + batch_review=false 时逐轮审批行为正确
+  - delivery_mode=manual + batch_review=true 时批量审批行为正确
+  - ReviewCandidate / ReviewDecision 值对象不可变且可序列化
   - candidate 命中企业例外清单后在 discovery 阶段被过滤，并记录 `excluded_by_policy`
   - 若 candidate 绕过 discovery 过滤，`GateEngine` 仍能以 `excluded_company` 原因阻止进入 `DELIVER`
 - [ ] E5 更新 `tools/README.md` 与根 `README.md`
@@ -256,4 +268,6 @@
 - [ ] Result 类型已用于可恢复错误（gate/channel/discovery）
 - [ ] RunState 支持事件回放恢复
 - [ ] 企业例外清单已在 discovery 主过滤 + gate 兜底两层生效
+- [ ] auto/manual 双模式可通过 delivery_mode 配置切换，且 auto 下 REVIEW 为 pass-through
+- [ ] manual 模式下 ReviewStage 可正确暂停并等待用户审批
 - [ ] AIEF L3 检查通过
