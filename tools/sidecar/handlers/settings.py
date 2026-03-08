@@ -3,11 +3,14 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from tools.policy.exclusions import load_exclusion_list, save_exclusion_list
+
 
 def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
 
     api_key_configured = bool(os.environ.get("LLM_API_KEY"))
+    exclusion_list = load_exclusion_list()
 
     return {
         "meta": {"correlation_id": correlation_id},
@@ -18,7 +21,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
             "max_rounds": 5,
             "gate_mode": "strict",
         },
-        "exclusion_list": [],
+        "exclusion_list": exclusion_list,
         "channels": [],
         "llm_config": {
             "provider": os.environ.get("LLM_PROVIDER", "openai"),
@@ -32,4 +35,29 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
             "timeout": 60,
             "temperature": 0.2,
         },
+    }
+
+
+def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    section = params.get("section")
+    payload = params.get("payload")
+
+    if section != "exclusion_list":
+        raise ValueError(f"unsupported settings section: {section}")
+
+    if not isinstance(payload, list):
+        raise ValueError("exclusion_list payload must be a list of strings")
+
+    payload_list: list[str] = []
+    for item in payload:
+        if not isinstance(item, str):
+            raise ValueError("exclusion_list payload must be a list of strings")
+        payload_list.append(item)
+
+    _ = save_exclusion_list(payload_list)
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "section": section,
+        "saved": True,
     }
