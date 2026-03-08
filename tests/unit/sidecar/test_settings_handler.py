@@ -86,6 +86,19 @@ class SettingsGetTests(unittest.TestCase):
                 result = handle_settings_get(params)
         self.assertEqual(result["excluded_legal_entities"], ["Acme Holdings Ltd"])
 
+    def test_delivery_settings_load_from_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            policy_path.write_text(
+                'delivery_mode: "manual"\nbatch_review: "true"\n',
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                params = {"meta": {"correlation_id": "corr_dm_load"}}
+                result = handle_settings_get(params)
+        self.assertEqual(result["delivery_mode"], "manual")
+        self.assertTrue(result["batch_review"])
+
 
 class SettingsUpdateTests(unittest.TestCase):
     def test_update_exclusion_list_persists(self) -> None:
@@ -136,6 +149,21 @@ class SettingsUpdateTests(unittest.TestCase):
                 self.assertTrue(result["saved"])
                 stored = handle_settings_get({"meta": {"correlation_id": "corr_012"}})
         self.assertEqual(stored["excluded_legal_entities"], payload)
+
+    def test_update_delivery_settings_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            params = {
+                "meta": {"correlation_id": "corr_dm"},
+                "section": "delivery_settings",
+                "payload": {"delivery_mode": "manual", "batch_review": True},
+            }
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                result = handle_settings_update(params)
+                self.assertTrue(result["saved"])
+                stored = handle_settings_get({"meta": {"correlation_id": "corr_dm2"}})
+        self.assertEqual(stored["delivery_mode"], "manual")
+        self.assertTrue(stored["batch_review"])
 
 
 if __name__ == "__main__":

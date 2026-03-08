@@ -128,6 +128,7 @@ export interface SettingsGetResult extends RpcResultBase {
 
 export type SettingsUpdateSection =
   | "gate_policy"
+  | "delivery_settings"
   | "exclusion_list"
   | "excluded_legal_entities"
   | "channels"

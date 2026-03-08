@@ -79,6 +79,16 @@ export async function updateLegalEntityExclusionList(
   });
 }
 
+export async function updateDeliverySettings(
+  delivery_mode: "auto" | "manual",
+  batch_review: boolean
+): Promise<SettingsUpdateResult> {
+  return client.call<SettingsUpdateResult>("settings.update", {
+    section: "delivery_settings",
+    payload: { delivery_mode, batch_review },
+  });
+}
+
 export async function getOverview(): Promise<OverviewGetResult> {
   return client.call<OverviewGetResult>("overview.get");
 }

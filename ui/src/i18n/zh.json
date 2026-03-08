@@ -150,7 +150,13 @@
         "matchingThreshold": "匹配阈值",
         "evaluationThreshold": "评估阈值",
         "maxRounds": "最大轮次",
-        "mode": "门禁模式"
+        "mode": "门禁模式",
+        "deliveryMode": "投递模式",
+        "deliveryModeAuto": "自动",
+        "deliveryModeManual": "人工",
+        "batchReview": "批量审批",
+        "batchReviewHint": "仅当投递模式为人工时生效",
+        "saveDelivery": "保存投递设置"
       },
       "excludedCompanies": {
         "title": "排除企业展示名",

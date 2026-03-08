@@ -150,7 +150,13 @@
         "matchingThreshold": "Matching threshold",
         "evaluationThreshold": "Evaluation threshold",
         "maxRounds": "Max rounds",
-        "mode": "Gate mode"
+        "mode": "Gate mode",
+        "deliveryMode": "Delivery mode",
+        "deliveryModeAuto": "Auto",
+        "deliveryModeManual": "Manual",
+        "batchReview": "Batch review",
+        "batchReviewHint": "Only when delivery mode is manual",
+        "saveDelivery": "Save delivery settings"
       },
       "excludedCompanies": {
         "title": "Excluded companies",
