@@ -54,7 +54,7 @@
   - responsibility: 三工具集成（OpenSpec + superpowers + spec-kit）
 
 ## Infra & CI
-- CI: GitHub Actions (`.github/workflows/aief-l3-check.yml`)
+- CI: GitHub Actions (`.github/workflows/aief-l3-check.yml`, `.github/workflows/ui-packaged-smoke.yml`)
 - Docker: n/a
 - Deploy: n/a
 
