@@ -68,17 +68,36 @@
 4. `GENERATE`: 生成目标简历版本。
 5. `EVALUATE`: 运行评测得到 scorecard。
 6. `GATE`: 联合判定 N-pass 门禁。
-7. `DELIVER`: 通过通道执行投递（Liepin/Email）。
-8. `LEARN`: 记录本轮结果与失败原因，决定下一轮。
-9. `DONE`: 达到成功条件或预算上限后结束。
+7. `REVIEW`: 人工审批（仅 `delivery_mode=manual` 时激活；`auto` 模式下为 pass-through）。
+8. `DELIVER`: 通过通道执行投递（Liepin/Email）。
+9. `LEARN`: 记录本轮结果与失败原因，决定下一轮。
+10. `DONE`: 达到成功条件或预算上限后结束。
 
 ### Transition Rules
+
+**通用规则：**
 - `INIT -> DISCOVER`：policy 有效。
 - `DISCOVER -> SCORE`：存在候选项。
-- `GATE -> DELIVER`：本轮通过且累计通过次数满足 `n_pass_required`。
-- `GATE -> LEARN`：本轮未通过。
 - `LEARN -> DISCOVER`：`current_round < max_rounds` 且 `delivered < max_deliveries`。
 - `LEARN -> DONE`：达到预算上限或无可用候选。
+
+**Auto 模式 (`delivery_mode=auto`)：**
+- `GATE -> REVIEW`：pass-through（REVIEW 不暂停，直接输出）。
+- `REVIEW -> DELIVER`：立即执行。
+- `GATE -> LEARN`：本轮未通过。
+
+**Manual 逐轮模式 (`delivery_mode=manual`, `batch_review=false`)：**
+- `GATE(pass) -> REVIEW`：进入 REVIEW 状态，暂停等待用户审批。
+- `REVIEW -> DELIVER`：用户 approve 当前 candidate。
+- `REVIEW -> LEARN`：用户 reject 当前 candidate（标记 `skipped`）。
+- `GATE -> LEARN`：本轮未通过门禁（不进入 REVIEW）。
+
+**Manual 批量模式 (`delivery_mode=manual`, `batch_review=true`)：**
+- `GATE(pass) -> LEARN`：candidate 缓存到 `review_buffer`，不立即进入 REVIEW。
+- `LEARN -> REVIEW`：所有轮次结束后（达到 `max_rounds` 或无可用候选），若 `review_buffer` 非空则进入批量 REVIEW。
+- `REVIEW -> DELIVER`：用户从 TopN 中选择 K 个 approve，逐个执行 DELIVER。
+- `REVIEW -> DONE`：用户 skip_all 或 `review_buffer` 为空。
+- `GATE -> LEARN`：本轮未通过门禁，正常进入 LEARN。
 
 ## 3. Policy Schema (YAML)
 
@@ -87,6 +106,10 @@ run:
   max_rounds: 5
   max_deliveries: 3
   dry_run: false
+  delivery_mode: "auto"     # auto | manual
+  batch_review: false        # 仅 delivery_mode=manual 时生效
+                             # false: 逐轮审批（每轮 GATE 通过后暂停等待用户）
+                             # true:  批量审批（所有轮次跑完后一次性展示 TopN 供用户选择）
 
 target:
   directions: ["后端平台", "基础架构"]
@@ -118,6 +141,13 @@ channels:
 - `strict`: 必须通过 matching + evaluation + channel readiness 才计为 pass。
 - `simulate`: 在 `dry_run=true` 或 submit 未开启时，readiness 仅记录不阻断，避免循环被硬性卡死。
 
+`delivery_mode` 说明：
+- `auto`：GATE 通过后自动进入 DELIVER，REVIEW 为 pass-through（行为与未引入 REVIEW 前一致）。
+- `manual`：GATE 通过后进入 REVIEW 状态，系统暂停等待用户审批。用户可 approve（进入 DELIVER）或 reject（进入 LEARN 标记 skipped）。
+
+`batch_review` 说明（仅 `delivery_mode=manual` 时生效）：
+- `false`（逐轮审批）：每轮 GATE 通过后立即暂停进入 REVIEW，用户审批当前 candidate。
+- `true`（批量审批）：GATE 通过的 candidate 缓存到 `review_buffer`，所有轮次结束后一次性展示 TopN 供用户批量选择。
 ### 2.1 Company Exclusion List（企业例外清单）
 
 为避免在不希望投递的企业上浪费候选配额、评分成本和投递预算，policy 必须支持企业例外清单。
@@ -217,7 +247,92 @@ readiness 绑定规则：
 - `GateEngine` 必须显式接收当前 candidate 的公司归一结果与 exclusion 匹配结果，避免依赖隐式全局状态。
 
 只有当本轮三门全部通过，记为 `pass_round += 1`。
-当 `pass_round >= n_pass_required` 才允许进入 `DELIVER`。
+当 `pass_round >= n_pass_required` 才允许进入 `REVIEW`（manual 模式）或 `DELIVER`（auto 模式）。
+
+## 4.1 REVIEW Stage（人工审批阶段）
+
+REVIEW 是介于 GATE 与 DELIVER 之间的可选状态，由 `delivery_mode` 配置驱动。
+
+### 行为规范
+
+**Auto 模式 (`delivery_mode=auto`)：**
+- REVIEW 为透明 pass-through，不暂停，直接输出当前 candidate 到 DELIVER。
+- 行为与未引入 REVIEW 状态前完全一致，不影响现有 auto 流程。
+
+**Manual 逐轮模式 (`delivery_mode=manual`, `batch_review=false`)：**
+- 每轮 GATE 通过后进入 REVIEW，发布 `agent.review.pending` 事件，暂停 Agent Loop 等待用户操作。
+- 展示当前轮次的单个 candidate（含匹配分数、评测分数、缺口清单、简历版本、通道信息）。
+- 用户 approve → 进入 DELIVER，发布 `agent.review.resolved`（action=approve）。
+- 用户 reject/skip → 进入 LEARN，发布 `agent.review.resolved`（action=reject/skip）。
+
+**Manual 批量模式 (`delivery_mode=manual`, `batch_review=true`)：**
+- GATE 通过的 candidate 在当轮不暂停，缓存到 `review_buffer`，直接进入 LEARN 继续下一轮。
+- 所有轮次结束后（达到 `max_rounds` 或无可用候选），若 `review_buffer` 非空，进入批量 REVIEW。
+- 展示所有缓存的 candidate（TopN），按匹配分降序排列，发布 `agent.review.pending` 事件。
+- 用户可勾选多个 approve → 按选择顺序逐个执行 DELIVER。
+- 用户 skip_all → 直接进入 DONE，发布 `agent.review.resolved`（action=skip_all）。
+- 若 `review_buffer` 为空（所有轮次都未通过 GATE），跳过 REVIEW 直接进入 DONE。
+
+### ReviewCandidate 数据结构
+
+```python
+@dataclass(frozen=True)
+class ReviewCandidate:
+    job_lead_id: str
+    company: str
+    position: str
+    matching_score: float
+    evaluation_score: float
+    round_index: int              # 来自哪一轮
+    resume_version: str
+    job_url: str = ""
+    score_breakdown: ScoreBreakdown | None = None
+    gap_tasks: tuple[GapTask, ...] = ()
+    gate_decision: GateDecision | None = None
+```
+
+### ReviewDecision 数据结构
+
+```python
+@dataclass(frozen=True)
+class ReviewDecision:
+    job_lead_id: str
+    action: str                   # approve | reject | skip | skip_all
+    decided_by: str
+    decided_at: datetime
+    note: str = ""
+```
+
+### REVIEW 相关事件类型
+
+| 事件类型 | 触发时机 | payload 关键字段 |
+|----------|----------|-----------------|
+| `agent.review.pending` | 进入 REVIEW 状态 | `candidates[]`, `batch_mode` |
+| `agent.review.resolved` | 用户提交审批结果 | `decisions[]`, `skipped_count` |
+
+### REVIEW 与 GUI 的交互协议
+
+新增 RPC 方法：
+
+| 方法 | 方向 | 用途 |
+|------|------|------|
+| `run.agent.getPendingReview` | UI → sidecar | 获取当前待审批候选列表（含分数、缺口、简历版本） |
+| `run.agent.submitReview` | UI → sidecar | 提交审批决策（每个 candidate 的 approve/reject/skip；批量模式支持 skip_all） |
+
+新增事件：
+
+| 事件 | 用途 |
+|------|------|
+| `agent.review.pending` | 通知 UI 进入审批等待状态，切换到审批面板 |
+| `agent.review.resolved` | 审批完成，继续执行 |
+
+### REVIEW 的 GUI 承载位置
+
+- REVIEW 状态的 UI 内嵌在 Agent Run 页面，不新建独立页面。
+- 进入 REVIEW 时，Agent Run 左栏从“N-Pass Gate / 多轮门禁”切换为“Pending Review / 待审批候选”面板。
+- 审批面板展示：候选公司/职位、匹配分、评测分、缺口数、投递通道、勾选框。
+- 底部操作：「Approve Selected / 批准选中」 + 「Skip All / 全部跳过」。
+- 右栏保持事件流不变，展示 `agent.review.pending` / `agent.review.resolved` 事件。
 
 ## 5. Channel Abstraction
 
@@ -318,7 +433,8 @@ tools/
     pipeline.py             # LinearPipeline（Stage 序列组合）
     agent_loop.py           # AgentLoop（复用 pipeline 的 Stage）
     gate_engine.py          # GateStage（独立于编排的 N-pass 门禁）
-    state_machine.py        # StateMachine 纯函数（9 状态迁移）
+    review_stage.py          # ReviewStage（auto pass-through / manual 逐轮审批 / batch 批量审批）
+    state_machine.py        # StateMachine 纯函数（10 状态迁移（含 REVIEW））
   config/                   # 配置层
     fragments.py            # LLMConfig, PathConfig, PolicyConfig, EngineSelection
     composer.py             # Composer（唯一组装点）
@@ -464,6 +580,45 @@ class StageResult:
 # LinearPipeline 接受 Sequence[Stage]，AgentLoop 复用 Stage
 ```
 
+### 9.7a ReviewStage Protocol（审批阶段）
+```python
+class ReviewStage(Stage):
+    """REVIEW 阶段实现。auto 模式下为 pass-through，manual 模式下暂停等待用户审批。"""
+    name: str = "REVIEW"
+
+    def execute(self, context: RunContext) -> StageResult:
+        """
+        auto: 直接返回 StageResult(success=True)，所有候选进入 DELIVER
+        manual + batch_review=False: 暂停，发出 agent.review.pending 事件，等待用户逐轮审批
+        manual + batch_review=True: 暂停，等待所有轮次完成后批量审批
+        """
+        ...
+
+@dataclass(frozen=True)
+class ReviewCandidate:
+    """等待审批的投递候选"""
+    job_lead_id: str
+    company: str
+    position: str
+    matching_score: float
+    evaluation_score: float
+    round_index: int
+    resume_version: str
+    job_url: str = ""
+    score_breakdown: ScoreBreakdown | None = None
+    gap_tasks: tuple[GapTask, ...] = ()
+    gate_decision: GateDecision | None = None
+
+@dataclass(frozen=True)
+class ReviewDecision:
+    """用户审批决策"""
+    job_lead_id: str
+    action: str           # approve | reject | skip | skip_all
+    decided_by: str
+    decided_at: datetime
+    note: str = ""
+```
+
 ### 9.8 Composer（替代 ConfigLoader）
 ```python
 class Composer:
@@ -556,6 +711,10 @@ class RunStore(Protocol):
 - readiness 按 `run_id` 绑定判定（多轮/并行场景下不串线）。
 - generation 输入包含 `jd_context/company_context` 且可在日志中追溯。
 - FabricationGuardError 与 EvidenceValidationError 的守卫行为可被测试拦截。
+- `delivery_mode=auto` 时 REVIEW 为 pass-through，不暂停不等待。
+- `delivery_mode=manual` + `batch_review=false` 时逐轮审批：GATE 通过后暂停，待用户 approve/reject/skip 后继续。
+- `delivery_mode=manual` + `batch_review=true` 时批量审批：所有轮次跑完后一次性展示 TopN 候选供审批。
+- ReviewCandidate / ReviewDecision 值对象不可变且可序列化。
 
 质量门禁：
 - 新增 domain 测试全部通过。
@@ -573,6 +732,7 @@ class RunStore(Protocol):
 - 建立 `tools/config/`（fragments / composer / loader / validator）
 - 建立 `tools/errors/`（exceptions / handler）
 - 目标：确立六边形依赖方向；消除 4 处 LLM 客户端重复、3 处 YAML 解析重复
+- 在 value_objects.py 中新增 ReviewCandidate、ReviewDecision 值对象
 
 **Phase B（造引擎与策略注册表）**
 - 实现 `tools/engines/registry.py`（EngineRegistry）
@@ -588,8 +748,9 @@ class RunStore(Protocol):
 - 实现 `tools/orchestration/pipeline.py`（LinearPipeline，Stage 序列组合）
 - 实现 `tools/orchestration/agent_loop.py`（复用 Stage 的状态机循环）
 - 实现 `tools/orchestration/gate_engine.py`（GateEngine，返回 Result）
+- 实现 tools/orchestration/review_stage.py（ReviewStage，auto pass-through / manual 逐轮 / batch 批量三种行为）
 - 落地 `domain/events.py` + `domain/run_state.py` 的事件回放能力
-- 目标：`run_agent --dry-run` 可完成至少 1 轮并写入 run_log；状态可由事件回放重建
+- 目标：`run_agent --dry-run` 可完成至少 1 轮；auto/manual 双模式可切换；状态可由事件回放重建
 
 **Phase D（通道与发现）**
 - 实现 `tools/channels/base.py`（DeliveryChannel Protocol）
@@ -603,6 +764,7 @@ class RunStore(Protocol):
 - 旧 CLI（`run_pipeline.py` 等）内部转调 `Composer` + 新编排层，保持参数兼容
 - RunStore 文件实现 + 幂等键实现
 - 全量测试（domain 单测 / 引擎单测 / end-to-end dry-run）
+- auto/manual/batch 三种审批模式的 ReviewStage 行为测试
 - 更新 README 与 tools/README.md
 - AIEF L3 检查通过后移除旧实现
 - 所有新增能力遵循 TDD：先写失败测试，再写生产代码；测试失败阻断合并/收口

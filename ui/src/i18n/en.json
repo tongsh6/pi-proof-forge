@@ -90,6 +90,56 @@
         "artifacts": "Artifacts"
       }
     },
+    "jobs": {
+      "title": "Jobs",
+      "subtitle": "Live job profiles derived from local job profiles and matching reports.",
+      "newProfileDisabled": "New Profile (Soon)",
+      "profileGridTitle": "Job profiles",
+      "profileCount": "{{count}} profiles loaded",
+      "detailTitle": "Profile detail",
+      "tabs": {
+        "profiles": "Job Profiles",
+        "leads": "Job Leads (Soon)"
+      },
+      "filters": {
+        "query": "Search",
+        "queryPlaceholder": "Search title, company, domain, or keyword",
+        "status": "Status",
+        "allStatuses": "All statuses",
+        "tags": "Tags",
+        "tagsPlaceholder": "Comma-separated keywords, e.g. Python, Redis",
+        "apply": "Apply",
+        "reset": "Reset"
+      },
+      "status": {
+        "active": "Active",
+        "draft": "Draft",
+        "archived": "Archived"
+      },
+      "metrics": {
+        "matchScore": "Match Score",
+        "evidence": "Evidence",
+        "resumes": "Resumes"
+      },
+      "card": {
+        "noRequirements": "No highlighted requirements yet",
+        "noTags": "No tags"
+      },
+      "empty": {
+        "title": "No job profiles found",
+        "subtitle": "Try resetting filters or add new job profile files to the workspace."
+      },
+      "fields": {
+        "businessDomain": "Business domain",
+        "updatedAt": "Updated at",
+        "sourceJd": "Source JD",
+        "tone": "Tone",
+        "keywords": "Keywords",
+        "mustHave": "Must have",
+        "niceToHave": "Nice to have",
+        "senioritySignal": "Seniority signal"
+      }
+    },
     "systemSettings": {
       "title": "System Settings",
       "subtitle": "Live configuration from the desktop sidecar.",

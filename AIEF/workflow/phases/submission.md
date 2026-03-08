@@ -17,6 +17,8 @@
 4. 目标 JD URL 已确认且可访问（支持从 `job_leads` 批量导入）
 
 ## 步骤
+
+### Auto 模式（默认）
 1. 个人信息归档：从候选人简历主文档抽取姓名/联系方式/教育/工作经历概览，写入 `candidate_profile.yaml`
 2. 附件生成：将 `outputs/resume_*.md` 与 `candidate_profile.yaml` 合并，生成标准 PDF
 3. 任务装配：创建投递任务（平台、JD URL、简历版本、投递策略）
@@ -24,6 +26,16 @@
 5. 结果记录：写入 `submission_log.yaml` 与 `submission_log.json`（时间、平台、岗位、状态、截图、错误信息）
 6. 失败重试：按错误类型进入重试队列（网络抖动/元素变化/登录失效）
 
+### Manual 模式
+1. 系统完整执行 DISCOVER→SCORE→GENERATE→EVALUATE→GATE 五个阶段，产出 TopN 候选投递目标
+2. 状态机进入 **REVIEW** 状态后暂停，等待用户在 Agent Run 页面进行审批
+3. 审批面板展示每个候选的 JD 摘要、匹配分、生成简历版本等信息
+4. 用户操作：
+   - **approve**：候选进入自动投递队列，复用现有 Playwright 流程完成投递
+   - **reject / skip**：候选标记为 `skipped`，不进入投递队列，记录原因
+5. 批量审批（`batch_review=true`）：系统跑完所有轮次后统一呈现候选列表，用户一次性决策
+6. 逐轮审批（`batch_review=false`）：每轮产出候选后即暂停等待审批，用户审批后继续下一轮
+7. 所有候选审批完成后，状态机从 REVIEW 推进到 DELIVER，执行已批准的投递任务
 ## 产出
 - `outputs/resume_*.pdf`
 - `outputs/submissions/liepin/<run_id>/submission_log.yaml`
@@ -86,4 +98,7 @@ python3 tools/check_submission_readiness.py \
 - 自动投递涉及账号安全与隐私，默认本地运行，不上传敏感信息
 
 ## 当前状态
-Liepin 单平台 CLI 已进入可执行阶段：支持 `dry-run`、`check mode`、`submit mode`，并提供发布前门禁脚本。
+支持 **auto/manual 双模式**（设计完成，实现待落地）。
+
+- **Auto 模式**：Liepin 单平台 CLI 已进入可执行阶段，支持 `dry-run`、`check mode`、`submit mode`，并提供发布前门禁脚本。
+- **Manual 模式**：状态机 REVIEW 状态已设计，Policy 新增 `delivery_mode`（auto|manual）和 `batch_review`（bool）配置项，代码实现待落地。

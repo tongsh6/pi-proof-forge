@@ -4,6 +4,8 @@ import type {
   EvidenceGetResult,
   EvidenceListResult,
   HandshakeResult,
+  JobProfilesFilters,
+  JobProfilesListResult,
   OverviewGetResult,
   PingResult,
   SettingsGetResult,
@@ -60,6 +62,25 @@ export async function getSettings(): Promise<SettingsGetResult> {
 
 export async function getOverview(): Promise<OverviewGetResult> {
   return client.call<OverviewGetResult>("overview.get");
+}
+
+export async function listJobProfiles(
+  filters: JobProfilesFilters = {
+    status: null,
+    query: "",
+    tags: [],
+  },
+  options: {
+    cursor?: string | null;
+    pageSize?: number;
+  } = {}
+): Promise<JobProfilesListResult> {
+  return client.call<JobProfilesListResult>("jobs.listProfiles", {
+    cursor: options.cursor ?? null,
+    page_size: options.pageSize ?? 20,
+    sort: { field: "updated_at", order: "desc" },
+    filters,
+  });
 }
 
 export function shutdownSidecar(): void {

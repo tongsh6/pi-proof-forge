@@ -90,6 +90,56 @@
         "artifacts": "附件"
       }
     },
+    "jobs": {
+      "title": "岗位中心",
+      "subtitle": "基于本地 job profile 与 matching report 聚合出的实时岗位画像。",
+      "newProfileDisabled": "新建画像（即将支持）",
+      "profileGridTitle": "岗位画像",
+      "profileCount": "已加载 {{count}} 个岗位画像",
+      "detailTitle": "画像详情",
+      "tabs": {
+        "profiles": "岗位画像",
+        "leads": "岗位线索（即将支持）"
+      },
+      "filters": {
+        "query": "搜索",
+        "queryPlaceholder": "搜索岗位、公司、领域或关键词",
+        "status": "状态",
+        "allStatuses": "全部状态",
+        "tags": "标签",
+        "tagsPlaceholder": "逗号分隔关键词，例如 Python, Redis",
+        "apply": "应用",
+        "reset": "重置"
+      },
+      "status": {
+        "active": "Active",
+        "draft": "Draft",
+        "archived": "Archived"
+      },
+      "metrics": {
+        "matchScore": "匹配分",
+        "evidence": "证据数",
+        "resumes": "简历数"
+      },
+      "card": {
+        "noRequirements": "暂无重点要求",
+        "noTags": "暂无标签"
+      },
+      "empty": {
+        "title": "未找到岗位画像",
+        "subtitle": "可以先重置筛选，或在工作区中添加新的岗位画像文件。"
+      },
+      "fields": {
+        "businessDomain": "业务领域",
+        "updatedAt": "更新时间",
+        "sourceJd": "来源 JD",
+        "tone": "语气偏向",
+        "keywords": "关键词",
+        "mustHave": "必备要求",
+        "niceToHave": "加分项",
+        "senioritySignal": "资深度信号"
+      }
+    },
     "systemSettings": {
       "title": "系统设置",
       "subtitle": "读取桌面 sidecar 返回的实时配置快照。",
