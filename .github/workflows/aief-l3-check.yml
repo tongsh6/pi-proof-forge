@@ -2,10 +2,19 @@ name: AIEF L3 Check
 
 on:
   pull_request:
+    paths:
+      - .github/workflows/aief-l3-check.yml
+      - AIEF/**
+      - tools/check_aief_l3.py
   push:
     branches:
+      - develop
       - main
       - master
+    paths:
+      - .github/workflows/aief-l3-check.yml
+      - AIEF/**
+      - tools/check_aief_l3.py
 
 jobs:
   aief-l3-check:

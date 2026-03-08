@@ -1,0 +1,83 @@
+name: UI Packaged Smoke
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/ui-packaged-smoke.yml
+      - ui/**
+      - tools/**
+      - tests/**
+      - evidence_cards/**
+      - matching_reports/**
+      - job_profiles/**
+  push:
+    branches:
+      - develop
+      - main
+      - master
+    paths:
+      - .github/workflows/ui-packaged-smoke.yml
+      - ui/**
+      - tools/**
+      - tests/**
+      - evidence_cards/**
+      - matching_reports/**
+      - job_profiles/**
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_FRAMEWORK_VERSION: "3.12.10"
+  PYTHON_FRAMEWORK_MINOR: "3.12"
+
+jobs:
+  packaged-app-smoke:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install framework Python
+        run: |
+          curl -L \
+            -o python.pkg \
+            "https://www.python.org/ftp/python/${PYTHON_FRAMEWORK_VERSION}/python-${PYTHON_FRAMEWORK_VERSION}-macos11.pkg"
+          sudo installer -pkg python.pkg -target /
+          echo "/Library/Frameworks/Python.framework/Versions/${PYTHON_FRAMEWORK_MINOR}/bin" >> "$GITHUB_PATH"
+
+      - name: Verify framework Python layout
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+
+          executable = Path(sys.executable).resolve()
+          if executable.parents[3].name != "Python.framework":
+              raise SystemExit(
+                  f"Expected a framework Python, got: {executable}"
+              )
+          print(executable)
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install UI dependencies
+        run: npm ci
+
+      - name: Run packaged app smoke test
+        env:
+          CI: true
+        run: npm run smoke:app
