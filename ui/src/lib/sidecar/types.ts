@@ -60,6 +60,35 @@ export interface EvidenceGetResult extends RpcResultBase {
   evidence: EvidenceDetail;
 }
 
+export interface JobProfileListItem {
+  job_profile_id: string;
+  title: string;
+  company: string;
+  status: "active" | "draft" | "archived" | string;
+  match_score: number;
+  evidence_count: number;
+  resume_count: number;
+  updated_at: string;
+  business_domain: string;
+  source_jd: string;
+  tone: string;
+  keywords: string[];
+  must_have: string[];
+  nice_to_have: string[];
+  seniority_signal: string[];
+}
+
+export interface JobProfilesFilters {
+  status: string | null;
+  query: string;
+  tags: string[];
+}
+
+export interface JobProfilesListResult extends RpcResultBase {
+  items: JobProfileListItem[];
+  next_cursor: string | null;
+}
+
 export interface GatePolicy {
   n_pass_required: number;
   matching_threshold: number;
