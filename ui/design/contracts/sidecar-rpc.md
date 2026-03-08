@@ -347,19 +347,51 @@
 
 筛选字段：`status`, `query`, `tags`
 
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "cursor": null,
+  "page_size": 20,
+  "sort": { "field": "updated_at", "order": "desc" },
+  "filters": {
+    "status": null,
+    "query": "",
+    "tags": []
+  }
+}
+```
+
 `result.items[]`
 
 ```json
 {
   "job_profile_id": "jp_001",
   "title": "Senior Backend Engineer",
+  "company": "Acme",
   "status": "active",
   "match_score": 82,
   "evidence_count": 5,
-  "resume_count": 2,
-  "updated_at": "2026-03-07T10:00:00Z"
+  "resume_count": 0,
+  "updated_at": "2026-03-07T10:00:00Z",
+  "business_domain": "E-commerce",
+  "source_jd": "jd_inputs/jd-2026-001.txt",
+  "tone": "architecture",
+  "keywords": ["Python", "Kafka"],
+  "must_have": ["Distributed systems", "Stability"],
+  "nice_to_have": ["FinOps"],
+  "seniority_signal": ["Owner"]
 }
 ```
+
+规则：
+
+- `cursor = null` 表示首屏；`next_cursor` 为下一个 offset 的字符串，传回 `cursor` 后继续分页
+- `status` 缺省时，若已有 matching report 则 sidecar 推导为 `active`，否则推导为 `draft`
+- `match_score`、`evidence_count`、`updated_at` 取同一 `job_profile_id` 最新 matching report 快照；若不存在 matching report，则返回 `0 / 0 / job_profile 文件 mtime（格式化为 ISO-8601 UTC string）`
+- `resume_count` 当前首版固定返回 `0`，后续接入 Resume 资产后再扩展
+- `tags` 当前匹配 `keywords` 字段，采用大小写不敏感的全量包含匹配
 
 ### 6.8 jobs.listLeads
 
