@@ -14,7 +14,7 @@
 - UI 需要 **20 个 RPC 方法 + 8 类事件流** — 后端只有 **6 个独立 CLI 脚本**
 - UI 需要 **实时进度推送** — 后端只有 **同步阻塞执行**
 - UI 需要 **CRUD + 分页 + 筛选** — 后端只有 **YAML 文件直读**
-- UI 需要 **9 状态机 + 门禁系统** — 后端只有 **4 步线性 pipeline**
+- UI 需要 **10 状态机（含 REVIEW）+ 门禁系统** — 后端只有 **4 步线性 pipeline**
 
 本计划定义如何分层解决这些差距，使 v2 后端架构（M1-M5）与 GUI 前端计划能正确对接。
 
@@ -27,7 +27,7 @@
 | Evidence | 30% | `extract_evidence*.py` | CRUD 管理、分页筛选、Artifacts | M1 + Sidecar L1 |
 | Jobs | 15% | `job_profiles/` YAML | Job Leads、Lead→Profile 转化 | M2 + Sidecar L2 |
 | Quick Run | 40% | `run_pipeline.py` 4 阶段 | 实时进度、日志流、评分可视化 | M3 + Sidecar L3 |
-| Agent Run | 5% | 底层引擎存在 | 9 状态机、门禁、多轮循环、事件流 | M3 + M4 + Sidecar L3 |
+| Agent Run | 5% | 底层引擎存在 | 10 状态机（含 REVIEW）、门禁、多轮循环、事件流 | M3 + M4 + Sidecar L3 |
 | Submissions | 25% | `submission/liepin.py` | 追踪管理、时间线、截图、重试 | M4 + Sidecar L3 |
 | Policy | 0% | 无 | 门禁策略 CRUD、排除列表 | M1 (config) + Sidecar L1 |
 | System Settings | 0% | 环境变量 | 通道/LLM 配置、凭证、连通性 | M1 (config) + Sidecar L1 |
@@ -116,11 +116,12 @@ UI: run.agent.start / stop / get + agent.run.updated/log/event events
  ↓
 Sidecar: handlers/run.py + event_bus.py
  ↓
-v2: orchestration/state_machine.py (9 状态)
+v2: orchestration/state_machine.py (10 状态，包含 REVIEW)
     orchestration/agent_loop.py (多轮循环)
     orchestration/gate_engine.py (门禁检查)
+    orchestration/review_stage.py (审批阶段，新增)
     domain/run_state.py (RunState)
-    domain/events.py (RunEvent 流)
+    domain/events.py (RunEvent 流，包含 agent.review.pending / agent.review.resolved)
 ```
 
 ### Jobs 页面
@@ -250,11 +251,12 @@ v2: 各 domain service 的聚合查询
 目标：GUI 前端可以执行 pipeline/agent run 并接收实时事件。
 
 新增范围：
-- `handlers/run.py` — `run.quick.*` / `run.agent.*`
+- `handlers/run.py` — `run.quick.*` / `run.agent.*` / `run.agent.getPendingReview` / `run.agent.submitReview`
 - `handlers/submission.py` — `submission.retry`
 - `event_bus.py` — 完整事件流推送
   - `quick.run.updated` / `quick.run.log`
   - `agent.run.updated` / `agent.run.log` / `agent.run.event`
+  - `agent.review.pending` / `agent.review.resolved`
   - `submission.updated`
   - `sidecar.state.changed`
 
@@ -393,6 +395,8 @@ Week 9    M5: CLI 收口              —                       全量验收
 | `jobs.deleteProfile` | Profile 删除 | Jobs | P2 |
 | `profile.get` | 个人资料读取 | Resumes | P1 |
 | `profile.update` | "Edit Info / 编辑资料" | Resumes | P1 |
+| `run.agent.getPendingReview` | REVIEW 状态下获取待审批候选 | Agent Run | P1 |
+| `run.agent.submitReview` | 提交审批决策（approve/reject/skip 列表；批量模式支持 skip_all） | Agent Run | P1 |
 
 说明：
 - P0 方法必须在 Sidecar L1-L2 阶段补齐 contract 并冻结

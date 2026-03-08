@@ -99,9 +99,8 @@ Use Zustand stores to manage:
 - page-level loading, empty, and error states
 - quick run execution state
 - agent run state machine and gate state
+- agent run review state（审批面板状态、pending candidates 列表、review decisions 映射）
 - evidence selection and artifacts state
-- jobs, resumes, and submissions view state
-- policy and system settings view state
 
 ### Internationalization model
 
@@ -127,9 +126,17 @@ Use Zustand stores to manage:
 ### Agent Run
 
 - Represents the autonomous multi-round execution loop
-- Shows the nine-state machine, gate progress, and event stream
+- Shows the ten-state machine, gate progress, review flow, and event stream
 - Must not collapse into the Quick Run model
-
+- **REVIEW state** (only active when `delivery_mode=manual`):
+  - Left panel switches to the candidate review panel
+  - Displays TopN candidate details: JD summary, match score, generated resume version
+  - Supports two review modes:
+    - Per-round review (`batch_review=false`): pauses after each round, user reviews and continues
+    - Batch review (`batch_review=true`): runs all rounds first, then presents all candidates at once
+  - approve: candidate enters the automatic delivery queue (existing Playwright flow)
+  - reject / skip: candidate is marked `skipped` with recorded reason
+- In `delivery_mode=auto`, the REVIEW state is a pass-through with no UI interruption
 ### Jobs / Resumes / Submissions / Policy / System Settings
 
 - Jobs manages job profiles and job leads
