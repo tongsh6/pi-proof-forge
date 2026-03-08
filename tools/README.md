@@ -49,6 +49,12 @@ python3 tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evid
 - `exclusion_list`: 简单名单，按精确匹配处理。
 - `excluded_companies`: 支持 `exact:` / `contains:` 前缀。
 - `excluded_legal_entities`: 简单名单，按精确匹配处理。
+- 也兼容 OpenSpec 中的 `filters.excluded_companies` / `filters.excluded_legal_entities` 结构。
+
+匹配优先级：
+
+- `excluded_legal_entities` 优先于企业展示名/别名匹配。
+- `excluded_companies` / `exclusion_list` 用于展示名、常用名、别名过滤。
 
 示例：
 
@@ -58,6 +64,19 @@ excluded_companies:
   - "contains:外包"
 excluded_legal_entities:
   - "某某人力资源有限公司"
+```
+
+也支持：
+
+```yaml
+filters:
+  excluded_companies:
+    - match: exact
+      value: "示例科技有限公司"
+    - match: contains
+      value: "外包"
+  excluded_legal_entities:
+    - "某某人力资源有限公司"
 ```
 
 退出码约定：

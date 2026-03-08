@@ -8,9 +8,15 @@ from typing import cast
 from tools.domain.value_objects import Candidate
 
 
-def write_exclusion_audit(log_path: Path, candidate: Candidate, source: str) -> None:
+def write_exclusion_audit(
+    log_path: Path,
+    candidate: Candidate,
+    source: str,
+    reason: str,
+) -> None:
     event: dict[str, object] = {
         "event_type": "excluded_by_policy",
+        "reason": reason,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(
             timespec="seconds"
         ),

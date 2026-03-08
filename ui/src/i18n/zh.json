@@ -90,6 +90,37 @@
         "artifacts": "附件"
       }
     },
+    "policy": {
+      "title": "策略配置",
+      "subtitle": "管理门禁规则与企业排除策略。",
+      "gatePolicy": {
+        "title": "门禁策略",
+        "subtitle": "当前多轮门禁策略快照",
+        "nPassRequired": "通过轮数要求",
+        "matchingThreshold": "匹配阈值",
+        "evaluationThreshold": "评估阈值",
+        "maxRounds": "最大轮次",
+        "mode": "门禁模式"
+      },
+      "excludedCompanies": {
+        "title": "排除企业展示名",
+        "subtitle": "用于展示名、别名和常用名过滤，支持 exact: 与 contains:。",
+        "placeholder": "示例：\nexact:Acme Inc\ncontains:外包",
+        "helper": "当前 {{count}} 条企业规则",
+        "save": "保存企业规则",
+        "saving": "保存中...",
+        "saved": "已保存"
+      },
+      "excludedLegalEntities": {
+        "title": "排除企业主体",
+        "subtitle": "企业主体优先级高于展示名匹配。",
+        "placeholder": "示例：\n某某控股有限公司",
+        "helper": "当前 {{count}} 条主体规则",
+        "save": "保存主体规则",
+        "saving": "保存中...",
+        "saved": "已保存"
+      }
+    },
     "systemSettings": {
       "title": "系统设置",
       "subtitle": "读取桌面 sidecar 返回的实时配置快照。",

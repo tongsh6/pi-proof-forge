@@ -12,7 +12,12 @@ from tools.domain.result import Err
 from tools.domain.value_objects import Candidate
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.policy.audit import write_exclusion_audit
-from tools.policy.exclusions import load_exclusion_list
+from tools.policy.exclusions import (
+    load_exclusion_list,
+    load_legal_entity_exclusion_list,
+    match_exclusion,
+    PolicyExclusions,
+)
 from tools.policy.gate import evaluate_candidate_exclusion
 
 
@@ -67,18 +72,45 @@ def main() -> int:
         confidence=0.5,
         source="job_profiles",
         merged_sources=("job_profiles",),
+        legal_entity=job_doc["scalars"].get("legal_entity", ""),
     )
     exclusions = load_exclusion_list()
-    _kept, excluded = filter_candidates_by_policy([candidate], exclusions)
+    legal_entity_exclusions = load_legal_entity_exclusion_list()
+    policy = PolicyExclusions(
+        company_rules=tuple(exclusions),
+        legal_entities=tuple(legal_entity_exclusions),
+    )
+    _kept, excluded = filter_candidates_by_policy(
+        [candidate],
+        exclusions,
+        legal_entity_exclusions,
+    )
     if excluded:
         run_log = Path("outputs") / run_id / "run_log.json"
-        write_exclusion_audit(run_log, candidate, "discovery_filter")
+        exclusion_reason = match_exclusion(
+            candidate.company, candidate.legal_entity, policy
+        )
+        write_exclusion_audit(
+            run_log,
+            candidate,
+            "discovery_filter",
+            exclusion_reason or "excluded_company",
+        )
         print(f"[pipeline] skipped: job profile company excluded: {company}")
         return 2
-    gate_result = evaluate_candidate_exclusion(candidate, exclusions)
+    gate_result = evaluate_candidate_exclusion(
+        candidate,
+        exclusions,
+        legal_entity_exclusions,
+    )
     if isinstance(gate_result, Err):
         run_log = Path("outputs") / run_id / "run_log.json"
-        write_exclusion_audit(run_log, candidate, "gate_fallback")
+        write_exclusion_audit(
+            run_log,
+            candidate,
+            "gate_fallback",
+            gate_result.error.reason,
+        )
         print(f"[pipeline] skipped: {gate_result.error.details}")
         return 2
 

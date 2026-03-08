@@ -90,6 +90,37 @@
         "artifacts": "Artifacts"
       }
     },
+    "policy": {
+      "title": "Policy",
+      "subtitle": "Business rules for gating and company exclusions.",
+      "gatePolicy": {
+        "title": "Gate policy",
+        "subtitle": "Current policy snapshot for multi-round gating.",
+        "nPassRequired": "Pass rounds required",
+        "matchingThreshold": "Matching threshold",
+        "evaluationThreshold": "Evaluation threshold",
+        "maxRounds": "Max rounds",
+        "mode": "Gate mode"
+      },
+      "excludedCompanies": {
+        "title": "Excluded companies",
+        "subtitle": "Display names, aliases, and company labels. Supports exact: and contains:.",
+        "placeholder": "Example:\nexact:Acme Inc\ncontains:outsourcing",
+        "helper": "{{count}} company rules",
+        "save": "Save companies",
+        "saving": "Saving...",
+        "saved": "Saved"
+      },
+      "excludedLegalEntities": {
+        "title": "Excluded legal entities",
+        "subtitle": "Legal entities take precedence over company display names.",
+        "placeholder": "Example:\nAcme Holdings Ltd",
+        "helper": "{{count}} legal entities",
+        "save": "Save legal entities",
+        "saving": "Saving...",
+        "saved": "Saved"
+      }
+    },
     "systemSettings": {
       "title": "System Settings",
       "subtitle": "Live configuration from the desktop sidecar.",

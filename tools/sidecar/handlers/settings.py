@@ -3,7 +3,12 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from tools.policy.exclusions import load_exclusion_list, save_exclusion_list
+from tools.policy.exclusions import (
+    load_exclusion_list,
+    load_legal_entity_exclusion_list,
+    save_exclusion_list,
+    save_legal_entity_exclusion_list,
+)
 
 
 def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
@@ -11,6 +16,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
 
     api_key_configured = bool(os.environ.get("LLM_API_KEY"))
     exclusion_list = load_exclusion_list()
+    legal_entity_exclusion_list = load_legal_entity_exclusion_list()
 
     return {
         "meta": {"correlation_id": correlation_id},
@@ -22,6 +28,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
             "gate_mode": "strict",
         },
         "exclusion_list": exclusion_list,
+        "excluded_legal_entities": legal_entity_exclusion_list,
         "channels": [],
         "llm_config": {
             "provider": os.environ.get("LLM_PROVIDER", "openai"),
@@ -43,7 +50,7 @@ def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
     section = params.get("section")
     payload = params.get("payload")
 
-    if section != "exclusion_list":
+    if section not in {"exclusion_list", "excluded_legal_entities"}:
         raise ValueError(f"unsupported settings section: {section}")
 
     if not isinstance(payload, list):
@@ -55,7 +62,10 @@ def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("exclusion_list payload must be a list of strings")
         payload_list.append(item)
 
-    _ = save_exclusion_list(payload_list)
+    if section == "exclusion_list":
+        _ = save_exclusion_list(payload_list)
+    else:
+        _ = save_legal_entity_exclusion_list(payload_list)
     return {
         "meta": {"correlation_id": correlation_id},
         "section": section,

@@ -31,6 +31,7 @@ class Candidate:
     confidence: float
     source: str
     merged_sources: tuple[str, ...]
+    legal_entity: str = ""
 
 
 @dataclass(frozen=True)

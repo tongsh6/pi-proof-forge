@@ -68,6 +68,15 @@ export async function updateExclusionList(
   });
 }
 
+export async function updateLegalEntityExclusionList(
+  entries: string[]
+): Promise<SettingsUpdateResult> {
+  return client.call<SettingsUpdateResult>("settings.update", {
+    section: "excluded_legal_entities",
+    payload: entries,
+  });
+}
+
 export async function getOverview(): Promise<OverviewGetResult> {
   return client.call<OverviewGetResult>("overview.get");
 }

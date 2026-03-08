@@ -42,6 +42,26 @@ class PolicyGateTests(unittest.TestCase):
         ok = cast(Ok[GateDecision], result)
         self.assertTrue(ok.value.passed)
 
+    def test_returns_err_when_legal_entity_excluded(self) -> None:
+        candidate = Candidate(
+            candidate_id="cand-003",
+            direction="backend",
+            company="Acme Staffing",
+            job_url="https://example.com/job/3",
+            confidence=0.7,
+            source="job_profiles",
+            merged_sources=("job_profiles",),
+            legal_entity="Acme Holdings Ltd",
+        )
+        result: Result[GateDecision, GateFailure] = evaluate_candidate_exclusion(
+            candidate,
+            ["contains:outsource"],
+            ["Acme Holdings Ltd"],
+        )
+        self.assertIsInstance(result, Err)
+        err = cast(Err[GateFailure], result)
+        self.assertEqual(err.error.reason, "excluded_legal_entity")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -86,6 +86,7 @@ export interface LlmConfig {
 export interface SettingsGetResult extends RpcResultBase {
   gate_policy: GatePolicy;
   exclusion_list: string[];
+  excluded_legal_entities: string[];
   channels: Array<Record<string, unknown>>;
   llm_config: LlmConfig;
 }
@@ -93,6 +94,7 @@ export interface SettingsGetResult extends RpcResultBase {
 export type SettingsUpdateSection =
   | "gate_policy"
   | "exclusion_list"
+  | "excluded_legal_entities"
   | "channels"
   | "llm_config";
 

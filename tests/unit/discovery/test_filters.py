@@ -47,6 +47,27 @@ class DiscoveryFilterTests(unittest.TestCase):
         self.assertEqual(len(kept), 1)
         self.assertEqual(len(excluded), 0)
 
+    def test_filters_by_legal_entity(self) -> None:
+        candidates = [
+            Candidate(
+                candidate_id="cand-004",
+                direction="backend",
+                company="Acme Staffing",
+                job_url="https://example.com/job/4",
+                confidence=0.6,
+                source="job_profiles",
+                merged_sources=("job_profiles",),
+                legal_entity="Acme Holdings Ltd",
+            )
+        ]
+        kept, excluded = filter_candidates_by_policy(
+            candidates,
+            [],
+            ["Acme Holdings Ltd"],
+        )
+        self.assertEqual(len(kept), 0)
+        self.assertEqual(len(excluded), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,7 +13,10 @@ from urllib import request
 from tools.domain.result import Err
 from tools.domain.value_objects import Candidate
 from tools.policy.audit import write_exclusion_audit
-from tools.policy.exclusions import load_exclusion_list
+from tools.policy.exclusions import (
+    load_exclusion_list,
+    load_legal_entity_exclusion_list,
+)
 from tools.policy.gate import evaluate_candidate_exclusion
 
 
@@ -393,12 +396,23 @@ def main() -> int:
         confidence=0.5,
         source="job_profiles",
         merged_sources=("job_profiles",),
+        legal_entity=job_doc["scalars"].get("legal_entity", ""),
     )
     exclusions = load_exclusion_list()
-    gate_result = evaluate_candidate_exclusion(candidate, exclusions)
+    legal_entity_exclusions = load_legal_entity_exclusion_list()
+    gate_result = evaluate_candidate_exclusion(
+        candidate,
+        exclusions,
+        legal_entity_exclusions,
+    )
     if isinstance(gate_result, Err):
         run_log = output_file.parent / "run_log.json"
-        write_exclusion_audit(run_log, candidate, "gate_fallback")
+        write_exclusion_audit(
+            run_log,
+            candidate,
+            "gate_fallback",
+            gate_result.error.reason,
+        )
         print(f"[matching] skipped: {gate_result.error.details}")
         return 2
 
