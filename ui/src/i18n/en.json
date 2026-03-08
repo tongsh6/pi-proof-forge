@@ -95,7 +95,15 @@
       "subtitle": "Live configuration from the desktop sidecar.",
       "secretConfigured": "Configured (masked)",
       "secretMissing": "Not configured",
-      "exclusions": "Exclusions",
+      "exclusionList": {
+        "title": "Company exclusion list",
+        "subtitle": "One entry per line, supports contains: prefix",
+        "placeholder": "Example:\nAcme Inc\ncontains:outsourcing",
+        "helper": "{{count}} entries",
+        "save": "Save list",
+        "saving": "Saving...",
+        "saved": "Saved"
+      },
       "channels": "Channels",
       "gatePolicy": {
         "title": "Gate policy",

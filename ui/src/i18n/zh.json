@@ -95,7 +95,15 @@
       "subtitle": "读取桌面 sidecar 返回的实时配置快照。",
       "secretConfigured": "已配置（掩码）",
       "secretMissing": "未配置",
-      "exclusions": "排除项",
+      "exclusionList": {
+        "title": "企业例外清单",
+        "subtitle": "一行一条，支持 contains: 前缀",
+        "placeholder": "示例：\nAcme Inc\ncontains:外包",
+        "helper": "当前 {{count}} 条",
+        "save": "保存清单",
+        "saving": "保存中...",
+        "saved": "已保存"
+      },
       "channels": "通道数",
       "gatePolicy": {
         "title": "门禁策略",
