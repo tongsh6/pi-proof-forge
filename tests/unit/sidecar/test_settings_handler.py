@@ -28,6 +28,14 @@ class SettingsGetTests(unittest.TestCase):
         self.assertIn("max_rounds", gp)
         self.assertIn("gate_mode", gp)
 
+    def test_delivery_mode_and_batch_review_present(self) -> None:
+        params = {"meta": {"correlation_id": "corr_dm"}}
+        result = handle_settings_get(params)
+        self.assertIn("delivery_mode", result)
+        self.assertIn("batch_review", result)
+        self.assertIn(result["delivery_mode"], ("auto", "manual"))
+        self.assertIsInstance(result["batch_review"], bool)
+
     def test_llm_config_has_secret_status(self) -> None:
         params = {"meta": {"correlation_id": "corr_003"}}
         result = handle_settings_get(params)

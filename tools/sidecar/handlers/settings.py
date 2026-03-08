@@ -27,6 +27,8 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
             "max_rounds": 5,
             "gate_mode": "strict",
         },
+        "delivery_mode": "auto",
+        "batch_review": False,
         "exclusion_list": exclusion_list,
         "excluded_legal_entities": legal_entity_exclusion_list,
         "channels": [],

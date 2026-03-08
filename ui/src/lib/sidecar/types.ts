@@ -112,8 +112,14 @@ export interface LlmConfig {
   temperature: number;
 }
 
+export type DeliveryMode = "auto" | "manual";
+
 export interface SettingsGetResult extends RpcResultBase {
   gate_policy: GatePolicy;
+  /** auto: GATE 通过后直接 DELIVER；manual: 进入 REVIEW 等待审批 */
+  delivery_mode: DeliveryMode;
+  /** 仅 delivery_mode=manual 时有效；true=批量审批，false=逐轮审批 */
+  batch_review: boolean;
   exclusion_list: string[];
   excluded_legal_entities: string[];
   channels: Array<Record<string, unknown>>;

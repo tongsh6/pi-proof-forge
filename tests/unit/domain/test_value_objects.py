@@ -10,6 +10,8 @@ from tools.domain.value_objects import (
     GateDecision,
     GateFailure,
     MatchTrendPoint,
+    ReviewCandidate,
+    ReviewDecision,
     Score,
     ScreenshotRef,
     SubmissionStep,
@@ -147,6 +149,67 @@ class ScreenshotRefTests(unittest.TestCase):
         sr = ScreenshotRef(resource_id="scr-001", step_name="upload_resume", mime_type="image/png")
         self.assertEqual(sr.resource_id, "scr-001")
         self.assertEqual(sr.mime_type, "image/png")
+
+
+class ReviewCandidateTests(unittest.TestCase):
+    def test_review_candidate_has_required_fields(self) -> None:
+        rc = ReviewCandidate(
+            job_lead_id="jl-001",
+            company="Acme Inc",
+            position="Backend Engineer",
+            matching_score=82.0,
+            evaluation_score=78.0,
+            round_index=1,
+            resume_version="v1",
+        )
+        self.assertEqual(rc.job_lead_id, "jl-001")
+        self.assertEqual(rc.company, "Acme Inc")
+        self.assertEqual(rc.position, "Backend Engineer")
+        self.assertAlmostEqual(rc.matching_score, 82.0)
+        self.assertAlmostEqual(rc.evaluation_score, 78.0)
+        self.assertEqual(rc.round_index, 1)
+        self.assertEqual(rc.resume_version, "v1")
+        self.assertEqual(rc.job_url, "")
+        self.assertEqual(rc.gap_tasks, ())
+
+    def test_review_candidate_is_frozen(self) -> None:
+        rc = ReviewCandidate(
+            job_lead_id="jl-001",
+            company="Acme",
+            position="Dev",
+            matching_score=70.0,
+            evaluation_score=75.0,
+            round_index=0,
+            resume_version="v1",
+        )
+        with self.assertRaises(AttributeError):
+            rc.company = "Other"  # type: ignore[misc]
+
+
+class ReviewDecisionTests(unittest.TestCase):
+    def test_review_decision_has_required_fields(self) -> None:
+        rd = ReviewDecision(
+            job_lead_id="jl-001",
+            action="approve",
+            decided_by="user",
+            decided_at="2026-03-08T12:00:00Z",
+        )
+        self.assertEqual(rd.job_lead_id, "jl-001")
+        self.assertEqual(rd.action, "approve")
+        self.assertEqual(rd.decided_by, "user")
+        self.assertEqual(rd.decided_at, "2026-03-08T12:00:00Z")
+        self.assertEqual(rd.note, "")
+
+    def test_review_decision_is_frozen(self) -> None:
+        rd = ReviewDecision(
+            job_lead_id="jl-001",
+            action="reject",
+            decided_by="user",
+            decided_at="2026-03-08T12:00:00Z",
+            note="skip",
+        )
+        with self.assertRaises(AttributeError):
+            rd.action = "approve"  # type: ignore[misc]
 
 
 if __name__ == "__main__":
