@@ -5,6 +5,7 @@ import sys
 from typing import Any
 
 from tools.sidecar.error_mapper import ErrorMapper
+from tools.sidecar.handlers.jobs import handle_jobs_list_profiles
 from tools.sidecar.router import Router
 from tools.sidecar.lifecycle import handle_handshake, handle_ping, handle_shutdown
 from tools.sidecar.handlers.evidence import handle_evidence_list, handle_evidence_get
@@ -19,6 +20,7 @@ def _create_router() -> Router:
     router.register("system.shutdown", handle_shutdown)
     router.register("evidence.list", handle_evidence_list)
     router.register("evidence.get", handle_evidence_get)
+    router.register("jobs.listProfiles", handle_jobs_list_profiles)
     router.register("overview.get", handle_overview_get)
     router.register("settings.get", handle_settings_get)
     return router
