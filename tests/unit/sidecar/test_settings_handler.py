@@ -1,8 +1,11 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from tools.sidecar.handlers.settings import handle_settings_get
+from tools.sidecar.handlers.settings import handle_settings_get, handle_settings_update
 
 
 class SettingsGetTests(unittest.TestCase):
@@ -50,6 +53,81 @@ class SettingsGetTests(unittest.TestCase):
         self.assertIn("model", llm)
         self.assertIn("timeout", llm)
         self.assertIn("temperature", llm)
+
+    def test_exclusion_list_loads_from_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            policy_path.write_text(
+                "exclusion_list:\n  - 'Acme Inc'\n  - 'contains:Outsource'\n",
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                params = {"meta": {"correlation_id": "corr_006"}}
+                result = handle_settings_get(params)
+        self.assertEqual(result["exclusion_list"], ["Acme Inc", "contains:Outsource"])
+
+    def test_legal_entities_load_from_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            policy_path.write_text(
+                "excluded_legal_entities:\n  - 'Acme Holdings Ltd'\n",
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                params = {"meta": {"correlation_id": "corr_006a"}}
+                result = handle_settings_get(params)
+        self.assertEqual(result["excluded_legal_entities"], ["Acme Holdings Ltd"])
+
+
+class SettingsUpdateTests(unittest.TestCase):
+    def test_update_exclusion_list_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            payload = ["Acme Inc", "contains:Outsource"]
+            params = {
+                "meta": {"correlation_id": "corr_007"},
+                "section": "exclusion_list",
+                "payload": payload,
+            }
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                result = handle_settings_update(params)
+                self.assertTrue(result["saved"])
+                get_params = {"meta": {"correlation_id": "corr_008"}}
+                stored = handle_settings_get(get_params)
+        self.assertEqual(stored["exclusion_list"], payload)
+
+    def test_update_rejects_invalid_payload(self) -> None:
+        params = {
+            "meta": {"correlation_id": "corr_009"},
+            "section": "exclusion_list",
+            "payload": "Acme Inc",
+        }
+        with self.assertRaises(ValueError):
+            _ = handle_settings_update(params)
+
+    def test_update_rejects_non_string_entries(self) -> None:
+        params = {
+            "meta": {"correlation_id": "corr_010"},
+            "section": "exclusion_list",
+            "payload": ["Acme Inc", 42],
+        }
+        with self.assertRaises(ValueError):
+            _ = handle_settings_update(params)
+
+    def test_update_legal_entities_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            payload = ["Acme Holdings Ltd"]
+            params = {
+                "meta": {"correlation_id": "corr_011"},
+                "section": "excluded_legal_entities",
+                "payload": payload,
+            }
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                result = handle_settings_update(params)
+                self.assertTrue(result["saved"])
+                stored = handle_settings_get({"meta": {"correlation_id": "corr_012"}})
+        self.assertEqual(stored["excluded_legal_entities"], payload)
 
 
 if __name__ == "__main__":

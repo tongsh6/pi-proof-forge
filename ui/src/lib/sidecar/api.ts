@@ -9,6 +9,7 @@ import type {
   OverviewGetResult,
   PingResult,
   SettingsGetResult,
+  SettingsUpdateResult,
 } from "./types";
 
 const UI_VERSION = "0.1.0";
@@ -58,6 +59,24 @@ export async function getEvidence(evidenceId: string): Promise<EvidenceGetResult
 
 export async function getSettings(): Promise<SettingsGetResult> {
   return client.call<SettingsGetResult>("settings.get");
+}
+
+export async function updateExclusionList(
+  entries: string[]
+): Promise<SettingsUpdateResult> {
+  return client.call<SettingsUpdateResult>("settings.update", {
+    section: "exclusion_list",
+    payload: entries,
+  });
+}
+
+export async function updateLegalEntityExclusionList(
+  entries: string[]
+): Promise<SettingsUpdateResult> {
+  return client.call<SettingsUpdateResult>("settings.update", {
+    section: "excluded_legal_entities",
+    payload: entries,
+  });
 }
 
 export async function getOverview(): Promise<OverviewGetResult> {

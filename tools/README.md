@@ -40,6 +40,50 @@ python3 tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evid
 
 ## Workflow 脚本
 
+## 企业例外清单
+
+可以在仓库根目录放置 `policy.yaml`（或设置环境变量 `PPF_POLICY_PATH` 指向文件）来定义需要排除的企业名单。
+
+支持以下字段（均为字符串列表）：
+
+- `exclusion_list`: 简单名单，按精确匹配处理。
+- `excluded_companies`: 支持 `exact:` / `contains:` 前缀。
+- `excluded_legal_entities`: 简单名单，按精确匹配处理。
+- 也兼容 OpenSpec 中的 `filters.excluded_companies` / `filters.excluded_legal_entities` 结构。
+
+匹配优先级：
+
+- `excluded_legal_entities` 优先于企业展示名/别名匹配。
+- `excluded_companies` / `exclusion_list` 用于展示名、常用名、别名过滤。
+
+示例：
+
+```yaml
+excluded_companies:
+  - "exact:Acme Inc"
+  - "contains:外包"
+excluded_legal_entities:
+  - "某某人力资源有限公司"
+```
+
+也支持：
+
+```yaml
+filters:
+  excluded_companies:
+    - match: exact
+      value: "示例科技有限公司"
+    - match: contains
+      value: "外包"
+  excluded_legal_entities:
+    - "某某人力资源有限公司"
+```
+
+退出码约定：
+
+- `tools/run_pipeline.py` 与 `tools/run_matching_scoring.py` 若命中企业例外清单，返回退出码 `2`。
+- 命中排除时会在 `outputs/<run_id>/run_log.json`（pipeline）或 `matching_reports/run_log.json`（matching）写入 `excluded_by_policy` 事件。
+
 ## 打包副本约定
 
 - `tools/README.md` 是工具文档的 source of truth。

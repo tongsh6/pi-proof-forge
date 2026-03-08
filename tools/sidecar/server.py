@@ -10,7 +10,7 @@ from tools.sidecar.router import Router
 from tools.sidecar.lifecycle import handle_handshake, handle_ping, handle_shutdown
 from tools.sidecar.handlers.evidence import handle_evidence_list, handle_evidence_get
 from tools.sidecar.handlers.overview import handle_overview_get
-from tools.sidecar.handlers.settings import handle_settings_get
+from tools.sidecar.handlers.settings import handle_settings_get, handle_settings_update
 
 
 def _create_router() -> Router:
@@ -23,6 +23,7 @@ def _create_router() -> Router:
     router.register("jobs.listProfiles", handle_jobs_list_profiles)
     router.register("overview.get", handle_overview_get)
     router.register("settings.get", handle_settings_get)
+    router.register("settings.update", handle_settings_update)
     return router
 
 

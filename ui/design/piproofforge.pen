@@ -3444,7 +3444,7 @@
                       "id": "Frd7K",
                       "name": "agMeta",
                       "fill": "$text-secondary",
-                      "content": "RUN-20260307-001 · started 09:02 · pass_round 2 / 3",
+                      "content": "RUN-20260307-001 · started 09:02 · manual / per-round",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 12,
                       "fontWeight": "normal"
@@ -3479,7 +3479,7 @@
                 "thickness": 1,
                 "fill": "$border-light"
               },
-              "gap": 10,
+              "gap": 8,
               "padding": [
                 12,
                 14
@@ -3529,7 +3529,7 @@
                   "type": "text",
                   "id": "AbH5l",
                   "name": "agS5",
-                  "fill": "$accent-cyan",
+                  "fill": "#34D399",
                   "content": "EVALUATE",
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 12,
@@ -3539,8 +3539,18 @@
                   "type": "text",
                   "id": "Sf653",
                   "name": "agS6",
-                  "fill": "$warning",
+                  "fill": "#34D399",
                   "content": "GATE",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "mkLy0",
+                  "name": "agS7Review",
+                  "fill": "#22D3EE",
+                  "content": "REVIEW",
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 12,
                   "fontWeight": "700"
@@ -3606,7 +3616,7 @@
                       "id": "pL0Xx",
                       "name": "agGateHead",
                       "fill": "$text-primary",
-                      "content": "N-Pass Gate / 多轮门禁",
+                      "content": "Review Candidates / 候选审批",
                       "fontFamily": "Inter",
                       "fontSize": 14,
                       "fontWeight": "600"
@@ -3616,116 +3626,385 @@
                       "id": "cmzLW",
                       "name": "agGateMeta",
                       "fill": "$text-secondary",
-                      "content": "pass_round: 2 / n_pass_required: 3",
+                      "content": "delivery_mode: manual · mode: per-round · 1/3 approved",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 11,
                       "fontWeight": "normal"
                     },
                     {
                       "type": "frame",
-                      "id": "RF9o6",
-                      "name": "agGateRow1",
+                      "id": "UNGLx",
+                      "name": "reviewCandidate1",
                       "width": "fill_container",
-                      "height": 56,
-                      "fill": "$bg-inset",
+                      "fill": "#0F172A",
                       "cornerRadius": 12,
                       "layout": "vertical",
-                      "gap": 4,
+                      "gap": 10,
                       "padding": [
-                        10,
-                        12
+                        12,
+                        14
                       ],
                       "children": [
                         {
                           "type": "text",
-                          "id": "POjwe",
-                          "name": "agGateRow1Text",
-                          "fill": "$success",
-                          "content": "Matching Gate / 匹配门禁\nScore 87 >= threshold 70 · PASS",
+                          "id": "nCOMf",
+                          "name": "reviewCandidate1Text",
+                          "fill": "#EEF4FF",
+                          "content": "Aster Labs · Senior Platform Engineer\nmatching 87 · evaluation 82 · round 2 · resume v3",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "XvC53",
+                          "name": "reviewCandidate1Actions",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "QrZVk",
+                              "name": "approveChip",
+                              "fill": "#0B3B2C",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#34D399"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "RNbP0",
+                                  "fill": "#34D399",
+                                  "content": "Approve",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "kDKI2",
+                              "name": "rejectChip",
+                              "fill": "#3A1212",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#F87171"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Wl7s6",
+                                  "fill": "#FCA5A5",
+                                  "content": "Reject",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "N15Ru",
+                              "name": "skipChip",
+                              "fill": "#111827",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#64748B"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "BPA0j",
+                                  "fill": "#CBD5E1",
+                                  "content": "Skip",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
                         }
                       ]
                     },
                     {
                       "type": "frame",
-                      "id": "bQM6H",
-                      "name": "agGateRow2",
+                      "id": "hEi2a",
+                      "name": "reviewCandidate2",
                       "width": "fill_container",
-                      "height": 56,
-                      "fill": "$bg-inset",
+                      "fill": "#0F172A",
                       "cornerRadius": 12,
                       "layout": "vertical",
-                      "gap": 4,
+                      "gap": 10,
                       "padding": [
-                        10,
-                        12
+                        12,
+                        14
                       ],
                       "children": [
                         {
                           "type": "text",
-                          "id": "jm2fy",
-                          "name": "agGateRow2Text",
-                          "fill": "$success",
-                          "content": "Evaluation Gate / 评估门禁\nEval score 82 >= threshold 75 · PASS",
+                          "id": "5dDhk",
+                          "name": "reviewCandidate2Text",
+                          "fill": "#EEF4FF",
+                          "content": "Nova Cloud · Staff Backend Engineer\nmatching 84 · evaluation 79 · round 2 · resume v3",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "tLeYO",
+                          "name": "reviewCandidate2Actions",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "AyxhD",
+                              "name": "approveChip2",
+                              "fill": "#0B3B2C",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#34D399"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "fe5vf",
+                                  "fill": "#34D399",
+                                  "content": "Approve",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "PpYMo",
+                              "name": "rejectChip2",
+                              "fill": "#3A1212",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#F87171"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "tdYAW",
+                                  "fill": "#FCA5A5",
+                                  "content": "Reject",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "s5pd0",
+                              "name": "skipChip2",
+                              "fill": "#111827",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#64748B"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "N07Q7",
+                                  "fill": "#CBD5E1",
+                                  "content": "Skip",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
                         }
                       ]
                     },
                     {
                       "type": "frame",
-                      "id": "qiOyc",
-                      "name": "agGateRow3",
+                      "id": "Iqabf",
+                      "name": "reviewCandidate3",
                       "width": "fill_container",
-                      "height": 56,
-                      "fill": "$bg-inset",
+                      "fill": "#0F172A",
                       "cornerRadius": 12,
                       "layout": "vertical",
-                      "gap": 4,
+                      "gap": 10,
                       "padding": [
-                        10,
-                        12
+                        12,
+                        14
                       ],
                       "children": [
                         {
                           "type": "text",
-                          "id": "GSTPV",
-                          "name": "agGateRow3Text",
-                          "fill": "$accent-cyan",
-                          "content": "Channel Ready / 通道就绪\nChecking session... · RUNNING",
+                          "id": "O65ES",
+                          "name": "reviewCandidate3Text",
+                          "fill": "#EEF4FF",
+                          "content": "Orbit AI · Platform Lead\nmatching 81 · evaluation 77 · round 1 · resume v2",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "zurCI",
+                          "name": "reviewCandidate3Actions",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "J5SVJ",
+                              "name": "approveChip3",
+                              "fill": "#0B3B2C",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#34D399"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Rpr1v",
+                                  "fill": "#34D399",
+                                  "content": "Approve",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "WUwXV",
+                              "name": "rejectChip3",
+                              "fill": "#3A1212",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#F87171"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "4PF4N",
+                                  "fill": "#FCA5A5",
+                                  "content": "Reject",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "RInWO",
+                              "name": "skipChip3",
+                              "fill": "#111827",
+                              "cornerRadius": 999,
+                              "stroke": {
+                                "thickness": 1,
+                                "fill": "#64748B"
+                              },
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "uHt06",
+                                  "fill": "#CBD5E1",
+                                  "content": "Skip",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            }
+                          ]
                         }
                       ]
                     },
                     {
                       "type": "frame",
-                      "id": "JGk1F",
-                      "name": "agGateRow4",
+                      "id": "MIjuQ",
+                      "name": "reviewFooter",
                       "width": "fill_container",
-                      "height": 56,
-                      "fill": "$bg-inset",
+                      "fill": "#0F172A",
                       "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
+                      "gap": 12,
                       "padding": [
                         10,
                         12
                       ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
                       "children": [
                         {
                           "type": "text",
-                          "id": "cdOcm",
-                          "name": "agGateRow4Text",
-                          "fill": "$success",
-                          "content": "Company Exclusion / 企业排除\nNot in exclusion list · PASS",
+                          "id": "oVfKQ",
+                          "name": "reviewFooterText",
+                          "fill": "#94A3B8",
+                          "content": "approved 1 · pending 2 · Submit to continue",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
+                        },
+                        {
+                          "id": "uaq7c",
+                          "type": "ref",
+                          "ref": "xWWct",
+                          "width": 206,
+                          "descendants": {
+                            "swaWw": {
+                              "iconFontName": "check-check"
+                            },
+                            "yG3EI": {
+                              "content": "Submit Decisions / 提交决策"
+                            }
+                          }
                         }
                       ]
                     }
@@ -3830,8 +4109,8 @@
                           "type": "text",
                           "id": "0qVTf",
                           "name": "agEvent3Text",
-                          "fill": "$accent-cyan",
-                          "content": "09:03:05  EVALUATE\nevaluation started",
+                          "fill": "#34D399",
+                          "content": "09:03:41  GATE\nthreshold checks passed",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -3857,8 +4136,8 @@
                           "type": "text",
                           "id": "bDn2M",
                           "name": "agEvent4Text",
-                          "fill": "$warning",
-                          "content": "09:03:42  GATE\ngate threshold check pending",
+                          "fill": "#22D3EE",
+                          "content": "09:03:44  REVIEW\n3 candidates pending approval",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -4678,6 +4957,60 @@
                           "name": "setChannelsText",
                           "fill": "$text-primary",
                           "content": "gate_mode / 门禁模式\nstrict",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "4qWMz",
+                      "name": "deliveryModeField",
+                      "width": "fill_container",
+                      "height": 58,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 12,
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "5c5q1",
+                          "name": "setChannelsText",
+                          "fill": "$text-primary",
+                          "content": "delivery_mode / 投递模式\nauto | manual (manual)",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "lv424",
+                      "name": "batchReviewField",
+                      "width": "fill_container",
+                      "height": 58,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 12,
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "1zWnG",
+                          "name": "setChannelsText",
+                          "fill": "$text-primary",
+                          "content": "batch_review / 批量审批\nfalse | true (false)",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"

@@ -69,55 +69,65 @@ export function SystemSettingsPage() {
       ) : null}
 
       {loadState === "ready" && settings ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
             <div className="border-b border-border pb-4">
               <h2 className="text-lg font-semibold text-text-primary">
-                {t("pages.systemSettings.gatePolicy.title")}
+                {t("pages.systemSettings.llm.title")}
               </h2>
               <p className="mt-1 text-sm text-text-secondary">
-                {t("pages.systemSettings.gatePolicy.subtitle")}
+                {t("pages.systemSettings.llm.subtitle")}
               </p>
             </div>
-            <dl className="space-y-4 pt-4">
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-sm text-text-secondary">
-                  {t("pages.systemSettings.gatePolicy.nPassRequired")}
+            <dl className="grid gap-4 pt-4 md:grid-cols-2">
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                  {t("pages.systemSettings.llm.provider")}
                 </dt>
-                <dd className="text-sm font-medium text-text-primary">
-                  {settings.gate_policy.n_pass_required}
+                <dd className="mt-2 text-sm text-text-primary">
+                  {formatNullable(settings.llm_config.provider)}
                 </dd>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-sm text-text-secondary">
-                  {t("pages.systemSettings.gatePolicy.matchingThreshold")}
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                  {t("pages.systemSettings.llm.model")}
                 </dt>
-                <dd className="text-sm font-medium text-text-primary">
-                  {settings.gate_policy.matching_threshold}
+                <dd className="mt-2 text-sm text-text-primary">
+                  {formatNullable(settings.llm_config.model)}
                 </dd>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-sm text-text-secondary">
-                  {t("pages.systemSettings.gatePolicy.evaluationThreshold")}
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                  {t("pages.systemSettings.llm.baseUrl")}
                 </dt>
-                <dd className="text-sm font-medium text-text-primary">
-                  {settings.gate_policy.evaluation_threshold}
+                <dd className="mt-2 break-all text-sm text-text-primary">
+                  {formatNullable(settings.llm_config.base_url)}
                 </dd>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-sm text-text-secondary">
-                  {t("pages.systemSettings.gatePolicy.maxRounds")}
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                  {t("pages.systemSettings.llm.apiKey")}
                 </dt>
-                <dd className="text-sm font-medium text-text-primary">
-                  {settings.gate_policy.max_rounds}
+                <dd className="mt-2 text-sm text-text-primary">
+                  {settings.llm_config.api_key.configured
+                    ? t("pages.systemSettings.secretConfigured")
+                    : t("pages.systemSettings.secretMissing")}
                 </dd>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-sm text-text-secondary">
-                  {t("pages.systemSettings.gatePolicy.mode")}
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                  {t("pages.systemSettings.llm.timeout")}
                 </dt>
-                <dd className="rounded-chip bg-accent/10 px-2.5 py-1 text-xs font-medium uppercase tracking-[0.12em] text-accent">
-                  {settings.gate_policy.gate_mode}
+                <dd className="mt-2 text-sm text-text-primary">
+                  {settings.llm_config.timeout}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                  {t("pages.systemSettings.llm.temperature")}
+                </dt>
+                <dd className="mt-2 text-sm text-text-primary">
+                  {settings.llm_config.temperature}
                 </dd>
               </div>
             </dl>
@@ -125,85 +135,12 @@ export function SystemSettingsPage() {
 
           <section className="space-y-6">
             <div className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-              <div className="border-b border-border pb-4">
-                <h2 className="text-lg font-semibold text-text-primary">
-                  {t("pages.systemSettings.llm.title")}
-                </h2>
-                <p className="mt-1 text-sm text-text-secondary">
-                  {t("pages.systemSettings.llm.subtitle")}
-                </p>
-              </div>
-              <dl className="grid gap-4 pt-4 md:grid-cols-2">
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                    {t("pages.systemSettings.llm.provider")}
-                  </dt>
-                  <dd className="mt-2 text-sm text-text-primary">
-                    {formatNullable(settings.llm_config.provider)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                    {t("pages.systemSettings.llm.model")}
-                  </dt>
-                  <dd className="mt-2 text-sm text-text-primary">
-                    {formatNullable(settings.llm_config.model)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                    {t("pages.systemSettings.llm.baseUrl")}
-                  </dt>
-                  <dd className="mt-2 break-all text-sm text-text-primary">
-                    {formatNullable(settings.llm_config.base_url)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                    {t("pages.systemSettings.llm.apiKey")}
-                  </dt>
-                  <dd className="mt-2 text-sm text-text-primary">
-                    {settings.llm_config.api_key.configured
-                      ? t("pages.systemSettings.secretConfigured")
-                      : t("pages.systemSettings.secretMissing")}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                    {t("pages.systemSettings.llm.timeout")}
-                  </dt>
-                  <dd className="mt-2 text-sm text-text-primary">
-                    {settings.llm_config.timeout}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                    {t("pages.systemSettings.llm.temperature")}
-                  </dt>
-                  <dd className="mt-2 text-sm text-text-primary">
-                    {settings.llm_config.temperature}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-                <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                  {t("pages.systemSettings.exclusions")}
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-text-primary">
-                  {settings.exclusion_list.length}
-                </p>
-              </div>
-              <div className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-                <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                  {t("pages.systemSettings.channels")}
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-text-primary">
-                  {settings.channels.length}
-                </p>
-              </div>
+              <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                {t("pages.systemSettings.channels")}
+              </p>
+              <p className="mt-3 text-3xl font-semibold text-text-primary">
+                {settings.channels.length}
+              </p>
             </div>
           </section>
         </div>
