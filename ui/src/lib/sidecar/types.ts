@@ -90,6 +90,17 @@ export interface SettingsGetResult extends RpcResultBase {
   llm_config: LlmConfig;
 }
 
+export type SettingsUpdateSection =
+  | "gate_policy"
+  | "exclusion_list"
+  | "channels"
+  | "llm_config";
+
+export interface SettingsUpdateResult extends RpcResultBase {
+  section: SettingsUpdateSection;
+  saved: boolean;
+}
+
 export interface OverviewMetrics {
   evidence_count: number;
   matched_jobs_count: number;

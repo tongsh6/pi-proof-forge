@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
-import { getSettings } from "@/lib/sidecar/api";
+import { getSettings, updateExclusionList } from "@/lib/sidecar/api";
 import type { SettingsGetResult } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -15,21 +15,60 @@ export function SystemSettingsPage() {
   const [settings, setSettings] = useState<SettingsGetResult | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
+  const [exclusionDraft, setExclusionDraft] = useState<string>("");
+  const [exclusionSaveState, setExclusionSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [exclusionError, setExclusionError] = useState<string | null>(null);
+
+  const normalizeExclusions = useCallback((value: string): string[] => {
+    return value
+      .split("\n")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }, []);
+
+  const listsEqual = useCallback((left: string[], right: string[]): boolean => {
+    if (left.length !== right.length) {
+      return false;
+    }
+    return left.every((item, index) => item === right[index]);
+  }, []);
 
   const loadSettings = useCallback(async () => {
     setLoadState("loading");
     setError(null);
+    setExclusionSaveState("idle");
+    setExclusionError(null);
 
     try {
       const result = await getSettings();
       setSettings(result);
       setLoadState("ready");
+      setExclusionDraft(result.exclusion_list.join("\n"));
     } catch (nextError) {
       setSettings(null);
       setLoadState("error");
       setError(getErrorMessage(nextError));
     }
   }, []);
+
+  const handleSaveExclusions = useCallback(async () => {
+    if (!settings) {
+      return;
+    }
+    const entries = normalizeExclusions(exclusionDraft);
+    setExclusionSaveState("saving");
+    setExclusionError(null);
+    try {
+      await updateExclusionList(entries);
+      setSettings({ ...settings, exclusion_list: entries });
+      setExclusionSaveState("saved");
+    } catch (nextError) {
+      setExclusionSaveState("error");
+      setExclusionError(getErrorMessage(nextError));
+    }
+  }, [exclusionDraft, normalizeExclusions, settings]);
 
   useEffect(() => {
     void loadSettings();
@@ -187,15 +226,63 @@ export function SystemSettingsPage() {
               </dl>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-                <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                  {t("pages.systemSettings.exclusions")}
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-text-primary">
-                  {settings.exclusion_list.length}
+            <div className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+              <div className="border-b border-border pb-4">
+                <h2 className="text-lg font-semibold text-text-primary">
+                  {t("pages.systemSettings.exclusionList.title")}
+                </h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  {t("pages.systemSettings.exclusionList.subtitle")}
                 </p>
               </div>
+              <div className="space-y-3 pt-4">
+                <textarea
+                  className="min-h-[140px] w-full rounded-card border border-border bg-bg-primary/60 p-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  placeholder={t("pages.systemSettings.exclusionList.placeholder")}
+                  value={exclusionDraft}
+                  onChange={(event) => {
+                    setExclusionDraft(event.target.value);
+                    if (exclusionSaveState !== "idle") {
+                      setExclusionSaveState("idle");
+                      setExclusionError(null);
+                    }
+                  }}
+                />
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
+                  <span>
+                    {t("pages.systemSettings.exclusionList.helper", {
+                      count: normalizeExclusions(exclusionDraft).length,
+                    })}
+                  </span>
+                  <button
+                    className="rounded-card border border-border px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void handleSaveExclusions()}
+                    type="button"
+                    disabled={
+                      exclusionSaveState === "saving" ||
+                      listsEqual(
+                        normalizeExclusions(exclusionDraft),
+                        settings.exclusion_list
+                      )
+                    }
+                  >
+                    {exclusionSaveState === "saving"
+                      ? t("pages.systemSettings.exclusionList.saving")
+                      : t("pages.systemSettings.exclusionList.save")}
+                  </button>
+                </div>
+                {exclusionSaveState === "error" && exclusionError ? (
+                  <p className="text-xs text-error">{exclusionError}</p>
+                ) : null}
+                {exclusionSaveState === "saved" ? (
+                  <p className="text-xs text-accent">
+                    {t("pages.systemSettings.exclusionList.saved")}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-1">
               <div className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
                 <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
                   {t("pages.systemSettings.channels")}
