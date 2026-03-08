@@ -22,7 +22,7 @@
 
 ### 3. 规范驱动开发（Spec-First）
 - 新功能必须先写 OpenSpec spec，再驱动实现。
-- 设计文档保存至 `docs/plans/`，并经过用户确认后方可实施。
+- 设计文档保存至 `AIEF/docs/plans/`，并经过用户确认后方可实施。
 - 使用 `/opsx:propose` 启动新功能提案流程。
 
 ### 4. 测试驱动（TDD）

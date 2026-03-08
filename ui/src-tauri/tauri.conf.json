@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/niclas-nickel/tauri-v2-schema/refs/heads/main/schema.json",
+  "productName": "PiProofForge",
+  "version": "0.1.0",
+  "identifier": "com.piproofforge.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "bundle": {
+    "resources": [
+      "./resources/tools",
+      "./resources/evidence_cards",
+      "./resources/matching_reports",
+      "./resources/job_profiles",
+      "./resources/sidecar",
+      "./resources/python"
+    ]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PiProofForge",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1280,
+        "minHeight": 800,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

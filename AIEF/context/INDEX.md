@@ -11,11 +11,11 @@
 
 建议阅读（可选）：
 - PLAN.md
-- docs/plans/autonomous-agent-delivery-loop-v2.md
-- docs/plans/m1-slice-1-breakdown.md
-- docs/plans/m1-first-batch-tdd-checklist.md
-- docs/plans/final-doc-baseline.md
-- docs/plans/implementation-kickoff-checklist.md
+- AIEF/docs/plans/autonomous-agent-delivery-loop-v2.md
+- AIEF/docs/plans/m1-slice-1-breakdown.md
+- AIEF/docs/plans/m1-first-batch-tdd-checklist.md
+- AIEF/docs/plans/final-doc-baseline.md
+- AIEF/docs/plans/implementation-kickoff-checklist.md
 - AIEF/workflow/INDEX.md
 - AIEF/docs/standards/INDEX.md
 - AIEF/context/tech/REPO_SNAPSHOT.md

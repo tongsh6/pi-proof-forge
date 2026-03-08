@@ -1,0 +1,55 @@
+:root {
+  /* Background */
+  --bg-primary: #071023;
+  --bg-panel: #1e293b;
+  --bg-hover: #334155;
+
+  /* Accent */
+  --accent: #38bdf8;
+  --accent-cyan: #22d3ee;
+
+  /* Semantic */
+  --success: #34d399;
+  --warning: #fbbf24;
+  --error: #f87171;
+
+  /* Text */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+
+  /* Border */
+  --border: #334155;
+
+  /* Radius */
+  --radius-panel: 12px;
+  --radius-card: 8px;
+  --radius-chip: 9999px;
+
+  /* Shadow */
+  --shadow-panel: 0 4px 24px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Spacing base: 4px */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Z-index layers */
+  --z-nav: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+}

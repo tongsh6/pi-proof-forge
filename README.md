@@ -33,7 +33,7 @@ Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -
 
 - `openspec/specs/pi-proof-forge-core.md`
 - `openspec/changes/autonomous-agent-delivery-loop/design.md`
-- `docs/plans/autonomous-agent-delivery-loop-v2.md`
+- `AIEF/docs/plans/autonomous-agent-delivery-loop-v2.md`
 
 流程文档：
 
@@ -103,7 +103,7 @@ npx --yes @tongsh6/aief-init@latest retrofit --level L1 --base-dir AIEF
 AIEF/context/       项目知识库与技术文档
 AIEF/workflow/      阶段流程定义
 AIEF/docs/standards/标准与模式
-docs/plans/         实现前计划与设计拆分
+AIEF/docs/plans/         实现前计划与设计拆分
 evidence_cards/     结构化证据资产
 job_profiles/       岗位画像
 jd_inputs/          JD 原文输入
@@ -187,7 +187,7 @@ Key docs:
 
 - `openspec/specs/pi-proof-forge-core.md`
 - `openspec/changes/autonomous-agent-delivery-loop/design.md`
-- `docs/plans/autonomous-agent-delivery-loop-v2.md`
+- `AIEF/docs/plans/autonomous-agent-delivery-loop-v2.md`
 
 Workflow docs:
 
@@ -241,7 +241,7 @@ Generated paths: `AIEF/context/`, `AIEF/workflow/`, `AIEF/docs/standards/`, `AIE
 AIEF/context/       Knowledge base and technical docs
 AIEF/workflow/      Phase workflows
 AIEF/docs/standards/ Standards and patterns
-docs/plans/         Pre-implementation plans
+AIEF/docs/plans/         Pre-implementation plans
 evidence_cards/     Structured evidence assets
 job_profiles/       Target role profiles
 jd_inputs/          Raw JD inputs

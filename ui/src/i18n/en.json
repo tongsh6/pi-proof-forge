@@ -1,0 +1,121 @@
+{
+  "nav": {
+    "overview": "Overview",
+    "resumes": "Resumes",
+    "evidence": "Evidence",
+    "jobs": "Jobs",
+    "quickRun": "Quick Run",
+    "agentRun": "Agent Run",
+    "submissions": "Submissions",
+    "policy": "Policy",
+    "systemSettings": "System Settings"
+  },
+  "shell": {
+    "sidecar": "Sidecar",
+    "lastHeartbeat": "Last heartbeat",
+    "waitingForHeartbeat": "Waiting for heartbeat"
+  },
+  "sidecar": {
+    "state": {
+      "starting": "Starting",
+      "ready": "Ready",
+      "degraded": "Degraded",
+      "reconnecting": "Reconnecting",
+      "disconnected": "Disconnected",
+      "stopped": "Stopped"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "empty": "No data available",
+    "error": "Something went wrong",
+    "retry": "Retry"
+  },
+  "pages": {
+    "overview": {
+      "title": "Overview",
+      "subtitle": "Desktop dashboard aggregated from the local sidecar.",
+      "metrics": {
+        "evidence_count": {
+          "label": "Evidence",
+          "hint": "Structured evidence cards ready for reuse"
+        },
+        "matched_jobs_count": {
+          "label": "Matched Jobs",
+          "hint": "Matching reports available in the workspace"
+        },
+        "resume_count": {
+          "label": "Resumes",
+          "hint": "Generated resume versions detected locally"
+        },
+        "submission_count": {
+          "label": "Submissions",
+          "hint": "Recorded delivery attempts in outputs/submissions"
+        }
+      },
+      "recentActivity": {
+        "title": "Recent activity",
+        "subtitle": "Latest local evidence, resume, and submission events"
+      },
+      "matchTrend": {
+        "title": "Match trend",
+        "subtitle": "Recent matching report scores"
+      },
+      "gaps": {
+        "title": "Gaps",
+        "subtitle": "Outstanding evidence or targeting gaps from the latest report"
+      },
+      "activityTypes": {
+        "resume_generated": "Resume",
+        "submission_sent": "Submission",
+        "evidence_imported": "Evidence",
+        "agent_run_completed": "Agent"
+      }
+    },
+    "evidence": {
+      "title": "Evidence",
+      "subtitle": "Read-only vertical slice powered by the Python sidecar.",
+      "listTitle": "Evidence cards",
+      "listCount": "{{count}} cards loaded",
+      "detailTitle": "Card detail",
+      "artifactFallback": "Artifact",
+      "fields": {
+        "timeRange": "Time range",
+        "role": "Role",
+        "context": "Context",
+        "actions": "Actions",
+        "results": "Results",
+        "stack": "Stack",
+        "tags": "Tags",
+        "artifacts": "Artifacts"
+      }
+    },
+    "systemSettings": {
+      "title": "System Settings",
+      "subtitle": "Live configuration from the desktop sidecar.",
+      "secretConfigured": "Configured (masked)",
+      "secretMissing": "Not configured",
+      "exclusions": "Exclusions",
+      "channels": "Channels",
+      "gatePolicy": {
+        "title": "Gate policy",
+        "subtitle": "Current read-only policy snapshot",
+        "nPassRequired": "Pass rounds required",
+        "matchingThreshold": "Matching threshold",
+        "evaluationThreshold": "Evaluation threshold",
+        "maxRounds": "Max rounds",
+        "mode": "Gate mode"
+      },
+      "llm": {
+        "title": "LLM config",
+        "subtitle": "Masked model configuration as returned by settings.get",
+        "provider": "Provider",
+        "model": "Model",
+        "baseUrl": "Base URL",
+        "apiKey": "API key",
+        "timeout": "Timeout",
+        "temperature": "Temperature"
+      }
+    }
+  }
+}

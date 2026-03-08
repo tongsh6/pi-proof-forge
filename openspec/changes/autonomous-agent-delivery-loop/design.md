@@ -613,4 +613,4 @@ class RunStore(Protocol):
 - 旧脚本移除前必须通过 end-to-end 回归测试。
 
 ### 实施计划入口
-- 详细实施顺序、文件级拆分与测试矩阵见 `docs/plans/autonomous-agent-delivery-loop-v2.md`
+- 详细实施顺序、文件级拆分与测试矩阵见 `AIEF/docs/plans/autonomous-agent-delivery-loop-v2.md`

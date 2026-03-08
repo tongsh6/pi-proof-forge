@@ -17,7 +17,7 @@
 
 ### GUI 变更附加清单
 
-当本次变更涉及 GUI 设计、GUI 代码、GUI schema 或 sidecar 集成时，评审必须额外执行 `docs/plans/gui-review-checklist.md`，并至少确认：
+当本次变更涉及 GUI 设计、GUI 代码、GUI schema 或 sidecar 集成时，评审必须额外执行 `AIEF/docs/plans/gui-review-checklist.md`，并至少确认：
 
 - [ ] `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen` 是否同步
 - [ ] GUI 实现是否同时对齐文档与 `.pen` 资产

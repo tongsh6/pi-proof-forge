@@ -40,6 +40,12 @@ python3 tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evid
 
 ## Workflow 脚本
 
+## 打包副本约定
+
+- `tools/README.md` 是工具文档的 source of truth。
+- `ui/src-tauri/resources/tools/README.md` 是由 `python3 ui/scripts/stage_python_runtime.py` 在打包前 staging 出来的资源副本。
+- 需要更新工具说明时，只修改 `tools/README.md`，然后重新执行 staging / build；不要直接修改 `ui/src-tauri/resources/tools/README.md`。
+
 ```bash
 # 职位发现（规划，多源渠道）
 python3 -m tools.discovery.run_job_discovery --city 上海 --cbd "陆家嘴,漕河泾" --output job_leads/jl-2026-001.yaml
@@ -140,5 +146,9 @@ python3 tools/run_github_publish.py --feature auto-submission-liepin --release v
 
 ## CI 校验
 
-- GitHub Actions: `.github/workflows/aief-l3-check.yml`
-- 在 PR 与 main/master push 时自动执行 `tools/check_aief_l3.py --root . --base-dir AIEF`
+- GitHub Actions:
+  - `.github/workflows/aief-l3-check.yml`
+  - `.github/workflows/ui-packaged-smoke.yml`
+- `aief-l3-check.yml`：在 `pull_request` 与 `develop/main/master` push 时触发；仅当 `.github/workflows/aief-l3-check.yml`、`AIEF/**`、`tools/check_aief_l3.py` 变更时运行 `python3 tools/check_aief_l3.py --root . --base-dir AIEF`
+- `ui-packaged-smoke.yml`：在 `pull_request` 与 `develop/main/master` push 时触发；仅当 `ui/**`、`tools/**`、`tests/**`、`evidence_cards/**`、`matching_reports/**`、`job_profiles/**` 或 workflow 自身变更时运行 `npm run smoke:app`
+- `release-notes/**` 变更不会单独触发上述 workflow；当前策略默认只对会影响门禁结果的路径执行 CI

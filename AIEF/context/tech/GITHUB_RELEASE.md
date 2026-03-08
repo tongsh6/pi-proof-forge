@@ -32,6 +32,18 @@ npx --yes @tongsh6/aief-init@latest retrofit --level L1 --base-dir AIEF
 4. 在 `main` 打 tag（`vX.Y.Z`）
 5. 创建 GitHub Release
 
+## GitHub Actions 门禁
+
+- `aief-l3-check.yml`
+  - 触发：`pull_request`、`push` 到 `develop/main/master`
+  - 路径范围：`.github/workflows/aief-l3-check.yml`、`AIEF/**`、`tools/check_aief_l3.py`
+  - 目的：仅在 AIEF 资产或 checker 本身变化时运行 L3 结构校验
+- `ui-packaged-smoke.yml`
+  - 触发：`pull_request`、`push` 到 `develop/main/master`
+  - 路径范围：`.github/workflows/ui-packaged-smoke.yml`、`ui/**`、`tools/**`、`tests/**`、`evidence_cards/**`、`matching_reports/**`、`job_profiles/**`
+  - 目的：仅在可能影响 Tauri 打包、Python sidecar、bundled assets 或 smoke verifier 的改动发生时运行 macOS 打包验收
+- `release-notes/**` 默认不触发上述 workflow；发布说明独立修改不应消耗重型 CI 资源
+
 ## 一键发布入口
 
 ```bash
