@@ -144,6 +144,16 @@ def _prune_unused_runtime_bits(target_version_dir: Path) -> None:
         / "lib"
         / f"python{PYTHON_VERSION}"
         / "lib-dynload"
+        / f"_curses.cpython-{sys.version_info.major}{sys.version_info.minor}-darwin.so",
+        target_version_dir
+        / "lib"
+        / f"python{PYTHON_VERSION}"
+        / "lib-dynload"
+        / f"_curses_panel.cpython-{sys.version_info.major}{sys.version_info.minor}-darwin.so",
+        target_version_dir
+        / "lib"
+        / f"python{PYTHON_VERSION}"
+        / "lib-dynload"
         / f"_tkinter.cpython-{sys.version_info.major}{sys.version_info.minor}-darwin.so",
         target_version_dir
         / "lib"
