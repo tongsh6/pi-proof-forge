@@ -140,6 +140,21 @@
         "senioritySignal": "Seniority signal"
       }
     },
+    "agentRun": {
+      "title": "Agent Run",
+      "subtitle": "Multi-round run with gate and optional manual review.",
+      "pendingReview": "Pending review",
+      "pendingReviewSubtitle": "Candidates waiting for approve / reject.",
+      "emptyReview": "No candidates pending",
+      "emptyReviewHint": "Start a run with delivery_mode=manual to see candidates here.",
+      "refresh": "Refresh",
+      "approve": "Approve",
+      "reject": "Reject",
+      "skip": "Skip",
+      "matchScore": "Match",
+      "evalScore": "Eval",
+      "round": "Round"
+    },
     "policy": {
       "title": "Policy",
       "subtitle": "Business rules for gating and company exclusions.",
@@ -150,7 +165,13 @@
         "matchingThreshold": "Matching threshold",
         "evaluationThreshold": "Evaluation threshold",
         "maxRounds": "Max rounds",
-        "mode": "Gate mode"
+        "mode": "Gate mode",
+        "deliveryMode": "Delivery mode",
+        "deliveryModeAuto": "Auto",
+        "deliveryModeManual": "Manual",
+        "batchReview": "Batch review",
+        "batchReviewHint": "Only when delivery mode is manual",
+        "saveDelivery": "Save delivery settings"
       },
       "excludedCompanies": {
         "title": "Excluded companies",

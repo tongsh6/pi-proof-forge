@@ -91,3 +91,34 @@ class ScreenshotRef:
     resource_id: str
     step_name: str
     mime_type: str
+
+
+# --- REVIEW (manual delivery mode) ---
+
+
+@dataclass(frozen=True)
+class ReviewCandidate:
+    """待审批投递候选；design.md / tasks A2。"""
+
+    job_lead_id: str
+    company: str
+    position: str
+    matching_score: float
+    evaluation_score: float
+    round_index: int
+    resume_version: str
+    job_url: str = ""
+    score_breakdown: tuple[tuple[str, float], ...] = ()
+    gap_tasks: tuple[GapTask, ...] = ()
+    gate_decision: GateDecision | None = None
+
+
+@dataclass(frozen=True)
+class ReviewDecision:
+    """用户审批结果；design.md / tasks A2。"""
+
+    job_lead_id: str
+    action: str  # approve | reject | skip | skip_all
+    decided_by: str
+    decided_at: str  # ISO 8601
+    note: str = ""

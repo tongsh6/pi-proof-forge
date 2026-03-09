@@ -4,7 +4,12 @@ import datetime
 import os
 import subprocess
 from pathlib import Path
+import sys
 from typing import cast
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from tools.discovery.filters import filter_candidates_by_policy
 
@@ -33,7 +38,7 @@ def run_step(cmd: list[str], name: str) -> int:
     return result.returncode
 
 
-def main() -> int:
+def _legacy_main() -> int:
     parser = argparse.ArgumentParser(description="Run end-to-end PiProofForge pipeline")
     _ = parser.add_argument("--raw", required=True, help="Raw material input path")
     _ = parser.add_argument(
@@ -228,6 +233,15 @@ def main() -> int:
     print(f"- resume A/B: {resume_dir}")
     print(f"- scorecard: {scorecard_output}")
     return 0
+
+
+def main() -> int:
+    if os.getenv("PPF_FORCE_LEGACY_MAIN") == "1":
+        return _legacy_main()
+
+    from tools.cli.commands.pipeline import main as cli_main
+
+    return cli_main()
 
 
 if __name__ == "__main__":

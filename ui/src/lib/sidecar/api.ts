@@ -3,13 +3,16 @@ import { TauriRpcTransport } from "@/lib/rpc/tauri-transport";
 import type {
   EvidenceGetResult,
   EvidenceListResult,
+  GetPendingReviewResult,
   HandshakeResult,
   JobProfilesFilters,
   JobProfilesListResult,
   OverviewGetResult,
   PingResult,
+  ReviewDecisionItem,
   SettingsGetResult,
   SettingsUpdateResult,
+  SubmitReviewResult,
 } from "./types";
 
 const UI_VERSION = "0.1.0";
@@ -79,6 +82,16 @@ export async function updateLegalEntityExclusionList(
   });
 }
 
+export async function updateDeliverySettings(
+  delivery_mode: "auto" | "manual",
+  batch_review: boolean
+): Promise<SettingsUpdateResult> {
+  return client.call<SettingsUpdateResult>("settings.update", {
+    section: "delivery_settings",
+    payload: { delivery_mode, batch_review },
+  });
+}
+
 export async function getOverview(): Promise<OverviewGetResult> {
   return client.call<OverviewGetResult>("overview.get");
 }
@@ -99,6 +112,18 @@ export async function listJobProfiles(
     page_size: options.pageSize ?? 20,
     sort: { field: "updated_at", order: "desc" },
     filters,
+  });
+}
+
+export async function getPendingReview(): Promise<GetPendingReviewResult> {
+  return client.call<GetPendingReviewResult>("run.agent.getPendingReview", {});
+}
+
+export async function submitReview(
+  decisions: ReviewDecisionItem[]
+): Promise<SubmitReviewResult> {
+  return client.call<SubmitReviewResult>("run.agent.submitReview", {
+    decisions,
   });
 }
 

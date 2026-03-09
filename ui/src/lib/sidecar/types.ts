@@ -112,8 +112,14 @@ export interface LlmConfig {
   temperature: number;
 }
 
+export type DeliveryMode = "auto" | "manual";
+
 export interface SettingsGetResult extends RpcResultBase {
   gate_policy: GatePolicy;
+  /** auto: GATE 通过后直接 DELIVER；manual: 进入 REVIEW 等待审批 */
+  delivery_mode: DeliveryMode;
+  /** 仅 delivery_mode=manual 时有效；true=批量审批，false=逐轮审批 */
+  batch_review: boolean;
   exclusion_list: string[];
   excluded_legal_entities: string[];
   channels: Array<Record<string, unknown>>;
@@ -122,6 +128,7 @@ export interface SettingsGetResult extends RpcResultBase {
 
 export type SettingsUpdateSection =
   | "gate_policy"
+  | "delivery_settings"
   | "exclusion_list"
   | "excluded_legal_entities"
   | "channels"
@@ -167,4 +174,32 @@ export interface OverviewGetResult extends RpcResultBase {
   recent_activities: OverviewActivity[];
   match_trend: OverviewTrendPoint[];
   gaps: OverviewGap[];
+}
+
+/** One candidate in REVIEW state (design: ReviewCandidate). */
+export interface ReviewCandidateItem {
+  job_lead_id: string;
+  company: string;
+  position: string;
+  matching_score: number;
+  evaluation_score: number;
+  round_index: number;
+  resume_version: string;
+  job_url?: string;
+}
+
+export interface GetPendingReviewResult extends RpcResultBase {
+  candidates: ReviewCandidateItem[];
+}
+
+export interface ReviewDecisionItem {
+  job_lead_id: string;
+  action: "approve" | "reject" | "skip" | "skip_all";
+  decided_by: string;
+  decided_at: string;
+  note?: string;
+}
+
+export interface SubmitReviewResult extends RpcResultBase {
+  accepted: number;
 }

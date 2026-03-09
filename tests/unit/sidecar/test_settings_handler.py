@@ -28,6 +28,14 @@ class SettingsGetTests(unittest.TestCase):
         self.assertIn("max_rounds", gp)
         self.assertIn("gate_mode", gp)
 
+    def test_delivery_mode_and_batch_review_present(self) -> None:
+        params = {"meta": {"correlation_id": "corr_dm"}}
+        result = handle_settings_get(params)
+        self.assertIn("delivery_mode", result)
+        self.assertIn("batch_review", result)
+        self.assertIn(result["delivery_mode"], ("auto", "manual"))
+        self.assertIsInstance(result["batch_review"], bool)
+
     def test_llm_config_has_secret_status(self) -> None:
         params = {"meta": {"correlation_id": "corr_003"}}
         result = handle_settings_get(params)
@@ -77,6 +85,19 @@ class SettingsGetTests(unittest.TestCase):
                 params = {"meta": {"correlation_id": "corr_006a"}}
                 result = handle_settings_get(params)
         self.assertEqual(result["excluded_legal_entities"], ["Acme Holdings Ltd"])
+
+    def test_delivery_settings_load_from_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            policy_path.write_text(
+                'delivery_mode: "manual"\nbatch_review: "true"\n',
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                params = {"meta": {"correlation_id": "corr_dm_load"}}
+                result = handle_settings_get(params)
+        self.assertEqual(result["delivery_mode"], "manual")
+        self.assertTrue(result["batch_review"])
 
 
 class SettingsUpdateTests(unittest.TestCase):
@@ -128,6 +149,21 @@ class SettingsUpdateTests(unittest.TestCase):
                 self.assertTrue(result["saved"])
                 stored = handle_settings_get({"meta": {"correlation_id": "corr_012"}})
         self.assertEqual(stored["excluded_legal_entities"], payload)
+
+    def test_update_delivery_settings_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            params = {
+                "meta": {"correlation_id": "corr_dm"},
+                "section": "delivery_settings",
+                "payload": {"delivery_mode": "manual", "batch_review": True},
+            }
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                result = handle_settings_update(params)
+                self.assertTrue(result["saved"])
+                stored = handle_settings_get({"meta": {"correlation_id": "corr_dm2"}})
+        self.assertEqual(stored["delivery_mode"], "manual")
+        self.assertTrue(stored["batch_review"])
 
 
 if __name__ == "__main__":

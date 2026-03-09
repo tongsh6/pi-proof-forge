@@ -140,6 +140,21 @@
         "senioritySignal": "资深度信号"
       }
     },
+    "agentRun": {
+      "title": "Agent 运行",
+      "subtitle": "多轮运行与门禁，可选人工审批。",
+      "pendingReview": "待审批",
+      "pendingReviewSubtitle": "等待批准或拒绝的候选。",
+      "emptyReview": "暂无待审批候选",
+      "emptyReviewHint": "使用 delivery_mode=manual 启动运行后，候选将显示在此。",
+      "refresh": "刷新",
+      "approve": "批准",
+      "reject": "拒绝",
+      "skip": "跳过",
+      "matchScore": "匹配分",
+      "evalScore": "评测分",
+      "round": "轮次"
+    },
     "policy": {
       "title": "策略配置",
       "subtitle": "管理门禁规则与企业排除策略。",
@@ -150,7 +165,13 @@
         "matchingThreshold": "匹配阈值",
         "evaluationThreshold": "评估阈值",
         "maxRounds": "最大轮次",
-        "mode": "门禁模式"
+        "mode": "门禁模式",
+        "deliveryMode": "投递模式",
+        "deliveryModeAuto": "自动",
+        "deliveryModeManual": "人工",
+        "batchReview": "批量审批",
+        "batchReviewHint": "仅当投递模式为人工时生效",
+        "saveDelivery": "保存投递设置"
       },
       "excludedCompanies": {
         "title": "排除企业展示名",

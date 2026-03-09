@@ -102,6 +102,42 @@ def match_exclusion(
     return None
 
 
+def load_delivery_settings(path: Path | None = None) -> tuple[str, bool]:
+    """Return (delivery_mode, batch_review) from policy file; defaults ('auto', False)."""
+    policy_path = _resolve_policy_path(path)
+    if policy_path is None or not policy_path.exists():
+        return ("auto", False)
+    doc = parse_simple_yaml(policy_path.read_text(encoding="utf-8"))
+    scalars = doc.get("scalars", {})
+    mode = scalars.get("delivery_mode", "auto")
+    if mode not in ("auto", "manual"):
+        mode = "auto"
+    batch = (scalars.get("batch_review", "false").lower() in ("true", "1"))
+    return (mode, batch)
+
+
+def save_delivery_settings(
+    delivery_mode: str,
+    batch_review: bool,
+    path: Path | None = None,
+) -> Path | None:
+    """Persist delivery_mode and batch_review to policy file; merge with existing."""
+    policy_path = _resolve_policy_path(path)
+    if policy_path is None:
+        return None
+    scalars: dict[str, str] = {}
+    lists: dict[str, list[str]] = {}
+    if policy_path.exists():
+        doc = parse_simple_yaml(policy_path.read_text(encoding="utf-8"))
+        scalars = doc.get("scalars", {})
+        lists = doc.get("lists", {})
+    scalars["delivery_mode"] = delivery_mode if delivery_mode in ("auto", "manual") else "auto"
+    scalars["batch_review"] = "true" if batch_review else "false"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(dump_yaml(scalars, lists), encoding="utf-8")
+    return policy_path
+
+
 def _resolve_policy_path(path: Path | None) -> Path | None:
     if path is not None:
         return path
