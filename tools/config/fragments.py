@@ -18,3 +18,4 @@ class PolicyConfig:
     batch_review: bool  # 仅 delivery_mode=manual 时生效
     excluded_companies: tuple[str, ...]
     excluded_legal_entities: tuple[str, ...]
+    max_deliveries: int = 0
