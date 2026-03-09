@@ -40,6 +40,26 @@ python3 tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evid
 
 ## Workflow 脚本
 
+## v2 CLI 薄入口（新增）
+
+统一入口：
+
+```bash
+python3 -m tools.cli.entrypoints <command> [args]
+```
+
+可用命令：`extract` / `match` / `generate` / `evaluate` / `pipeline` / `agent`
+
+示例：
+
+```bash
+python3 -m tools.cli.entrypoints extract --input tools/sample_raw.txt --output evidence_cards/ec-2026-010.yaml
+python3 -m tools.cli.entrypoints match --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-002.yaml
+python3 -m tools.cli.entrypoints generate --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs
+python3 -m tools.cli.entrypoints evaluate --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml
+python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id run-001 --output-dir outputs/agent_runs
+```
+
 ## 企业例外清单
 
 可以在仓库根目录放置 `policy.yaml`（或设置环境变量 `PPF_POLICY_PATH` 指向文件）来定义需要排除的企业名单。

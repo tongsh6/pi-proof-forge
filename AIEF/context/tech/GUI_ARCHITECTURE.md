@@ -180,3 +180,19 @@ The final implementation baseline is:
 - Architecture doc: `AIEF/context/tech/GUI_ARCHITECTURE.md`
 
 Any future GUI implementation, review checklist, or delivery plan must align with these three artifacts.
+
+## 12. Configuration Boundary (A10a)
+
+GUI configuration ownership is fixed and must not regress to a single settings page.
+
+- Policy page owns gate policy and exclusion list behavior:
+  - `delivery_mode` (`auto` or `manual`)
+  - `batch_review` (effective only when `delivery_mode=manual`)
+  - `excluded_companies`
+  - `excluded_legal_entities`
+- System Settings page owns runtime/system capabilities:
+  - channels and channel fallback configuration
+  - LLM provider/model/base_url and credential status
+  - connectivity and health checks
+
+The sidecar bridge may keep a merged settings payload for compatibility, but frontend IA must remain split between Policy and System Settings.

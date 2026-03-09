@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
-import json
 import os
 import re
-from collections.abc import Mapping
-from http.client import HTTPResponse
 from pathlib import Path
+import sys
 from typing import TypedDict, cast
-from urllib import request
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.infra.llm.client import LLMClient
+from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -26,78 +30,6 @@ class RuleResult(TypedDict):
 
 def read_text(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
-
-
-def parse_simple_yaml(text: str) -> ParsedDoc:
-    scalars: dict[str, str] = {}
-    lists: dict[str, list[str]] = {}
-    current_list_key: str | None = None
-
-    for raw in text.splitlines():
-        line = raw.rstrip()
-        if not line or line.lstrip().startswith("#"):
-            continue
-
-        list_match = re.match(r"^\s*-\s*(.+)$", line)
-        if list_match and current_list_key is not None:
-            value = unquote(list_match.group(1).strip())
-            lists[current_list_key].append(value)
-            continue
-
-        key_list_match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*$", line)
-        if key_list_match:
-            key = key_list_match.group(1)
-            current_list_key = key
-            lists[key] = []
-            continue
-
-        key_scalar_match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.+)$", line)
-        if key_scalar_match:
-            key = key_scalar_match.group(1)
-            value = unquote(key_scalar_match.group(2).strip())
-            scalars[key] = value
-            current_list_key = None
-
-    return {"scalars": scalars, "lists": lists}
-
-
-def unquote(value: str) -> str:
-    if len(value) >= 2 and ((value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))):
-        return value[1:-1]
-    return value
-
-
-def post_json(url: str, headers: dict[str, str], payload: Mapping[str, object]) -> dict[str, object]:
-    data = json.dumps(payload).encode("utf-8")
-    req = request.Request(url, data=data, headers=headers, method="POST")
-    response = cast(HTTPResponse, request.urlopen(req, timeout=120))
-    try:
-        body = response.read().decode("utf-8")
-    finally:
-        response.close()
-    parsed = cast(object, json.loads(body))
-    if isinstance(parsed, dict):
-        return cast(dict[str, object], parsed)
-    return {}
-
-
-def extract_content(response: dict[str, object]) -> str:
-    choices_obj = response.get("choices")
-    if not isinstance(choices_obj, list) or not choices_obj:
-        return ""
-    choices = cast(list[object], choices_obj)
-    first = choices[0]
-    if not isinstance(first, dict):
-        return ""
-    first_dict = cast(dict[str, object], first)
-    message = first_dict.get("message")
-    if not isinstance(message, dict):
-        return ""
-    message_dict = cast(dict[str, object], message)
-    content = message_dict.get("content")
-    if not isinstance(content, str):
-        return ""
-    return content
 
 
 def load_prompt(template_path: str, resume_text: str, rule_scorecard: str) -> str:
@@ -121,9 +53,18 @@ def normalize_line(text: str) -> str:
     return value
 
 
-def evaluate_rule(resume_text: str, must_have: list[str], keywords: list[str], now: str, input_name: str, job_profile_name: str | None) -> RuleResult:
+def evaluate_rule(
+    resume_text: str,
+    must_have: list[str],
+    keywords: list[str],
+    now: str,
+    input_name: str,
+    job_profile_name: str | None,
+) -> RuleResult:
     lines: list[str] = [line for line in resume_text.splitlines() if line.strip()]
-    bullet_lines: list[str] = [line.strip() for line in lines if re.match(r"^\s*([-*]|\d+\.)\s+", line)]
+    bullet_lines: list[str] = [
+        line.strip() for line in lines if re.match(r"^\s*([-*]|\d+\.)\s+", line)
+    ]
     total_bullets = len(bullet_lines)
 
     term_pool: list[str] = []
@@ -133,23 +74,41 @@ def evaluate_rule(resume_text: str, must_have: list[str], keywords: list[str], n
             term_pool.append(term_norm)
 
     resume_lower = resume_text.lower()
-    matched_terms: list[str] = [term for term in term_pool if term.lower() in resume_lower]
-    missing_terms: list[str] = [term for term in term_pool if term.lower() not in resume_lower]
+    matched_terms: list[str] = [
+        term for term in term_pool if term.lower() in resume_lower
+    ]
+    missing_terms: list[str] = [
+        term for term in term_pool if term.lower() not in resume_lower
+    ]
 
     coverage_ratio = (len(matched_terms) / len(term_pool)) if term_pool else 0.0
     coverage_score = int(round(coverage_ratio * 100)) if term_pool else 50
 
-    quantified_bullets: list[str] = [line for line in bullet_lines if re.search(r"\d", line)]
+    quantified_bullets: list[str] = [
+        line for line in bullet_lines if re.search(r"\d", line)
+    ]
     quant_ratio = (len(quantified_bullets) / total_bullets) if total_bullets else 0.0
     quant_score = int(round(quant_ratio * 100))
 
     fluff_words = ["负责", "参与", "协同", "支持", "推进", "优化", "提升", "相关"]
-    tech_words = ["java", "go", "python", "redis", "kafka", "mysql", "kubernetes", "slo", "sla"]
+    tech_words = [
+        "java",
+        "go",
+        "python",
+        "redis",
+        "kafka",
+        "mysql",
+        "kubernetes",
+        "slo",
+        "sla",
+    ]
     fluff_bullets = 0
     for line in bullet_lines:
         lower = line.lower()
         has_fluff = any(word in line for word in fluff_words)
-        has_concrete = bool(re.search(r"\d", line)) or any(word in lower for word in tech_words)
+        has_concrete = bool(re.search(r"\d", line)) or any(
+            word in lower for word in tech_words
+        )
         if has_fluff and not has_concrete:
             fluff_bullets += 1
 
@@ -175,7 +134,11 @@ def evaluate_rule(resume_text: str, must_have: list[str], keywords: list[str], n
     for line in bullet_lines:
         lower = line.lower()
         has_metric = bool(re.search(r"\d", line))
-        has_term = any(term.lower() in lower for term in citation_terms) if citation_terms else False
+        has_term = (
+            any(term.lower() in lower for term in citation_terms)
+            if citation_terms
+            else False
+        )
         if has_metric or has_term:
             evidence_cited += 1
     citation_ratio = (evidence_cited / total_bullets) if total_bullets else 0.0
@@ -197,7 +160,9 @@ def evaluate_rule(resume_text: str, must_have: list[str], keywords: list[str], n
     if coverage_score < 80:
         suggestions.append("补齐 must-have / keywords 在核心经历中的覆盖。")
         if missing_terms:
-            gap_tasks.append("补充或改写经历，覆盖缺失词：" + ", ".join(missing_terms[:5]))
+            gap_tasks.append(
+                "补充或改写经历，覆盖缺失词：" + ", ".join(missing_terms[:5])
+            )
     if quant_score < 50:
         suggestions.append("提高量化 bullets 占比，优先加入时延、成功率、成本等指标。")
         gap_tasks.append("为至少 2 条关键经历补充可量化结果。")
@@ -214,7 +179,9 @@ def evaluate_rule(resume_text: str, must_have: list[str], keywords: list[str], n
     if not gap_tasks:
         gap_tasks.append("暂无高优先级补证据任务。")
 
-    profile_line = f"Job Profile: {job_profile_name}" if job_profile_name else "Job Profile: n/a"
+    profile_line = (
+        f"Job Profile: {job_profile_name}" if job_profile_name else "Job Profile: n/a"
+    )
     markdown_lines: list[str] = [
         "# Scorecard",
         f"Generated at: {now}",
@@ -242,17 +209,35 @@ def evaluate_rule(resume_text: str, must_have: list[str], keywords: list[str], n
     return {"markdown": markdown, "total_score": total_score}
 
 
-def main() -> int:
+def _legacy_main() -> int:
     parser = argparse.ArgumentParser(description="Run evaluation workflow")
     _ = parser.add_argument("--input", required=True, help="Generated resume path")
     _ = parser.add_argument("--output", required=True, help="Scorecard output path")
-    _ = parser.add_argument("--job-profile", help="Job profile path for keyword coverage")
-    _ = parser.add_argument("--use-llm", action="store_true", help="Use LLM for explanation layer")
-    _ = parser.add_argument("--require-llm", action="store_true", help="Fail if LLM explanation is unavailable")
-    _ = parser.add_argument("--prompt", default="tools/prompts/evaluation.md", help="Prompt template path")
-    _ = parser.add_argument("--model", default=os.getenv("LLM_MODEL", ""), help="Model name")
-    _ = parser.add_argument("--base-url", default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL), help="OpenAI-compatible base URL")
-    _ = parser.add_argument("--api-key", default=os.getenv("LLM_API_KEY", ""), help="API key")
+    _ = parser.add_argument(
+        "--job-profile", help="Job profile path for keyword coverage"
+    )
+    _ = parser.add_argument(
+        "--use-llm", action="store_true", help="Use LLM for explanation layer"
+    )
+    _ = parser.add_argument(
+        "--require-llm",
+        action="store_true",
+        help="Fail if LLM explanation is unavailable",
+    )
+    _ = parser.add_argument(
+        "--prompt", default="tools/prompts/evaluation.md", help="Prompt template path"
+    )
+    _ = parser.add_argument(
+        "--model", default=os.getenv("LLM_MODEL", ""), help="Model name"
+    )
+    _ = parser.add_argument(
+        "--base-url",
+        default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
+        help="OpenAI-compatible base URL",
+    )
+    _ = parser.add_argument(
+        "--api-key", default=os.getenv("LLM_API_KEY", ""), help="API key"
+    )
     args = parser.parse_args()
 
     now = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -296,15 +281,16 @@ def main() -> int:
             ],
             "temperature": 0,
         }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        }
-        url = base_url.rstrip("/") + "/chat/completions"
-        response = post_json(url, headers, payload)
-        llm_content = extract_content(response)
+        client = LLMClient(base_url=base_url, api_key=api_key, timeout=120)
+        response = client.post_json(client.chat_completions_url, payload)
+        llm_content = client.extract_content(response)
         if llm_content:
-            final_markdown = final_markdown.rstrip() + "\n\n## LLM 解释层\n" + llm_content.strip() + "\n"
+            final_markdown = (
+                final_markdown.rstrip()
+                + "\n\n## LLM 解释层\n"
+                + llm_content.strip()
+                + "\n"
+            )
         elif require_llm:
             print("LLM mode required but received empty response")
             return 1
@@ -316,6 +302,15 @@ def main() -> int:
     output_file.parent.mkdir(parents=True, exist_ok=True)
     _ = output_file.write_text(final_markdown, encoding="utf-8")
     return 0
+
+
+def main() -> int:
+    if os.getenv("PPF_FORCE_LEGACY_MAIN") == "1":
+        return _legacy_main()
+
+    from tools.cli.commands.evaluate import main as cli_main
+
+    return cli_main()
 
 
 if __name__ == "__main__":

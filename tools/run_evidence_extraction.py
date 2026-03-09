@@ -1,35 +1,18 @@
 #!/usr/bin/env python3
-import argparse
-import subprocess
+from __future__ import annotations
+
+import sys
 from pathlib import Path
-from typing import cast
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.cli.commands.extract import main as cli_main
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run evidence extraction workflow")
-    _ = parser.add_argument("--input", required=True, help="Raw material path")
-    _ = parser.add_argument("--output", required=True, help="Output evidence card path")
-    _ = parser.add_argument("--id", help="Evidence card id (optional)")
-    args = parser.parse_args()
-
-    input_path = cast(str, args.input)
-    output_path = cast(str, args.output)
-    id_arg = cast(str | None, args.id)
-
-    cmd = [
-        "python3",
-        "tools/extract_evidence.py",
-        "--input",
-        input_path,
-        "--output",
-        output_path,
-    ]
-    if id_arg:
-        cmd.extend(["--id", id_arg])
-
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(cmd, check=False)
-    return result.returncode
+    return cli_main()
 
 
 if __name__ == "__main__":

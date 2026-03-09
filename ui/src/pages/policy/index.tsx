@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import {
   getSettings,
+  updateDeliverySettings,
   updateExclusionList,
   updateLegalEntityExclusionList,
 } from "@/lib/sidecar/api";
@@ -38,6 +39,8 @@ export function PolicyPage() {
     useState<SaveState>("idle");
   const [companyError, setCompanyError] = useState<string | null>(null);
   const [legalEntityError, setLegalEntityError] = useState<string | null>(null);
+  const [deliverySaveState, setDeliverySaveState] = useState<SaveState>("idle");
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
     setLoadState("loading");
@@ -46,6 +49,8 @@ export function PolicyPage() {
     setLegalEntitySaveState("idle");
     setCompanyError(null);
     setLegalEntityError(null);
+    setDeliverySaveState("idle");
+    setDeliveryError(null);
 
     try {
       const result = await getSettings();
@@ -95,6 +100,37 @@ export function PolicyPage() {
       setLegalEntityError(getErrorMessage(nextError));
     }
   }, [legalEntityDraft, settings]);
+
+  const handleSaveDeliverySettings = useCallback(async () => {
+    if (!settings) return;
+    setDeliverySaveState("saving");
+    setDeliveryError(null);
+    try {
+      await updateDeliverySettings(settings.delivery_mode, settings.batch_review);
+      setDeliverySaveState("saved");
+    } catch (nextError) {
+      setDeliverySaveState("error");
+      setDeliveryError(getErrorMessage(nextError));
+    }
+  }, [settings]);
+
+  const setDeliveryMode = useCallback(
+    (value: "auto" | "manual") => {
+      if (settings) setSettings({ ...settings, delivery_mode: value });
+      if (deliverySaveState !== "idle") setDeliverySaveState("idle");
+      setDeliveryError(null);
+    },
+    [settings, deliverySaveState]
+  );
+
+  const setBatchReview = useCallback(
+    (value: boolean) => {
+      if (settings) setSettings({ ...settings, batch_review: value });
+      if (deliverySaveState !== "idle") setDeliverySaveState("idle");
+      setDeliveryError(null);
+    },
+    [settings, deliverySaveState]
+  );
 
   useEffect(() => {
     void loadSettings();
@@ -185,6 +221,98 @@ export function PolicyPage() {
                   {settings.gate_policy.gate_mode}
                 </dd>
               </div>
+              <div className="flex items-center justify-between gap-4 pt-2 border-t border-border">
+                <dt className="text-sm text-text-secondary">
+                  {t("pages.policy.gatePolicy.deliveryMode")}
+                </dt>
+                <dd>
+                  <select
+                    className="rounded-card border border-border bg-bg-primary/60 px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    value={settings.delivery_mode}
+                    onChange={(e) =>
+                      setDeliveryMode(e.target.value as "auto" | "manual")
+                    }
+                    aria-label={t("pages.policy.gatePolicy.deliveryMode")}
+                  >
+                    <option value="auto">
+                      {t("pages.policy.gatePolicy.deliveryModeAuto")}
+                    </option>
+                    <option value="manual">
+                      {t("pages.policy.gatePolicy.deliveryModeManual")}
+                    </option>
+                  </select>
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-sm text-text-secondary">
+                  <span>{t("pages.policy.gatePolicy.batchReview")}</span>
+                  {settings.delivery_mode === "manual" && (
+                    <span className="ml-1 text-xs text-text-muted">
+                      ({t("pages.policy.gatePolicy.batchReviewHint")})
+                    </span>
+                  )}
+                </dt>
+                <dd>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.batch_review}
+                    aria-label={t("pages.policy.gatePolicy.batchReview")}
+                    disabled={settings.delivery_mode === "auto"}
+                    className={`relative inline-flex h-6 w-10 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      settings.batch_review
+                        ? "bg-accent border-accent"
+                        : "bg-bg-muted border-border"
+                    } ${settings.delivery_mode === "auto" ? "" : "cursor-pointer"}`}
+                    onClick={() =>
+                      settings.delivery_mode === "manual" &&
+                      setBatchReview(!settings.batch_review)
+                    }
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                        settings.batch_review ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </dd>
+              </div>
+              {(deliverySaveState !== "idle" || deliveryError) && (
+                <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
+                  {deliveryError && (
+                    <span className="text-error">{deliveryError}</span>
+                  )}
+                  {deliverySaveState === "saving" && (
+                    <span className="text-text-muted">
+                      {t("pages.policy.excludedCompanies.saving")}
+                    </span>
+                  )}
+                  {deliverySaveState === "saved" && (
+                    <span className="text-green-600 dark:text-green-400">
+                      {t("pages.policy.excludedCompanies.saved")}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="rounded-card border border-border px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:opacity-60"
+                    onClick={() => void handleSaveDeliverySettings()}
+                    disabled={deliverySaveState === "saving"}
+                  >
+                    {t("pages.policy.gatePolicy.saveDelivery")}
+                  </button>
+                </div>
+              )}
+              {deliverySaveState === "idle" && !deliveryError && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    className="rounded-card border border-border px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:bg-bg-hover"
+                    onClick={() => void handleSaveDeliverySettings()}
+                  >
+                    {t("pages.policy.gatePolicy.saveDelivery")}
+                  </button>
+                </div>
+              )}
             </dl>
           </section>
 

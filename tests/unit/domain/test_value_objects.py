@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import asdict
 
 from tools.domain.result import Err
 from tools.domain.value_objects import (
@@ -10,6 +11,8 @@ from tools.domain.value_objects import (
     GateDecision,
     GateFailure,
     MatchTrendPoint,
+    ReviewCandidate,
+    ReviewDecision,
     Score,
     ScreenshotRef,
     SubmissionStep,
@@ -29,7 +32,9 @@ class ScoreTests(unittest.TestCase):
 
 class GapTaskTests(unittest.TestCase):
     def test_gap_task_fields(self) -> None:
-        gt = GapTask(description="Add K8s experience", priority="high", source="matching")
+        gt = GapTask(
+            description="Add K8s experience", priority="high", source="matching"
+        )
         self.assertEqual(gt.description, "Add K8s experience")
         self.assertEqual(gt.priority, "high")
         self.assertEqual(gt.source, "matching")
@@ -87,7 +92,9 @@ class GateFailureTests(unittest.TestCase):
 
 class ChannelFailureTests(unittest.TestCase):
     def test_channel_failure_as_err_type(self) -> None:
-        cf = ChannelFailure(channel_id="liepin", reason="login_expired", details="session timeout")
+        cf = ChannelFailure(
+            channel_id="liepin", reason="login_expired", details="session timeout"
+        )
         err = Err(error=cf)
         self.assertEqual(err.error.channel_id, "liepin")
         self.assertEqual(err.error.reason, "login_expired")
@@ -113,21 +120,27 @@ class DeliveryResultTests(unittest.TestCase):
         self.assertEqual(dr.submission_id, "sub-001")
 
     def test_delivery_result_is_frozen(self) -> None:
-        dr = DeliveryResult(channel_id="x", success=True, submission_id="s", message="m")
+        dr = DeliveryResult(
+            channel_id="x", success=True, submission_id="s", message="m"
+        )
         with self.assertRaises(AttributeError):
             dr.success = False  # type: ignore[misc]
 
 
 class MatchTrendPointTests(unittest.TestCase):
     def test_match_trend_point_fields(self) -> None:
-        mtp = MatchTrendPoint(date="2026-03-01", score=82.5, job_profile_id="jp-2026-001")
+        mtp = MatchTrendPoint(
+            date="2026-03-01", score=82.5, job_profile_id="jp-2026-001"
+        )
         self.assertEqual(mtp.date, "2026-03-01")
         self.assertAlmostEqual(mtp.score, 82.5)
 
 
 class GapItemTests(unittest.TestCase):
     def test_gap_item_fields(self) -> None:
-        gi = GapItem(description="Missing cloud cert", category="skill", severity="medium")
+        gi = GapItem(
+            description="Missing cloud cert", category="skill", severity="medium"
+        )
         self.assertEqual(gi.category, "skill")
 
 
@@ -144,9 +157,98 @@ class SubmissionStepTests(unittest.TestCase):
 
 class ScreenshotRefTests(unittest.TestCase):
     def test_screenshot_ref_fields(self) -> None:
-        sr = ScreenshotRef(resource_id="scr-001", step_name="upload_resume", mime_type="image/png")
+        sr = ScreenshotRef(
+            resource_id="scr-001", step_name="upload_resume", mime_type="image/png"
+        )
         self.assertEqual(sr.resource_id, "scr-001")
         self.assertEqual(sr.mime_type, "image/png")
+
+
+class ReviewCandidateTests(unittest.TestCase):
+    def test_review_candidate_has_required_fields(self) -> None:
+        rc = ReviewCandidate(
+            job_lead_id="jl-001",
+            company="Acme Inc",
+            position="Backend Engineer",
+            matching_score=82.0,
+            evaluation_score=78.0,
+            round_index=1,
+            resume_version="v1",
+        )
+        self.assertEqual(rc.job_lead_id, "jl-001")
+        self.assertEqual(rc.company, "Acme Inc")
+        self.assertEqual(rc.position, "Backend Engineer")
+        self.assertAlmostEqual(rc.matching_score, 82.0)
+        self.assertAlmostEqual(rc.evaluation_score, 78.0)
+        self.assertEqual(rc.round_index, 1)
+        self.assertEqual(rc.resume_version, "v1")
+        self.assertEqual(rc.job_url, "")
+        self.assertEqual(rc.gap_tasks, ())
+
+    def test_review_candidate_is_frozen(self) -> None:
+        rc = ReviewCandidate(
+            job_lead_id="jl-001",
+            company="Acme",
+            position="Dev",
+            matching_score=70.0,
+            evaluation_score=75.0,
+            round_index=0,
+            resume_version="v1",
+        )
+        with self.assertRaises(AttributeError):
+            rc.company = "Other"  # type: ignore[misc]
+
+    def test_review_candidate_is_serializable(self) -> None:
+        rc = ReviewCandidate(
+            job_lead_id="jl-001",
+            company="Acme",
+            position="Dev",
+            matching_score=70.0,
+            evaluation_score=75.0,
+            round_index=0,
+            resume_version="v1",
+        )
+        data = asdict(rc)
+        self.assertEqual(data["job_lead_id"], "jl-001")
+        self.assertEqual(data["resume_version"], "v1")
+
+
+class ReviewDecisionTests(unittest.TestCase):
+    def test_review_decision_has_required_fields(self) -> None:
+        rd = ReviewDecision(
+            job_lead_id="jl-001",
+            action="approve",
+            decided_by="user",
+            decided_at="2026-03-08T12:00:00Z",
+        )
+        self.assertEqual(rd.job_lead_id, "jl-001")
+        self.assertEqual(rd.action, "approve")
+        self.assertEqual(rd.decided_by, "user")
+        self.assertEqual(rd.decided_at, "2026-03-08T12:00:00Z")
+        self.assertEqual(rd.note, "")
+
+    def test_review_decision_is_frozen(self) -> None:
+        rd = ReviewDecision(
+            job_lead_id="jl-001",
+            action="reject",
+            decided_by="user",
+            decided_at="2026-03-08T12:00:00Z",
+            note="skip",
+        )
+        with self.assertRaises(AttributeError):
+            rd.action = "approve"  # type: ignore[misc]
+
+    def test_review_decision_is_serializable(self) -> None:
+        rd = ReviewDecision(
+            job_lead_id="jl-001",
+            action="approve",
+            decided_by="user",
+            decided_at="2026-03-08T12:00:00Z",
+            note="ok",
+        )
+        data = asdict(rd)
+        self.assertEqual(data["action"], "approve")
+        self.assertEqual(data["note"], "ok")
 
 
 if __name__ == "__main__":

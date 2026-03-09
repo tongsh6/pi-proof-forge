@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
-import json
 import os
 import re
-from collections.abc import Mapping
-from http.client import HTTPResponse
 from pathlib import Path
+import sys
 from typing import TypedDict, cast
-from urllib import request
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.infra.llm.client import LLMClient
+from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -35,79 +39,9 @@ def read_text(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def unquote(value: str) -> str:
-    if len(value) >= 2 and ((value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))):
-        return value[1:-1]
-    return value
-
-
-def parse_simple_yaml(text: str) -> ParsedDoc:
-    scalars: dict[str, str] = {}
-    lists: dict[str, list[str]] = {}
-    current_list_key: str | None = None
-
-    for raw in text.splitlines():
-        line = raw.rstrip()
-        if not line or line.lstrip().startswith("#"):
-            continue
-
-        list_match = re.match(r"^\s*-\s*(.+)$", line)
-        if list_match and current_list_key is not None:
-            value = unquote(list_match.group(1).strip())
-            lists[current_list_key].append(value)
-            continue
-
-        key_list_match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*$", line)
-        if key_list_match:
-            key = key_list_match.group(1)
-            current_list_key = key
-            lists[key] = []
-            continue
-
-        key_scalar_match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.+)$", line)
-        if key_scalar_match:
-            key = key_scalar_match.group(1)
-            value = unquote(key_scalar_match.group(2).strip())
-            scalars[key] = value
-            current_list_key = None
-
-    return {"scalars": scalars, "lists": lists}
-
-
-def post_json(url: str, headers: dict[str, str], payload: Mapping[str, object]) -> dict[str, object]:
-    data = json.dumps(payload).encode("utf-8")
-    req = request.Request(url, data=data, headers=headers, method="POST")
-    response = cast(HTTPResponse, request.urlopen(req, timeout=120))
-    try:
-        body = response.read().decode("utf-8")
-    finally:
-        response.close()
-    parsed = cast(object, json.loads(body))
-    if isinstance(parsed, dict):
-        return cast(dict[str, object], parsed)
-    return {}
-
-
-def extract_content(response: dict[str, object]) -> str:
-    choices_obj = response.get("choices")
-    if not isinstance(choices_obj, list) or not choices_obj:
-        return ""
-    choices = cast(list[object], choices_obj)
-    first = choices[0]
-    if not isinstance(first, dict):
-        return ""
-    first_dict = cast(dict[str, object], first)
-    message = first_dict.get("message")
-    if not isinstance(message, dict):
-        return ""
-    message_dict = cast(dict[str, object], message)
-    content = message_dict.get("content")
-    if not isinstance(content, str):
-        return ""
-    return content
-
-
-def load_prompt(template_path: str, report_text: str, evidence_text: str, version: str) -> str:
+def load_prompt(
+    template_path: str, report_text: str, evidence_text: str, version: str
+) -> str:
     template = read_text(template_path)
     content = template.replace("<MATCHING_REPORT>", report_text)
     content = content.replace("<EVIDENCE_CARDS>", evidence_text)
@@ -122,10 +56,16 @@ def extract_score_total(report_text: str) -> int:
 
 
 def extract_top_card_ids(report_text: str) -> list[str]:
-    top_ids = cast(list[str], re.findall(r"^\s*-\s*id:\s*\"?([^\"\n]+)\"?\s*$", report_text, re.MULTILINE))
+    top_ids = cast(
+        list[str],
+        re.findall(r"^\s*-\s*id:\s*\"?([^\"\n]+)\"?\s*$", report_text, re.MULTILINE),
+    )
     if top_ids:
         return top_ids[:3]
-    fallback_ids = cast(list[str], re.findall(r"^\s*-\s*\"?(ec-[^\"\n]+)\"?\s*$", report_text, re.MULTILINE))
+    fallback_ids = cast(
+        list[str],
+        re.findall(r"^\s*-\s*\"?(ec-[^\"\n]+)\"?\s*$", report_text, re.MULTILINE),
+    )
     unique: list[str] = []
     for card_id in fallback_ids:
         if card_id not in unique:
@@ -184,7 +124,9 @@ def pick_action(card: CardView, version: str) -> str:
     return card["actions"][0]
 
 
-def build_template_resume(version: str, report_id: str, score_total: int, now: str, cards: list[CardView]) -> str:
+def build_template_resume(
+    version: str, report_id: str, score_total: int, now: str, cards: list[CardView]
+) -> str:
     if version == "A":
         position = "Backend Tech Lead（架构/技术深度）"
     else:
@@ -234,21 +176,39 @@ def build_template_resume(version: str, report_id: str, score_total: int, now: s
         challenge = card["context"] if card["context"] else "挑战待补充"
         action = pick_action(card, version)
         result = card["results"][0] if card["results"] else "结果待补充"
-        lines.append(f"- {card['title']}：挑战={challenge}；动作={action}；结果={result}")
+        lines.append(
+            f"- {card['title']}：挑战={challenge}；动作={action}；结果={result}"
+        )
 
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
+def _legacy_main() -> int:
     parser = argparse.ArgumentParser(description="Run resume generation workflow")
-    _ = parser.add_argument("--matching-report", required=True, help="Matching report path")
+    _ = parser.add_argument(
+        "--matching-report", required=True, help="Matching report path"
+    )
     _ = parser.add_argument("--output-dir", required=True, help="Output directory")
-    _ = parser.add_argument("--use-llm", action="store_true", help="Use LLM for generation")
-    _ = parser.add_argument("--require-llm", action="store_true", help="Fail if LLM path is unavailable")
-    _ = parser.add_argument("--prompt", default="tools/prompts/generation.md", help="Prompt template path")
-    _ = parser.add_argument("--model", default=os.getenv("LLM_MODEL", ""), help="Model name")
-    _ = parser.add_argument("--base-url", default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL), help="OpenAI-compatible base URL")
-    _ = parser.add_argument("--api-key", default=os.getenv("LLM_API_KEY", ""), help="API key")
+    _ = parser.add_argument(
+        "--use-llm", action="store_true", help="Use LLM for generation"
+    )
+    _ = parser.add_argument(
+        "--require-llm", action="store_true", help="Fail if LLM path is unavailable"
+    )
+    _ = parser.add_argument(
+        "--prompt", default="tools/prompts/generation.md", help="Prompt template path"
+    )
+    _ = parser.add_argument(
+        "--model", default=os.getenv("LLM_MODEL", ""), help="Model name"
+    )
+    _ = parser.add_argument(
+        "--base-url",
+        default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
+        help="OpenAI-compatible base URL",
+    )
+    _ = parser.add_argument(
+        "--api-key", default=os.getenv("LLM_API_KEY", ""), help="API key"
+    )
     args = parser.parse_args()
 
     report_path = cast(str, args.matching_report)
@@ -273,7 +233,13 @@ def main() -> int:
     score_total = extract_score_total(report_text)
     top_card_ids = extract_top_card_ids(report_text)
     cards = load_cards(Path("evidence_cards"), top_card_ids)
-    evidence_text = "\n\n".join([read_text(str(Path("evidence_cards") / f"{card['id']}.yaml")) for card in cards if (Path("evidence_cards") / f"{card['id']}.yaml").exists()])
+    evidence_text = "\n\n".join(
+        [
+            read_text(str(Path("evidence_cards") / f"{card['id']}.yaml"))
+            for card in cards
+            if (Path("evidence_cards") / f"{card['id']}.yaml").exists()
+        ]
+    )
 
     for version in ["A", "B"]:
         content = build_template_resume(version, report_id, score_total, now, cards)
@@ -295,13 +261,9 @@ def main() -> int:
                     ],
                     "temperature": 0,
                 }
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}",
-                }
-                url = base_url.rstrip("/") + "/chat/completions"
-                response = post_json(url, headers, payload)
-                llm_content = extract_content(response)
+                client = LLMClient(base_url=base_url, api_key=api_key, timeout=120)
+                response = client.post_json(client.chat_completions_url, payload)
+                llm_content = client.extract_content(response)
                 if llm_content:
                     content = llm_content.strip() + "\n"
                 elif require_llm:
@@ -312,6 +274,15 @@ def main() -> int:
         _ = output_path.write_text(content, encoding="utf-8")
 
     return 0
+
+
+def main() -> int:
+    if os.getenv("PPF_FORCE_LEGACY_MAIN") == "1":
+        return _legacy_main()
+
+    from tools.cli.commands.generate import main as cli_main
+
+    return cli_main()
 
 
 if __name__ == "__main__":

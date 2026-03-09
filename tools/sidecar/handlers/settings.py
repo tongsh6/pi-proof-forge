@@ -4,8 +4,10 @@ import os
 from typing import Any
 
 from tools.policy.exclusions import (
+    load_delivery_settings,
     load_exclusion_list,
     load_legal_entity_exclusion_list,
+    save_delivery_settings,
     save_exclusion_list,
     save_legal_entity_exclusion_list,
 )
@@ -17,6 +19,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
     api_key_configured = bool(os.environ.get("LLM_API_KEY"))
     exclusion_list = load_exclusion_list()
     legal_entity_exclusion_list = load_legal_entity_exclusion_list()
+    delivery_mode, batch_review = load_delivery_settings()
 
     return {
         "meta": {"correlation_id": correlation_id},
@@ -27,6 +30,8 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
             "max_rounds": 5,
             "gate_mode": "strict",
         },
+        "delivery_mode": delivery_mode,
+        "batch_review": batch_review,
         "exclusion_list": exclusion_list,
         "excluded_legal_entities": legal_entity_exclusion_list,
         "channels": [],
@@ -49,6 +54,20 @@ def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
     section = params.get("section")
     payload = params.get("payload")
+
+    if section == "delivery_settings":
+        if not isinstance(payload, dict):
+            raise ValueError("delivery_settings payload must be an object")
+        mode = payload.get("delivery_mode", "auto")
+        batch = bool(payload.get("batch_review", False))
+        if mode not in ("auto", "manual"):
+            mode = "auto"
+        _ = save_delivery_settings(mode, batch)
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "section": section,
+            "saved": True,
+        }
 
     if section not in {"exclusion_list", "excluded_legal_entities"}:
         raise ValueError(f"unsupported settings section: {section}")

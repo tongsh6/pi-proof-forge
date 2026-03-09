@@ -87,6 +87,20 @@ python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output
 
 更多命令示例：`tools/README.md`
 
+### v2 CLI 统一入口（新增）
+
+```bash
+python3 -m tools.cli.entrypoints <command> [args]
+```
+
+命令包括：`extract`、`match`、`generate`、`evaluate`、`pipeline`、`agent`。
+
+例如：
+
+```bash
+python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id run-001 --output-dir outputs/agent_runs
+```
+
 ### AIEF 单目录模式（--base-dir）
 
 如果需要把 AIEF 资产直接生成到独立目录（例如 `AIEF/`）：
