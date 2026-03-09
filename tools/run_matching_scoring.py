@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
-import json
 import os
 import re
-from collections.abc import Mapping
-from http.client import HTTPResponse
 from pathlib import Path
+import sys
 from typing import TypedDict, cast
-from urllib import request
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from tools.domain.result import Err
 from tools.domain.value_objects import Candidate
+from tools.infra.llm.client import LLMClient
+from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.policy.audit import write_exclusion_audit
 from tools.policy.exclusions import (
     load_exclusion_list,
@@ -37,87 +40,10 @@ def read_text(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def parse_simple_yaml(text: str) -> ParsedDoc:
-    scalars: dict[str, str] = {}
-    lists: dict[str, list[str]] = {}
-    current_list_key: str | None = None
-
-    for raw in text.splitlines():
-        line = raw.rstrip()
-        if not line or line.lstrip().startswith("#"):
-            continue
-
-        list_match = re.match(r"^\s*-\s*(.+)$", line)
-        if list_match and current_list_key is not None:
-            value = unquote(list_match.group(1).strip())
-            lists[current_list_key].append(value)
-            continue
-
-        key_list_match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*$", line)
-        if key_list_match:
-            key = key_list_match.group(1)
-            current_list_key = key
-            lists[key] = []
-            continue
-
-        key_scalar_match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.+)$", line)
-        if key_scalar_match:
-            key = key_scalar_match.group(1)
-            value = unquote(key_scalar_match.group(2).strip())
-            scalars[key] = value
-            current_list_key = None
-
-    return {"scalars": scalars, "lists": lists}
-
-
-def unquote(value: str) -> str:
-    if len(value) >= 2 and (
-        (value.startswith('"') and value.endswith('"'))
-        or (value.startswith("'") and value.endswith("'"))
-    ):
-        return value[1:-1]
-    return value
-
-
 def load_prompt(template_path: str, job_profile_text: str, evidence_text: str) -> str:
     template = read_text(template_path)
     content = template.replace("<JOB_PROFILE>", job_profile_text)
     return content.replace("<EVIDENCE_CARDS>", evidence_text)
-
-
-def post_json(
-    url: str, headers: dict[str, str], payload: Mapping[str, object]
-) -> dict[str, object]:
-    data = json.dumps(payload).encode("utf-8")
-    req = request.Request(url, data=data, headers=headers, method="POST")
-    response = cast(HTTPResponse, request.urlopen(req, timeout=120))
-    try:
-        body = response.read().decode("utf-8")
-    finally:
-        response.close()
-    parsed = cast(object, json.loads(body))
-    if isinstance(parsed, dict):
-        return cast(dict[str, object], parsed)
-    return {}
-
-
-def extract_content(response: dict[str, object]) -> str:
-    choices_obj = response.get("choices")
-    if not isinstance(choices_obj, list) or not choices_obj:
-        return ""
-    choices = cast(list[object], choices_obj)
-    first = choices[0]
-    if not isinstance(first, dict):
-        return ""
-    first_dict = cast(dict[str, object], first)
-    message = first_dict.get("message")
-    if not isinstance(message, dict):
-        return ""
-    message_dict = cast(dict[str, object], message)
-    content = message_dict.get("content")
-    if not isinstance(content, str):
-        return ""
-    return content
 
 
 def parse_end_month(time_range: str) -> tuple[int, int] | None:
@@ -336,7 +262,7 @@ def build_rule_report(
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
+def _legacy_main() -> int:
     parser = argparse.ArgumentParser(description="Run matching & scoring workflow")
     _ = parser.add_argument("--job-profile", required=True, help="Job profile path")
     _ = parser.add_argument(
@@ -436,13 +362,9 @@ def main() -> int:
                 ],
                 "temperature": 0,
             }
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            }
-            url = base_url.rstrip("/") + "/chat/completions"
-            response = post_json(url, headers, payload)
-            content = extract_content(response)
+            client = LLMClient(base_url=base_url, api_key=api_key, timeout=120)
+            response = client.post_json(client.chat_completions_url, payload)
+            content = client.extract_content(response)
             if content:
                 _ = output_file.write_text(content, encoding="utf-8")
                 return 0
@@ -453,6 +375,15 @@ def main() -> int:
     rule_report = build_rule_report(job_profile, evidence_files, output_path)
     _ = output_file.write_text(rule_report, encoding="utf-8")
     return 0
+
+
+def main() -> int:
+    if os.getenv("PPF_FORCE_LEGACY_MAIN") == "1":
+        return _legacy_main()
+
+    from tools.cli.commands.match import main as cli_main
+
+    return cli_main()
 
 
 if __name__ == "__main__":
