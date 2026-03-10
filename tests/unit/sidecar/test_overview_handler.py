@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 from typing import Any
 
-from tools.sidecar.handlers.overview import handle_overview_get
+from tools.sidecar.handlers.overview import handle_overview_get, _score_from_doc
 
 
 class OverviewGetTests(unittest.TestCase):
@@ -58,6 +58,29 @@ class OverviewGetTests(unittest.TestCase):
         self.assertEqual(len(result["recent_activities"]), 1)
         self.assertEqual(len(result["match_trend"]), 2)
         self.assertEqual(len(result["gaps"]), 1)
+
+
+class ScoreFromDocTests(unittest.TestCase):
+    def test_uses_score_total_when_present(self) -> None:
+        doc = {"scalars": {"score_total": "85"}, "lists": {}}
+        self.assertEqual(_score_from_doc(doc), 85)
+
+    def test_falls_back_to_score_breakdown_sum(self) -> None:
+        doc = {
+            "scalars": {},
+            "lists": {
+                "score_breakdown": {"keywords": "30", "depth": "25", "stack": "20"}
+            },
+        }
+        self.assertEqual(_score_from_doc(doc), 75)
+
+    def test_returns_zero_when_no_score_data(self) -> None:
+        doc = {"scalars": {}, "lists": {}}
+        self.assertEqual(_score_from_doc(doc), 0)
+
+    def test_caps_score_at_100(self) -> None:
+        doc = {"scalars": {}, "lists": {"score_breakdown": {"a": "60", "b": "60"}}}
+        self.assertEqual(_score_from_doc(doc), 100)
 
 
 if __name__ == "__main__":
