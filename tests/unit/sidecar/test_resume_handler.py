@@ -401,7 +401,38 @@ class ResumeExportPdfTests(unittest.TestCase):
                     self.assertTrue(destination.exists())
                     self.assertEqual(destination.read_bytes(), source_bytes)
 
-    def test_export_pdf_rejects_generated_markdown_resume(self) -> None:
+    def test_export_pdf_converts_markdown_to_pdf_when_available(self) -> None:
+        from tools.infra.export.pdf_exporter import WEASYPRINT_AVAILABLE
+
+        if not WEASYPRINT_AVAILABLE:
+            return
+        with TemporaryDirectory() as tmp_dir:
+            outputs_dir = Path(tmp_dir) / "outputs"
+            outputs_dir.mkdir()
+            generated = outputs_dir / "resume_mr-2026-005_A.md"
+            generated.write_text("# Resume\n\nContent here\n", encoding="utf-8")
+            destination = Path(tmp_dir) / "exports" / "resume.pdf"
+            with patch("tools.sidecar.handlers.resume._OUTPUTS_DIR", outputs_dir):
+                with patch(
+                    "tools.sidecar.handlers.resume._UPLOADED_DIR",
+                    Path(tmp_dir) / "uploaded",
+                ):
+                    result = handle_resume_export_pdf(
+                        {
+                            "meta": {"correlation_id": "corr_008"},
+                            "resume_id": "gen_resume_mr-2026-005_A",
+                            "destination": str(destination),
+                        }
+                    )
+                    self.assertTrue(result["resource_id"].startswith("pdf_"))
+                    self.assertTrue(destination.exists())
+                    self.assertGreater(destination.stat().st_size, 0)
+
+    def test_export_pdf_raises_when_markdown_and_weasyprint_unavailable(self) -> None:
+        from tools.infra.export.pdf_exporter import WEASYPRINT_AVAILABLE
+
+        if WEASYPRINT_AVAILABLE:
+            return
         with TemporaryDirectory() as tmp_dir:
             outputs_dir = Path(tmp_dir) / "outputs"
             outputs_dir.mkdir()
@@ -413,7 +444,7 @@ class ResumeExportPdfTests(unittest.TestCase):
                     "tools.sidecar.handlers.resume._UPLOADED_DIR",
                     Path(tmp_dir) / "uploaded",
                 ):
-                    with self.assertRaises(ValueError) as ctx:
+                    with self.assertRaises(RuntimeError) as ctx:
                         handle_resume_export_pdf(
                             {
                                 "meta": {"correlation_id": "corr_008"},
@@ -421,10 +452,7 @@ class ResumeExportPdfTests(unittest.TestCase):
                                 "destination": str(destination),
                             }
                         )
-                    self.assertEqual(
-                        str(ctx.exception),
-                        "cannot export non-PDF resume source",
-                    )
+                    self.assertIn("weasyprint", str(ctx.exception).lower())
                     self.assertFalse(destination.exists())
 
 

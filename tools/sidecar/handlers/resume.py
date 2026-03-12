@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from tools.infra.export.pdf_exporter import (
+    is_pdf_export_available,
+    markdown_to_pdf,
+)
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 _OUTPUTS_DIR = Path("outputs")
@@ -412,8 +416,15 @@ def handle_resume_export_pdf(params: dict[str, Any]) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.suffix.lower() == ".pdf":
         shutil.copy2(source, destination)
+    elif source.suffix.lower() == ".md":
+        if not is_pdf_export_available():
+            raise RuntimeError(
+                "PDF export for Markdown requires weasyprint and markdown packages. "
+                "Install with: pip install weasyprint markdown"
+            )
+        markdown_to_pdf(source, destination)
     else:
-        raise ValueError("cannot export non-PDF resume source")
+        raise ValueError(f"unsupported resume format: {source.suffix}")
 
     return {
         "meta": {"correlation_id": correlation_id},
