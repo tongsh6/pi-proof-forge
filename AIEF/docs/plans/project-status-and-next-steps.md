@@ -66,7 +66,7 @@
 | **run_agent.py** | core spec、design.md、tasks C6 | 仓库中不存在；无统一 Agent 循环入口。 |
 | **REVIEW 阶段与 RPC** | design.md、DESIGN.md | 无 getPendingReview/submitReview；无 REVIEW 状态分支。 |
 | **delivery_mode / batch_review** | design.md、DESIGN.md、tasks A10 | ✅ 已实现：sidecar settings 支持读写，Policy 页有完整控件。 |
-| **Agent Run 审批 UI** | DESIGN.md | ✅ 页面已实现：有审批列表、approve/reject/skip 按钮；后端为 stub（见 Issue #15）。 |
+| **Agent Run 审批 UI** | DESIGN.md | ✅ 已实现：前端页面 + 后端 handlers（run.agent.getPendingReview, submitReview, createReviewCandidates） |
 | **orchestration/** | tasks Phase C | 无 agent_loop、Stage 组合、pipeline 与 agent 统一编排。 |
 | **config/Composer** | tasks A12、core spec | 无 config 目录；无统一组装点。 |
 | **EngineRegistry + 引擎层** | tasks Phase B | 无 engines/registry；run_* 仍直接调现有脚本逻辑，存在 if use_llm 等。 |

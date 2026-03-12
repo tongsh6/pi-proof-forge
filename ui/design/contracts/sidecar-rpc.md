@@ -1138,3 +1138,98 @@
   - `ui/design/contracts/sidecar-rpc.md`
   - `ui/design/DESIGN.md` 中的协议摘要
   - 相关实现代码与测试
+
+### 6.15 run.agent.getPendingReview
+
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "run_id": "run_2026_001"
+}
+```
+
+`result`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "candidates": [
+    {
+      "job_lead_id": "jl_001",
+      "company": "Acme",
+      "position": "Backend Engineer",
+      "matching_score": 85,
+      "evaluation_score": 90,
+      "round_index": 1,
+      "resume_version": "v1",
+      "job_url": "https://example.com/job/1"
+    }
+  ]
+}
+```
+
+### 6.16 run.agent.submitReview
+
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "run_id": "run_2026_001",
+  "decisions": [
+    {
+      "job_lead_id": "jl_001",
+      "action": "approve",
+      "decided_by": "user",
+      "decided_at": "2026-03-13T10:00:00Z",
+      "note": "Good match"
+    }
+  ]
+}
+```
+
+`result`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "accepted": 1
+}
+```
+
+### 6.17 run.agent.createReviewCandidates
+
+Internal API for run_agent to populate review queue.
+
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "run_id": "run_2026_001",
+  "candidates": [
+    {
+      "job_lead_id": "jl_001",
+      "company": "Acme",
+      "position": "Backend Engineer",
+      "matching_score": 85,
+      "evaluation_score": 90,
+      "round_index": 1,
+      "resume_version": "v1",
+      "job_url": "https://example.com/job/1"
+    }
+  ]
+}
+```
+
+`result`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "run_id": "run_2026_001",
+  "created": 1
+}
+```
