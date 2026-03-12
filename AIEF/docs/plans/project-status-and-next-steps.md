@@ -1,7 +1,8 @@
 # 项目现状与下一步建议
 
 > 生成日期：2026-03-08  
-> 基准：main/develop 已发布 v0.1.8，无未提交改动
+> 更新日期：2026-03-13  
+> 基准：main 已完成 Sidecar L2 + 相关 bugfixes
 
 ---
 
@@ -46,7 +47,9 @@
 | **门禁快照** | sidecar settings、Policy 页 | 只读展示 n_pass_required、threshold、max_rounds、gate_mode。 |
 | **证据提炼 / 匹配 / 生成 / 评测** | run_evidence_extraction、run_matching_scoring、run_pipeline、run_generation、run_evaluation | 现有 CLI 与 pipeline 可用；部分复用 domain 与 infra。 |
 | **Sidecar** | tools/sidecar | 生命周期、router、settings/evidence/overview/jobs 等 handler；JSON-RPC over stdio。 |
-| **桌面 UI** | ui/src/pages | 9 个页面：overview、evidence、jobs、quick-run、agent-run、submissions、resumes、policy、system-settings；Policy 与系统设置已接 live 数据。 |
+| **Sidecar L2** | tools/sidecar/handlers | evidence CRUD、jobs CRUD + leads、profile、resume、submission 完整实现；所有 handler 已注册并通过测试；GUI 已完成真实数据对接。
+| **Markdown→PDF 导出** | tools/infra/export/pdf_exporter.py | 使用 weasyprint 实现 Markdown 简历到 PDF 的真实转换，支持中文。
+| **桌面 UI** | ui/src/pages | 9 个页面：overview、evidence、jobs、quick-run、agent-run、submissions、resumes、policy、system-settings；Policy 与系统设置已接 live 数据。
 
 ### 4.2 部分就绪（v2 地基）
 
@@ -62,8 +65,8 @@
 |------|----------|----------|
 | **run_agent.py** | core spec、design.md、tasks C6 | 仓库中不存在；无统一 Agent 循环入口。 |
 | **REVIEW 阶段与 RPC** | design.md、DESIGN.md | 无 getPendingReview/submitReview；无 REVIEW 状态分支。 |
-| **delivery_mode / batch_review** | design.md、DESIGN.md、tasks A10 | PolicyConfig 与 sidecar API 无此二字段；Policy 页无对应控件。 |
-| **Agent Run 审批 UI** | DESIGN.md | agent-run 页为占位，无审批列表与 approve/reject。 |
+| **delivery_mode / batch_review** | design.md、DESIGN.md、tasks A10 | ✅ 已实现：sidecar settings 支持读写，Policy 页有完整控件。 |
+| **Agent Run 审批 UI** | DESIGN.md | ✅ 页面已实现：有审批列表、approve/reject/skip 按钮；后端为 stub（见 Issue #15）。 |
 | **orchestration/** | tasks Phase C | 无 agent_loop、Stage 组合、pipeline 与 agent 统一编排。 |
 | **config/Composer** | tasks A12、core spec | 无 config 目录；无统一组装点。 |
 | **EngineRegistry + 引擎层** | tasks Phase B | 无 engines/registry；run_* 仍直接调现有脚本逻辑，存在 if use_llm 等。 |
@@ -84,9 +87,9 @@
 
 ### 6.1 短期（可独立交付、风险低）
 
-1. **Policy 页补充 delivery_mode / batch_review**
+1. **~~Policy 页补充 delivery_mode / batch_review~~** ✅ 已完成
    - 在 sidecar settings 与 types 中增加两字段（只读或可编辑，视产品决策）；Policy 页增加控件；不实现 REVIEW 逻辑也可先统一“策略配置”的展示与未来扩展。
-   - 依赖：无；可与现有 Gate Policy 展示同页。
+   - 状态：已实现，已在 PR #13 中合并。
 
 2. **Agent Run 页最小可用**
    - 按 DESIGN 做一版“只读”的 Agent Run：展示 run 列表或当前 run 状态、事件流占位；为后续 REVIEW 列表和审批操作留入口。
