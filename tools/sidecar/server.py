@@ -5,11 +5,36 @@ import sys
 from typing import Any
 
 from tools.sidecar.error_mapper import ErrorMapper
-from tools.sidecar.handlers.jobs import handle_jobs_list_profiles
+from tools.sidecar.handlers.jobs import (
+    handle_jobs_convert_lead,
+    handle_jobs_create_profile,
+    handle_jobs_delete_profile,
+    handle_jobs_list_leads,
+    handle_jobs_list_profiles,
+    handle_jobs_update_profile,
+)
 from tools.sidecar.router import Router
 from tools.sidecar.lifecycle import handle_handshake, handle_ping, handle_shutdown
-from tools.sidecar.handlers.evidence import handle_evidence_list, handle_evidence_get
+from tools.sidecar.handlers.evidence import (
+    handle_evidence_create,
+    handle_evidence_delete,
+    handle_evidence_get,
+    handle_evidence_import,
+    handle_evidence_list,
+    handle_evidence_update,
+)
 from tools.sidecar.handlers.overview import handle_overview_get
+from tools.sidecar.handlers.profile import handle_profile_get, handle_profile_update
+from tools.sidecar.handlers.resume import (
+    handle_resume_export_pdf,
+    handle_resume_get_preview,
+    handle_resume_list,
+    handle_resume_upload,
+)
+from tools.sidecar.handlers.submission import (
+    handle_submission_list,
+    handle_submission_retry,
+)
 from tools.sidecar.handlers.agent import (
     handle_get_pending_review,
     handle_submit_review,
@@ -24,8 +49,25 @@ def _create_router() -> Router:
     router.register("system.shutdown", handle_shutdown)
     router.register("evidence.list", handle_evidence_list)
     router.register("evidence.get", handle_evidence_get)
+    router.register("evidence.create", handle_evidence_create)
+    router.register("evidence.update", handle_evidence_update)
+    router.register("evidence.delete", handle_evidence_delete)
+    router.register("evidence.import", handle_evidence_import)
+    router.register("jobs.listLeads", handle_jobs_list_leads)
+    router.register("jobs.convertLead", handle_jobs_convert_lead)
     router.register("jobs.listProfiles", handle_jobs_list_profiles)
+    router.register("jobs.createProfile", handle_jobs_create_profile)
+    router.register("jobs.updateProfile", handle_jobs_update_profile)
+    router.register("jobs.deleteProfile", handle_jobs_delete_profile)
     router.register("overview.get", handle_overview_get)
+    router.register("profile.get", handle_profile_get)
+    router.register("profile.update", handle_profile_update)
+    router.register("resume.list", handle_resume_list)
+    router.register("resume.upload", handle_resume_upload)
+    router.register("resume.getPreview", handle_resume_get_preview)
+    router.register("resume.exportPdf", handle_resume_export_pdf)
+    router.register("submission.list", handle_submission_list)
+    router.register("submission.retry", handle_submission_retry)
     router.register("settings.get", handle_settings_get)
     router.register("settings.update", handle_settings_update)
     router.register("run.agent.getPendingReview", handle_get_pending_review)
@@ -95,8 +137,13 @@ def process_request(request: dict[str, Any]) -> dict[str, Any]:
             request_id, "VALIDATION_ERROR", error_str, correlation_id
         )
     except Exception as e:
+        error_str = str(e)
+        if error_str.startswith("CONFLICT:"):
+            return build_error_response(
+                request_id, "CONFLICT", error_str, correlation_id
+            )
         return build_error_response(
-            request_id, "INTERNAL_ERROR", str(e), correlation_id
+            request_id, "INTERNAL_ERROR", error_str, correlation_id
         )
 
 

@@ -15,6 +15,7 @@ class SettingsGetTests(unittest.TestCase):
         self.assertEqual(result["meta"]["correlation_id"], "corr_001")
         self.assertIn("gate_policy", result)
         self.assertIn("exclusion_list", result)
+        self.assertIn("excluded_legal_entities", result)
         self.assertIn("channels", result)
         self.assertIn("llm_config", result)
 
@@ -31,10 +32,11 @@ class SettingsGetTests(unittest.TestCase):
     def test_delivery_mode_and_batch_review_present(self) -> None:
         params = {"meta": {"correlation_id": "corr_dm"}}
         result = handle_settings_get(params)
-        self.assertIn("delivery_mode", result)
-        self.assertIn("batch_review", result)
-        self.assertIn(result["delivery_mode"], ("auto", "manual"))
-        self.assertIsInstance(result["batch_review"], bool)
+        gp = result["gate_policy"]
+        self.assertIn("delivery_mode", gp)
+        self.assertIn("batch_review", gp)
+        self.assertIn(gp["delivery_mode"], ("auto", "manual"))
+        self.assertIsInstance(gp["batch_review"], bool)
 
     def test_llm_config_has_secret_status(self) -> None:
         params = {"meta": {"correlation_id": "corr_003"}}
@@ -96,8 +98,8 @@ class SettingsGetTests(unittest.TestCase):
             with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
                 params = {"meta": {"correlation_id": "corr_dm_load"}}
                 result = handle_settings_get(params)
-        self.assertEqual(result["delivery_mode"], "manual")
-        self.assertTrue(result["batch_review"])
+        self.assertEqual(result["gate_policy"]["delivery_mode"], "manual")
+        self.assertTrue(result["gate_policy"]["batch_review"])
 
 
 class SettingsUpdateTests(unittest.TestCase):
@@ -155,15 +157,42 @@ class SettingsUpdateTests(unittest.TestCase):
             policy_path = Path(tmp_dir) / "policy.yaml"
             params = {
                 "meta": {"correlation_id": "corr_dm"},
-                "section": "delivery_settings",
+                "section": "gate_policy",
                 "payload": {"delivery_mode": "manual", "batch_review": True},
             }
             with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
                 result = handle_settings_update(params)
                 self.assertTrue(result["saved"])
                 stored = handle_settings_get({"meta": {"correlation_id": "corr_dm2"}})
-        self.assertEqual(stored["delivery_mode"], "manual")
-        self.assertTrue(stored["batch_review"])
+        self.assertEqual(stored["gate_policy"]["delivery_mode"], "manual")
+        self.assertTrue(stored["gate_policy"]["batch_review"])
+
+    def test_update_gate_policy_rejects_unsupported_fields(self) -> None:
+        params = {
+            "meta": {"correlation_id": "corr_gp_bad"},
+            "section": "gate_policy",
+            "payload": {"matching_threshold": 80},
+        }
+        with self.assertRaises(ValueError):
+            _ = handle_settings_update(params)
+
+    def test_update_gate_policy_rejects_invalid_delivery_mode(self) -> None:
+        params = {
+            "meta": {"correlation_id": "corr_gp_mode_bad"},
+            "section": "gate_policy",
+            "payload": {"delivery_mode": "later"},
+        }
+        with self.assertRaises(ValueError):
+            _ = handle_settings_update(params)
+
+    def test_update_gate_policy_rejects_non_boolean_batch_review(self) -> None:
+        params = {
+            "meta": {"correlation_id": "corr_gp_batch_bad"},
+            "section": "gate_policy",
+            "payload": {"batch_review": "false"},
+        }
+        with self.assertRaises(ValueError):
+            _ = handle_settings_update(params)
 
 
 if __name__ == "__main__":

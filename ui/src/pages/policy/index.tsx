@@ -106,7 +106,10 @@ export function PolicyPage() {
     setDeliverySaveState("saving");
     setDeliveryError(null);
     try {
-      await updateDeliverySettings(settings.delivery_mode, settings.batch_review);
+      await updateDeliverySettings(
+        settings.gate_policy.delivery_mode,
+        settings.gate_policy.batch_review
+      );
       setDeliverySaveState("saved");
     } catch (nextError) {
       setDeliverySaveState("error");
@@ -116,7 +119,11 @@ export function PolicyPage() {
 
   const setDeliveryMode = useCallback(
     (value: "auto" | "manual") => {
-      if (settings) setSettings({ ...settings, delivery_mode: value });
+      if (settings)
+        setSettings({
+          ...settings,
+          gate_policy: { ...settings.gate_policy, delivery_mode: value },
+        });
       if (deliverySaveState !== "idle") setDeliverySaveState("idle");
       setDeliveryError(null);
     },
@@ -125,7 +132,11 @@ export function PolicyPage() {
 
   const setBatchReview = useCallback(
     (value: boolean) => {
-      if (settings) setSettings({ ...settings, batch_review: value });
+      if (settings)
+        setSettings({
+          ...settings,
+          gate_policy: { ...settings.gate_policy, batch_review: value },
+        });
       if (deliverySaveState !== "idle") setDeliverySaveState("idle");
       setDeliveryError(null);
     },
@@ -228,7 +239,7 @@ export function PolicyPage() {
                 <dd>
                   <select
                     className="rounded-card border border-border bg-bg-primary/60 px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-                    value={settings.delivery_mode}
+                    value={settings.gate_policy.delivery_mode}
                     onChange={(e) =>
                       setDeliveryMode(e.target.value as "auto" | "manual")
                     }
@@ -246,7 +257,7 @@ export function PolicyPage() {
               <div className="flex items-center justify-between gap-4">
                 <dt className="text-sm text-text-secondary">
                   <span>{t("pages.policy.gatePolicy.batchReview")}</span>
-                  {settings.delivery_mode === "manual" && (
+                  {settings.gate_policy.delivery_mode === "manual" && (
                     <span className="ml-1 text-xs text-text-muted">
                       ({t("pages.policy.gatePolicy.batchReviewHint")})
                     </span>
@@ -256,22 +267,24 @@ export function PolicyPage() {
                   <button
                     type="button"
                     role="switch"
-                    aria-checked={settings.batch_review}
+                    aria-checked={settings.gate_policy.batch_review}
                     aria-label={t("pages.policy.gatePolicy.batchReview")}
-                    disabled={settings.delivery_mode === "auto"}
+                    disabled={settings.gate_policy.delivery_mode === "auto"}
                     className={`relative inline-flex h-6 w-10 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      settings.batch_review
+                      settings.gate_policy.batch_review
                         ? "bg-accent border-accent"
                         : "bg-bg-muted border-border"
-                    } ${settings.delivery_mode === "auto" ? "" : "cursor-pointer"}`}
+                    } ${settings.gate_policy.delivery_mode === "auto" ? "" : "cursor-pointer"}`}
                     onClick={() =>
-                      settings.delivery_mode === "manual" &&
-                      setBatchReview(!settings.batch_review)
+                      settings.gate_policy.delivery_mode === "manual" &&
+                      setBatchReview(!settings.gate_policy.batch_review)
                     }
                   >
                     <span
                       className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                        settings.batch_review ? "translate-x-4" : "translate-x-0.5"
+                        settings.gate_policy.batch_review
+                          ? "translate-x-4"
+                          : "translate-x-0.5"
                       }`}
                     />
                   </button>

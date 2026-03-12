@@ -646,9 +646,12 @@
     "matching_threshold": 70,
     "evaluation_threshold": 75,
     "max_rounds": 5,
-    "gate_mode": "strict"
+    "gate_mode": "strict",
+    "delivery_mode": "auto",
+    "batch_review": false
   },
   "exclusion_list": [],
+  "excluded_legal_entities": [],
   "channels": [],
   "llm_config": {
     "provider": "openai",
@@ -672,24 +675,20 @@
 ```json
 {
   "meta": { "correlation_id": "corr_001" },
-  "section": "llm_config",
+  "section": "gate_policy",
   "payload": {
-    "provider": "openai",
-    "model": "gpt-5",
-    "api_key": {
-      "action": "replace",
-      "value": "secret-value"
-    }
+    "delivery_mode": "manual",
+    "batch_review": true
   }
 }
 ```
 
 规则：
 
-- `section`: `gate_policy | exclusion_list | channels | llm_config`
-- 对于 secret 字段，仅允许：
-  - `{ "action": "replace", "value": "<secret>" }`
-  - `{ "action": "clear" }`
+- `section`: `gate_policy | exclusion_list | excluded_legal_entities`
+- `gate_policy` payload 当前支持更新字段：`delivery_mode`、`batch_review`；为部分更新，未传字段保持原值
+- `delivery_mode` 枚举：`auto | manual`；`batch_review` 为布尔值，仅 `delivery_mode=manual` 时生效
+- `channels` 与 `llm_config` 当前为 `settings.get` 只读返回字段，不支持 `settings.update`
 - `settings.get` 永不返回 secret 明文
 
 `result`
@@ -697,7 +696,7 @@
 ```json
 {
   "meta": { "correlation_id": "corr_001" },
-  "section": "llm_config",
+  "section": "gate_policy",
   "saved": true
 }
 ```
