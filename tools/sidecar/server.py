@@ -36,6 +36,7 @@ from tools.sidecar.handlers.submission import (
     handle_submission_retry,
 )
 from tools.sidecar.handlers.agent import (
+    handle_create_review_candidates,
     handle_get_pending_review,
     handle_submit_review,
 )
@@ -72,6 +73,7 @@ def _create_router() -> Router:
     router.register("settings.update", handle_settings_update)
     router.register("run.agent.getPendingReview", handle_get_pending_review)
     router.register("run.agent.submitReview", handle_submit_review)
+    router.register("run.agent.createReviewCandidates", handle_create_review_candidates)
     return router
 
 
