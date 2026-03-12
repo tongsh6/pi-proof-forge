@@ -157,9 +157,19 @@ def handle_submission_retry(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"unsupported retry strategy: {strategy}")
 
     found = False
+    retried_at = datetime.now(timezone.utc).isoformat()
     for path in _submission_log_paths():
         payload = _load_submission_log(path)
         if str(payload.get("run_id", path.parent.name)) == submission_id:
+            payload["status"] = "queued"
+            payload["retry_count"] = _parse_cursor(payload.get("retry_count")) + 1
+            payload["retry_strategy"] = strategy
+            payload["ended_at"] = retried_at
+            payload["retried_at"] = retried_at
+            _ = path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
             found = True
             break
     if not found:

@@ -66,13 +66,19 @@ export function ResumesPage() {
   }, [selectedId]);
 
   const loadPreview = useCallback(async (resumeId: string) => {
+    selectedIdRef.current = resumeId;
+    setSelectedId(resumeId);
     try {
       const result = await getResumePreview(resumeId);
-      setSelectedId(resumeId);
+      if (selectedIdRef.current !== resumeId) {
+        return;
+      }
       setPreview(result.preview);
       setPreviewStatus(result.preview_status ?? null);
     } catch (nextError) {
-      setSelectedId(resumeId);
+      if (selectedIdRef.current !== resumeId) {
+        return;
+      }
       setPreview(null);
       setPreviewStatus(null);
       setError(getErrorMessage(nextError));

@@ -1,5 +1,6 @@
 import json
 import unittest
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -300,9 +301,18 @@ class SubmissionRetryTests(unittest.TestCase):
         with TemporaryDirectory() as tmp_dir:
             submissions_dir = Path(tmp_dir) / "submissions"
             run_dir = submissions_dir / "liepin" / "20260304-124634"
+            original_ended_at = "2026-03-04T12:46:37+00:00"
             run_dir.mkdir(parents=True)
             (run_dir / "submission_log.json").write_text(
-                json.dumps({"run_id": "20260304-124634", "platform": "liepin"}),
+                json.dumps(
+                    {
+                        "run_id": "20260304-124634",
+                        "platform": "liepin",
+                        "status": "failed",
+                        "retry_count": 1,
+                        "ended_at": original_ended_at,
+                    }
+                ),
                 encoding="utf-8",
             )
             with patch(
@@ -316,9 +326,18 @@ class SubmissionRetryTests(unittest.TestCase):
                     }
                 )
 
+            updated_log = json.loads(
+                (run_dir / "submission_log.json").read_text(encoding="utf-8")
+            )
+
         self.assertEqual(result["meta"]["correlation_id"], "corr_003")
         self.assertEqual(result["submission_id"], "20260304-124634")
         self.assertEqual(result["status"], "queued")
+        self.assertEqual(updated_log["status"], "queued")
+        self.assertEqual(updated_log["retry_count"], 2)
+        self.assertNotEqual(updated_log["ended_at"], original_ended_at)
+        parsed_ended_at = datetime.fromisoformat(updated_log["ended_at"])
+        self.assertIsNotNone(parsed_ended_at.tzinfo)
 
     def test_retry_not_found_raises(self) -> None:
         with TemporaryDirectory() as tmp_dir:
