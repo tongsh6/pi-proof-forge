@@ -60,6 +60,23 @@ export interface EvidenceGetResult extends RpcResultBase {
   evidence: EvidenceDetail;
 }
 
+export interface EvidenceMutationResult extends RpcResultBase {
+  evidence_id: string;
+}
+
+export interface EvidenceCreateResult extends EvidenceMutationResult {
+  status: string;
+  created_at: string;
+}
+
+export interface EvidenceUpdateResult extends EvidenceMutationResult {
+  updated_at: string;
+}
+
+export interface EvidenceDeleteResult extends EvidenceMutationResult {
+  deleted: boolean;
+}
+
 export interface JobProfileListItem {
   job_profile_id: string;
   title: string;
@@ -89,12 +106,57 @@ export interface JobProfilesListResult extends RpcResultBase {
   next_cursor: string | null;
 }
 
+export interface JobLeadListItem {
+  job_lead_id: string;
+  company: string;
+  position: string;
+  source: string;
+  status: string;
+  favorited: boolean;
+  updated_at: string;
+}
+
+export interface JobLeadsFilters {
+  source: string | null;
+  status: string | null;
+  favorited: boolean | null;
+  query: string;
+}
+
+export interface JobLeadsListResult extends RpcResultBase {
+  items: JobLeadListItem[];
+  next_cursor: string | null;
+}
+
+export interface JobProfileMutationResult extends RpcResultBase {
+  job_profile_id: string;
+}
+
+export interface JobProfileCreateResult extends JobProfileMutationResult {
+  status: string;
+  created_at: string;
+}
+
+export interface JobProfileUpdateResult extends JobProfileMutationResult {
+  updated_at: string;
+}
+
+export interface JobProfileDeleteResult extends JobProfileMutationResult {
+  deleted: boolean;
+}
+
+export interface JobLeadConvertResult extends RpcResultBase {
+  job_profile_id: string;
+}
+
 export interface GatePolicy {
   n_pass_required: number;
   matching_threshold: number;
   evaluation_threshold: number;
   max_rounds: number;
   gate_mode: string;
+  delivery_mode: DeliveryMode;
+  batch_review: boolean;
 }
 
 export interface MaskedSecretStatus {
@@ -116,10 +178,6 @@ export type DeliveryMode = "auto" | "manual";
 
 export interface SettingsGetResult extends RpcResultBase {
   gate_policy: GatePolicy;
-  /** auto: GATE 通过后直接 DELIVER；manual: 进入 REVIEW 等待审批 */
-  delivery_mode: DeliveryMode;
-  /** 仅 delivery_mode=manual 时有效；true=批量审批，false=逐轮审批 */
-  batch_review: boolean;
   exclusion_list: string[];
   excluded_legal_entities: string[];
   channels: Array<Record<string, unknown>>;
@@ -128,11 +186,8 @@ export interface SettingsGetResult extends RpcResultBase {
 
 export type SettingsUpdateSection =
   | "gate_policy"
-  | "delivery_settings"
   | "exclusion_list"
   | "excluded_legal_entities"
-  | "channels"
-  | "llm_config";
 
 export interface SettingsUpdateResult extends RpcResultBase {
   section: SettingsUpdateSection;
@@ -174,6 +229,86 @@ export interface OverviewGetResult extends RpcResultBase {
   recent_activities: OverviewActivity[];
   match_trend: OverviewTrendPoint[];
   gaps: OverviewGap[];
+}
+
+export interface ResumeListItem {
+  resume_id: string;
+  name: string;
+  job_profile_id: string;
+  status: string;
+  score: number;
+  company: string;
+  updated_at: string;
+}
+
+export interface ResumeListResult extends RpcResultBase {
+  items: ResumeListItem[];
+  next_cursor: string | null;
+}
+
+export interface ResumeUploadResult extends RpcResultBase {
+  resume_id: string;
+  label: string;
+  language: string;
+  resource_id: string;
+  uploaded_at: string;
+}
+
+export interface ResumePreview {
+  name: string;
+  contact: { phone: string; email: string; city: string };
+  summary: string;
+  experience: Array<{ company: string; title: string; period: string; bullets: string[] }>;
+  skills: string[];
+}
+
+export interface ResumePreviewResult extends RpcResultBase {
+  resume_id: string;
+  preview: ResumePreview | null;
+  preview_status?: string;
+}
+
+export interface ResumeExportResult extends RpcResultBase {
+  resource_id: string;
+}
+
+export interface ProfilePayload {
+  name: string;
+  phone: string;
+  email: string;
+  city: string;
+  current_position: string;
+  completeness: number;
+  missing_fields: string[];
+  updated_at: string;
+}
+
+export interface ProfileGetResult extends RpcResultBase {
+  profile: ProfilePayload;
+}
+
+export interface ProfileUpdateResult extends RpcResultBase {
+  saved: boolean;
+  updated_at: string;
+}
+
+export interface SubmissionListItem {
+  submission_id: string;
+  company: string;
+  position: string;
+  channel: string;
+  status: string;
+  submitted_at: string;
+}
+
+export interface SubmissionListResult extends RpcResultBase {
+  items: SubmissionListItem[];
+  next_cursor: string | null;
+}
+
+export interface SubmissionRetryResult extends RpcResultBase {
+  submission_id: string;
+  status: string;
 }
 
 /** One candidate in REVIEW state (design: ReviewCandidate). */

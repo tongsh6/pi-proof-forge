@@ -12,6 +12,8 @@ from tools.policy.exclusions import (
     save_legal_entity_exclusion_list,
 )
 
+_SUPPORTED_GATE_POLICY_UPDATE_FIELDS = {"delivery_mode", "batch_review"}
+
 
 def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
@@ -29,9 +31,9 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
             "evaluation_threshold": 75,
             "max_rounds": 5,
             "gate_mode": "strict",
+            "delivery_mode": delivery_mode,
+            "batch_review": batch_review,
         },
-        "delivery_mode": delivery_mode,
-        "batch_review": batch_review,
         "exclusion_list": exclusion_list,
         "excluded_legal_entities": legal_entity_exclusion_list,
         "channels": [],
@@ -55,14 +57,24 @@ def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
     section = params.get("section")
     payload = params.get("payload")
 
-    if section == "delivery_settings":
+    if section == "gate_policy":
         if not isinstance(payload, dict):
-            raise ValueError("delivery_settings payload must be an object")
-        mode = payload.get("delivery_mode", "auto")
-        batch = bool(payload.get("batch_review", False))
-        if mode not in ("auto", "manual"):
-            mode = "auto"
-        _ = save_delivery_settings(mode, batch)
+            raise ValueError("gate_policy payload must be an object")
+        unsupported_fields = set(payload) - _SUPPORTED_GATE_POLICY_UPDATE_FIELDS
+        if unsupported_fields:
+            unsupported = ", ".join(sorted(unsupported_fields))
+            raise ValueError(f"unsupported gate_policy fields: {unsupported}")
+        mode = str(payload.get("delivery_mode", "")).strip()
+        batch_raw = payload.get("batch_review")
+        if mode and mode not in ("auto", "manual"):
+            raise ValueError(f"unsupported delivery_mode: {mode}")
+        if batch_raw is not None and not isinstance(batch_raw, bool):
+            raise ValueError("batch_review must be a boolean")
+        if mode or batch_raw is not None:
+            current_mode, current_batch = load_delivery_settings()
+            new_mode = mode if mode else current_mode
+            new_batch = bool(batch_raw) if batch_raw is not None else current_batch
+            _ = save_delivery_settings(new_mode, new_batch)
         return {
             "meta": {"correlation_id": correlation_id},
             "section": section,

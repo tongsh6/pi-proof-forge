@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import TypedDict, cast
@@ -45,8 +46,17 @@ def _count_evidence_cards() -> int:
     return len(_glob_files(_EVIDENCE_DIR, "*.yaml"))
 
 
-def _count_matching_reports() -> int:
-    return len(_glob_files(_MATCHING_REPORT_DIR, "*.yaml"))
+def _count_matched_job_profiles() -> int:
+    job_profile_ids: set[str] = set()
+    for path in _glob_files(_MATCHING_REPORT_DIR, "*.yaml"):
+        try:
+            doc = _read_yaml_doc(path)
+            job_profile_id = doc["scalars"].get("job_profile_id", "").strip()
+            if job_profile_id:
+                job_profile_ids.add(job_profile_id)
+        except Exception:
+            pass
+    return len(job_profile_ids)
 
 
 def _count_resume_versions() -> int:
@@ -70,6 +80,29 @@ def _safe_parse_iso_date(value: str) -> datetime | None:
 def _read_yaml_doc(path: Path) -> ParsedDoc:
     text = path.read_text(encoding="utf-8")
     return parse_simple_yaml(text)
+
+
+def _score_from_text(text: str) -> int:
+    lines = text.splitlines()
+    in_breakdown = False
+    total = 0
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("score_breakdown:"):
+            in_breakdown = True
+            continue
+        if in_breakdown:
+            if not line.startswith("  "):
+                break
+            match = re.search(r"score\s*:\s*(\d+)", stripped)
+            if match:
+                total += int(match.group(1))
+
+    return min(100, total)
 
 
 def _build_gaps() -> list[dict[str, str]]:
@@ -103,7 +136,6 @@ def _build_gaps() -> list[dict[str, str]]:
 
 
 def _score_from_doc(doc: ParsedDoc) -> int:
-    """Extract match score from doc, preferring score_total, falling back to score_breakdown sum."""
     total_str = doc["scalars"].get("score_total", "")
     if total_str:
         try:
@@ -114,10 +146,16 @@ def _score_from_doc(doc: ParsedDoc) -> int:
     if isinstance(breakdown, dict):
         total = 0.0
         for val in breakdown.values():
-            try:
-                total += float(val)
-            except (ValueError, TypeError):
-                pass
+            if isinstance(val, dict):
+                try:
+                    total += float(val.get("score", 0))
+                except (ValueError, TypeError):
+                    pass
+            else:
+                try:
+                    total += float(val)
+                except (ValueError, TypeError):
+                    pass
         return min(100, int(total))
     return 0
 
@@ -127,13 +165,16 @@ def _build_match_trend() -> list[dict[str, int | str]]:
     trend: list[dict[str, int | str]] = []
 
     for path in reports:
-        doc = _read_yaml_doc(path)
+        text = path.read_text(encoding="utf-8")
+        doc = parse_simple_yaml(text)
         generated_at = doc["scalars"].get("generated_at", "")
         parsed_date = _safe_parse_iso_date(generated_at)
         if parsed_date is None:
             parsed_date = datetime.fromtimestamp(path.stat().st_mtime)
 
         score = _score_from_doc(doc)
+        if score == 0 and "score_total" not in doc["scalars"]:
+            score = _score_from_text(text)
 
         trend.append({"date": parsed_date.date().isoformat(), "score": score})
 
@@ -208,7 +249,7 @@ def handle_overview_get(params: dict[str, object]) -> dict[str, object]:
         "meta": {"correlation_id": correlation_id},
         "metrics": {
             "evidence_count": _count_evidence_cards(),
-            "matched_jobs_count": _count_matching_reports(),
+            "matched_jobs_count": _count_matched_job_profiles(),
             "resume_count": _count_resume_versions(),
             "submission_count": _count_submission_runs(),
         },
