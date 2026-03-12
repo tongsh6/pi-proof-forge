@@ -70,17 +70,24 @@ export function EvidencePage() {
   }, [selectedId]);
 
   const loadDetail = useCallback(async (evidenceId: string) => {
+    selectedIdRef.current = evidenceId;
     setSelectedId(evidenceId);
     setDetailState("loading");
     setDetailError(null);
 
     try {
       const result = await getEvidence(evidenceId);
+      if (selectedIdRef.current !== evidenceId) {
+        return;
+      }
       setDetail(result.evidence);
       setForm(toForm(result.evidence));
       setIsDraft(false);
       setDetailState("ready");
     } catch (error) {
+      if (selectedIdRef.current !== evidenceId) {
+        return;
+      }
       setDetail(null);
       setForm(toForm(null));
       setDetailState("error");
@@ -163,7 +170,7 @@ export function EvidencePage() {
       setSaveState("idle");
       setDetailError(getErrorMessage(error));
     }
-  }, [form, isDraft, loadDetail, loadEvidence, selectedId]);
+  }, [form, isDraft, loadEvidence, selectedId]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedId || isDraft) return;
