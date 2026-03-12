@@ -102,6 +102,26 @@ def _build_gaps() -> list[dict[str, str]]:
     return gaps
 
 
+def _score_from_doc(doc: ParsedDoc) -> int:
+    """Extract match score from doc, preferring score_total, falling back to score_breakdown sum."""
+    total_str = doc["scalars"].get("score_total", "")
+    if total_str:
+        try:
+            return min(100, int(total_str))
+        except ValueError:
+            pass
+    breakdown = doc["lists"].get("score_breakdown", {})
+    if isinstance(breakdown, dict):
+        total = 0.0
+        for val in breakdown.values():
+            try:
+                total += float(val)
+            except (ValueError, TypeError):
+                pass
+        return min(100, int(total))
+    return 0
+
+
 def _build_match_trend() -> list[dict[str, int | str]]:
     reports = sorted(_glob_files(_MATCHING_REPORT_DIR, "*.yaml"))
     trend: list[dict[str, int | str]] = []
@@ -113,10 +133,7 @@ def _build_match_trend() -> list[dict[str, int | str]]:
         if parsed_date is None:
             parsed_date = datetime.fromtimestamp(path.stat().st_mtime)
 
-        try:
-            score = int(doc["scalars"].get("score_total", "0") or "0")
-        except ValueError:
-            score = 0
+        score = _score_from_doc(doc)
 
         trend.append({"date": parsed_date.date().isoformat(), "score": score})
 

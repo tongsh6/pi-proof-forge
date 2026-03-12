@@ -36,11 +36,26 @@ class ParseScalarTests(unittest.TestCase):
         doc = parse_simple_yaml(text)
         self.assertEqual(doc["scalars"]["key"], "plain_value")
 
+    def test_parses_folded_block_scalar_content(self) -> None:
+        text = """\
+context: >
+  first context line
+  second context line
+"""
+        doc = parse_simple_yaml(text)
+        self.assertEqual(
+            doc["scalars"]["context"],
+            "first context line second context line",
+        )
+
 
 class ParseListTests(unittest.TestCase):
     def test_parses_list_fields(self) -> None:
         doc = parse_simple_yaml(SAMPLE_YAML)
-        self.assertEqual(doc["lists"]["actions"], ["Refactored circuit breaker", "Added canary rollback"])
+        self.assertEqual(
+            doc["lists"]["actions"],
+            ["Refactored circuit breaker", "Added canary rollback"],
+        )
         self.assertEqual(doc["lists"]["results"], ["Failure rate dropped 43%"])
         self.assertEqual(doc["lists"]["stack"], ["Java", "Redis"])
         self.assertEqual(doc["lists"]["artifacts"], ["postmortem.pdf"])
@@ -49,7 +64,9 @@ class ParseListTests(unittest.TestCase):
 
 class EmptyLineAndCommentTests(unittest.TestCase):
     def test_skips_empty_lines_and_comments(self) -> None:
-        text = "# This is a comment\n\nname: test\n\n# Another comment\nitems:\n  - one\n"
+        text = (
+            "# This is a comment\n\nname: test\n\n# Another comment\nitems:\n  - one\n"
+        )
         doc = parse_simple_yaml(text)
         self.assertEqual(doc["scalars"]["name"], "test")
         self.assertEqual(doc["lists"]["items"], ["one"])
