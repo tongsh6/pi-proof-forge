@@ -166,7 +166,7 @@ class AgentLoop:
             channel="liepin",
             resume_path="outputs/resume_latest.pdf",
             job_url="https://example.com/job",
-            dry_run=False,
+            dry_run=True,
             metadata={"round": round_index},
         )
         return deliver_with_fallback(request, [LiepinChannel(), EmailChannel()])

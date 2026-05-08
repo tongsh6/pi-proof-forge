@@ -91,6 +91,44 @@ class MatchingEngineTests(unittest.TestCase):
         # 3 out of 4 keywords matched (Java in tags, Redis+Kafka in stack, SLA missing)
         self.assertEqual(report.score_breakdown["K"], 0.75)
 
+    def test_hybrid_matcher_registered_in_composer(self) -> None:
+        """Hybrid strategy should be registered after add_llm_strategies."""
+        from tools.infra.llm.client import LLMClient
+
+        composer_module = import_module("tools.config.composer")
+        composer_cls = composer_module.Composer
+
+        policy = type(
+            "FakePolicy",
+            (),
+            {
+                "n_pass_required": 1,
+                "matching_threshold": 0.5,
+                "evaluation_threshold": 0.5,
+                "max_rounds": 3,
+                "gate_mode": "strict",
+                "delivery_mode": "auto",
+                "batch_review": False,
+                "excluded_companies": (),
+                "excluded_legal_entities": (),
+            },
+        )()
+        composer = composer_cls(policy=policy)
+        matching = composer.build_matching_registry()
+        self.assertIn("rule", matching.list())
+
+        client = LLMClient(base_url="http://localhost:1", api_key="test", timeout=1)
+        composer.add_llm_strategies(
+            client, "test-model",
+            composer.build_evidence_registry(),
+            matching,
+            composer.build_generation_registry(),
+            composer.build_evaluation_registry(),
+        )
+        strategies = matching.list()
+        self.assertIn("llm", strategies)
+        self.assertIn("hybrid", strategies)
+
     def test_report_builder_constructs_report(self) -> None:
         builder = _report_builder_class()()
         report = builder.build(

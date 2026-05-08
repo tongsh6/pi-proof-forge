@@ -76,7 +76,11 @@
 | Benchmark 001 (rule baseline) | `docs/benchmarks/benchmark-001.md` | Matching Total=0.5, Eval Total=0.65 | 发现 K-score=0（已修复） |
 | Benchmark 002 (stack fix 后) | 同命令复现 | Matching Total=0.8, K-score=0.6 | 证据卡可按技术栈区分 |
 | Benchmark 003 (LLM vs Rule) | `docs/benchmarks/benchmark-003.md` | LLM K=0.73, Rule K=0.60 | LLM 更精准但更慢，建议混合策略 |
+| Benchmark 004 (LLM Evaluator) | `docs/benchmarks/benchmark-004.md` | semantic coverage 0.30→0.42 | 打破 coverage=0 盲区 |
 | LLM 连接验证 | LM Studio localhost:1234 | openai/gpt-oss-120b 可用 | 响应正常 |
+| Hybrid 匹配策略 | `tools/engines/matching/hybrid_matcher.py` | 2.3x faster than pure LLM | Rule 初筛 Top5 → LLM 精选 |
+| Playwright + Liepin 验证 | `tools/channels/liepin.py` | check-mode 通过 | 需登录态完成真实投递 |
+| LLM Evaluator 增强 | `tools/engines/evaluation/llm_evaluator.py` | 6 维度语义评测 | semantic_coverage + fabrication_risk + gaps/strengths/improvements |
 
 ## 4. 进行中事项
 

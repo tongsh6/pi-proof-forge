@@ -193,6 +193,16 @@ class Composer:
                 model,
             ),
         )
+        matching_registry.register(
+            "hybrid",
+            lambda: _construct(
+                "tools.engines.matching.hybrid_matcher",
+                "HybridMatchingEngine",
+                llm_client,
+                model,
+                5,
+            ),
+        )
         generation_registry.register(
             "llm",
             lambda: _construct(

@@ -48,14 +48,14 @@ class EvaluationEngineTests(unittest.TestCase):
         card = builder.build("v1", "jp-1", {"coverage": 0.8, "quant": 0.6})
         self.assertAlmostEqual(card.total_score, 0.7)
 
-    def test_llm_evaluator_keeps_rule_total_and_adds_note_count(self) -> None:
+    def test_llm_evaluator_adds_semantic_dimensions(self) -> None:
         class FakeClient:
             chat_completions_url = "https://example.com"
 
             def post_json(self, url: str, payload: object) -> dict[str, object]:
                 _ = (url, payload)
                 return {
-                    "choices": [{"message": {"content": '{"notes": ["n1", "n2"]}'}}]
+                    "choices": [{"message": {"content": '{"semantic_coverage": 0.5, "keyword_gaps": ["gap1", "gap2"], "strengths": ["s1"], "improvements": ["i1", "i2", "i3"], "fabrication_risk": 0.1}'}}]
                 }
 
             @staticmethod
@@ -73,8 +73,14 @@ class EvaluationEngineTests(unittest.TestCase):
 
         evaluator = _llm_evaluator_class()(client=FakeClient(), model="gpt-test")
         result = evaluator.evaluate(self._resume(), self._profile())
-        self.assertIn("llm_notes_count", result.dimension_scores)
-        self.assertEqual(result.dimension_scores["llm_notes_count"], 2.0)
+        self.assertIn("llm_semantic_coverage", result.dimension_scores)
+        self.assertEqual(result.dimension_scores["llm_semantic_coverage"], 0.5)
+        self.assertEqual(result.dimension_scores["llm_fabrication_risk"], 0.1)
+        self.assertEqual(result.dimension_scores["llm_gaps_count"], 2.0)
+        self.assertEqual(result.dimension_scores["llm_strengths_count"], 1.0)
+        self.assertEqual(result.dimension_scores["llm_improvements_count"], 3.0)
+        # Coverage should be blended: 30% rule + 70% LLM semantic
+        self.assertGreater(result.dimension_scores["coverage"], 0.0)
 
 
 if __name__ == "__main__":

@@ -42,7 +42,17 @@ class LLMMatchingEngine:
         breakdown: dict[str, float] = {}
         if isinstance(breakdown_raw, dict):
             for key, value in breakdown_raw.items():
-                breakdown[str(key)] = float(value)
+                try:
+                    breakdown[str(key)] = float(value)
+                except (TypeError, ValueError):
+                    if isinstance(value, dict):
+                        inner_total = value.get("total") or value.get("score") or value.get("value") or 0
+                        try:
+                            breakdown[str(key)] = float(inner_total)
+                        except (TypeError, ValueError):
+                            breakdown[str(key)] = 0.0
+                    else:
+                        breakdown[str(key)] = 0.0
 
         return MatchingReport(
             job_profile_id=profile.id,
