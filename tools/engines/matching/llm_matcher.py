@@ -60,12 +60,17 @@ def _as_list(value: object) -> list[object]:
 
 def _build_prompt(evidence_cards: Sequence[EvidenceCard], profile: JobProfile) -> str:
     lines = [
-        "Return JSON with keys: evidence_card_ids, score_breakdown, gap_tasks.",
-        f"JobProfile: {profile.title}; keywords={list(profile.keywords)}; must_have={list(profile.must_have)}",
-        "EvidenceCards:",
+        "You are a resume matching expert. For each evidence card, evaluate how well it matches the job profile.",
+        "Return ONLY valid JSON (no markdown, no explanation) with keys: evidence_card_ids (list of selected card ids, sorted by relevance desc), score_breakdown (object with K/Q/E/total scores 0-1), gap_tasks (list of missing skill/experience areas).",
+        f"Job Title: {profile.title}",
+        f"Required Keywords: {list(profile.keywords)}",
+        f"Must-Have: {list(profile.must_have)}",
+        f"Nice-to-Have: {list(profile.nice_to_have)}",
+        "",
+        "Evidence Cards:",
     ]
     for card in evidence_cards:
         lines.append(
-            f"- id={card.id}, title={card.title}, tags={list(card.tags)}, results={list(card.results)}"
+            f"- id={card.id}, title={card.title}, stack={list(card.stack)}, tags={list(card.tags)}, results={list(card.results)}"
         )
     return "\n".join(lines)

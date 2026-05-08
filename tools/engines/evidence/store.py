@@ -42,4 +42,5 @@ class EvidenceStore:
             results=tuple(lists.get("results", [])),
             artifacts=tuple(lists.get("artifacts", [])),
             tags=tuple(lists.get("tags", [])),
+            stack=tuple(lists.get("stack", [])),
         )

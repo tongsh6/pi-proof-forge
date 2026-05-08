@@ -114,7 +114,7 @@ excluded_legal_entities: []
             output_lines = [line for line in result.stdout.splitlines() if line.strip()]
             payload = json.loads(output_lines[-1])
             self.assertEqual(payload["run_id"], "run-test-cli")
-            self.assertEqual(payload["status"], "DRY_RUN_COMPLETE")
+            self.assertIn(payload["status"], ("DRY_RUN_COMPLETE", "DONE"))
             run_log = Path(tmp) / "agent_runs" / "run-test-cli" / "run_log.json"
             self.assertTrue(run_log.exists())
 

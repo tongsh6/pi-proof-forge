@@ -11,6 +11,7 @@ class EvidenceCard:
     results: tuple[str, ...]
     artifacts: tuple[str, ...]
     tags: tuple[str, ...] = ()
+    stack: tuple[str, ...] = ()
     period: str = ""
     context: str = ""
 

@@ -47,6 +47,73 @@ class Composer:
         validate_policy_config(policy)
         return cls(policy=policy)
 
+    def build_agent_loop(
+        self,
+        run_id: str,
+        dry_run: bool = False,
+        run_store: object | None = None,
+        evidence_cards: object | None = None,
+        job_profile: object | None = None,
+        candidates: object | None = None,
+    ) -> object:
+        """Build a fully wired AgentLoop with rule-mode engines.
+
+        All engine/stage/channel dependencies are created from registries
+        and injected into the AgentLoop. Caller provides data inputs
+        (evidence_cards, job_profile, candidates).
+        """
+        matching_reg = self.build_matching_registry()
+        generation_reg = self.build_generation_registry()
+        evaluation_reg = self.build_evaluation_registry()
+        discovery_reg = self.build_discovery_registry()
+
+        matching_engine = matching_reg.create("rule")
+        generation_engine = generation_reg.create("template")
+        evaluation_engine = evaluation_reg.create("rule")
+        discovery_engine = discovery_reg.create("rule")
+
+        gate_engine = _construct(
+            "tools.orchestration.gate_engine", "GateEngine",
+            self.policy, run_id, 0,
+        )
+        review_stage = _construct(
+            "tools.orchestration.review_stage", "ReviewStage",
+            self.policy,
+        )
+        state_machine = _construct(
+            "tools.orchestration.state_machine", "StateMachine",
+        )
+
+        liepin_channel = _construct(
+            "tools.channels.liepin", "LiepinChannel",
+        )
+        email_channel = _construct(
+            "tools.channels.email", "EmailChannel",
+        )
+        channels = [liepin_channel, email_channel]
+
+        agent_loop_cls = cast(
+            type[object],
+            _load_attr("tools.orchestration.agent_loop", "AgentLoop"),
+        )
+        return agent_loop_cls(
+            policy=self.policy,
+            run_id=run_id,
+            dry_run=dry_run,
+            run_store=run_store,
+            matching_engine=matching_engine,
+            generation_engine=generation_engine,
+            evaluation_engine=evaluation_engine,
+            discovery_engine=discovery_engine,
+            gate_engine=gate_engine,
+            review_stage=review_stage,
+            state_machine=state_machine,
+            channels=channels,
+            evidence_cards=evidence_cards,
+            job_profile=job_profile,
+            candidates=candidates,
+        )
+
     def build_evidence_registry(self) -> _RegistryLike:
         registry = _new_registry()
         registry.register(

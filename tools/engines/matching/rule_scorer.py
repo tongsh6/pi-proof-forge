@@ -33,6 +33,7 @@ class RuleMatchingEngine:
         for card in evidence_cards:
             card_ids.append(card.id)
             all_signals.extend(card.tags)
+            all_signals.extend(card.stack)
             all_signals.append(card.title)
             all_signals.extend(card.results)
             if card.results:
