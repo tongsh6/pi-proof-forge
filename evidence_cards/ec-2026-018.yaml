@@ -1,0 +1,44 @@
+id: "ec-2026-018"
+title: "SLA 指标体系与监控告警平台建设"
+time_range: "2024-06 ~ 2024-12"
+context: >
+  多品牌业务线（始祖鸟、萨洛蒙、威尔胜等）缺乏统一的 SLA 度量标准和监控体系，
+  各业务团队对"可用性"定义不一致，故障发现依赖人工巡检和用户投诉，
+  缺少自动化告警和 SLO 燃烧速率追踪。
+role_scope: "Owner"
+actions:
+  - "定义统一 SLA 指标体系：可用性、延迟（P50/P95/P99）、错误率、吞吐量四个黄金信号，覆盖12个微服务"
+  - "基于 Prometheus + Grafana 搭建统一监控平台，设计 50+ 监控面板，覆盖基础设施、应用层、业务指标三层"
+  - "实现 SLO 燃烧速率告警：当错误预算消耗速度超过阈值时，按严重等级（Warning/Critical/Page）自动通知对应 on-call 人员"
+  - "建立告警分级与升级机制：P0（5分钟响应）→ P1（15分钟）→ P2（1小时），与企业微信/钉钉打通"
+  - "编写 SLA 月报自动化脚本，每月自动生成各服务 SLA 达标率、MTTR、MTBF 趋势报告"
+results:
+  - "监控覆盖率从 0% 提升至 100%（12个核心服务全部接入），平均故障发现时间（MTTD）从 45 分钟降至 3 分钟"
+  - "P95 延迟 SLO 达标率从 91% 提升至 99.5%，错误预算消耗率下降 60%"
+  - "自动化告警替代人工巡检，节省每周约 8 人时的运维人力"
+  - "SLA 月报自动化后，月度报告生成时间从 4 小时降至 5 分钟"
+stack:
+  - "Java"
+  - "Spring Boot"
+  - "Prometheus"
+  - "Grafana"
+  - "AlertManager"
+  - "Redis"
+  - "Kafka"
+tags:
+  - "SLA"
+  - "SLO"
+  - "监控"
+  - "告警"
+  - "可观测性"
+  - "稳定性"
+artifacts:
+  - "sla-metric-definition.md"
+  - "grafana-dashboard-export.json"
+  - "alert-rules.yaml"
+  - "sla-monthly-report-template.md"
+  - "oncall-escalation-policy.md"
+interview_hooks:
+  - "SLO 燃烧速率告警的阈值是如何设定的？如何避免告警疲劳？"
+  - "四个黄金信号的采集和聚合方式是什么？如何处理高基数问题？"
+  - "告警升级机制中如何避免'狼来了'效应？"

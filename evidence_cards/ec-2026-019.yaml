@@ -1,0 +1,43 @@
+id: "ec-2026-019"
+title: "故障应急响应与无复盘文化体系建设"
+time_range: "2025-01 ~ 2025-04"
+context: >
+  一次大促期间 Redis 集群故障导致核心交易链路中断 28 分钟，
+  暴露出故障响应流程缺失、信息同步混乱、复盘流于形式等问题。
+  需要建立系统化的故障应急响应流程和 blameless 复盘文化。
+role_scope: "Owner"
+actions:
+  - "设计故障应急响应 SOP：故障发现→判定等级（P0-P3）→组建 IM 战时群→指挥官委派→止损优先→根因分析→复盘"
+  - "建立 blameless 复盘模板与流程：时间线还原、5-Why 根因分析、行动项跟踪（JIRA 集成）、复盘结论归档"
+  - "实现故障演练机制：每季度一次 Chaos Engineering 演练（随机 kill 服务/注入延迟/断网），验证应急预案有效性"
+  - "搭建故障知识库：将历史故障的根因、影响面、止损方案、预防措施结构化存储，支持新成员快速检索"
+  - "推动跨团队 on-call 轮值制度：覆盖研发、SRE、DBA 三个角色，确保 7×24 响应能力"
+results:
+  - "故障平均恢复时间（MTTR）从 28 分钟降至 8 分钟（降低 71%），P0 故障响应时间从 12 分钟降至 3 分钟"
+  - "完成 12 次故障复盘，产出 47 个行动项，100% 在 SLA 内关闭"
+  - "混沌工程演练发现 6 个潜在单点故障，全部修复后系统可用性从 99.5% 提升至 99.95%"
+  - "on-call 轮值制度覆盖 7×24，非工作时间故障响应时间从 30 分钟降至 5 分钟"
+stack:
+  - "Java"
+  - "Redis"
+  - "Kafka"
+  - "MySQL"
+  - "Prometheus"
+  - "Grafana"
+tags:
+  - "SLA"
+  - "故障处理"
+  - "应急响应"
+  - "复盘"
+  - "混沌工程"
+  - "稳定性"
+artifacts:
+  - "incident-response-sop.md"
+  - "blameless-postmortem-template.md"
+  - "chaos-engineering-playbook.md"
+  - "fault-knowledge-base-schema.md"
+  - "oncall-rotation-schedule.md"
+interview_hooks:
+  - "Blameless 复盘如何落地？如何让团队真正坦诚地分析故障而不用担心追责？"
+  - "混沌工程演练的爆炸半径如何控制？如何确保不影响线上真实用户？"
+  - "on-call 轮值如何平衡研发和 SRE 的工作负载？"

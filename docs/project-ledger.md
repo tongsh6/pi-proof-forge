@@ -80,6 +80,9 @@
 | LLM 连接验证 | LM Studio localhost:1234 | openai/gpt-oss-120b 可用 | 响应正常 |
 | Hybrid 匹配策略 | `tools/engines/matching/hybrid_matcher.py` | 2.3x faster than pure LLM | Rule 初筛 Top5 → LLM 精选 |
 | Playwright + Liepin 验证 | `tools/channels/liepin.py` | check-mode 通过 | 需登录态完成真实投递 |
+| Agent Loop 端到端验证 | 真实验证脚本 | hybrid + LLM evaluator, 10 状态全通过 | 2 rounds, 18 events, matching 0.772→0.919 |
+| SLA/SLO 证据卡 | `evidence_cards/ec-2026-018.yaml` / `019.yaml` | K-score: Backend 1.0, SRE 0.857 | SLA/SLO 盲区消除 |
+| GUI 编译验证 | `cd ui && pnpm install && pnpm run build` | TypeScript 零错误, 1627 modules, 862ms | 9 页全部可编译 |
 | LLM Evaluator 增强 | `tools/engines/evaluation/llm_evaluator.py` | 6 维度语义评测 | semantic_coverage + fabrication_risk + gaps/strengths/improvements |
 
 ## 4. 进行中事项
