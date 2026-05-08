@@ -157,29 +157,100 @@ def discover_candidates(
     base_dir: Path | None = None,
     base_jd_dir: Path | None = None,
     base_jp_dir: Path | None = None,
+    *,
+    enable_liepin_search: bool = True,
+    session_dir: str = "outputs/sessions",
+    excluded_companies: tuple[str, ...] = (),
 ) -> list[Candidate]:
-    """Full 3-level fallback: job_leads → jd_inputs → job_profiles.
+    """Full 4-level discovery: job_leads → liepin_search → jd_inputs → job_profiles.
 
-    Returns all discovered candidates. Each level's results are appended.
-    Candidates without job_url can be used for direction discovery/matching
-    but not for delivery.
+    Level 1: job_leads/*.yaml — explicit leads with real URLs
+    Level 1.5: Liepin search — auto-discover real job URLs from profile keywords
+    Level 2: jd_inputs/*.txt — extract company/position/direction from JD text
+    Level 3: job_profiles/*.yaml — derive search directions
     """
     candidates: list[Candidate] = []
 
-    # Level 1
+    # Level 1: explicit leads override all fallbacks
     leads = load_candidates_from_job_leads(base_dir)
     if leads:
-        return leads  # explicit leads override all fallbacks
+        return leads
 
-    # Level 2
+    # Levels 2 + 3: load from jd_inputs + job_profiles
     jd_candidates = load_candidates_from_jd_inputs(base_jd_dir)
-    candidates.extend(jd_candidates)
-
-    # Level 3
     jp_candidates = load_candidates_from_job_profiles(base_jp_dir)
+    candidates.extend(jd_candidates)
     candidates.extend(jp_candidates)
 
+    # Level 1.5: For each job profile, search Liepin for real URLs
+    if enable_liepin_search:
+        try:
+            liepin_candidates = _search_liepin_for_candidates(
+                base_jp_dir or JOB_PROFILES_DIR,
+                session_dir=session_dir,
+                excluded_companies=excluded_companies,
+            )
+            if liepin_candidates:
+                # Replace profile-derived candidates with real URL ones
+                return liepin_candidates
+        except Exception:
+            pass
+
     return candidates
+
+
+def _search_liepin_for_candidates(
+    jp_dir: Path,
+    session_dir: str,
+    excluded_companies: tuple[str, ...],
+) -> list[Candidate]:
+    """Search Liepin for each job profile and return candidates with real URLs."""
+    from tools.engines.discovery.liepin_search import discover_and_filter
+
+    all_candidates: list[Candidate] = []
+    seen_urls: set[str] = set()
+
+    for path in sorted(jp_dir.glob("*.yaml")):
+        try:
+            doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        scalars = doc.get("scalars", {})
+        lists = doc.get("lists", {})
+        keywords = [str(k) for k in lists.get("keywords", [])]
+        city = scalars.get("city", "上海")
+        business_domain = scalars.get("business_domain", "")
+
+        if not keywords:
+            continue
+
+        jobs = discover_and_filter(
+            keywords=keywords,
+            city=city,
+            excluded_companies=excluded_companies,
+            session_dir=session_dir,
+            headless=True,
+            max_jobs=3,
+        )
+
+        for idx, job in enumerate(jobs):
+            url = job.get("job_url", "")
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+
+            all_candidates.append(Candidate(
+                candidate_id=f"liepin-{path.stem}-{idx}",
+                direction=_detect_direction(" ".join(keywords) + " " + job.get("position", "")),
+                company=job.get("company", "") or business_domain,
+                job_url=url,
+                confidence=0.75,
+                source=f"liepin_search:{path.stem}",
+                merged_sources=(f"liepin_search:{path.stem}",),
+            ))
+
+    return all_candidates
 
 
 def _make_candidate(data: dict, source_id: str, index: int) -> Candidate:

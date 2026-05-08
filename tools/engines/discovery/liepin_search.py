@@ -1,80 +1,37 @@
-"""Liepin job search: construct search URLs and extract job listing links.
+"""Liepin job search: automated discovery of real job URLs.
 
-This is Level 2.5 of the discovery chain — it takes candidates without URLs
-from jd_inputs/job_profiles and finds real job URLs on Liepin.
+Given a job profile (keywords + city), constructs a Liepin search URL,
+opens it with Playwright, and extracts job listing links with metadata.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from urllib.parse import quote
 
 
-def build_liepin_search_url(
-    keywords: list[str],
-    city: str = "上海",
-) -> str:
+def build_liepin_search_url(keywords: list[str], city: str = "上海") -> str:
     """Build a Liepin search URL from job profile keywords."""
     key = " ".join(keywords[:5])
     encoded = quote(f"{key} {city}")
-    return f"https://www.liepin.com/zhaopin/?key={encoded}&city={city}"
-
-
-def extract_job_links_from_page(page: object) -> list[dict]:
-    """Extract job listing links from a Liepin search results page.
-
-    Returns list of dicts with: job_url, company, position, salary.
-    """
-    results: list[dict] = []
-
-    # Liepin search result selectors
-    link_selectors = [
-        "a[data-nick]",
-        ".job-list-item a.job-title",
-        ".job-card a.job-title",
-    ]
-
-    jobs_seen: set[str] = set()
-    for selector in link_selectors:
-        try:
-            elements = page.locator(selector)
-            count = elements.count()
-            for i in range(min(count, 10)):
-                try:
-                    el = elements.nth(i)
-                    href = el.get_attribute("href") or ""
-                    text = el.inner_text().strip()
-                    if href and "liepin.com/job" in href and href not in jobs_seen:
-                        jobs_seen.add(href)
-                        results.append({
-                            "job_url": href.split("?")[0],
-                            "position": text[:60] if text else "",
-                            "company": "",
-                            "salary": "",
-                        })
-                except Exception:
-                    continue
-        except Exception:
-            continue
-
-    return results
+    return f"https://www.liepin.com/zhaopin/?key={encoded}"
 
 
 def discover_liepin_jobs(
     keywords: list[str],
     city: str = "上海",
     *,
-    sync_playwright: object = None,
-    headless: bool = True,
     session_dir: str = "outputs/sessions",
-    timeout_ms: int = 15000,
+    headless: bool = True,
+    max_jobs: int = 5,
+    timeout_ms: int = 20000,
 ) -> list[dict]:
-    """Full Liepin job discovery: search → extract links.
+    """Search Liepin and extract job listings with URLs.
 
-    Requires Playwright and a valid Liepin login session.
-    Returns list of dicts with job_url, company, position.
+    Returns list of dicts with: job_url, position, company, city, salary.
     """
     try:
-        from playwright.sync_api import sync_playwright as sp
+        from playwright.sync_api import sync_playwright
     except ImportError:
         return []
 
@@ -82,21 +39,129 @@ def discover_liepin_jobs(
     results: list[dict] = []
 
     try:
-        with sp() as p:
-            session_root = __import__("pathlib").Path(session_dir) / "liepin"
+        with sync_playwright() as p:
+            session_root = Path(session_dir) / "liepin"
             ctx = p.chromium.launch_persistent_context(
                 user_data_dir=str(session_root),
                 headless=headless,
             )
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.goto(search_url, wait_until="domcontentloaded", timeout=timeout_ms)
+            page.wait_for_timeout(3000)
 
-            # Let results load
-            page.wait_for_timeout(2000)
+            current_url = page.url.lower()
+            if "captcha" in current_url or "safe.liepin" in current_url:
+                # Anti-bot captcha detected — cannot automate search
+                ctx.close()
+                return []
 
-            results = extract_job_links_from_page(page)
+            results = _extract_job_listings(page, max_jobs)
             ctx.close()
     except Exception:
         pass
 
     return results
+
+
+def _extract_job_listings(page: object, max_jobs: int) -> list[dict]:
+    """Extract job listings from a Liepin search results page."""
+    results: list[dict] = []
+    job_links = page.locator("a[href*='/job/']")
+    count = job_links.count()
+
+    seen_urls: set[str] = set()
+    for i in range(min(count, max_jobs * 3)):
+        try:
+            el = job_links.nth(i)
+            href = (el.get_attribute("href") or "").split("?")[0]
+            if not href or "liepin.com/job/" not in href:
+                continue
+            if href in seen_urls:
+                continue
+            seen_urls.add(href)
+
+            text = el.inner_text().strip()
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+            position = lines[0] if lines else ""
+            company = ""
+            salary = ""
+            job_city = ""
+
+            # Try to get company from data-nick on nearby element
+            try:
+                parent = el.locator("..")
+                nick = parent.locator("[data-nick]")
+                if nick.count() > 0:
+                    company = nick.first.get_attribute("data-nick") or ""
+            except Exception:
+                pass
+
+            # Parse text lines for metadata
+            for line in lines[1:]:
+                if "【" in line:
+                    job_city = line.replace("【", "").replace("】", "").strip()
+                elif "k" in line.lower() and "·" in line:
+                    salary = line.strip()
+                elif company == "" and len(line) > 1 and "·" not in line:
+                    company = line.strip()
+
+            results.append({
+                "job_url": href,
+                "position": position[:80],
+                "company": company,
+                "city": job_city or city,
+                "salary": salary,
+            })
+
+            if len(results) >= max_jobs:
+                break
+        except Exception:
+            continue
+
+    return results
+
+
+def discover_and_filter(
+    keywords: list[str],
+    city: str = "上海",
+    *,
+    excluded_companies: tuple[str, ...] = (),
+    session_dir: str = "outputs/sessions",
+    headless: bool = True,
+    max_jobs: int = 5,
+) -> list[dict]:
+    """Discover jobs and apply company exclusion filters.
+
+    Returns filtered list ready for Candidate creation.
+    """
+    jobs = discover_liepin_jobs(
+        keywords=keywords, city=city,
+        session_dir=session_dir, headless=headless, max_jobs=max_jobs,
+    )
+
+    if not excluded_companies:
+        return jobs
+
+    excluded_lower = set()
+    for rule in excluded_companies:
+        r = rule.casefold()
+        if r.startswith("contains:"):
+            excluded_lower.add(r.split(":", 1)[1])
+        elif r.startswith("exact:"):
+            excluded_lower.add(r.split(":", 1)[1])
+        else:
+            excluded_lower.add(r)
+
+    filtered: list[dict] = []
+    for job in jobs:
+        company = job.get("company", "").casefold()
+        blocked = False
+        for ex in excluded_lower:
+            if ex and ex in company:
+                blocked = True
+                break
+        if not blocked:
+            filtered.append(job)
+
+    return filtered
