@@ -187,13 +187,26 @@ class AgentLoop:
 
             # --- DISCOVER ---
             accepted_candidates = list(self._candidates)
+
+            # Auto-load from job_leads/ if no candidates explicitly provided
+            if not accepted_candidates:
+                try:
+                    from tools.engines.discovery.job_leads_loader import (
+                        load_candidates_from_job_leads,
+                    )
+                    job_leads = load_candidates_from_job_leads()
+                    if job_leads:
+                        accepted_candidates = job_leads
+                except ImportError:
+                    pass
+
             discovery_payload: dict[str, object] = {"candidates": len(accepted_candidates)}
-            if self._discovery is not None and self._candidates:
-                disc_result = self._discovery.filter_candidates(list(self._candidates))
+            if self._discovery is not None and accepted_candidates:
+                disc_result = self._discovery.filter_candidates(accepted_candidates)
                 accepted_candidates = list(disc_result.accepted)
                 discovery_payload = {
                     "candidates": len(accepted_candidates),
-                    "total": len(self._candidates),
+                    "total": discovery_payload["candidates"],
                 }
                 if disc_result.excluded:
                     discovery_payload["accepted"] = len(disc_result.accepted)

@@ -1,0 +1,14 @@
+# Job Leads — 上海后端/架构岗位线索
+# 格式：每个 item 至少需要 job_url。其余字段用于 DISCOVER 评分和过滤。
+generated_at: "2026-05-09T10:00:00+08:00"
+filters:
+  city: "上海"
+  role_keywords: ["后端", "架构", "平台"]
+items:
+  # --- 替换为你的真实猎聘职位 URL ---
+  # 示例格式（需要替换 job_url）：
+  # - company_name: "XX科技有限公司"
+  #   position: "高级Java开发工程师"
+  #   job_url: "https://www.liepin.com/job/你的职位ID"
+  #   direction: "backend"
+  #   confidence: 0.85
