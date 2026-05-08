@@ -1,0 +1,21 @@
+target_role: "Senior Software Architect"
+must_have:
+  - "微服务架构设计"
+  - "多租户平台"
+  - "技术选型与演进"
+nice_to_have:
+  - "DDD领域建模"
+  - "事件驱动架构"
+keywords:
+  - "Java"
+  - "Spring Boot"
+  - "微服务"
+  - "架构设计"
+  - "平台化"
+  - "Nacos"
+business_domain: "零售/电商"
+seniority_signal:
+  - "Owner"
+  - "架构决策"
+  - "技术规划"
+tone: "偏架构"

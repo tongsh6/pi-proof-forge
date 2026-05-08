@@ -1,0 +1,22 @@
+target_role: "Full-Stack Tech Lead"
+must_have:
+  - "前后端全栈开发"
+  - "微信生态（小程序/公众号）"
+  - "系统全链路设计"
+nice_to_have:
+  - "支付系统对接"
+  - "物流系统对接"
+keywords:
+  - "Java"
+  - "Spring Boot"
+  - "MySQL"
+  - "Redis"
+  - "微信小程序"
+  - "全栈"
+  - "BFF"
+business_domain: "零售/O2O"
+seniority_signal:
+  - "Owner"
+  - "从零搭建"
+  - "跨团队推进"
+tone: "偏交付"

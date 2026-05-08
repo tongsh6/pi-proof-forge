@@ -1,0 +1,22 @@
+target_role: "SRE / Platform Engineer"
+must_have:
+  - "系统稳定性治理"
+  - "监控与告警体系"
+  - "性能优化与容量规划"
+nice_to_have:
+  - "混沌工程"
+  - "成本优化"
+keywords:
+  - "SLA"
+  - "SLO"
+  - "稳定性"
+  - "故障处理"
+  - "Kafka"
+  - "Redis"
+  - "性能优化"
+business_domain: "通用"
+seniority_signal:
+  - "Owner"
+  - "故障驱动"
+  - "跨团队协作"
+tone: "偏架构"

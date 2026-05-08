@@ -51,11 +51,14 @@ class RuleMatchingEngine:
         e_score = artifact_cards / len(evidence_cards)
         total = (k_score * 0.5) + (q_score * 0.25) + (e_score * 0.25)
 
-        gap_tasks = tuple(
-            f"补充 {must_have} 相关证据"
-            for must_have in profile.must_have
-            if must_have.casefold() not in normalized_signals
-        )
+        gap_tasks_list: list[str] = []
+        for must_have in profile.must_have:
+            if must_have.casefold() not in normalized_signals:
+                gap_tasks_list.append(f"补充 {must_have} 相关证据")
+        for keyword in profile.keywords:
+            if keyword.casefold() not in normalized_signals:
+                gap_tasks_list.append(f"补充 {keyword} 相关技术栈或经验证据")
+        gap_tasks = tuple(gap_tasks_list)
 
         return self._builder.build(
             job_profile_id=profile.id,

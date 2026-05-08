@@ -72,6 +72,29 @@
         "agent_run_completed": "Agent"
       }
     },
+    "quickRun": {
+      "title": "快速运行",
+      "subtitle": "从工作区配置并启动管道运行。",
+      "pipelineTitle": "管道流程",
+      "pipelineSubtitle": "证据提炼 → 匹配评分 → 简历生成 → 质量评测，一键完成。",
+      "steps": {
+        "extract": "证据提炼",
+        "match": "匹配评分",
+        "generate": "简历生成",
+        "evaluate": "质量评测"
+      },
+      "evidenceCards": "证据卡",
+      "jobProfiles": "岗位画像",
+      "resumes": "简历版本",
+      "selectProfile": "选择目标岗位画像",
+      "selectProfileHint": "选择一个岗位画像用于证据匹配。",
+      "runTitle": "运行管道",
+      "runSubtitle": "在终端中复制并运行以下命令。",
+      "pipelineCommand": "管道模式（单次执行）",
+      "agentCommand": "Agent 模式（多轮门禁）",
+      "agentRunLink": "智能运行",
+      "agentRunLinkHint": "如需多轮自主执行、质量门禁和人工审批，请使用智能运行页面。"
+    },
     "evidence": {
       "title": "证据卡",
       "subtitle": "由 Python sidecar 驱动的首个只读垂直切片。",
