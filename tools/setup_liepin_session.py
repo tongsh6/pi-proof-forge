@@ -62,6 +62,19 @@ def main() -> int:
     session_root.mkdir(parents=True, exist_ok=True)
     cookie_file = session_root / "cookies.json"
 
+    # Check if Chrome is already running (would prevent CDP from working)
+    result = subprocess.run(
+        ["pgrep", "-x", "Google Chrome"],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        print("⚠️  Chrome is already running.")
+        print("   CDP requires launching Chrome with --remote-debugging-port,")
+        print("   which only works when Chrome starts fresh.")
+        print()
+        print("   Please close ALL Chrome windows, then re-run this script.")
+        return 2
+
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -85,12 +98,29 @@ def main() -> int:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(2)
+
+    # Wait for CDP to become available
+    cdp_url = f"http://127.0.0.1:{args.port}"
+    for attempt in range(10):
+        time.sleep(0.5)
+        try:
+            from urllib.request import urlopen
+            urlopen(f"{cdp_url}/json/version", timeout=2)
+            break
+        except Exception:
+            if attempt == 9:
+                print("[ERROR] Chrome launched but CDP not responding.")
+                print("        This can happen if Chrome is already running.")
+                print("        Close ALL Chrome windows and retry.")
+                chrome_proc.terminate()
+                return 4
+    else:
+        pass  # CDP is ready
 
     cookies: list[dict] = []
     try:
         with sync_playwright() as p:
-            browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{args.port}")
+            browser = p.chromium.connect_over_cdp(cdp_url)
             contexts = browser.contexts
             if not contexts:
                 print("[ERROR] No browser context — is Chrome already running?")
