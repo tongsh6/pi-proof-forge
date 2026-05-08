@@ -83,10 +83,18 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
             )
             try:
                 page = browser_context.pages[0] if browser_context.pages else browser_context.new_page()
-                _ = page.goto(config.job_url, wait_until="domcontentloaded", timeout=config.timeout_ms)
+                _ = page.goto(config.job_url, wait_until="networkidle", timeout=config.timeout_ms)
+                page.wait_for_timeout(2000)  # Allow JS-rendered content to settle
+
                 shot_open = recorder.screenshot_path("open_job_page")
                 _ = page.screenshot(path=str(shot_open), full_page=True)
                 recorder.add_step("open_job_page", "success", "job page opened", shot_open)
+
+                # Check for security page redirect
+                if "安全中心" in page.title() or "safe.liepin" in page.url.lower():
+                    recorder.add_step("security_check", "failed", "redirected to security page")
+                    recorder.finish(status="blocked", error="security_redirect")
+                    return 11
 
                 if _is_error_page(page):
                     snapshot_paths = _dump_dom_snapshots(page, recorder.run_dir / "html")
@@ -181,6 +189,12 @@ def _browser_context_options(config: LiepinSubmissionConfig, session_root: Path)
     options: dict[str, object] = {
         "user_data_dir": str(session_root),
         "headless": config.headless,
+        "viewport": {"width": 1440, "height": 900},
+        "args": [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins,site-per-process",
+        ],
+        "ignore_default_args": ["--enable-automation"],
     }
     if config.browser_channel:
         options["channel"] = config.browser_channel
@@ -192,11 +206,26 @@ def _is_logged_in(page: Page) -> bool:
     if "passport" in current_url or "login" in current_url:
         return False
 
-    login_loc = page.locator("a:has-text('登录'),button:has-text('登录')")
-    if login_loc.count() > 0 and "liepin.com/job" not in current_url:
+    # Check for VISIBLE inline login form (element exists in DOM even when logged in)
+    inline_login = page.locator("[data-selector='inline-login']:visible, .inline-login-container:visible")
+    if inline_login.count() > 0:
         return False
 
-    job_action = page.locator("button:has-text('投递'),button:has-text('立即沟通'),a:has-text('投递')")
+    # Check for visible login buttons (not in dropdown/user menu)
+    login_btn = page.locator("a:has-text('登录'):visible, button:has-text('登录/注册'):visible")
+    if login_btn.count() > 0:
+        return False
+
+    # Positive check: elements that only appear when logged in
+    user_indicators = page.locator(
+        "[data-selector='chat-chat']:visible, "
+        "[data-selector='c-logout']:visible, "
+        ".recruiter-info-box:visible"
+    )
+    if user_indicators.count() > 0:
+        return True
+
+    job_action = page.locator("button:has-text('投递简历'):visible, button:has-text('立即沟通'):visible")
     return job_action.count() > 0 or "liepin.com/job" in current_url
 
 

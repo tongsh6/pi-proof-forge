@@ -27,6 +27,7 @@ class SubmissionRecord:
     resume_path: str = ""
     profile_path: str = ""
     headless: bool = True
+    browser_channel: str = "chrome"
     steps: list[SubmissionStep] = field(default_factory=list)
 
 
@@ -62,11 +63,12 @@ class SubmissionRecorder:
         )
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
-    def set_meta(self, job_url: str, resume_path: str, profile_path: str, headless: bool) -> None:
+    def set_meta(self, job_url: str, resume_path: str, profile_path: str, headless: bool, browser_channel: str = "chrome") -> None:
         self.record.job_url = job_url
         self.record.resume_path = resume_path
         self.record.profile_path = profile_path
         self.record.headless = headless
+        self.record.browser_channel = browser_channel
 
     def add_step(self, name: str, status: str, detail: str, screenshot: Path | None = None) -> None:
         screenshot_rel = ""

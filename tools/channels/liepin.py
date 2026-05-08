@@ -98,6 +98,7 @@ class LiepinChannel:
             8: ("timeout", "timeout during page operation"),
             9: ("unexpected_error", "unexpected error during submission"),
             10: ("job_page_unavailable", "job page is unavailable or invalid"),
+            11: ("security_redirect", "redirected to security page — anti-bot triggered"),
         }
         reason, detail = error_messages.get(exit_code, ("unknown_error", f"exit_code={exit_code}"))
         return Err(ChannelFailure(channel_id=self.channel_id, reason=reason, details=detail))

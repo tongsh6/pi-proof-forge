@@ -195,7 +195,13 @@ class AgentLoop:
                     from tools.engines.discovery.job_leads_loader import (
                         discover_candidates,
                     )
-                    discovered = discover_candidates()
+                    # Use job_profile keywords for targeted search if available
+                    kwargs: dict[str, object] = {}
+                    if self._job_profile is not None:
+                        jp_keywords = getattr(self._job_profile, "keywords", ())
+                        if jp_keywords:
+                            kwargs["search_keywords"] = list(jp_keywords)
+                    discovered = discover_candidates(**kwargs)
                     if discovered:
                         accepted_candidates = discovered
                 except ImportError:
@@ -242,10 +248,22 @@ class AgentLoop:
 
             # --- GATE ---
             current_state = self._transition(sm, current_state, "next")
+
+            # Only consider candidates with valid job URLs for delivery
+            deliverable = [c for c in accepted_candidates if c.job_url and c.job_url.startswith("http")]
+            if not deliverable and accepted_candidates:
+                self._log_state("GATE", round_index,
+                                {"result": "skip", "reason": "no_deliverable_candidates"})
+                self._log_state("LEARN", round_index,
+                                {"action": "retry", "reason": "no_deliverable_urls"})
+                current_state = self._transition(sm, current_state, "fail")
+                current_state = self._transition(sm, current_state, "next")
+                continue
+
             gate_passed = False
             gate_candidate: Candidate | None = None
 
-            for candidate in accepted_candidates:
+            for candidate in deliverable:
                 gate_result = self._run_gate(
                     candidate, matching_total, scorecard.total_score, round_index,
                 )
@@ -368,11 +386,18 @@ class AgentLoop:
         else:
             channels = list(self._channels)
 
+        # Write resume to disk so the delivery channel can read it
+        from pathlib import Path as _Path
+        resume_path = f"outputs/{resume.version}.md"
+        _Path("outputs").mkdir(parents=True, exist_ok=True)
+        _Path(resume_path).write_text(resume.content, encoding="utf-8")
+        self._logger.info("agent_loop.resume_written", path=resume_path)
+
         request = DeliveryRequest(
             run_id=self._run_id,
             candidate_id=candidate.candidate_id,
             channel=candidate.direction,
-            resume_path=f"outputs/{resume.version}.md",
+            resume_path=resume_path,
             job_url=candidate.job_url,
             dry_run=False,
             metadata={"round": round_index},
