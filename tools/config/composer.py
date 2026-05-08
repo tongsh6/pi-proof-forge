@@ -55,21 +55,33 @@ class Composer:
         evidence_cards: object | None = None,
         job_profile: object | None = None,
         candidates: object | None = None,
+        *,
+        llm_client: object | None = None,
+        llm_model: str = "",
     ) -> object:
-        """Build a fully wired AgentLoop with rule-mode engines.
+        """Build a fully wired AgentLoop.
 
-        All engine/stage/channel dependencies are created from registries
-        and injected into the AgentLoop. Caller provides data inputs
-        (evidence_cards, job_profile, candidates).
+        Without llm_client: uses rule-mode engines (fast, deterministic).
+        With llm_client: uses hybrid matching + LLM evaluator (semantic).
+
+        Caller provides data inputs (evidence_cards, job_profile, candidates).
         """
         matching_reg = self.build_matching_registry()
         generation_reg = self.build_generation_registry()
         evaluation_reg = self.build_evaluation_registry()
         discovery_reg = self.build_discovery_registry()
 
-        matching_engine = matching_reg.create("rule")
+        use_llm = llm_client is not None and bool(llm_model)
+        if use_llm:
+            self.add_llm_strategies(
+                llm_client, llm_model,
+                self.build_evidence_registry(),
+                matching_reg, generation_reg, evaluation_reg,
+            )
+
+        matching_engine = matching_reg.create("hybrid" if use_llm else "rule")
         generation_engine = generation_reg.create("template")
-        evaluation_engine = evaluation_reg.create("rule")
+        evaluation_engine = evaluation_reg.create("llm" if use_llm else "rule")
         discovery_engine = discovery_reg.create("rule")
 
         gate_engine = _construct(

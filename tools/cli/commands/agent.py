@@ -71,6 +71,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=True,
         help="Use full pipeline (default). Use --no-full-pipeline for legacy simplified mode.",
     )
+    _ = parser.add_argument(
+        "--llm",
+        action="store_true",
+        default=False,
+        help="Use LLM-enhanced engines (hybrid matching + LLM evaluator). Requires LLM_BASE_URL and LLM_API_KEY env vars.",
+    )
+    _ = parser.add_argument(
+        "--llm-model",
+        default="",
+        help="LLM model name. Defaults to LLM_MODEL env var or openai/gpt-oss-120b.",
+    )
     return parser
 
 
@@ -102,6 +113,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "[WARN] No eligible evidence cards found; falling back to simplified mode"
             )
 
+    llm_client = None
+    llm_model = ""
+    if args.llm:
+        from tools.infra.llm.client import LLMClient
+        import os as _os
+        llm_base = _os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
+        llm_key = _os.getenv("LLM_API_KEY", "lm-studio")
+        llm_model = args.llm_model or _os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
+        llm_client = LLMClient(base_url=llm_base, api_key=llm_key, timeout=120)
+
     if evidence_cards and args.full_pipeline:
         loop = composer.build_agent_loop(
             run_id=run_id,
@@ -109,6 +130,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_store=store,
             evidence_cards=evidence_cards,
             job_profile=job_profile,
+            llm_client=llm_client,
+            llm_model=llm_model,
         )
     else:
         agent_loop_cls = getattr(
