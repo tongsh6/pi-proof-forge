@@ -5,7 +5,7 @@
 
 ## 1. 当前阶段目标
 
-**v2 统一核心引擎架构 + Agent Loop 闭环验证**
+**v2 统一核心引擎架构 + Agent Loop 闭环验证 + 猎聘真实投递**
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -14,9 +14,11 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已完成 ✅（6 tests，287 total）**
-- **Benchmark 基线 → 已完成 ✅（docs/benchmarks/benchmark-001.md）**
-- **当前阻塞：AgentLoop 未集成 Pipeline/GateEngine/ReviewStage/StateMachine**
+- **全链路集成测试 → 已完成 ✅（299 tests）**
+- **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
+- **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
+- **Agent Loop → Liepin 投递链路 → 已验证登录+上传，待完成真实投递（2026-05-09）**
+- **当前阻塞：猎聘风控限制（safe.liepin.com SMS验证），需冷却后重试**
 
 ## 2. 已完成事项
 
@@ -64,6 +66,13 @@
 | **Liepin Channel 真实实现** | **已完成** | tools/channels/liepin.py | 集成 tools/submission/liepin.py (464行 Playwright) | 无 Playwright 时优雅降级为模拟模式 |
 | **LLM 对比 Benchmark** | **已完成** | docs/benchmarks/benchmark-003.md | LM Studio openai/gpt-oss-120b | LLM K=0.73 vs Rule K=0.60，LLM 缺口更具体，建议混合策略 |
 | **LLM Matcher prompt 修复** | **已完成** | tools/engines/matching/llm_matcher.py | 新增 stack 字段到 prompt | LLM 可看到技术栈信息 |
+| **AppleScript 猎聘搜索** | **已完成** | tools/engines/discovery/liepin_search.py | PoC 验证 + 集成测试 | Playwright → AppleScript 驱动真实 Chrome，绕过 captcha |
+| **Agent Loop 简历文件写入** | **已完成** | tools/orchestration/agent_loop.py | 端到端验证 | DELIVER 前写入 outputs/{version}.md |
+| **Agent Loop 空 URL 过滤** | **已完成** | tools/orchestration/agent_loop.py | 端到端验证 | GATE 前过滤无 job_url 的候选人 |
+| **Liepin 登录检测修复** | **已完成** | tools/submission/liepin.py | check-mode 验证 | inline-login :visible 检测 + 正向登录指标 |
+| **Playwright 反检测参数** | **已完成** | tools/submission/liepin.py | 已部署，待限流恢复后验证 | --disable-blink-features=AutomationControlled |
+| **SubmissionRecorder browser_channel** | **已完成** | tools/submission/storage.py | 参数匹配修复 | set_meta() 新增 browser_channel |
+| **目标关键词搜索** | **已完成** | tools/engines/discovery/job_leads_loader.py | discover_candidates(search_keywords=...) | 只搜索指定 job_profile 关键词，避免全量搜索触限 |
 
 ## 3. 已验证事项
 
@@ -84,6 +93,10 @@
 | SLA/SLO 证据卡 | `evidence_cards/ec-2026-018.yaml` / `019.yaml` | K-score: Backend 1.0, SRE 0.857 | SLA/SLO 盲区消除 |
 | GUI 编译验证 | `cd ui && pnpm install && pnpm run build` | TypeScript 零错误, 1627 modules, 862ms | 9 页全部可编译 |
 | LLM Evaluator 增强 | `tools/engines/evaluation/llm_evaluator.py` | 6 维度语义评测 | semantic_coverage + fabrication_risk + gaps/strengths/improvements |
+| AppleScript 猎聘搜索 PoC | `tools/poc_liepin_applescript_search.py` | 2.3s/搜索, 23 职位/页, 无 captcha | 真实 Chrome 完全绕过 captcha（初始测试） |
+| Liepin 登录态有效性 | `outputs/submissions/liepin/run-deliver-6/` | login_check: success | 32 个 liepin cookie，Playwright persistent_context 有效 |
+| Agent Loop→DELIVER 全链路 | `outputs/agent_runs/run-deliver-6/` | login_check success, page_mode unknown | 登录通过，上传选择器需适配猎聘实际 DOM |
+| 猎聘风控触发 | `safe.liepin.com SMS验证页` | 短时间多次搜索触发 | 需冷却 + SMS 验证后重试 |
 
 ## 4. 进行中事项
 
@@ -93,8 +106,10 @@
 
 | 优先级 | 缺口 | 影响 | 类型 | 阻塞条件 |
 |--------|------|------|------|----------|
-| P1 | 无 LLM 模式对比数据 | 无法量化 LLM vs Rule 的质量差异 | 验证缺口 | 需 LLM_API_KEY 环境变量 |
-| P2 | 无真实投递验证 | Email/Liepin 通道未真实验证 | 验证缺口 | Email 需 SMTP 凭据；Liepin 需 Playwright + 登录态 |
+| P0 | 猎聘风控限流（safe.liepin.com SMS验证） | AppleScript 搜索和 Playwright 投递均被重定向 | 环境阻塞 | IP/会话冷却 + SMS验证完成 |
+| P0 | 猎聘上传选择器未适配实际 DOM | 登录通过但简历上传失败（page_mode: unknown） | 实现缺口 | 需在实际职位页上诊断选择器 |
+| P1 | 真实投递未完成（submit=true） | 从未以 submit 模式成功投递 | 验证缺口 | P0 两个缺口解决后 |
+| P2 | LiepinChannel session 路径耦合 run_id | 每次新 run 需手动创建 symlink | 设计缺口 | 低优先级，当前 workaround 可用 |
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
 | P4 | Gap tasks 仅检查 must_have，不检查 keywords | SLA/SLO 等关键词缺失不会触发补证据任务 | 设计缺口 | 低优先级 |
 
@@ -106,9 +121,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | 修复 Matching 引擎搜索 stack 字段 | Benchmark 揭示 K-score=0，所有卡无法区分 | rule_scorer 扩展至 stack 搜索，K-score > 0 |
-| 2 | LLM 模式对比 Benchmark | 建立 rule vs LLM 质量基线 | benchmark-002 含两组对比数据 |
-| 3 | 真实投递验证 | 验证 Email/Liepin 通道可用性 | 至少一个通道成功发出投递 |
+| 1 | 猎聘风控冷却 + SMS验证 | AppleScript 搜索被 safe.liepin.com 拦截 | 搜索恢复，不再重定向到验证页 |
+| 2 | 猎聘上传选择器适配 | 登录通过但 upload_input_not_found | DOM 快照诊断 → 修正选择器 → check-mode 上传成功 |
+| 3 | 真实投递验证（submit=true） | 从未完成端到端真实投递 | PPF_SUBMIT_ENABLED=1 → submission_log status=success |
 
 ## 8. 关键证据索引
 
@@ -121,8 +136,11 @@
 | 项目计划 | PLAN.md | 完整项目计划书（17k 字） |
 | 项目宪法 | constitution.md | 不可妥协工程原则 |
 | 领域模型 | tools/domain/models.py | EvidenceCard 等 frozen dataclass |
-| Agent Loop | tools/orchestration/agent_loop.py | 当前为骨架实现 |
-| State Machine | tools/orchestration/state_machine.py | 10 状态定义（未被 AgentLoop 使用） |
+| Agent Loop | tools/orchestration/agent_loop.py | 10 状态全阶段集成，StateMachine 已接入 |
+| State Machine | tools/orchestration/state_machine.py | 10 状态定义，已接入 AgentLoop._run_full_pipeline() |
+| AppleScript 搜索 PoC | tools/poc_liepin_applescript_search.py | 真实 Chrome 驱动的搜索验证脚本 |
+| Liepin 投递日志 | outputs/submissions/liepin/run-deliver-*/ | 端到端投递记录（login_check success） |
+| Agent Run 日志 | outputs/agent_runs/run-deliver-*/ | 10 状态事件日志 |
 | Gate Engine | tools/orchestration/gate_engine.py | N-pass 门禁 + 企业排除 |
 | Review Stage | tools/orchestration/review_stage.py | auto/manual/batch 三种模式 |
 | Composer | tools/config/composer.py | 组装点（缺 build_pipeline/build_agent_loop） |
