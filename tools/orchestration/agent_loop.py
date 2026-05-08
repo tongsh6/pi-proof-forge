@@ -188,15 +188,15 @@ class AgentLoop:
             # --- DISCOVER ---
             accepted_candidates = list(self._candidates)
 
-            # Auto-load from job_leads/ if no candidates explicitly provided
+            # Auto-discover: 3-level fallback if no candidates explicitly provided
             if not accepted_candidates:
                 try:
                     from tools.engines.discovery.job_leads_loader import (
-                        load_candidates_from_job_leads,
+                        discover_candidates,
                     )
-                    job_leads = load_candidates_from_job_leads()
-                    if job_leads:
-                        accepted_candidates = job_leads
+                    discovered = discover_candidates()
+                    if discovered:
+                        accepted_candidates = discovered
                 except ImportError:
                     pass
 
