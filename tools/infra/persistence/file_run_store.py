@@ -42,6 +42,30 @@ class FileRunStore:
             encoding="utf-8",
         )
 
+    def save_round(self, run_id: str, round_index: int, snapshot: dict[str, object]) -> None:
+        """Persist a round snapshot (matching/generation/evaluation artifacts)."""
+        round_dir = self._base_dir / run_id / "rounds" / str(round_index)
+        round_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_path = round_dir / "snapshot.json"
+        _ = snapshot_path.write_text(
+            json.dumps(snapshot, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def finalize(self, run_id: str, summary: dict[str, object]) -> None:
+        """Write final run summary and mark run as complete."""
+        run_dir = self._base_dir / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        summary_path = run_dir / "summary.json"
+        _ = summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def get_run_dir(self, run_id: str) -> Path:
+        """Return the run output directory path."""
+        return self._base_dir / run_id
+
     def load_events(self, run_id: str) -> list[RunEvent]:
         run_log_path = self._base_dir / run_id / "run_log.json"
         entries = self._read_raw_entries(run_log_path)

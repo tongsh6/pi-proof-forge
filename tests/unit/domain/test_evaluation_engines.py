@@ -79,8 +79,9 @@ class EvaluationEngineTests(unittest.TestCase):
         self.assertEqual(result.dimension_scores["llm_gaps_count"], 2.0)
         self.assertEqual(result.dimension_scores["llm_strengths_count"], 1.0)
         self.assertEqual(result.dimension_scores["llm_improvements_count"], 3.0)
-        # Coverage should be blended: 30% rule + 70% LLM semantic
-        self.assertGreater(result.dimension_scores["coverage"], 0.0)
+        # Rule coverage stays unchanged; blended coverage in separate key
+        self.assertGreater(result.dimension_scores["coverage_blended"], 0.0)
+        self.assertIn("coverage", result.dimension_scores)
 
 
 if __name__ == "__main__":

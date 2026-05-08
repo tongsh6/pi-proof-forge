@@ -9,4 +9,5 @@ class RunEvent:
     event_type: str
     round_index: int
     payload: dict[str, object]
+    event_id: str = ""
     timestamp: str = ""

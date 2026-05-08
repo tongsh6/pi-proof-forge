@@ -67,18 +67,21 @@ class LLMEvaluationEngine:
         except json.JSONDecodeError:
             pass
 
+        # Rule scores are immutable per design. LLM dimensions are supplementary only.
         dimensions = dict(base.dimension_scores)
-        dimensions["coverage"] = round(
-            base.dimension_scores.get("coverage", 0.0) * 0.3 + semantic_coverage * 0.7, 4
-        )
         dimensions["llm_semantic_coverage"] = round(semantic_coverage, 4)
         dimensions["llm_fabrication_risk"] = round(fabrication_risk, 4)
         dimensions["llm_gaps_count"] = float(len(keyword_gaps))
         dimensions["llm_strengths_count"] = float(len(strengths))
         dimensions["llm_improvements_count"] = float(len(improvements))
 
+        # blended coverage: combines rule precision with LLM semantic understanding
+        dimensions["coverage_blended"] = round(
+            base.dimension_scores.get("coverage", 0.0) * 0.3 + semantic_coverage * 0.7, 4
+        )
+
         total = round(
-            dimensions["coverage"] * 0.35
+            dimensions["coverage_blended"] * 0.35
             + dimensions["quant"] * 0.2
             + dimensions["clarity"] * 0.2
             + dimensions["length"] * 0.15

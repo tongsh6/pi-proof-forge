@@ -45,20 +45,22 @@ def discover_liepin_jobs(
                 user_data_dir=str(session_root),
                 headless=headless,
             )
-            page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            page.goto(search_url, wait_until="domcontentloaded", timeout=timeout_ms)
-            page.wait_for_timeout(3000)
+            try:
+                page = ctx.pages[0] if ctx.pages else ctx.new_page()
+                page.goto(search_url, wait_until="domcontentloaded", timeout=timeout_ms)
+                page.wait_for_timeout(3000)
 
-            current_url = page.url.lower()
-            if "captcha" in current_url or "safe.liepin" in current_url:
-                # Anti-bot captcha detected — cannot automate search
+                current_url = page.url.lower()
+                if "captcha" in current_url or "safe.liepin" in current_url:
+                    return []  # Anti-bot captcha — cannot automate
+
+                results = _extract_job_listings(page, max_jobs)
+            finally:
                 ctx.close()
-                return []
-
-            results = _extract_job_listings(page, max_jobs)
-            ctx.close()
+    except ImportError:
+        pass  # Playwright not available
     except Exception:
-        pass
+        pass  # Best-effort search: network errors, timeouts are non-fatal
 
     return results
 
@@ -116,7 +118,8 @@ def _extract_job_listings(page: object, max_jobs: int) -> list[dict]:
 
             if len(results) >= max_jobs:
                 break
-        except Exception:
+        except Exception:  # noqa: PERF203
+            # Individual element extraction failure — skip this listing
             continue
 
     return results

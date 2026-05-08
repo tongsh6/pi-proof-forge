@@ -194,6 +194,7 @@ def discover_candidates(
                 # Replace profile-derived candidates with real URL ones
                 return liepin_candidates
         except Exception:
+            # Liepin search is best-effort — fall back to jd_inputs + job_profiles
             pass
 
     return candidates

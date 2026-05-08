@@ -55,6 +55,7 @@ def _count_matched_job_profiles() -> int:
             if job_profile_id:
                 job_profile_ids.add(job_profile_id)
         except Exception:
+            # Best-effort metric: skip unparseable report files
             pass
     return len(job_profile_ids)
 

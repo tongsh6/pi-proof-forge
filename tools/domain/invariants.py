@@ -1,9 +1,23 @@
+"""Domain invariants — evidence-first guards and fabrication checks.
+
+These exceptions are defined HERE (not in tools.errors) because they
+enforce domain business rules. The domain layer must not depend on
+outer layers (DIP).
+"""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
 
 from tools.domain.models import EvidenceCard
-from tools.errors.exceptions import FabricationGuardError
+
+
+class FabricationGuardError(Exception):
+    """Raised when generated content has no traceable evidence source."""
+
+
+class EvidenceValidationError(Exception):
+    """Raised when an EvidenceCard fails results/artifacts validation."""
 
 
 def check_evidence_eligible(card: EvidenceCard) -> bool:
@@ -33,3 +47,4 @@ def check_no_fabrication(content: str, evidence_cards: Sequence[EvidenceCard]) -
             return
 
     raise FabricationGuardError(content)
+

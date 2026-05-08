@@ -70,11 +70,32 @@ class DeliveryChannel(Protocol):
 class RunStore(Protocol):
     def append_event(self, event: Any) -> None: ...
 
+    def save_round(self, run_id: str, round_index: int, snapshot: dict[str, object]) -> None: ...
+
+    def finalize(self, run_id: str, summary: dict[str, object]) -> None: ...
+
     def load_events(self, run_id: str) -> Sequence[Any]: ...
+
+    def get_run_dir(self, run_id: str) -> Any: ...
 
 
 @runtime_checkable
 class Stage(Protocol):
     name: str
 
-    def execute(self, context: Any) -> StageResult: ...
+    def execute(self, context: dict[str, object]) -> Any: ...
+
+
+@runtime_checkable
+class DiscoveryEngine(Protocol):
+    def discover(self, request: Any) -> list[Any]: ...
+
+
+@runtime_checkable
+class GateEngine(Protocol):
+    def evaluate(self, request: Any) -> Any: ...
+
+
+@runtime_checkable
+class ReviewStage(Stage, Protocol):
+    name: str = "REVIEW"
