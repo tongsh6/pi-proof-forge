@@ -17,12 +17,18 @@ from datetime import datetime, timezone
 
 
 def _get_chrome_tab() -> tuple[str, str]:
-    """Get URL and title of Chrome's active tab via AppleScript."""
+    """Get URL and title of Chrome's active tab across all windows."""
     script = """
     tell application "Google Chrome"
-        set u to URL of active tab of window 1
-        set t to title of active tab of window 1
-        return u & "|||" & t
+        repeat with w in windows
+            set activeIdx to active tab index of w
+            set u to URL of tab activeIdx of w
+            set t to title of tab activeIdx of w
+            if u is not "about:blank" then
+                return u & "|||" & t
+            end if
+        end repeat
+        return "|||"
     end tell
     """
     result = subprocess.run(
@@ -41,15 +47,27 @@ def _is_job_url(url: str) -> bool:
 
 
 def main() -> int:
-    url, title = _get_chrome_tab()
+    import argparse
+    parser = argparse.ArgumentParser(description="Capture Liepin job URL as job lead")
+    _ = parser.add_argument("--url", default="", help="Paste job URL directly (bypasses Chrome detection)")
+    args = parser.parse_args()
 
-    if not url:
+    if args.url:
+        url = args.url
+        title = ""
+    else:
+        url, title = _get_chrome_tab()
+
+    if not url or url == "about:blank":
         print("[ERROR] No active Chrome tab found.")
+        print("  Option 1: Open a Liepin job page in Chrome, make it the active tab, re-run.")
+        print("  Option 2: python3 tools/capture_job_url.py --url 'https://www.liepin.com/job/...'")
         return 1
 
     if not _is_job_url(url):
-        print(f"Not a Liepin job page. Current URL: {url}")
-        print("Open a job detail page on liepin.com and re-run.")
+        print(f"Not a Liepin job page. Active tab: {url[:80]}")
+        print("  Option 1: Navigate to a liepin.com/job/... page and re-run.")
+        print("  Option 2: python3 tools/capture_job_url.py --url 'PASTE_JOB_URL_HERE'")
         return 0
 
     # Extract clean URL (strip query params)
