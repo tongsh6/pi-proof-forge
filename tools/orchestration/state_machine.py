@@ -7,9 +7,9 @@ TRANSITIONS: dict[str, dict[str, str]] = {
     "GENERATE": {"next": "EVALUATE"},
     "EVALUATE": {"next": "GATE"},
     "GATE": {"pass": "REVIEW", "fail": "LEARN"},
-    "REVIEW": {"approve": "DELIVER", "reject": "LEARN", "skip": "LEARN"},
-    "DELIVER": {"next": "LEARN"},
-    "LEARN": {"next": "DISCOVER", "stop": "DONE"},
+    "REVIEW": {"approve": "DELIVER", "reject": "LEARN", "skip": "LEARN", "skip_all": "DONE"},
+    "DELIVER": {"next": "LEARN", "max_deliveries": "DONE"},
+    "LEARN": {"next": "DISCOVER", "stop": "DONE", "to_review": "REVIEW"},
     "DONE": {},
 }
 

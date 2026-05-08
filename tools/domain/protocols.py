@@ -83,7 +83,20 @@ class RunStore(Protocol):
 class Stage(Protocol):
     name: str
 
-    def execute(self, context: dict[str, object]) -> Any: ...
+    def execute(self, context: dict[str, object]) -> "StageResult": ...
+
+
+@dataclass(frozen=True)
+class StageResult:
+    success: bool
+    data: object
+    errors: tuple[object, ...] = ()
+
+
+@runtime_checkable
+class Pipeline(Protocol):
+    """Sequence of Stage objects executed linearly."""
+    def run(self, context: dict[str, object]) -> "StageResult": ...
 
 
 @runtime_checkable

@@ -1,20 +1,14 @@
+"""Stage-related types — re-exported from domain for convenience.
+
+The canonical definitions live in tools.domain.protocols
+(Stage, StageResult, Pipeline) and tools.domain.value_objects.
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol
-
+from tools.domain.protocols import Stage as StageProtocol
+from tools.domain.protocols import StageResult
 
 RunContext = dict[str, object]
 
-
-@dataclass(frozen=True)
-class StageResult:
-    success: bool
-    data: object
-    errors: tuple[object, ...] = ()
-
-
-class StageProtocol(Protocol):
-    name: str
-
-    def execute(self, context: RunContext) -> StageResult: ...
+__all__ = ["StageProtocol", "StageResult", "RunContext"]

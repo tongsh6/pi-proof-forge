@@ -43,13 +43,13 @@ def _candidate(company: str, legal_entity: str = "") -> Candidate:
 class DiscoveryEngineTests(unittest.TestCase):
     def test_filter_keeps_non_excluded_candidates(self) -> None:
         engine = _discovery_engine_class()(_policy())
-        result = engine.filter_candidates([_candidate("Acme")])
+        result = engine.discover([_candidate("Acme")])
         self.assertEqual(len(result.accepted), 1)
         self.assertEqual(len(result.excluded), 0)
 
     def test_filter_excludes_by_exact_company(self) -> None:
         engine = _discovery_engine_class()(_policy(excluded_companies=("exact:Acme",)))
-        result = engine.filter_candidates([_candidate("Acme")])
+        result = engine.discover([_candidate("Acme")])
         self.assertEqual(len(result.accepted), 0)
         self.assertEqual(len(result.excluded), 1)
         self.assertEqual(result.excluded[0].reason, "excluded_by_policy")
@@ -58,7 +58,7 @@ class DiscoveryEngineTests(unittest.TestCase):
         engine = _discovery_engine_class()(
             _policy(excluded_companies=("contains:outsource",))
         )
-        result = engine.filter_candidates([_candidate("Acme Outsource Ltd")])
+        result = engine.discover([_candidate("Acme Outsource Ltd")])
         self.assertEqual(len(result.accepted), 0)
         self.assertEqual(len(result.excluded), 1)
 
@@ -66,7 +66,7 @@ class DiscoveryEngineTests(unittest.TestCase):
         engine = _discovery_engine_class()(
             _policy(excluded_legal_entities=("Acme Legal Entity",))
         )
-        result = engine.filter_candidates(
+        result = engine.discover(
             [_candidate("Acme", legal_entity="Acme Legal Entity")]
         )
         self.assertEqual(len(result.accepted), 0)

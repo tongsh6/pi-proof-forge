@@ -42,14 +42,14 @@ class GenerationEngineTests(unittest.TestCase):
 
     def test_template_assembler_generates_resume(self) -> None:
         assembler = _template_assembler_class()()
-        resume = assembler.assemble(self._report(), [self._card()], "v1")
+        resume = assembler.generate(self._report(), [self._card()], "v1")
         self.assertIsInstance(resume, ResumeOutput)
         self.assertIn("Latency reduced by 30%", resume.content)
 
     def test_template_assembler_raises_without_cards(self) -> None:
         assembler = _template_assembler_class()()
         with self.assertRaises(FabricationGuardError):
-            assembler.assemble(self._report(), [], "v1")
+            assembler.generate(self._report(), [], "v1")
 
     def test_markdown_exporter_writes_file(self) -> None:
         exporter = _exporter_class()()

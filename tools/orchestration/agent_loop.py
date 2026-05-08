@@ -181,6 +181,7 @@ class AgentLoop:
         sm = self._state_machine
 
         self._log_state("INIT", 0, {"dry_run": self._dry_run})
+        current_state = self._transition(sm, "INIT", "start")
 
         for round_index in range(self._policy.max_rounds):
             rounds_completed += 1
@@ -202,7 +203,7 @@ class AgentLoop:
 
             discovery_payload: dict[str, object] = {"candidates": len(accepted_candidates)}
             if self._discovery is not None and accepted_candidates:
-                disc_result = self._discovery.filter_candidates(accepted_candidates)
+                disc_result = self._discovery.discover(accepted_candidates)
                 accepted_candidates = list(disc_result.accepted)
                 discovery_payload = {
                     "candidates": len(accepted_candidates),
@@ -221,22 +222,26 @@ class AgentLoop:
                 )
 
             # --- SCORE ---
+            current_state = self._transition(sm, current_state, "next")
             matching_report = self._run_matching()
             matching_total = matching_report.score_breakdown.get("total", 0.0)
             self._log_state("SCORE", round_index,
                             {"matching_total": matching_total})
 
             # --- GENERATE ---
+            current_state = self._transition(sm, current_state, "next")
             resume = self._run_generation(matching_report, f"v{round_index + 1}")
             self._log_state("GENERATE", round_index,
                             {"resume_version": resume.version})
 
             # --- EVALUATE ---
+            current_state = self._transition(sm, current_state, "next")
             scorecard = self._run_evaluation(resume)
             self._log_state("EVALUATE", round_index,
                             {"evaluation_total": scorecard.total_score})
 
             # --- GATE ---
+            current_state = self._transition(sm, current_state, "next")
             gate_passed = False
             gate_candidate: Candidate | None = None
 
@@ -255,16 +260,20 @@ class AgentLoop:
                 self._log_state("GATE", round_index, {"result": "fail"})
                 self._log_state("LEARN", round_index,
                                 {"action": "retry", "reason": "gate_failed"})
+                current_state = self._transition(sm, current_state, "fail")
+                current_state = self._transition(sm, current_state, "next")  # LEARN → DISCOVER
                 continue
 
             self._log_state("GATE", round_index,
                             {"result": "pass",
                              "candidate": gate_candidate.candidate_id if gate_candidate else ""})
+            current_state = self._transition(sm, current_state, "pass")
 
             # --- REVIEW ---
             review_ctx: dict[str, object] = {"events": [], "all_rounds_done": False}
             review_result = self._review.execute(review_ctx) if self._review else None
             self._log_state("REVIEW", round_index, {"mode": self._policy.delivery_mode})
+            current_state = self._transition(sm, current_state, "approve")
 
             # --- DELIVER ---
             if not self._dry_run and gate_candidate is not None:
@@ -279,6 +288,7 @@ class AgentLoop:
             else:
                 self._log_state("DELIVER", round_index,
                                 {"dry_run": True, "would_deliver": True})
+            current_state = self._transition(sm, current_state, "next")
 
             # --- LEARN ---
             stop_reason = ""
@@ -289,6 +299,7 @@ class AgentLoop:
                              "stop_reason": stop_reason})
 
             if stop_reason:
+                current_state = self._transition(sm, current_state, "stop")
                 self._log_state("DONE", round_index,
                                 {"stop_reason": stop_reason,
                                  "deliveries_completed": deliveries_completed})
@@ -297,7 +308,12 @@ class AgentLoop:
                     rounds_completed=rounds_completed,
                 )
 
+            # Prepare for next round: LEARN → DISCOVER (if more rounds remain)
+            if round_index + 1 < self._policy.max_rounds:
+                current_state = self._transition(sm, current_state, "next")
+
         # exhausted max_rounds
+        current_state = self._transition(sm, current_state, "stop")
         self._log_state("DONE", max(self._policy.max_rounds - 1, 0),
                         {"stop_reason": "max_rounds",
                          "rounds_completed": rounds_completed})
@@ -321,7 +337,7 @@ class AgentLoop:
         return self._matching.score(self._evidence_cards, self._job_profile)
 
     def _run_generation(self, report: MatchingReport, version: str) -> ResumeOutput:
-        return self._generation.assemble(report, self._evidence_cards, version)
+        return self._generation.generate(report, self._evidence_cards, version)
 
     def _run_evaluation(self, resume: ResumeOutput) -> Scorecard:
         profile = self._job_profile

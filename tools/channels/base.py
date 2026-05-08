@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
 
-from tools.domain.result import Result
+from tools.domain.protocols import DeliveryChannel as _DeliveryChannel
+from tools.domain.result import Err, Ok, Result
 from tools.domain.value_objects import ChannelFailure, DeliveryResult
 
 
@@ -18,12 +18,8 @@ class DeliveryRequest:
     metadata: dict[str, object] | None = None
 
 
-class DeliveryChannel(Protocol):
-    channel_id: str
-
-    def deliver(
-        self, request: DeliveryRequest
-    ) -> Result[DeliveryResult, ChannelFailure]: ...
+# Re-export with specific request type
+DeliveryChannel = _DeliveryChannel
 
 
 def deliver_with_fallback(

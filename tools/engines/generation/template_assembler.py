@@ -8,7 +8,7 @@ from tools.errors.exceptions import FabricationGuardError
 
 
 class TemplateAssembler:
-    def assemble(
+    def generate(
         self,
         report: MatchingReport,
         cards: Sequence[EvidenceCard],

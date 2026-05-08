@@ -22,7 +22,7 @@ class DiscoveryEngine:
     def __init__(self, policy: PolicyConfig) -> None:
         self._policy = policy
 
-    def filter_candidates(self, candidates: list[Candidate]) -> DiscoveryResult:
+    def discover(self, candidates: list[Candidate]) -> DiscoveryResult:
         accepted: list[Candidate] = []
         excluded: list[ExcludedCandidate] = []
 
