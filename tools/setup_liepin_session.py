@@ -4,8 +4,10 @@
 Usage:
     python3 tools/setup_liepin_session.py [--session-dir <dir>]
 
-This opens a Chromium browser to liepin.com. Log in manually, then close
-the browser. The session is saved and can be reused by the LiepinChannel.
+This opens your system Chrome browser to liepin.com. Log in with your
+existing account (cookies/passwords are preserved from your real Chrome
+profile). After logging in, close the browser window — the session is
+saved and can be reused by the LiepinChannel.
 
 After setup, set PPF_SUBMIT_ENABLED=1 to enable real submission.
 """
@@ -19,7 +21,7 @@ from pathlib import Path
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Initialize Liepin login session"
+        description="Initialize Liepin login session with system Chrome"
     )
     _ = parser.add_argument(
         "--session-dir",
@@ -32,16 +34,17 @@ def main() -> int:
     session_root.mkdir(parents=True, exist_ok=True)
 
     print(f"Session directory: {session_root}")
-    print("Opening browser to liepin.com ...")
-    print("→ Please log in to your Liepin account in the browser window.")
-    print("→ After logging in, close the browser window to save the session.")
+    print("Opening system Chrome to liepin.com ...")
+    print("→ Your real Chrome with existing cookies/passwords will be used.")
+    print("→ Log in to Liepin (or verify you're already logged in).")
+    print("→ After confirming login, close the browser to save the session.")
     print()
 
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         print("[ERROR] playwright not installed.")
-        print("  Run: pip install playwright && python -m playwright install chromium")
+        print("  Run: pip install playwright")
         print("  Or use the project venv: source .venv/bin/activate")
         return 3
 
@@ -50,17 +53,21 @@ def main() -> int:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=str(session_root),
                 headless=False,
+                channel="chrome",
             )
             page = context.pages[0] if context.pages else context.new_page()
             page.goto("https://www.liepin.com/", wait_until="domcontentloaded")
-            print("[READY] Browser opened. Log in and then close the browser.")
+            print("[READY] Chrome opened. Log in and then close the browser.")
             print("         Waiting for browser to close ...")
             page.wait_for_event("close", timeout=0)
             context.close()
     except Exception as exc:
-        # User closed the browser — this is the expected path
         if "close" in str(exc).lower() or "timeout" in str(exc).lower():
             pass
+        elif "channel" in str(exc).lower():
+            print(f"[ERROR] Could not find system Chrome. Is Google Chrome installed?")
+            print(f"        Details: {exc}")
+            return 4
         else:
             print(f"[WARN] Unexpected: {exc}")
 

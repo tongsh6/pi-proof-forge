@@ -79,6 +79,7 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
             browser_context = p.chromium.launch_persistent_context(
                 user_data_dir=str(session_root),
                 headless=config.headless,
+                channel="chrome",
             )
             try:
                 page = browser_context.pages[0] if browser_context.pages else browser_context.new_page()
