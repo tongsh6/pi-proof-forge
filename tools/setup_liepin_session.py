@@ -1,76 +1,108 @@
 #!/usr/bin/env python3
-"""Capture Liepin login session from your real Chrome.
+"""Capture Liepin login session — reads directly from your Chrome cookies.
 
 Usage:
     python3 tools/setup_liepin_session.py [--session-dir <dir>]
 
-This temporarily restarts your Chrome with remote debugging enabled so
-Playwright can extract cookies. Your tabs are saved and restored — you
-won't lose anything. Because it's your real Chrome profile, password
-autofill (Keychain) works as usual.
+How it works:
+  1. Open https://www.liepin.com/ in your Chrome (the one you're using
+     right now — with saved passwords).
+  2. Log in (password autofill works because it's your real Chrome).
+  3. Run this script — it reads your Chrome cookie database, decrypts
+     Liepin cookies using your Keychain, and saves them for automation.
+
+No Chrome restart. No tab loss. No CDP. Just reads the cookie file.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import sqlite3
 import subprocess
 import sys
-import time
 from pathlib import Path
+from tempfile import gettempdir
 
-CDP_PORT = 9222
-LIEPIN_DOMAINS = ["liepin.com", "www.liepin.com", ".liepin.com"]
-
-CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-PROFILE_DIR = Path.home() / "Library/Application Support/Google/Chrome"
-SESSION_FILE = "Session_Restore"
+COOKIE_DB = Path.home() / "Library/Application Support/Google/Chrome/Default/Cookies"
+LIEPIN_DOMAINS = ("liepin.com", ".liepin.com", "lpt.liepin.com", "www.liepin.com")
 
 
-def _chrome_running() -> bool:
+def _get_decryption_key() -> bytes | None:
+    """Retrieve the Chrome Safe Storage key from macOS Keychain."""
     result = subprocess.run(
-        ["pgrep", "-x", "Google Chrome"], capture_output=True, text=True
+        [
+            "security", "find-generic-password",
+            "-w",
+            "-s", "Chrome Safe Storage",
+            "-a", "Chrome",
+        ],
+        capture_output=True, text=True, timeout=30,
     )
-    return result.returncode == 0
-
-
-def _save_tabs() -> list[str]:
-    """Get currently open tabs via AppleScript."""
+    if result.returncode != 0:
+        print("[ERROR] Could not get decryption key from Keychain.")
+        print("        macOS may have blocked access. Try running:")
+        print("        security find-generic-password -s 'Chrome Safe Storage' -a Chrome -w")
+        return None
+    key_hex = result.stdout.strip()
     try:
-        result = subprocess.run(
-            [
-                "osascript", "-e",
-                'tell application "Google Chrome" to get URL of every tab of every window',
-            ],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0:
-            return [u.strip() for u in result.stdout.split(",") if u.strip()]
-    except Exception:
-        pass
-    return []
+        return bytes.fromhex(key_hex)
+    except ValueError:
+        print(f"[ERROR] Invalid key format: {key_hex[:20]}...")
+        return None
 
 
-def _restore_tabs(urls: list[str]) -> None:
-    """Reopen tabs via AppleScript."""
-    window_open = (
-        'tell application "Google Chrome"\n'
-        '  make new window\n'
-        + "".join(
-            f'  tell window 1 to make new tab with properties {{URL:"{url}"}}\n'
-            for url in urls[:20]  # limit to 20 to avoid flooding
-        )
-        + "end tell"
-    )
+def _decrypt_cookie(encrypted_value: bytes, key: bytes) -> str | None:
+    """Decrypt a Chrome-encrypted cookie value."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    if len(encrypted_value) < 16:
+        return None
     try:
-        subprocess.run(["osascript", "-e", window_open], timeout=10)
+        # Chrome v10+ cookie format: b'v10' or b'v11' prefix + 12-byte nonce + ciphertext
+        nonce = encrypted_value[3:15]
+        ciphertext = encrypted_value[15:]
+        aesgcm = AESGCM(key)
+        return aesgcm.decrypt(nonce, ciphertext, None).decode("utf-8")
     except Exception:
-        pass
+        return None
+
+
+def _read_liepin_cookies(key: bytes) -> list[dict]:
+    """Copy Chrome's cookie DB, read and decrypt Liepin cookies."""
+    # Chrome locks the DB while running — copy to a temp file
+    tmp = Path(gettempdir()) / f"ppf_chrome_cookies_{Path(COOKIE_DB).stat().st_mtime}.sqlite"
+    shutil.copy2(COOKIE_DB, tmp)
+
+    conn = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT host_key, name, encrypted_value, path, is_secure, is_httponly, expires_utc "
+        "FROM cookies WHERE host_key LIKE '%liepin%'"
+    ).fetchall()
+    conn.close()
+    tmp.unlink()
+
+    cookies: list[dict] = []
+    for row in rows:
+        value = _decrypt_cookie(bytes(row["encrypted_value"]), key)
+        if value is None:
+            continue
+        cookies.append({
+            "domain": row["host_key"].lstrip("."),
+            "name": row["name"],
+            "value": value,
+            "path": row["path"] or "/",
+            "secure": bool(row["is_secure"]),
+            "httpOnly": bool(row["is_httponly"]),
+        })
+    return cookies
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Capture Liepin login session from your real Chrome"
+        description="Capture Liepin cookies from your existing Chrome session"
     )
     _ = parser.add_argument(
         "--session-dir",
@@ -79,135 +111,50 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        print("[ERROR] playwright not installed. Run: pip install playwright")
-        return 3
-
-    if not Path(CHROME_PATH).exists():
-        print("[ERROR] Google Chrome not found.")
+    if not COOKIE_DB.exists():
+        print("[ERROR] Chrome cookie database not found.")
+        print(f"        Expected at: {COOKIE_DB}")
         return 1
+
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
+    except ImportError:
+        print("[ERROR] cryptography package not installed.")
+        print("        Run: pip install cryptography")
+        return 3
 
     session_root = Path(args.session_dir) / "liepin"
     session_root.mkdir(parents=True, exist_ok=True)
     cookie_file = session_root / "cookies.json"
 
-    # ── Save current tabs ────────────────────────────────────
-    saved_urls: list[str] = []
-    if _chrome_running():
-        print("Saving your open tabs ...")
-        saved_urls = _save_tabs()
-        print(f"  {len(saved_urls)} tabs saved")
+    # Check if user is logged into Liepin in Chrome
+    print("Reading Chrome cookies for Liepin ...")
+    print()
 
-        print("Restarting Chrome with remote debugging ...")
-        subprocess.run(["pkill", "-x", "Google Chrome"], capture_output=True)
-        time.sleep(1)
-
-    # ── Launch Chrome with CDP ──────────────────────────────
-    chrome = subprocess.Popen(
-        [
-            CHROME_PATH,
-            f"--remote-debugging-port={CDP_PORT}",
-            "https://www.liepin.com/",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-    # Wait for CDP to become available
-    cdp_url = f"http://127.0.0.1:{CDP_PORT}"
-    for _ in range(10):
-        time.sleep(0.5)
-        try:
-            from urllib.request import urlopen
-            urlopen(f"{cdp_url}/json/version", timeout=2)
-            break
-        except Exception:
-            pass
-    else:
-        print("[ERROR] Chrome launched but CDP not responding.")
-        chrome.terminate()
+    key = _get_decryption_key()
+    if key is None:
         return 4
 
-    # ── Connect via CDP, let user log in ────────────────────
-    print()
-    print("Your Chrome is open with password autofill.")
-    print("Log in to Liepin, then close Chrome (Cmd+Q).")
-    print()
-
-    cookies: list[dict] = []
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.connect_over_cdp(cdp_url)
-            if not browser.contexts:
-                print("[ERROR] No browser context.")
-                chrome.terminate()
-                return 5
-
-            context = browser.contexts[0]
-            page = context.pages[0] if context.pages else context.new_page()
-
-            # Wait for user to close Chrome
-            try:
-                page.wait_for_event("close", timeout=0)
-            except Exception:
-                pass
-
-            # Extract Liepin cookies
-            try:
-                all_cookies = context.cookies()
-                cookies = [
-                    c for c in all_cookies
-                    if any(d in c.get("domain", "") for d in LIEPIN_DOMAINS)
-                ]
-            except Exception:
-                pass
-
-            try:
-                browser.close()
-            except Exception:
-                pass
-    except Exception as exc:
-        print(f"[WARN] CDP ended: {exc}")
-    finally:
-        try:
-            chrome.terminate()
-        except Exception:
-            pass
-        try:
-            chrome.wait(timeout=3)
-        except Exception:
-            pass
-
+    cookies = _read_liepin_cookies(key)
     if not cookies:
-        # Restore tabs before exiting
-        if saved_urls:
-            print("Restoring your tabs ...")
-            _restore_tabs(saved_urls)
-        print("[ERROR] No Liepin cookies captured. Did you log in?")
-        return 7
+        print("[ERROR] No Liepin cookies found in Chrome.")
+        print("        Please open liepin.com in Chrome and log in first.")
+        print("        Then re-run this script.")
+        return 5
 
-    # ── Save cookies ────────────────────────────────────────
-    cookie_file.write_text(
-        json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    print(f"✅ {len(cookies)} Liepin cookies saved to {cookie_file}")
+    print(f"Found {len(cookies)} Liepin cookies:")
+    for c in cookies:
+        value_preview = c["value"][:30] + "..." if len(c["value"]) > 30 else c["value"]
+        print(f"  {c['domain']:<25s} {c['name']:<25s} = {value_preview}")
 
-    # ── Restart Chrome normally & restore tabs ──────────────
-    chrome_restart = subprocess.Popen(
-        [CHROME_PATH],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    if saved_urls:
-        time.sleep(1)
-        print("Restoring your tabs ...")
-        _restore_tabs(saved_urls)
+    # Save
+    cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\nSaved to {cookie_file}")
 
-    # ── Inject cookies into automation profile ──────────────
-    print("Injecting cookies into automation profile ...")
+    # Verify by injecting into automation profile and checking
+    print("Testing with automation profile ...")
     try:
+        from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             ctx = p.chromium.launch_persistent_context(
                 user_data_dir=str(session_root),
@@ -218,15 +165,17 @@ def main() -> int:
             page.goto("https://www.liepin.com/", wait_until="domcontentloaded", timeout=15000)
             url = page.url.lower()
             if "passport" in url or "login" in url:
-                print("  ⚠️  Verification: login page detected — may need re-login")
+                print("  ⚠️  Login page detected — session may be expired.")
             else:
-                print("  ✅ Verification: session active")
+                print("  ✅ Session active!")
             ctx.close()
+    except ImportError:
+        print("  (playwright not available, skipping verification)")
     except Exception as exc:
         print(f"  [WARN] Verification skipped: {exc}")
 
     print()
-    print("Done. To enable real submission:")
+    print("Ready. Enable real submission:")
     print(f"  export PPF_SESSION_DIR={Path(args.session_dir).resolve()}")
     print("  export PPF_SUBMIT_ENABLED=1")
     return 0
