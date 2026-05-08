@@ -63,6 +63,7 @@ class LiepinChannel:
         profile_path = request.metadata.get("profile_path", "profiles/candidate_profile.yaml") if request.metadata else "profiles/candidate_profile.yaml"
         headless = os.getenv("PPF_HEADLESS", "1") == "1"
         submit = os.getenv("PPF_SUBMIT_ENABLED", "0") == "1"
+        browser_channel = os.getenv("PPF_BROWSER_CHANNEL", "chrome")
 
         config = LiepinSubmissionConfig(
             job_url=request.job_url,
@@ -74,6 +75,7 @@ class LiepinChannel:
             output_dir=output_dir,
             session_dir=session_dir,
             timeout_ms=30_000,
+            browser_channel=browser_channel,
         )
 
         exit_code = run_liepin_submission(config)

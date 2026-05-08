@@ -1,183 +1,146 @@
 #!/usr/bin/env python3
-"""Capture Liepin login session — reads directly from your Chrome cookies.
-
-Usage:
-    python3 tools/setup_liepin_session.py [--session-dir <dir>]
-
-How it works:
-  1. Open https://www.liepin.com/ in your Chrome (the one you're using
-     right now — with saved passwords).
-  2. Log in (password autofill works because it's your real Chrome).
-  3. Run this script — it reads your Chrome cookie database, decrypts
-     Liepin cookies using your Keychain, and saves them for automation.
-
-No Chrome restart. No tab loss. No CDP. Just reads the cookie file.
-"""
+"""Initialize a persistent Playwright/Chrome Liepin login profile."""
 
 from __future__ import annotations
 
 import argparse
-import json
-import shutil
-import sqlite3
-import subprocess
 import sys
 from pathlib import Path
-from tempfile import gettempdir
+from typing import Any, Callable, Sequence
 
-COOKIE_DB = Path.home() / "Library/Application Support/Google/Chrome/Default/Cookies"
-LIEPIN_DOMAINS = ("liepin.com", ".liepin.com", "lpt.liepin.com", "www.liepin.com")
+LIEPIN_URL = "https://www.liepin.com/"
+DEFAULT_SESSION_DIR = "outputs/sessions"
+DEFAULT_BROWSER_CHANNEL = "chrome"
 
 
-def _get_decryption_key() -> bytes | None:
-    """Retrieve the Chrome Safe Storage key from macOS Keychain."""
-    result = subprocess.run(
-        [
-            "security", "find-generic-password",
-            "-w",
-            "-s", "Chrome Safe Storage",
-            "-a", "Chrome",
-        ],
-        capture_output=True, text=True, timeout=30,
-    )
-    if result.returncode != 0:
-        print("[ERROR] Could not get decryption key from Keychain.")
-        print("        macOS may have blocked access. Try running:")
-        print("        security find-generic-password -s 'Chrome Safe Storage' -a Chrome -w")
-        return None
-    key_hex = result.stdout.strip()
+def _wait_for_login_confirmation() -> None:
+    if not sys.stdin.isatty():
+        return
+    input("Log in to Liepin in the Playwright browser, then press Enter to verify ... ")
+
+
+def _launch_options(
+    session_root: Path,
+    browser_channel: str,
+    headless: bool,
+) -> dict[str, object]:
+    options: dict[str, object] = {
+        "user_data_dir": str(session_root),
+        "headless": headless,
+    }
+    if browser_channel:
+        options["channel"] = browser_channel
+    return options
+
+
+def _setup_playwright_login_session(
+    *,
+    session_root: Path,
+    browser_channel: str,
+    headless: bool,
+    timeout_ms: int,
+    sync_playwright_factory: Callable[[], Any] | None = None,
+) -> bool:
     try:
-        return bytes.fromhex(key_hex)
-    except ValueError:
-        print(f"[ERROR] Invalid key format: {key_hex[:20]}...")
-        return None
+        if sync_playwright_factory is None:
+            from playwright.sync_api import sync_playwright
 
+            sync_playwright_factory = sync_playwright
+    except ImportError:
+        print("[ERROR] playwright is not installed.")
+        print("        Run: pip install playwright && python -m playwright install chromium")
+        return False
 
-def _decrypt_cookie(encrypted_value: bytes, key: bytes) -> str | None:
-    """Decrypt a Chrome-encrypted cookie value."""
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-    if len(encrypted_value) < 16:
-        return None
+    session_root.mkdir(parents=True, exist_ok=True)
     try:
-        # Chrome v10+ cookie format: b'v10' or b'v11' prefix + 12-byte nonce + ciphertext
-        nonce = encrypted_value[3:15]
-        ciphertext = encrypted_value[15:]
-        aesgcm = AESGCM(key)
-        return aesgcm.decrypt(nonce, ciphertext, None).decode("utf-8")
-    except Exception:
-        return None
+        with sync_playwright_factory() as p:
+            context = p.chromium.launch_persistent_context(
+                **_launch_options(session_root, browser_channel, headless)
+            )
+            try:
+                page = context.pages[0] if context.pages else context.new_page()
+                page.goto(LIEPIN_URL, wait_until="domcontentloaded", timeout=timeout_ms)
+                print("A Playwright browser has opened with an isolated persistent profile.")
+                print("Manually enter your Liepin credentials in that browser window.")
+                _wait_for_login_confirmation()
+                page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
+                if not _is_session_ready(page):
+                    print("[ERROR] Liepin still appears to be logged out in the Playwright profile.")
+                    return False
+                return True
+            finally:
+                context.close()
+    except Exception as exc:
+        print(f"[ERROR] failed to initialize Playwright login session: {exc}")
+        return False
 
 
-def _read_liepin_cookies(key: bytes) -> list[dict]:
-    """Copy Chrome's cookie DB, read and decrypt Liepin cookies."""
-    # Chrome locks the DB while running — copy to a temp file
-    tmp = Path(gettempdir()) / f"ppf_chrome_cookies_{Path(COOKIE_DB).stat().st_mtime}.sqlite"
-    shutil.copy2(COOKIE_DB, tmp)
+def _is_session_ready(page: object) -> bool:
+    current_url = str(getattr(page, "url", "")).lower()
+    if "passport" in current_url or "login" in current_url:
+        return False
 
-    conn = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT host_key, name, encrypted_value, path, is_secure, is_httponly, expires_utc "
-        "FROM cookies WHERE host_key LIKE '%liepin%'"
-    ).fetchall()
-    conn.close()
-    tmp.unlink()
-
-    cookies: list[dict] = []
-    for row in rows:
-        value = _decrypt_cookie(bytes(row["encrypted_value"]), key)
-        if value is None:
+    login_selectors = [
+        "a:has-text('登录')",
+        "button:has-text('登录')",
+        "text=登录/注册",
+    ]
+    for selector in login_selectors:
+        try:
+            if page.locator(selector).count() > 0:
+                return False
+        except Exception:
             continue
-        cookies.append({
-            "domain": row["host_key"].lstrip("."),
-            "name": row["name"],
-            "value": value,
-            "path": row["path"] or "/",
-            "secure": bool(row["is_secure"]),
-            "httpOnly": bool(row["is_httponly"]),
-        })
-    return cookies
+    return True
 
 
-def main() -> int:
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Capture Liepin cookies from your existing Chrome session"
+        description="Open a persistent Playwright/Chrome Liepin profile for one-time manual login"
     )
     _ = parser.add_argument(
         "--session-dir",
-        default="outputs/sessions",
-        help="Directory to store session cookies (default: outputs/sessions)",
+        default=DEFAULT_SESSION_DIR,
+        help=f"Directory to store the Playwright session profile (default: {DEFAULT_SESSION_DIR})",
     )
-    args = parser.parse_args()
+    _ = parser.add_argument(
+        "--browser-channel",
+        default=DEFAULT_BROWSER_CHANNEL,
+        help="Playwright browser channel to use; pass an empty value for bundled Chromium",
+    )
+    _ = parser.add_argument(
+        "--timeout-ms",
+        type=int,
+        default=300_000,
+        help="Navigation timeout while waiting for manual login verification",
+    )
+    _ = parser.add_argument(
+        "--headless",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Run browser headless; login setup normally requires headed mode",
+    )
+    return parser.parse_args(argv)
 
-    if not COOKIE_DB.exists():
-        print("[ERROR] Chrome cookie database not found.")
-        print(f"        Expected at: {COOKIE_DB}")
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
+    session_root = Path(str(args.session_dir)) / "liepin"
+    browser_channel = str(args.browser_channel)
+    timeout_ms = int(args.timeout_ms)
+    headless = bool(args.headless)
+
+    ok = _setup_playwright_login_session(
+        session_root=session_root,
+        browser_channel=browser_channel,
+        headless=headless,
+        timeout_ms=timeout_ms,
+    )
+    if not ok:
         return 1
 
-    try:
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
-    except ImportError:
-        print("[ERROR] cryptography package not installed.")
-        print("        Run: pip install cryptography")
-        return 3
-
-    session_root = Path(args.session_dir) / "liepin"
-    session_root.mkdir(parents=True, exist_ok=True)
-    cookie_file = session_root / "cookies.json"
-
-    # Check if user is logged into Liepin in Chrome
-    print("Reading Chrome cookies for Liepin ...")
-    print()
-
-    key = _get_decryption_key()
-    if key is None:
-        return 4
-
-    cookies = _read_liepin_cookies(key)
-    if not cookies:
-        print("[ERROR] No Liepin cookies found in Chrome.")
-        print("        Please open liepin.com in Chrome and log in first.")
-        print("        Then re-run this script.")
-        return 5
-
-    print(f"Found {len(cookies)} Liepin cookies:")
-    for c in cookies:
-        value_preview = c["value"][:30] + "..." if len(c["value"]) > 30 else c["value"]
-        print(f"  {c['domain']:<25s} {c['name']:<25s} = {value_preview}")
-
-    # Save
-    cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nSaved to {cookie_file}")
-
-    # Verify by injecting into automation profile and checking
-    print("Testing with automation profile ...")
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            ctx = p.chromium.launch_persistent_context(
-                user_data_dir=str(session_root),
-                headless=True,
-            )
-            ctx.add_cookies(cookies)
-            page = ctx.new_page()
-            page.goto("https://www.liepin.com/", wait_until="domcontentloaded", timeout=15000)
-            url = page.url.lower()
-            if "passport" in url or "login" in url:
-                print("  ⚠️  Login page detected — session may be expired.")
-            else:
-                print("  ✅ Session active!")
-            ctx.close()
-    except ImportError:
-        print("  (playwright not available, skipping verification)")
-    except Exception as exc:
-        print(f"  [WARN] Verification skipped: {exc}")
-
-    print()
-    print("Ready. Enable real submission:")
-    print(f"  export PPF_SESSION_DIR={Path(args.session_dir).resolve()}")
-    print("  export PPF_SUBMIT_ENABLED=1")
+    print("Session ready.")
+    print(f"Use with: --session-dir {Path(str(args.session_dir)).resolve()}")
     return 0
 
 

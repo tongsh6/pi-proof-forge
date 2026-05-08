@@ -43,6 +43,7 @@ class LiepinSubmissionConfig:
     output_dir: str
     session_dir: str
     timeout_ms: int
+    browser_channel: str = "chrome"
 
 
 def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
@@ -53,6 +54,7 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
         resume_path=config.resume_path,
         profile_path=config.profile_path,
         headless=config.headless,
+        browser_channel=config.browser_channel,
     )
 
     if config.dry_run:
@@ -77,8 +79,7 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
     try:
         with sync_playwright() as p:
             browser_context = p.chromium.launch_persistent_context(
-                user_data_dir=str(session_root),
-                headless=config.headless,
+                **_browser_context_options(config, session_root),
             )
             try:
                 page = browser_context.pages[0] if browser_context.pages else browser_context.new_page()
@@ -174,6 +175,16 @@ def _record_dry_run(recorder: SubmissionRecorder, config: LiepinSubmissionConfig
     recorder.add_step("upload_resume", "planned", config.resume_path)
     recorder.add_step("fill_profile", "planned", config.profile_path)
     recorder.add_step("submit", "planned", "submit disabled in dry-run")
+
+
+def _browser_context_options(config: LiepinSubmissionConfig, session_root: Path) -> dict[str, object]:
+    options: dict[str, object] = {
+        "user_data_dir": str(session_root),
+        "headless": config.headless,
+    }
+    if config.browser_channel:
+        options["channel"] = config.browser_channel
+    return options
 
 
 def _is_logged_in(page: Page) -> bool:

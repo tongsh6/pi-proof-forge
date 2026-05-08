@@ -17,6 +17,11 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--submit", action="store_true", help="Execute actual submission")
     _ = parser.add_argument("--output-dir", default="outputs/submissions")
     _ = parser.add_argument("--session-dir", default=".sessions")
+    _ = parser.add_argument(
+        "--browser-channel",
+        default="chrome",
+        help="Playwright browser channel to use; pass an empty value for bundled Chromium",
+    )
     _ = parser.add_argument("--timeout-ms", type=int, default=45000)
     _ = parser.add_argument(
         "--headless",
@@ -73,6 +78,7 @@ def main() -> int:
             output_dir=cast(str, args.output_dir),
             session_dir=cast(str, args.session_dir),
             timeout_ms=int(cast(int, args.timeout_ms)),
+            browser_channel=cast(str, args.browser_channel),
         )
         return run_liepin_submission(config)
 
