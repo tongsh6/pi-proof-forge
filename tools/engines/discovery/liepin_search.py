@@ -10,12 +10,6 @@ Prior implementation used Playwright which triggered captchaPage_ip_PC.
 
 from __future__ import annotations
 
-import json
-import subprocess
-import tempfile
-import time
-import os
-from pathlib import Path
 from urllib.parse import quote
 
 
@@ -108,73 +102,14 @@ def _build_extract_js(max_jobs: int) -> str:
 def _run_applescript_search(search_url: str, max_jobs: int, timeout_ms: int) -> list[dict]:
     """Open Liepin search URL in real Chrome via AppleScript and extract job listings."""
 
-    extract_js = _build_extract_js(max_jobs)
+    from tools.infra.browser.liepin_applescript import run_liepin_applescript_search
 
-    # Write JS to temp file (avoids AppleScript string escaping issues)
-    js_file = os.path.join(tempfile.gettempdir(), 'ppf_liepin_search.js')
-    with open(js_file, 'w', encoding='utf-8') as f:
-        f.write(extract_js)
-
-    max_wait = max(3, min(timeout_ms // 1000, 30))
-
-    applescript = (
-        'tell application "Google Chrome"\n'
-        '    activate\n'
-        '    set searchWindow to make new window\n'
-        '    set searchTab to tab 1 of searchWindow\n'
-        f'    set URL of searchTab to "{search_url}"\n'
-        f'    set maxWait to {max_wait}\n'
-        '    repeat with i from 1 to maxWait\n'
-        '        delay 1\n'
-        '        try\n'
-        '            set linkCount to execute searchTab javascript "document.querySelectorAll(\'a[href*=\\\"/job/\\\"]\').length"\n'
-        '            if linkCount > 0 then exit repeat\n'
-        '        end try\n'
-        '    end repeat\n'
-        '    delay 1\n'
-        '    set rawJson to "{}"\n'
-        '    try\n'
-        f'        set jsCode to read "{js_file}"\n'
-        '        set rawJson to execute searchTab javascript jsCode\n'
-        '    on error errMsg\n'
-        '        set rawJson to "{\\"error\\": \\"" & errMsg & "\\"}"\n'
-        '    end try\n'
-        '    close searchWindow\n'
-        '    return rawJson\n'
-        'end tell'
+    return run_liepin_applescript_search(
+        search_url,
+        _build_extract_js(max_jobs),
+        max_jobs=max_jobs,
+        timeout_ms=timeout_ms,
     )
-
-    proc_timeout = min(timeout_ms / 1000 + 15, 60)
-
-    try:
-        result = subprocess.run(
-            ["osascript", "-e", applescript],
-            capture_output=True, text=True, timeout=proc_timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return []  # best-effort: page load too slow
-    except FileNotFoundError:
-        return []  # osascript not available (non-macOS)
-
-    if result.returncode != 0:
-        return []  # AppleScript error — non-fatal
-
-    stdout = result.stdout.strip()
-    if not stdout:
-        return []
-
-    try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError:
-        return []
-
-    if isinstance(data, dict) and data.get("captcha"):
-        return []  # Captcha triggered (rare with real Chrome, but handle gracefully)
-
-    if isinstance(data, dict) and data.get("error"):
-        return []  # JS execution error
-
-    return data.get("jobs", []) if isinstance(data, dict) else []
 
 
 def discover_liepin_jobs(
