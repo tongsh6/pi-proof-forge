@@ -8,6 +8,7 @@ Level 3: job_profiles/*.yaml      — derive candidates from target profiles
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 
 from tools.domain.value_objects import Candidate
@@ -158,7 +159,7 @@ def discover_candidates(
     base_jd_dir: Path | None = None,
     base_jp_dir: Path | None = None,
     *,
-    enable_liepin_search: bool = True,
+    enable_liepin_search: bool | None = None,
     session_dir: str = "outputs/sessions",
     excluded_companies: tuple[str, ...] = (),
     search_keywords: list[str] | None = None,
@@ -175,6 +176,8 @@ def discover_candidates(
     instead of iterating all job_profiles.
     """
     candidates: list[Candidate] = []
+    if enable_liepin_search is None:
+        enable_liepin_search = os.getenv("PPF_ENABLE_LIEPIN_SEARCH", "0") == "1"
 
     # Level 1: explicit leads override all fallbacks
     leads = load_candidates_from_job_leads(base_dir)

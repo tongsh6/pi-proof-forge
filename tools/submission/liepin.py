@@ -381,6 +381,8 @@ def _is_error_page(page: Page) -> bool:
         "text=访问的页面不存在",
         "text=页面走丢了",
         "text=您访问的页面",
+        "text=已下线",
+        "text=浏览更多优质职位",
     ]
     return _has_any_selector_in_page_and_frames(page, error_selectors)
 

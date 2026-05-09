@@ -1,7 +1,12 @@
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
-from tools.submission.liepin import LiepinSubmissionConfig, _browser_context_options
+from tools.submission.liepin import (
+    LiepinSubmissionConfig,
+    _browser_context_options,
+    _is_error_page,
+)
 
 
 def _config(browser_channel: str) -> LiepinSubmissionConfig:
@@ -28,6 +33,12 @@ class LiepinSubmissionBrowserChannelTests(unittest.TestCase):
             {
                 "user_data_dir": ".sessions/liepin",
                 "headless": True,
+                "viewport": {"width": 1440, "height": 900},
+                "args": [
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                ],
+                "ignore_default_args": ["--enable-automation"],
                 "channel": "chrome",
             },
         )
@@ -40,8 +51,27 @@ class LiepinSubmissionBrowserChannelTests(unittest.TestCase):
             {
                 "user_data_dir": ".sessions/liepin",
                 "headless": True,
+                "viewport": {"width": 1440, "height": 900},
+                "args": [
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                ],
+                "ignore_default_args": ["--enable-automation"],
             },
         )
+
+    def test_job_page_health_rejects_offline_liepin_jobs(self) -> None:
+        page = Mock(url="https://www.liepin.com/job/1964642633.shtml")
+
+        def locator(selector: str) -> Mock:
+            result = Mock()
+            result.count.return_value = 1 if selector == "text=已下线" else 0
+            return result
+
+        page.locator.side_effect = locator
+        page.frames = []
+
+        self.assertTrue(_is_error_page(page))
 
 
 if __name__ == "__main__":

@@ -1,8 +1,12 @@
 import unittest
 from importlib import import_module
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from tools.config.fragments import PolicyConfig
 from tools.domain.value_objects import Candidate
+from tools.engines.discovery.job_leads_loader import discover_candidates
 
 
 def _discovery_engine_class():
@@ -71,6 +75,43 @@ class DiscoveryEngineTests(unittest.TestCase):
         )
         self.assertEqual(len(result.accepted), 0)
         self.assertEqual(len(result.excluded), 1)
+
+    def test_candidate_fallback_does_not_search_liepin_by_default(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            leads_dir = root / "job_leads"
+            jd_dir = root / "jd_inputs"
+            jp_dir = root / "job_profiles"
+            leads_dir.mkdir()
+            jd_dir.mkdir()
+            jp_dir.mkdir()
+            (jp_dir / "jp-test.yaml").write_text(
+                "target_role: Backend Engineer\n"
+                "keywords:\n"
+                "  - Java\n"
+                "  - Redis\n",
+                encoding="utf-8",
+            )
+
+            with patch(
+                "tools.engines.discovery.liepin_search.discover_and_filter",
+                return_value=[
+                    {
+                        "job_url": "https://www.liepin.com/job/1.shtml",
+                        "company": "Live Search Co",
+                        "position": "Backend Engineer",
+                    }
+                ],
+            ) as search:
+                candidates = discover_candidates(
+                    base_dir=leads_dir,
+                    base_jd_dir=jd_dir,
+                    base_jp_dir=jp_dir,
+                )
+
+            search.assert_not_called()
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].source, "job_profiles:jp-test")
 
 
 if __name__ == "__main__":

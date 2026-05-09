@@ -154,6 +154,9 @@ python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output
 
 # 自动投递（Liepin）
 # 参考流程文档：AIEF/workflow/phases/submission.md
+# 真实猎聘搜索默认关闭，避免 dry-run / 单元测试意外触发平台访问；需要搜索真实职位时显式开启：
+export PPF_ENABLE_LIEPIN_SEARCH=1
+
 # dry-run：仅生成执行计划与日志，不打开浏览器
 python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --dry-run
 
