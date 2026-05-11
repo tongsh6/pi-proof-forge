@@ -25,6 +25,8 @@ APPLY_DIALOG_TRIGGERS = [
     "a:has-text('投递简历')",
     "button:has-text('立即沟通')",
     "a:has-text('立即沟通')",
+    "button:has-text('聊一聊')",
+    "a:has-text('聊一聊')",
     "button:has-text('立即申请')",
     "a:has-text('立即申请')",
     "button:has-text('申请职位')",
@@ -73,7 +75,7 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
         print(f"[INFO] log: {recorder.log_yaml}")
         return 3
 
-    session_root = Path(config.session_dir) / "liepin"
+    session_root = Path(config.session_dir) / "liepin" / "session" / "liepin"
     session_root.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -84,17 +86,20 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
             try:
                 page = browser_context.pages[0] if browser_context.pages else browser_context.new_page()
                 _ = page.goto(config.job_url, wait_until="networkidle", timeout=config.timeout_ms)
-                page.wait_for_timeout(2000)  # Allow JS-rendered content to settle
-
-                shot_open = recorder.screenshot_path("open_job_page")
-                _ = page.screenshot(path=str(shot_open), full_page=True)
-                recorder.add_step("open_job_page", "success", "job page opened", shot_open)
+                page.wait_for_timeout(3000)  # Wait for JS and modals to settle
 
                 # Check for security page redirect
                 if "安全中心" in page.title() or "safe.liepin" in page.url.lower():
                     recorder.add_step("security_check", "failed", "redirected to security page")
                     recorder.finish(status="blocked", error="security_redirect")
                     return 11
+
+                # Dismiss initial blockers (like app download prompts)
+                _close_modals(page)
+
+                shot_open = recorder.screenshot_path("open_job_page")
+                _ = page.screenshot(path=str(shot_open), full_page=True)
+                recorder.add_step("open_job_page", "success", "job page opened", shot_open)
 
                 if _is_error_page(page):
                     snapshot_paths = _dump_dom_snapshots(page, recorder.run_dir / "html")
@@ -206,26 +211,33 @@ def _is_logged_in(page: Page) -> bool:
     if "passport" in current_url or "login" in current_url:
         return False
 
-    # Check for VISIBLE inline login form (element exists in DOM even when logged in)
-    inline_login = page.locator("[data-selector='inline-login']:visible, .inline-login-container:visible")
-    if inline_login.count() > 0:
-        return False
-
-    # Check for visible login buttons (not in dropdown/user menu)
-    login_btn = page.locator("a:has-text('登录'):visible, button:has-text('登录/注册'):visible")
-    if login_btn.count() > 0:
+    # Check for login modal (even if indicators exist in background)
+    login_modal = page.locator(".pc-login-pop-container:visible, .ant-modal-root:has-text('登录'):visible")
+    if login_modal.count() > 0:
         return False
 
     # Positive check: elements that only appear when logged in
+    # These are highly reliable indicators of a valid session
     user_indicators = page.locator(
         "[data-selector='chat-chat']:visible, "
         "[data-selector='c-logout']:visible, "
-        ".recruiter-info-box:visible"
+        ".recruiter-info-box:visible, "
+        ".nav-user-item:visible"
     )
     if user_indicators.count() > 0:
         return True
 
-    job_action = page.locator("button:has-text('投递简历'):visible, button:has-text('立即沟通'):visible")
+    # Negative check: If no positive indicators, look for visible login prompts
+    inline_login = page.locator("[data-selector='inline-login']:visible, .inline-login-container:visible")
+    if inline_login.count() > 0:
+        return False
+
+    login_btn = page.locator("a:has-text('登录'):visible, button:has-text('登录/注册'):visible")
+    if login_btn.count() > 0:
+        return False
+
+    # Fallback: if we are on a job page and see action buttons, we are likely logged in
+    job_action = page.locator("button:has-text('投递简历'):visible, button:has-text('立即沟通'):visible, button:has-text('聊一聊'):visible")
     return job_action.count() > 0 or "liepin.com/job" in current_url
 
 
@@ -504,3 +516,27 @@ def _detect_submission_outcome(page: Page) -> dict[str, str]:
         if page.locator(f"text={keyword}").count() > 0:
             return {"status": "success", "detail": f"found keyword: {keyword}"}
     return {"status": "uncertain", "detail": "submit clicked but no definitive success keyword found"}
+
+
+def _close_modals(page: Page) -> int:
+    """Try to close any blocking modals. Returns number of closed modals."""
+    closed_count = 0
+    close_selectors = [
+        ".ant-modal-close:visible",
+        ".pc-login-pop-container ._40108gWOOl:visible",  # 登录弹窗关闭按钮 (基于诊断)
+        ".ant-modal-confirm-btns button:has-text('知道了'):visible",
+        ".ant-modal-confirm-btns button:has-text('OK'):visible",
+        ".ant-modal-close-x:visible",
+        "button[aria-label='Close']:visible",
+    ]
+    
+    for selector in close_selectors:
+        try:
+            loc = page.locator(selector)
+            if loc.count() > 0:
+                loc.first.click(timeout=2000)
+                page.wait_for_timeout(500)
+                closed_count += 1
+        except Exception:
+            continue
+    return closed_count

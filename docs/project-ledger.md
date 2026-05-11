@@ -17,8 +17,9 @@
 - **全链路集成测试 → 已恢复 ✅（301 tests，2026-05-09）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
-- **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败，待完成可用职位 check-mode 上传与真实投递（2026-05-09）**
-- **当前阻塞：猎聘风控限制（safe.liepin.com SMS验证）+ 需要有效未下线职位 URL，需冷却/SMS 后重试**
+- **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
+- **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
+- **当前阻塞：无硬阻塞。P1 工程化任务（投递路径改"聊一聊"、频控算法、目标确认护栏）**
 
 ## 2. 已完成事项
 
@@ -76,6 +77,18 @@
 | **SubmissionRecorder browser_channel** | **已完成** | tools/submission/storage.py | 参数匹配修复 | set_meta() 新增 browser_channel |
 | **目标关键词搜索** | **已完成** | tools/engines/discovery/job_leads_loader.py | discover_candidates(search_keywords=...) | 只搜索指定 job_profile 关键词，避免全量搜索触限 |
 | **真实猎聘搜索显式开关** | **已完成** | tools/engines/discovery/job_leads_loader.py + tools/README.md | test_discovery_engine.py | 默认不触发真实 Chrome；需 `PPF_ENABLE_LIEPIN_SEARCH=1` 显式开启 |
+| **Playwright-stealth 反反爬基础设施** | **已完成** | tools/submission/_browser.py | PoC 实测绕过 safe.liepin.com | stealth.js 注入（webdriver/chrome/plugins/languages）+ 人化节奏 + 安全护栏 |
+| **猎聘真实投递入口确认** | **已完成** | tools/poc_probe_jobs.py | 13 职位采样 | 100% 职位只用"聊一聊"入口；部分职位同时存在"投简历"直投按钮；0 个职位有传统 input[type=file] |
+| **聊一聊→发简历→确认发送 端到端闭环** | **已完成** | tools/poc_e2e_send.py | dry-run 6 步全通过 + SAP 职位真实发送 | data-tlg-elem-id 精准锁定主职位按钮，排除推荐区；jobId sanity check；支持"聊一聊"/"继续聊"文本兼容 |
+| **主职位按钮 vs 推荐区误投防护** | **已完成** | tools/poc_e2e_send.py | dry-run 验证 recruiterName 匹配 | 用 `data-tlg-elem-id` 锁定主职位（非 `like_chat_btn`）；解析 data-params.jobId 做强校验 |
+| **猎聘 session 初始化重构** | **已完成** | tools/setup_liepin_session.py | 一键启动，关闭即保存 | 从 argparse CLI 重构为简洁单文件；反检测参数内置 |
+| **登录态检测增强** | **已完成** | tools/submission/liepin.py | check-mode 验证 | 新增 login modal 检测、nav-user-item 正向指标、聊一聊 fallback |
+| **Modal 自动关闭** | **已完成** | tools/submission/liepin.py | _close_modals() | 自动关闭登录弹窗、app下载引导、ant-modal 对话框 |
+| **聊一聊聊天面板 PoC 诊断** | **已完成** | tools/poc_chat_flow.py | 首次探测即发现"发简历"/"发送"控件 | 点击"聊一聊"后内嵌面板枚举所有按钮+file input |
+| **多职位入口采样** | **已完成** | tools/poc_probe_jobs.py | Java/前端/产品 三关键词各采样 4 个 | 确认"聊一聊"是统一入口；连续采样触发风控验证 |
+| **低关注度职位甄选** | **已完成** | tools/poc_pick_low_profile.py | 长沙 Java 搜索，排除大厂 | 用于端到端真实发送安全目标选择 |
+| **DOM 深度诊断 v2** | **已完成** | tools/poc_diagnose_dom_v2.py | 枚举可见按钮/链接/file input/iframe/关键文本 | 比 v1 多了 JS 渲染等待 + 多维度枚举 |
+| **直投测试脚本** | **已完成** | tools/test_liepin_direct.py | check-mode 脚本 | 独立于 agent loop 的直接投递测试入口 |
 
 ## 3. 已验证事项
 
@@ -100,6 +113,11 @@
 | Liepin 登录态有效性 | `outputs/submissions/liepin/run-deliver-6/` | login_check: success | 32 个 liepin cookie，Playwright persistent_context 有效 |
 | Agent Loop→DELIVER 全链路 | `outputs/agent_runs/run-deliver-6/` | login_check success, job page 已下线 | 登录通过；历史失败已归因修正为职位不可用/下线，不再作为上传选择器结论 |
 | 猎聘风控触发 | `safe.liepin.com SMS验证页` | 短时间多次搜索触发 | 需冷却 + SMS 验证后重试 |
+| **Stealth + human pacing 绕过风控** | **tools/poc_e2e_send.py 连续 2 次成功访问** | **无重定向到安全中心** | **playwright-stealth + 真实 macOS Chrome UA + 随机延迟有效** |
+| **聊一聊→发简历 聊天面板 DOM** | **tools/poc_chat_flow.py** | **内嵌面板，not 新窗口** | **ant-im-modal-confirm-btns 按钮；文本含全角空格（"确 定"）** |
+| **真实发送 SAP 职位** | **tools/poc_e2e_send.py --really-send** | **确 定 按钮点击成功** | **孙先生（SAP recruiter）** |
+| **13 职位入口采样** | **tools/poc_probe_jobs.py** | **7/13 聊一聊 only，0/13 file input** | **统一入口实证** |
+| **误投 root cause** | **DOM 离线分析** | **text=聊一聊 匹配 40 次（20 雇主），主按钮文本"继续聊"** | **必须使用 data-tlg-elem-id 锁定主按钮** |
 
 ## 4. 进行中事项
 
@@ -109,12 +127,14 @@
 
 | 优先级 | 缺口 | 影响 | 类型 | 阻塞条件 |
 |--------|------|------|------|----------|
-| P0 | 猎聘风控限流（safe.liepin.com SMS验证） | AppleScript 搜索和 Playwright 投递可能被重定向 | 环境阻塞 | IP/会话冷却 + SMS验证完成 |
-| P0 | 可用职位页 check-mode 上传未验证 | 历史 run-deliver-6 实际职位已下线，不能证明上传选择器有效 | 验证缺口 | 需选择有效未下线职位 URL 后重跑 |
-| P1 | 真实投递未完成（submit=true） | 从未以 submit 模式成功投递 | 验证缺口 | P0 两个缺口解决后 |
+| ~~P0~~ | ~~猎聘风控限流~~ | ~~AppleScript 搜索和 Playwright 投递可能被重定向~~ | **已解决** | **playwright-stealth + 真实 UA + 人化节奏 绕过** |
+| ~~P0~~ | ~~可用职位页 check-mode 上传未验证~~ | ~~历史 run-deliver-6 实际职位已下线~~ | **已解决** | **PoC 端到端 6 步全通过（dry-run + real-send）** |
+| P1 | 真实投递路径从"上传简历"改为"聊一聊" | 当前 `liepin.py` 投递路径是旧的 upload→click submit，不匹配真实页面 | 代码未更新 | 需改写为：聊一聊 → 发简历 → 确认发送；或探测"投简历"直投按钮 |
+| P1 | 高频访问触发风控需频控算法 | 连续 6+ 职位访问触发 safe.liepin.com | 需工程化 | stealth 绕过了单次，但批量仍需严格频控（≤5/批 + 长休眠） |
 | P2 | LiepinChannel session 路径耦合 run_id | 每次新 run 需手动创建 symlink | 设计缺口 | 低优先级，当前 workaround 可用 |
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
 | P4 | Gap tasks 仅检查 must_have，不检查 keywords | SLA/SLO 等关键词缺失不会触发补证据任务 | 设计缺口 | 低优先级 |
+| P5 | 误投防护需接入 liepin.py 主流程 | poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入 | 安全缺口 | P1 改造时一并接入 |
 
 ## 6. 已废弃事项
 
@@ -124,9 +144,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | 猎聘风控冷却 + SMS验证 | AppleScript 搜索/投递可能被 safe.liepin.com 拦截 | 搜索恢复，不再重定向到验证页 |
-| 2 | 有效职位 URL + check-mode 上传验证 | 旧 run 使用的职位已下线，不能用于上传验收 | 有效职位页 → check-mode → upload_resume success |
-| 3 | 真实投递验证（submit=true） | 从未完成端到端真实投递 | PPF_SUBMIT_ENABLED=1 → submission_log status=success |
+| 1 | 改造 `liepin.py` 投递路径为"聊一聊"流程 | 真实页面 100% 用聊一聊，旧 upload 路径已失效 | check-mode → 聊一聊 → 发简历 → dry-run 全通过 |
+| 2 | 接入 jobId 目标确认护栏到主流程 | 上次误投湃乐多是直接教训 | 发送前必须校验 data-params.jobId 与 URL 一致 |
+| 3 | 频控算法工程化 | 批量投递会触发安全中心 | ≤5 职位/批，批间 ≥15min 冷却，日限额 30 |
 
 ## 8. 关键证据索引
 
@@ -151,5 +171,11 @@
 | GUI 设计 | ui/design/DESIGN.md | 终版 9 页 IA |
 | 测试 | tests/ | 301 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |
+| **反反爬基础设施** | **tools/submission/_browser.py** | **stealth + human pacing + 安全护栏** |
+| **端到端投递 PoC** | **tools/poc_e2e_send.py** | **6 步 dry-run/real-send 脚本** |
+| **聊一聊流程探测** | **tools/poc_chat_flow.py** | **聊天面板 DOM 枚举** |
+| **职位入口采样** | **tools/poc_probe_jobs.py** | **13 职位投递入口统计** |
+| **DOM 深度诊断** | **tools/poc_diagnose_dom_v2.py** | **SPA 渲染后多维度 DOM 枚举** |
+| **PoC 产物** | **outputs/poc_e2e_send/ + outputs/poc_chat_flow/** | **每步截图+HTML 全程可审计** |
 | 发版记录 | release-notes/ | v0.1.3 ~ v0.1.9 |
 | 经验沉淀 | AIEF/context/experience/ | 21 lessons + 2 summaries |
