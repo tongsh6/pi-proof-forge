@@ -163,6 +163,85 @@ class LiepinChatSendResumeTests(unittest.TestCase):
         self.assertTrue(confirm.clicked)
         self.assertEqual(detail, "confirm_modal_primary")
 
+    def test_submit_safety_requires_explicit_job_and_recruiter_confirmation(self) -> None:
+        config = liepin.LiepinSubmissionConfig(
+            job_url="https://www.liepin.com/job/123456.shtml",
+            resume_path="outputs/resume.pdf",
+            profile_path="profiles/candidate_profile.yaml",
+            headless=True,
+            dry_run=False,
+            submit=True,
+            output_dir="outputs/submissions",
+            session_dir="outputs/submissions",
+            timeout_ms=45000,
+        )
+        verification = liepin.TargetVerification(
+            ok=True,
+            url_job_id="123456",
+            dom_jobid="123456",
+            params_jobid="123456",
+            recruiter_name="Sun",
+        )
+
+        ok, detail = liepin._verify_submit_safety(config, verification)
+
+        self.assertFalse(ok)
+        self.assertEqual(detail, "submit_confirmation_missing")
+
+    def test_submit_safety_rejects_non_pdf_resume(self) -> None:
+        config = liepin.LiepinSubmissionConfig(
+            job_url="https://www.liepin.com/job/123456.shtml",
+            resume_path="outputs/v1.md",
+            profile_path="profiles/candidate_profile.yaml",
+            headless=True,
+            dry_run=False,
+            submit=True,
+            output_dir="outputs/submissions",
+            session_dir="outputs/submissions",
+            timeout_ms=45000,
+            confirm_submit_job_id="123456",
+            confirm_submit_recruiter="Sun",
+        )
+        verification = liepin.TargetVerification(
+            ok=True,
+            url_job_id="123456",
+            dom_jobid="123456",
+            params_jobid="123456",
+            recruiter_name="Sun",
+        )
+
+        ok, detail = liepin._verify_submit_safety(config, verification)
+
+        self.assertFalse(ok)
+        self.assertEqual(detail, "submit_resume_must_be_pdf")
+
+    def test_submit_safety_accepts_matching_job_and_recruiter_confirmation(self) -> None:
+        config = liepin.LiepinSubmissionConfig(
+            job_url="https://www.liepin.com/job/123456.shtml",
+            resume_path="outputs/resume.pdf",
+            profile_path="profiles/candidate_profile.yaml",
+            headless=True,
+            dry_run=False,
+            submit=True,
+            output_dir="outputs/submissions",
+            session_dir="outputs/submissions",
+            timeout_ms=45000,
+            confirm_submit_job_id="123456",
+            confirm_submit_recruiter="Sun",
+        )
+        verification = liepin.TargetVerification(
+            ok=True,
+            url_job_id="123456",
+            dom_jobid="123456",
+            params_jobid="123456",
+            recruiter_name="Sun",
+        )
+
+        ok, detail = liepin._verify_submit_safety(config, verification)
+
+        self.assertTrue(ok)
+        self.assertEqual(detail, "submit_confirmed:job_id=123456; recruiter=Sun")
+
 
 if __name__ == "__main__":
     unittest.main()

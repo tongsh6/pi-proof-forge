@@ -15,6 +15,16 @@ def parse_args() -> argparse.Namespace:
     _ = parser.add_argument("--resume", required=True)
     _ = parser.add_argument("--profile", required=True)
     _ = parser.add_argument("--submit", action="store_true", help="Execute actual submission")
+    _ = parser.add_argument(
+        "--confirm-submit-job-id",
+        default="",
+        help="Required with --submit. Must match the verified Liepin job id.",
+    )
+    _ = parser.add_argument(
+        "--confirm-submit-recruiter",
+        default="",
+        help="Required with --submit. Must match the verified recruiter name.",
+    )
     _ = parser.add_argument("--output-dir", default="outputs/submissions")
     _ = parser.add_argument("--session-dir", default=".sessions")
     _ = parser.add_argument(
@@ -50,6 +60,12 @@ def validate_args(args: argparse.Namespace) -> None:
 
     if bool(cast(bool, args.submit)) and resume_path.suffix.lower() != ".pdf":
         raise RuntimeError("--resume must be a PDF file when --submit is enabled")
+
+    if bool(cast(bool, args.submit)):
+        if not str(getattr(args, "confirm_submit_job_id", "")).strip():
+            raise RuntimeError("--confirm-submit-job-id is required when --submit is enabled")
+        if not str(getattr(args, "confirm_submit_recruiter", "")).strip():
+            raise RuntimeError("--confirm-submit-recruiter is required when --submit is enabled")
 
     if profile_path.suffix.lower() not in {".yaml", ".yml"}:
         raise RuntimeError("--profile must be a YAML file")
@@ -93,6 +109,8 @@ def main() -> int:
             rate_limit_max_per_batch=int(cast(int, args.rate_limit_max_per_batch)),
             rate_limit_cooldown_seconds=int(cast(int, args.rate_limit_cooldown_seconds)),
             rate_limit_daily_limit=int(cast(int, args.rate_limit_daily_limit)),
+            confirm_submit_job_id=cast(str, args.confirm_submit_job_id),
+            confirm_submit_recruiter=cast(str, args.confirm_submit_recruiter),
         )
         return run_liepin_submission(config)
 

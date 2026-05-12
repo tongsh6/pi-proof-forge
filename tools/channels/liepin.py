@@ -65,6 +65,8 @@ class LiepinChannel:
         headless = os.getenv("PPF_HEADLESS", "1") == "1"
         submit = os.getenv("PPF_SUBMIT_ENABLED", "0") == "1"
         browser_channel = os.getenv("PPF_BROWSER_CHANNEL", "chrome")
+        confirm_submit_job_id = os.getenv("PPF_CONFIRM_SUBMIT_JOB_ID", "")
+        confirm_submit_recruiter = os.getenv("PPF_CONFIRM_SUBMIT_RECRUITER", "")
 
         config = LiepinSubmissionConfig(
             job_url=request.job_url,
@@ -77,6 +79,8 @@ class LiepinChannel:
             session_dir=session_dir,
             timeout_ms=30_000,
             browser_channel=browser_channel,
+            confirm_submit_job_id=confirm_submit_job_id,
+            confirm_submit_recruiter=confirm_submit_recruiter,
         )
 
         exit_code = run_liepin_submission(config)
@@ -103,6 +107,7 @@ class LiepinChannel:
             12: ("target_verify_failed", "main job target verification failed"),
             13: ("chat_send_resume_failed", "chat send-resume flow failed"),
             14: ("rate_limited", "submission rate limit blocked this run"),
+            15: ("submit_safety_blocked", "submit safety confirmation failed"),
         }
         reason, detail = error_messages.get(exit_code, ("unknown_error", f"exit_code={exit_code}"))
         return Err(ChannelFailure(channel_id=self.channel_id, reason=reason, details=detail))

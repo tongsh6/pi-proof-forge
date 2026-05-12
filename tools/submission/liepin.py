@@ -69,6 +69,8 @@ class LiepinSubmissionConfig:
     rate_limit_max_per_batch: int = 5
     rate_limit_cooldown_seconds: int = 900
     rate_limit_daily_limit: int = 30
+    confirm_submit_job_id: str = ""
+    confirm_submit_recruiter: str = ""
 
 
 def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
@@ -186,6 +188,15 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
                     f"recruiter={verification.recruiter_name}"
                 ),
             )
+
+            if config.submit:
+                safety_ok, safety_detail = _verify_submit_safety(config, verification)
+                if not safety_ok:
+                    recorder.add_step("submit_safety", "blocked", safety_detail)
+                    recorder.finish(status="blocked", error=safety_detail)
+                    print(f"[INFO] log: {recorder.log_yaml}")
+                    return 15
+                recorder.add_step("submit_safety", "success", safety_detail)
 
             chat_ok, chat_detail = _send_resume_via_chat(
                 page,
@@ -426,6 +437,26 @@ def _verify_main_chat_target(page: Page, job_url: str) -> TargetVerification:
         recruiter_name=recruiter_name,
         recruiter_id=recruiter_id,
         matched_count=matched_count,
+    )
+
+
+def _verify_submit_safety(
+    config: LiepinSubmissionConfig,
+    verification: TargetVerification,
+) -> tuple[bool, str]:
+    if Path(config.resume_path).suffix.lower() != ".pdf":
+        return False, "submit_resume_must_be_pdf"
+    expected_job_id = config.confirm_submit_job_id.strip()
+    expected_recruiter = config.confirm_submit_recruiter.strip()
+    if not expected_job_id or not expected_recruiter:
+        return False, "submit_confirmation_missing"
+    if expected_job_id != verification.url_job_id:
+        return False, "submit_confirmation_job_id_mismatch"
+    if expected_recruiter != verification.recruiter_name:
+        return False, "submit_confirmation_recruiter_mismatch"
+    return (
+        True,
+        f"submit_confirmed:job_id={expected_job_id}; recruiter={expected_recruiter}",
     )
 
 

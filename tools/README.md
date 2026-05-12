@@ -175,8 +175,8 @@ PPF_LIEPIN_SESSION_DIR=outputs/submissions PPF_OUTPUT_DIR=outputs/submissions PP
 # 真实小批量频控验证：同一 output-dir 共享 rate-limit 状态；第 3 次应返回 batch_cooldown
 .venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/v1.md --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions/batch-rate-limit-001 --timeout-ms 45000 --browser-channel chrome --no-headless --rate-limit-max-per-batch 2 --rate-limit-cooldown-seconds 900 --rate-limit-daily-limit 30
 
-# submit mode：真实点击投递（要求 --resume 为 PDF）
-.venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions --browser-channel chrome --no-headless --submit
+# submit mode：真实点击投递（要求 PDF，并显式确认目标 jobId + recruiter；不匹配会在 submit_safety 阶段阻断）
+.venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions --browser-channel chrome --no-headless --submit --confirm-submit-job-id "xxxx" --confirm-submit-recruiter "招聘者姓名"
 
 # 投递就绪门禁（要求最新一次 run 为 submit + success + 至少 1 张截图）
 python3 tools/check_submission_readiness.py --root outputs/submissions --platform liepin --require-status success --min-screenshots 1

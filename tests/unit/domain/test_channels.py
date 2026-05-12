@@ -70,6 +70,45 @@ class ChannelTests(unittest.TestCase):
         config = run_submission.call_args.args[0]
         self.assertEqual(config.session_dir, "outputs/submissions/liepin/session")
 
+    def test_liepin_submit_passes_explicit_confirmation_from_environment(self) -> None:
+        channel = _liepin_class()()
+        DeliveryRequest = _base_module().DeliveryRequest
+        sync_api = ModuleType("playwright.sync_api")
+        sync_api.sync_playwright = object()
+        req = DeliveryRequest(
+            run_id="run-1",
+            candidate_id="cand-1",
+            channel="liepin",
+            resume_path="outputs/resume.pdf",
+            job_url="https://www.liepin.com/job/123456.shtml",
+            dry_run=False,
+        )
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "playwright": ModuleType("playwright"),
+                "playwright.sync_api": sync_api,
+            },
+        ), patch.dict(
+            "os.environ",
+            {
+                "PPF_SUBMIT_ENABLED": "1",
+                "PPF_CONFIRM_SUBMIT_JOB_ID": "123456",
+                "PPF_CONFIRM_SUBMIT_RECRUITER": "Sun",
+            },
+        ), patch(
+            "tools.submission.liepin.run_liepin_submission",
+            return_value=0,
+        ) as run_submission:
+            result = channel.deliver(req)
+
+        self.assertIsInstance(result, Ok)
+        config = run_submission.call_args.args[0]
+        self.assertTrue(config.submit)
+        self.assertEqual(config.confirm_submit_job_id, "123456")
+        self.assertEqual(config.confirm_submit_recruiter, "Sun")
+
     def test_email_dry_run_ok(self) -> None:
         channel = _email_class()()
         result = channel.deliver(_request("email"))
