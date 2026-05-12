@@ -1,0 +1,25 @@
+# Validated low-risk Liepin job leads
+generated_at: "2026-05-13T00:29:20+08:00"
+source: "tools/poc_pick_low_profile.py + check-mode validation"
+items:
+  - job_url: "https://www.liepin.com/job/1979279359.shtml"
+    position: "软件工程师"
+    company_name: "海程新材料(芜湖)有限公司"
+    city: "芜湖-鸠江区"
+    direction: backend
+    confidence: 0.82
+    validation_log: "outputs/submissions/job-leads-expanded-001/liepin/20260512-161740/submission_log.yaml"
+  - job_url: "https://www.liepin.com/job/1980984659.shtml"
+    position: "架构师"
+    company_name: "海程新材料(芜湖)有限公司"
+    city: "芜湖-鸠江区"
+    direction: backend
+    confidence: 0.82
+    validation_log: "outputs/submissions/job-leads-expanded-001/liepin/20260512-162151/submission_log.yaml"
+  - job_url: "https://www.liepin.com/job/1979846849.shtml"
+    position: "智能座舱大模型算法工程师"
+    company_name: "奇瑞智能汽车科技(合肥)有限公司"
+    city: "芜湖-鸠江区"
+    direction: data
+    confidence: 0.78
+    validation_log: "outputs/submissions/job-leads-expanded-001/liepin/20260512-162822/submission_log.yaml"
