@@ -19,6 +19,36 @@ def _load_submission_log(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _last_step(payload: dict[str, Any]) -> dict[str, str]:
+    steps = payload.get("steps", [])
+    if not isinstance(steps, list) or not steps:
+        return {"name": "", "status": "", "detail": ""}
+    raw = steps[-1]
+    if not isinstance(raw, dict):
+        return {"name": "", "status": "", "detail": ""}
+    return {
+        "name": str(raw.get("name", "")),
+        "status": str(raw.get("status", "")),
+        "detail": str(raw.get("detail", "")),
+    }
+
+
+def _step_by_name(payload: dict[str, Any], name: str) -> dict[str, str]:
+    steps = payload.get("steps", [])
+    if not isinstance(steps, list):
+        return {"name": "", "status": "", "detail": ""}
+    for raw in steps:
+        if not isinstance(raw, dict):
+            continue
+        if str(raw.get("name", "")) == name:
+            return {
+                "name": str(raw.get("name", "")),
+                "status": str(raw.get("status", "")),
+                "detail": str(raw.get("detail", "")),
+            }
+    return {"name": "", "status": "", "detail": ""}
+
+
 def _parse_cursor(value: object) -> int:
     if isinstance(value, int):
         return max(0, value)
@@ -86,13 +116,20 @@ def _parse_date_range(value: object) -> tuple[datetime | None, datetime | None]:
 def _submission_item(path: Path) -> dict[str, Any]:
     payload = _load_submission_log(path)
     submitted_at = str(payload.get("ended_at") or payload.get("started_at") or "")
+    rate_limit = _step_by_name(payload, "rate_limit")
     return {
         "submission_id": str(payload.get("run_id", path.parent.name)),
         "company": str(payload.get("company", payload.get("job_company", ""))),
         "position": str(payload.get("position", payload.get("job_title", ""))),
         "channel": str(payload.get("platform", path.parent.parent.name)),
+        "mode": str(payload.get("mode", "")),
         "status": str(payload.get("status", "")),
+        "error": str(payload.get("error", "")),
+        "job_url": str(payload.get("job_url", "")),
         "submitted_at": submitted_at,
+        "last_step": _last_step(payload),
+        "rate_limit_status": rate_limit["status"],
+        "rate_limit_detail": rate_limit["detail"],
     }
 
 

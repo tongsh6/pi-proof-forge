@@ -297,8 +297,18 @@ export interface SubmissionListItem {
   company: string;
   position: string;
   channel: string;
+  mode: string;
   status: string;
+  error: string;
+  job_url: string;
   submitted_at: string;
+  last_step: {
+    name: string;
+    status: string;
+    detail: string;
+  };
+  rate_limit_status: string;
+  rate_limit_detail: string;
 }
 
 export interface SubmissionListResult extends RpcResultBase {

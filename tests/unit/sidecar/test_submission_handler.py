@@ -57,6 +57,50 @@ class SubmissionListTests(unittest.TestCase):
         self.assertEqual(item["status"], "failed")
         self.assertEqual(item["submitted_at"], "2026-03-04T12:46:37+00:00")
 
+    def test_list_returns_operational_status_details(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            submissions_dir = Path(tmp_dir) / "submissions"
+            run_dir = submissions_dir / "liepin" / "20260304-124634"
+            run_dir.mkdir(parents=True)
+            (run_dir / "submission_log.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": "20260304-124634",
+                        "platform": "liepin",
+                        "mode": "check",
+                        "status": "blocked",
+                        "error": "batch_cooldown",
+                        "job_url": "https://www.liepin.com/job/123.shtml",
+                        "ended_at": "2026-03-04T12:46:37+00:00",
+                        "steps": [
+                            {
+                                "name": "rate_limit",
+                                "status": "blocked",
+                                "detail": "batch_cooldown; wait_seconds=385",
+                                "screenshot": "",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir
+            ):
+                result = handle_submission_list(
+                    {"meta": {"correlation_id": "corr_014"}}
+                )
+
+        item = result["items"][0]
+        self.assertEqual(item["mode"], "check")
+        self.assertEqual(item["job_url"], "https://www.liepin.com/job/123.shtml")
+        self.assertEqual(item["error"], "batch_cooldown")
+        self.assertEqual(item["last_step"]["name"], "rate_limit")
+        self.assertEqual(item["last_step"]["status"], "blocked")
+        self.assertEqual(item["last_step"]["detail"], "batch_cooldown; wait_seconds=385")
+        self.assertEqual(item["rate_limit_status"], "blocked")
+        self.assertEqual(item["rate_limit_detail"], "batch_cooldown; wait_seconds=385")
+
     def test_list_filters_by_status_and_channel(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             submissions_dir = Path(tmp_dir) / "submissions"

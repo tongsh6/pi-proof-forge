@@ -14,12 +14,12 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（314 tests，2026-05-12）**
+- **全链路集成测试 → 已恢复 ✅（315 tests，2026-05-13）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
-- **当前阻塞：无硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展均已闭环（2026-05-13）**
+- **当前阻塞：无硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、GUI 投递状态可视化均已闭环（2026-05-13）**
 
 ## 2. 已完成事项
 
@@ -102,12 +102,13 @@
 | **Liepin 小批量频控真实验证** | **已验证** | outputs/submissions/batch-rate-limit-001/ | 2 次 check-mode success + 第 3 次 `batch_cooldown` blocked | 使用同一 output-dir 共享 `liepin_rate_limit.json`；未点击最终确认发送 |
 | **本地残留证据忽略规则** | **已完成** | .gitignore | `git status --short` | `.idea/`、根目录 debug DOM/截图、`policy_validation.yaml` 不纳入主证据链 |
 | **批量候选来源扩展** | **已验证** | job_leads/jl-validated-20260513.yaml + outputs/submissions/job-leads-expanded-001/ | 3 个新增真实 URL 均 check-mode success | 未点击最终确认发送；loader 可读取结构化 `items` |
+| **GUI 投递状态可视化** | **已验证** | tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx | test_submission_handler.py + `pnpm --dir ui build` | 展示 mode、job_url、error、last_step、rate_limit 状态和详情 |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 314 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 314 passed in 0.30s |
+| 全部 315 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 315 passed in 0.31s |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -160,9 +161,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | GUI/Sidecar 产品化联调 | 后端闭环稳定后，GUI 仍为骨架级别 | GUI 能读取运行日志、展示投递状态和频控阻断原因 |
-| 2 | 真实 submit 前安全门禁 | check-mode 已闭环，但真实发送仍需更严格的人审门禁 | submit 模式必须要求显式确认、PDF 简历、目标 jobId/recruiter 二次确认 |
-| 3 | 多候选 Agent Loop 批次策略 | `job_leads` 已扩展，但 Agent Loop 批次选择/排序策略仍未做真实多候选演练 | 多候选 DISCOVER/GATE/DELIVER 顺序可解释，且遵守频控 |
+| 1 | 真实 submit 前安全门禁 | check-mode 已闭环，但真实发送仍需更严格的人审门禁 | submit 模式必须要求显式确认、PDF 简历、目标 jobId/recruiter 二次确认 |
+| 2 | 多候选 Agent Loop 批次策略 | `job_leads` 已扩展，但 Agent Loop 批次选择/排序策略仍未做真实多候选演练 | 多候选 DISCOVER/GATE/DELIVER 顺序可解释，且遵守频控 |
+| 3 | GUI 运行日志详情页 | Submissions 列表已展示关键状态，但仍缺单次 run 深度详情 | 点击 run 后展示完整 steps、截图路径和原始日志路径 |
 
 ## 8. 关键证据索引
 
@@ -198,5 +199,6 @@
 | **Agent Loop check-mode 闭环验证** | **outputs/agent_runs/run-agent-liepin-chat-005/ + outputs/submissions/run-agent-liepin-chat-005/** | **login_check/target_verify/chat_send_resume success；submit skipped** |
 | **Liepin 小批量频控验证** | **outputs/submissions/batch-rate-limit-001/** | **2 次 check-mode success；第 3 次 blocked=batch_cooldown** |
 | **已验证 job_leads** | **job_leads/jl-validated-20260513.yaml** | **3 个新增低风险真实 URL，均有 check-mode 日志** |
+| **GUI 投递状态可视化** | **tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx** | **submission.list 返回并展示 error/last_step/rate_limit** |
 | 发版记录 | release-notes/ | v0.1.3 ~ v0.1.9 |
 | 经验沉淀 | AIEF/context/experience/ | 21 lessons + 2 summaries |
