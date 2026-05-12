@@ -19,7 +19,7 @@
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
-- **当前阻塞：无硬阻塞。P1 工程化任务（Agent Loop → Liepin 新路径联调、真实批量频控验证）**
+- **当前阻塞：猎聘共享登录态已过期；Agent Loop 已能进入 Liepin DELIVER，但真实 check-mode 被 `login_required` 正确阻断（2026-05-12）**
 
 ## 2. 已完成事项
 
@@ -94,6 +94,10 @@
 | **全量测试依赖收集修复** | **已验证** | tools/setup_liepin_session.py | `python3 -m pytest tests/ -q` → 306 passed | Playwright 改为 lazy import，无 Playwright 环境不再阻断核心测试 |
 | **Liepin 投递频控算法** | **已测试** | tools/submission/rate_limit.py + tools/submission/liepin.py | test_submission_rate_limit.py | 默认每批 5、冷却 900s、日上限 30；dry-run 记录 rate_limit 计划 |
 | **Liepin 真实 check-mode 主流程验证** | **已验证** | outputs/submissions/liepin/20260512-142057/submission_log.yaml | rate_limit/open_job_page/login_check/target_verify/chat_send_resume success，submit skipped | 职位 `1971416782`，recruiter=臧女士；未点击最终确认发送 |
+| **结构化 job_leads 解析** | **已验证** | tools/infra/persistence/yaml_io.py + tools/engines/discovery/job_leads_loader.py | test_discovery_engine.py | 支持 `items: - job_url: ...` 列表字典；Agent Loop DISCOVER 可拿到真实猎聘 URL |
+| **LiepinChannel 共享登录态目录覆盖** | **已测试** | tools/channels/liepin.py | test_channels.py | 新增 `PPF_LIEPIN_SESSION_DIR`；避免 per-run session 路径导致手工 symlink |
+| **登录态误判修复** | **已验证** | tools/submission/liepin.py | test_liepin_chat_send_resume.py + `run-agent-liepin-chat-004` | 登录弹窗/登录入口优先判定为未登录；不再把公开“聊一聊”按钮误判为已登录 |
+| **Agent Loop → Liepin 新路径联调** | **已接入主流程** | outputs/agent_runs/run-agent-liepin-chat-003/run_log.json + outputs/submissions/run-agent-liepin-chat-003/liepin/20260512-150533/submission_log.yaml | DISCOVER=1、GATE pass、进入 DELIVER；target_verify success | 该轮登录态随后弹出登录框，旧逻辑误报 chat_send_resume_failed；已由 004 修正为 login_required |
 
 ## 3. 已验证事项
 
@@ -123,6 +127,7 @@
 | **真实发送 SAP 职位** | **tools/poc_e2e_send.py --really-send** | **确 定 按钮点击成功** | **孙先生（SAP recruiter）** |
 | **13 职位入口采样** | **tools/poc_probe_jobs.py** | **7/13 聊一聊 only，0/13 file input** | **统一入口实证** |
 | **误投 root cause** | **DOM 离线分析** | **text=聊一聊 匹配 40 次（20 雇主），主按钮文本"继续聊"** | **必须使用 data-tlg-elem-id 锁定主按钮** |
+| **Agent Loop→Liepin 新路径联调** | `run-agent-liepin-chat-003` / `run-agent-liepin-chat-004` | 003 进入 DELIVER 且 target_verify success；004 正确阻断为 login_required | 当前真实阻塞是共享登录态过期，需要刷新后复跑 |
 
 ## 4. 进行中事项
 
@@ -135,7 +140,8 @@
 | ~~P0~~ | ~~猎聘风控限流~~ | ~~AppleScript 搜索和 Playwright 投递可能被重定向~~ | **已解决** | **playwright-stealth + 真实 UA + 人化节奏 绕过** |
 | ~~P0~~ | ~~可用职位页 check-mode 上传未验证~~ | ~~历史 run-deliver-6 实际职位已下线~~ | **已解决** | **PoC 端到端 6 步全通过（dry-run + real-send）** |
 | P1 | 频控真实批量验证 | 频控算法已实现，但未用真实批量职位验证 safe.liepin.com 触发率 | 验证缺口 | 用低风险职位小批量 check-mode 验证 rate_limit blocked/success 日志 |
-| P2 | LiepinChannel session 路径耦合 run_id | 每次新 run 需手动创建 symlink | 设计缺口 | 低优先级，当前 workaround 可用 |
+| P1 | 猎聘共享登录态刷新后复跑 Agent Loop | 当前 `run-agent-liepin-chat-004` 正确阻断于 login_required | 外部状态缺口 | 运行 `tools/setup_liepin_session.py --session-dir outputs/submissions/liepin/session` 重新登录后复跑 check-mode |
+| ~~P2~~ | ~~LiepinChannel session 路径耦合 run_id~~ | ~~每次新 run 需手动创建 symlink~~ | **已解决** | **新增 `PPF_LIEPIN_SESSION_DIR` 显式覆盖** |
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
 | P4 | Gap tasks 仅检查 must_have，不检查 keywords | SLA/SLO 等关键词缺失不会触发补证据任务 | 设计缺口 | 低优先级 |
 | ~~P5~~ | ~~误投防护需接入 liepin.py 主流程~~ | ~~poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入~~ | **已解决** | **target_verify 已接入并有离线单测覆盖** |
@@ -148,9 +154,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | Agent Loop → Liepin 新路径联调 | `liepin.py` 真实 check-mode 已通过，下一步验证 AgentLoop DELIVER 使用新路径 | DELIVER 事件成功或明确停在 submit=false check-mode |
+| 1 | 刷新猎聘共享登录态并复跑 Agent Loop check-mode | Agent Loop 已接入真实 URL 和 Liepin DELIVER；当前唯一真实阻断是 login_required | `run-agent-liepin-chat-005` 中 login_check/target_verify/chat_send_resume success，submit skipped |
 | 2 | 频控真实批量验证 | 批量投递会触发安全中心；算法已接入但未做真实批次验证 | ≤5 职位/批，批间 ≥15min 冷却，日限额 30，日志记录 rate_limit |
-| 3 | README/运行手册同步 Agent Loop 真实验证命令 | 主流程已前进，需避免新会话继续跑旧上传路径或错误 session-dir | 文档给出 `.venv/bin/python` + `--session-dir outputs/submissions` 的 check-mode 命令 |
+| 3 | README/运行手册同步 Agent Loop 真实验证命令 | 主流程已前进，需避免新会话继续跑旧上传路径或错误 session-dir | 文档给出 `PPF_LIEPIN_SESSION_DIR=outputs/submissions/liepin/session` 的 Agent Loop check-mode 命令 |
 
 ## 8. 关键证据索引
 
@@ -181,5 +187,7 @@
 | **职位入口采样** | **tools/poc_probe_jobs.py** | **13 职位投递入口统计** |
 | **DOM 深度诊断** | **tools/poc_diagnose_dom_v2.py** | **SPA 渲染后多维度 DOM 枚举** |
 | **PoC 产物** | **outputs/poc_e2e_send/ + outputs/poc_chat_flow/** | **每步截图+HTML 全程可审计** |
+| **Agent Loop Liepin 联调日志** | **outputs/agent_runs/run-agent-liepin-chat-003/ + outputs/submissions/run-agent-liepin-chat-003/** | **进入 DELIVER，target_verify success；暴露登录态误判** |
+| **登录态误判修复验证** | **outputs/agent_runs/run-agent-liepin-chat-004/ + outputs/submissions/run-agent-liepin-chat-004/** | **共享登录态过期时正确阻断为 login_required** |
 | 发版记录 | release-notes/ | v0.1.3 ~ v0.1.9 |
 | 经验沉淀 | AIEF/context/experience/ | 21 lessons + 2 summaries |
