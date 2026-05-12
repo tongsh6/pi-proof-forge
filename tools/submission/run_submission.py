@@ -23,6 +23,9 @@ def parse_args() -> argparse.Namespace:
         help="Playwright browser channel to use; pass an empty value for bundled Chromium",
     )
     _ = parser.add_argument("--timeout-ms", type=int, default=45000)
+    _ = parser.add_argument("--rate-limit-max-per-batch", type=int, default=5)
+    _ = parser.add_argument("--rate-limit-cooldown-seconds", type=int, default=900)
+    _ = parser.add_argument("--rate-limit-daily-limit", type=int, default=30)
     _ = parser.add_argument(
         "--headless",
         action=argparse.BooleanOptionalAction,
@@ -57,6 +60,14 @@ def validate_args(args: argparse.Namespace) -> None:
     if bool(cast(bool, args.dry_run)) and bool(cast(bool, args.submit)):
         raise RuntimeError("--dry-run and --submit cannot be used together")
 
+    for name in (
+        "rate_limit_max_per_batch",
+        "rate_limit_cooldown_seconds",
+        "rate_limit_daily_limit",
+    ):
+        if int(getattr(args, name)) < 0:
+            raise RuntimeError(f"--{name.replace('_', '-')} must be >= 0")
+
 
 def main() -> int:
     args = parse_args()
@@ -79,6 +90,9 @@ def main() -> int:
             session_dir=cast(str, args.session_dir),
             timeout_ms=int(cast(int, args.timeout_ms)),
             browser_channel=cast(str, args.browser_channel),
+            rate_limit_max_per_batch=int(cast(int, args.rate_limit_max_per_batch)),
+            rate_limit_cooldown_seconds=int(cast(int, args.rate_limit_cooldown_seconds)),
+            rate_limit_daily_limit=int(cast(int, args.rate_limit_daily_limit)),
         )
         return run_liepin_submission(config)
 

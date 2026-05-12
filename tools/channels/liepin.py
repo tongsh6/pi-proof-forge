@@ -99,6 +99,9 @@ class LiepinChannel:
             9: ("unexpected_error", "unexpected error during submission"),
             10: ("job_page_unavailable", "job page is unavailable or invalid"),
             11: ("security_redirect", "redirected to security page — anti-bot triggered"),
+            12: ("target_verify_failed", "main job target verification failed"),
+            13: ("chat_send_resume_failed", "chat send-resume flow failed"),
+            14: ("rate_limited", "submission rate limit blocked this run"),
         }
         reason, detail = error_messages.get(exit_code, ("unknown_error", f"exit_code={exit_code}"))
         return Err(ChannelFailure(channel_id=self.channel_id, reason=reason, details=detail))

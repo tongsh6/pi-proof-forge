@@ -55,20 +55,22 @@ def make_context(
     session_dir.mkdir(parents=True, exist_ok=True)
     stealth = _make_stealth()
     with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context(
-            user_data_dir=str(session_dir),
-            headless=headless,
-            channel=channel,
-            viewport=VIEWPORT,
-            locale="zh-CN",
-            timezone_id="Asia/Shanghai",
-            user_agent=MAC_CHROME_UA,
-            args=[
+        launch_options: dict[str, object] = {
+            "user_data_dir": str(session_dir),
+            "headless": headless,
+            "viewport": VIEWPORT,
+            "locale": "zh-CN",
+            "timezone_id": "Asia/Shanghai",
+            "user_agent": MAC_CHROME_UA,
+            "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--disable-features=IsolateOrigins,site-per-process",
             ],
-            ignore_default_args=["--enable-automation"],
-        )
+            "ignore_default_args": ["--enable-automation"],
+        }
+        if channel:
+            launch_options["channel"] = channel
+        ctx = p.chromium.launch_persistent_context(**launch_options)
         # 把 stealth 应用到 context（对所有现有和未来的 page 生效）
         stealth.apply_stealth_sync(ctx)
         try:
