@@ -160,8 +160,11 @@ export PPF_ENABLE_LIEPIN_SEARCH=1
 # dry-run：仅生成执行计划与日志，不打开浏览器
 python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --dry-run
 
-# check mode：打开页面、校验登录态并执行上传/填表，但不点击提交
+# check mode：打开页面、校验登录态、确认主职位 jobId、执行"聊一聊 -> 发简历"，但停在最终确认发送前
 python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir .sessions --output-dir outputs/submissions --timeout-ms 45000
+
+# 频控参数默认值：每批最多 5 个，批间冷却 900 秒，日上限 30 个；传 0 可关闭对应限制
+# --rate-limit-max-per-batch 5 --rate-limit-cooldown-seconds 900 --rate-limit-daily-limit 30
 
 # submit mode：真实点击投递（要求 --resume 为 PDF）
 python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir .sessions --output-dir outputs/submissions --submit

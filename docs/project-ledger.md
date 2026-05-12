@@ -14,12 +14,12 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（301 tests，2026-05-09）**
+- **全链路集成测试 → 已恢复 ✅（306 tests，2026-05-12）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
-- **当前阻塞：无硬阻塞。P1 工程化任务（投递路径改"聊一聊"、频控算法、目标确认护栏）**
+- **当前阻塞：无硬阻塞。P1 工程化任务（Agent Loop → Liepin 新路径联调、真实批量频控验证）**
 
 ## 2. 已完成事项
 
@@ -89,12 +89,17 @@
 | **低关注度职位甄选** | **已完成** | tools/poc_pick_low_profile.py | 长沙 Java 搜索，排除大厂 | 用于端到端真实发送安全目标选择 |
 | **DOM 深度诊断 v2** | **已完成** | tools/poc_diagnose_dom_v2.py | 枚举可见按钮/链接/file input/iframe/关键文本 | 比 v1 多了 JS 渲染等待 + 多维度枚举 |
 | **直投测试脚本** | **已完成** | tools/test_liepin_direct.py | check-mode 脚本 | 独立于 agent loop 的直接投递测试入口 |
+| **Liepin 主流程聊一聊路径接入** | **已验证** | tools/submission/liepin.py + outputs/submissions/liepin/20260512-142057/submission_log.yaml | 真实 check-mode success；submit skipped | 主流程默认 target_verify → chat_send_resume；submit=false 停在最终确认前 |
+| **jobId 目标确认护栏接入主流程** | **已测试** | tools/submission/liepin.py | test_liepin_chat_send_resume.py | data-tlg 主按钮选择、推荐区排除、jobId mismatch 阻断 |
+| **全量测试依赖收集修复** | **已验证** | tools/setup_liepin_session.py | `python3 -m pytest tests/ -q` → 306 passed | Playwright 改为 lazy import，无 Playwright 环境不再阻断核心测试 |
+| **Liepin 投递频控算法** | **已测试** | tools/submission/rate_limit.py + tools/submission/liepin.py | test_submission_rate_limit.py | 默认每批 5、冷却 900s、日上限 30；dry-run 记录 rate_limit 计划 |
+| **Liepin 真实 check-mode 主流程验证** | **已验证** | outputs/submissions/liepin/20260512-142057/submission_log.yaml | rate_limit/open_job_page/login_check/target_verify/chat_send_resume success，submit skipped | 职位 `1971416782`，recruiter=臧女士；未点击最终确认发送 |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 301 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 301 passed in 0.34s |
+| 全部 306 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 306 passed in 0.34s |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -129,12 +134,11 @@
 |--------|------|------|------|----------|
 | ~~P0~~ | ~~猎聘风控限流~~ | ~~AppleScript 搜索和 Playwright 投递可能被重定向~~ | **已解决** | **playwright-stealth + 真实 UA + 人化节奏 绕过** |
 | ~~P0~~ | ~~可用职位页 check-mode 上传未验证~~ | ~~历史 run-deliver-6 实际职位已下线~~ | **已解决** | **PoC 端到端 6 步全通过（dry-run + real-send）** |
-| P1 | 真实投递路径从"上传简历"改为"聊一聊" | 当前 `liepin.py` 投递路径是旧的 upload→click submit，不匹配真实页面 | 代码未更新 | 需改写为：聊一聊 → 发简历 → 确认发送；或探测"投简历"直投按钮 |
-| P1 | 高频访问触发风控需频控算法 | 连续 6+ 职位访问触发 safe.liepin.com | 需工程化 | stealth 绕过了单次，但批量仍需严格频控（≤5/批 + 长休眠） |
+| P1 | 频控真实批量验证 | 频控算法已实现，但未用真实批量职位验证 safe.liepin.com 触发率 | 验证缺口 | 用低风险职位小批量 check-mode 验证 rate_limit blocked/success 日志 |
 | P2 | LiepinChannel session 路径耦合 run_id | 每次新 run 需手动创建 symlink | 设计缺口 | 低优先级，当前 workaround 可用 |
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
 | P4 | Gap tasks 仅检查 must_have，不检查 keywords | SLA/SLO 等关键词缺失不会触发补证据任务 | 设计缺口 | 低优先级 |
-| P5 | 误投防护需接入 liepin.py 主流程 | poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入 | 安全缺口 | P1 改造时一并接入 |
+| ~~P5~~ | ~~误投防护需接入 liepin.py 主流程~~ | ~~poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入~~ | **已解决** | **target_verify 已接入并有离线单测覆盖** |
 
 ## 6. 已废弃事项
 
@@ -144,9 +148,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | 改造 `liepin.py` 投递路径为"聊一聊"流程 | 真实页面 100% 用聊一聊，旧 upload 路径已失效 | check-mode → 聊一聊 → 发简历 → dry-run 全通过 |
-| 2 | 接入 jobId 目标确认护栏到主流程 | 上次误投湃乐多是直接教训 | 发送前必须校验 data-params.jobId 与 URL 一致 |
-| 3 | 频控算法工程化 | 批量投递会触发安全中心 | ≤5 职位/批，批间 ≥15min 冷却，日限额 30 |
+| 1 | Agent Loop → Liepin 新路径联调 | `liepin.py` 真实 check-mode 已通过，下一步验证 AgentLoop DELIVER 使用新路径 | DELIVER 事件成功或明确停在 submit=false check-mode |
+| 2 | 频控真实批量验证 | 批量投递会触发安全中心；算法已接入但未做真实批次验证 | ≤5 职位/批，批间 ≥15min 冷却，日限额 30，日志记录 rate_limit |
+| 3 | README/运行手册同步 Agent Loop 真实验证命令 | 主流程已前进，需避免新会话继续跑旧上传路径或错误 session-dir | 文档给出 `.venv/bin/python` + `--session-dir outputs/submissions` 的 check-mode 命令 |
 
 ## 8. 关键证据索引
 
