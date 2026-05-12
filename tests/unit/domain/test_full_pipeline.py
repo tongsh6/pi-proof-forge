@@ -272,6 +272,52 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             self.assertIn("REVIEW", event_types)
             self.assertIn("DELIVER", event_types)
 
+    def test_full_pipeline_batches_multiple_candidates_without_repeating_selection(self) -> None:
+        """Multi-candidate delivery should advance through the candidate batch once per round."""
+        with TemporaryDirectory() as tmp:
+            policy_path = Path(tmp) / "policy.yaml"
+            policy_path.write_text(
+                "n_pass_required: 1\n"
+                "matching_threshold: 0.3\n"
+                "evaluation_threshold: 0.3\n"
+                "max_rounds: 3\n"
+                "max_deliveries: 2\n"
+                "gate_mode: strict\n"
+                "delivery_mode: auto\n"
+                "batch_review: false\n"
+                "excluded_companies: []\n"
+                "excluded_legal_entities: []\n",
+                encoding="utf-8",
+            )
+            composer = _composer_class().from_policy_path(str(policy_path))
+            store = _file_run_store_class()(base_dir=tmp)
+
+            loop = composer.build_agent_loop(
+                run_id="run-multi-candidate-batch",
+                dry_run=True,
+                run_store=store,
+                evidence_cards=_make_evidence_cards(),
+                job_profile=_make_job_profile(),
+                candidates=_make_candidates(),
+            )
+
+            result = loop.run()
+
+            self.assertEqual(result.status, "DONE")
+            self.assertEqual(result.rounds_completed, 2)
+            events = store.load_events("run-multi-candidate-batch")
+            deliver_events = [e for e in events if e.event_type == "DELIVER"]
+            selected_ids = [event.payload.get("candidate") for event in deliver_events]
+            self.assertEqual(selected_ids, ["cand-001", "cand-002"])
+            self.assertTrue(
+                all(
+                    event.payload.get("selection_strategy") == "confidence_desc_round_robin"
+                    for event in deliver_events
+                )
+            )
+            done_events = [e for e in events if e.event_type == "DONE"]
+            self.assertEqual(done_events[-1].payload.get("stop_reason"), "max_deliveries")
+
     def test_full_pipeline_excluded_company_filtered(self) -> None:
         """Candidates from excluded companies should be filtered at DISCOVER."""
         with TemporaryDirectory() as tmp:

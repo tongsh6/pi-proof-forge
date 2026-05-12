@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from tools.config.fragments import PolicyConfig
+from tools.domain.value_objects import Candidate
 
 
 def _agent_loop_class():
@@ -15,6 +16,11 @@ def _agent_loop_class():
 def _file_run_store_class():
     module = import_module("tools.infra.persistence.file_run_store")
     return module.FileRunStore
+
+
+def _rank_candidate_batch():
+    module = import_module("tools.orchestration.agent_loop")
+    return module._rank_candidate_batch
 
 
 class AgentLoopTests(unittest.TestCase):
@@ -130,6 +136,41 @@ excluded_legal_entities: []
             result = loop.run()
             self.assertEqual(result.status, "DONE")
             self.assertEqual(result.rounds_completed, 1)
+
+    def test_candidate_batch_ranking_is_stable_and_excludes_selected(self) -> None:
+        candidates = (
+            Candidate(
+                candidate_id="cand-b",
+                direction="backend",
+                company="B",
+                job_url="https://example.com/b",
+                confidence=0.9,
+                source="job_leads",
+                merged_sources=("job_leads",),
+            ),
+            Candidate(
+                candidate_id="cand-a",
+                direction="backend",
+                company="A",
+                job_url="https://example.com/a",
+                confidence=0.9,
+                source="job_leads",
+                merged_sources=("job_leads",),
+            ),
+            Candidate(
+                candidate_id="cand-c",
+                direction="backend",
+                company="C",
+                job_url="https://example.com/c",
+                confidence=0.7,
+                source="job_leads",
+                merged_sources=("job_leads",),
+            ),
+        )
+
+        ranked = _rank_candidate_batch()(candidates, {"cand-a"})
+
+        self.assertEqual([candidate.candidate_id for candidate in ranked], ["cand-b", "cand-c"])
 
 
 if __name__ == "__main__":

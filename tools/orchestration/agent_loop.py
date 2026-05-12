@@ -178,6 +178,7 @@ class AgentLoop:
     def _run_full_pipeline(self) -> AgentLoopResult:
         rounds_completed = 0
         deliveries_completed = 0
+        selected_candidate_ids: set[str] = set()
         sm = self._state_machine
 
         self._log_state("INIT", 0, {"dry_run": self._dry_run})
@@ -250,7 +251,13 @@ class AgentLoop:
             current_state = self._transition(sm, current_state, "next")
 
             # Only consider candidates with valid job URLs for delivery
-            deliverable = [c for c in accepted_candidates if c.job_url and c.job_url.startswith("http")]
+            deliverable = _rank_candidate_batch(
+                [
+                    c for c in accepted_candidates
+                    if c.job_url and c.job_url.startswith("http")
+                ],
+                selected_candidate_ids,
+            )
             if not deliverable and accepted_candidates:
                 self._log_state("GATE", round_index,
                                 {"result": "skip", "reason": "no_deliverable_candidates"})
@@ -284,7 +291,11 @@ class AgentLoop:
 
             self._log_state("GATE", round_index,
                             {"result": "pass",
-                             "candidate": gate_candidate.candidate_id if gate_candidate else ""})
+                             "candidate": gate_candidate.candidate_id if gate_candidate else "",
+                             "candidate_pool": [c.candidate_id for c in deliverable],
+                             "selection_strategy": "confidence_desc_round_robin"})
+            if gate_candidate is not None:
+                selected_candidate_ids.add(gate_candidate.candidate_id)
             current_state = self._transition(sm, current_state, "pass")
 
             # --- REVIEW ---
@@ -299,13 +310,19 @@ class AgentLoop:
                 if isinstance(delivery, Ok):
                     deliveries_completed += 1
                     self._log_state("DELIVER", round_index,
-                                    {"channel": delivery.value.channel_id})
+                                    {"channel": delivery.value.channel_id,
+                                     "candidate": gate_candidate.candidate_id,
+                                     "selection_strategy": "confidence_desc_round_robin"})
                 else:
                     self._log_state("DELIVER", round_index,
                                     {"error": delivery.error.reason})
             else:
+                deliveries_completed += 1
                 self._log_state("DELIVER", round_index,
-                                {"dry_run": True, "would_deliver": True})
+                                {"dry_run": True,
+                                 "would_deliver": True,
+                                 "candidate": gate_candidate.candidate_id if gate_candidate else "",
+                                 "selection_strategy": "confidence_desc_round_robin"})
             current_state = self._transition(sm, current_state, "next")
 
             # --- LEARN ---
@@ -455,3 +472,17 @@ def _gate_engine_for_round(
 ) -> object:
     from tools.orchestration.gate_engine import GateEngine
     return GateEngine(policy, run_id, round_index)
+
+
+def _rank_candidate_batch(
+    candidates: Sequence[Candidate],
+    selected_candidate_ids: set[str],
+) -> list[Candidate]:
+    remaining = [
+        candidate for candidate in candidates
+        if candidate.candidate_id not in selected_candidate_ids
+    ]
+    return sorted(
+        remaining,
+        key=lambda candidate: (-candidate.confidence, candidate.candidate_id),
+    )

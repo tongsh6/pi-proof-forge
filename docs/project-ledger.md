@@ -14,12 +14,12 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（322 tests，2026-05-13）**
+- **全链路集成测试 → 已恢复 ✅（324 tests，2026-05-13）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
-- **当前阻塞：无硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、GUI 投递状态可视化、真实 submit 前安全门禁均已闭环（2026-05-13）**
+- **当前阻塞：无硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、多候选批次策略、GUI 投递状态可视化、真实 submit 前安全门禁均已闭环（2026-05-13）**
 
 ## 2. 已完成事项
 
@@ -61,7 +61,7 @@
 | GUI 前端骨架 | 已实现 | ui/src/ (29 files) | 9 页面路由 + i18n + RPC transport | 骨架级别，非产品级 |
 | **Composer build_agent_loop** | **已完成** | tools/config/composer.py | 集成测试通过 | 组装四大引擎 + GateEngine + ReviewStage + Channels |
 | **AgentLoop 全阶段集成** | **已完成** | tools/orchestration/agent_loop.py | 6 integration tests | INIT→DISCOVER→SCORE→GENERATE→EVALUATE→GATE→REVIEW→DELIVER→LEARN→DONE |
-| **全链路集成测试** | **已完成** | tests/unit/domain/test_full_pipeline.py | 6 tests passed | 含 dry-run 全状态、max_rounds、max_deliveries、企业排除、事件回放 |
+| **全链路集成测试** | **已完成** | tests/unit/domain/test_full_pipeline.py | 7 tests passed | 含 dry-run 全状态、max_rounds、max_deliveries、企业排除、事件回放、多候选批次策略 |
 | **Benchmark 基线** | **已完成** | docs/benchmarks/benchmark-001.md | rule-mode 完整评测 | 发现 matching 引擎不搜索 stack 字段 |
 | **Matching 引擎 stack 搜索** | **已完成** | tools/domain/models.py + rule_scorer.py + store.py | 2 new tests | K-score 0.0→0.6，证据卡可区分 |
 | **Liepin Channel 真实实现** | **已完成** | tools/channels/liepin.py | 集成 tools/submission/liepin.py (464行 Playwright) | 无 Playwright 时优雅降级为模拟模式 |
@@ -102,6 +102,7 @@
 | **Liepin 小批量频控真实验证** | **已验证** | outputs/submissions/batch-rate-limit-001/ | 2 次 check-mode success + 第 3 次 `batch_cooldown` blocked | 使用同一 output-dir 共享 `liepin_rate_limit.json`；未点击最终确认发送 |
 | **本地残留证据忽略规则** | **已完成** | .gitignore | `git status --short` | `.idea/`、根目录 debug DOM/截图、`policy_validation.yaml` 不纳入主证据链 |
 | **批量候选来源扩展** | **已验证** | job_leads/jl-validated-20260513.yaml + outputs/submissions/job-leads-expanded-001/ | 3 个新增真实 URL 均 check-mode success | 未点击最终确认发送；loader 可读取结构化 `items` |
+| **多候选 Agent Loop 批次策略** | **已测试** | tools/orchestration/agent_loop.py | test_full_pipeline.py + test_agent_loop.py | 按 confidence desc + candidate_id 稳定排序；每轮排除已选候选；dry-run 也遵守 max_deliveries 计划上限 |
 | **GUI 投递状态可视化** | **已验证** | tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx | test_submission_handler.py + `pnpm --dir ui build` | 展示 mode、job_url、error、last_step、rate_limit 状态和详情 |
 | **真实 submit 前安全门禁** | **已测试** | tools/submission/liepin.py + tools/submission/run_submission.py + tools/channels/liepin.py | test_liepin_chat_send_resume.py + test_run_submission_cli.py + test_channels.py | submit 必须 PDF、显式 jobId、显式 recruiter，且与 target_verify 二次匹配 |
 
@@ -109,7 +110,7 @@
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 322 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 322 passed |
+| 全部 324 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 324 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -162,9 +163,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | 多候选 Agent Loop 批次策略 | `job_leads` 已扩展，但 Agent Loop 批次选择/排序策略仍未做真实多候选演练 | 多候选 DISCOVER/GATE/DELIVER 顺序可解释，且遵守频控 |
-| 2 | GUI 运行日志详情页 | Submissions 列表已展示关键状态，但仍缺单次 run 深度详情 | 点击 run 后展示完整 steps、截图路径和原始日志路径 |
-| 3 | submit 安全门禁真实 dry-run 演练 | 代码级门禁已测试，但未用真实页面跑 submit_safety blocked 路径 | 使用 PDF + 错误 recruiter/jobId 运行 submit，确认阻断在 submit_safety 且未点击最终确认 |
+| 1 | GUI 运行日志详情页 | Submissions 列表已展示关键状态，但仍缺单次 run 深度详情 | 点击 run 后展示完整 steps、截图路径和原始日志路径 |
+| 2 | submit 安全门禁真实 dry-run 演练 | 代码级门禁已测试，但未用真实页面跑 submit_safety blocked 路径 | 使用 PDF + 错误 recruiter/jobId 运行 submit，确认阻断在 submit_safety 且未点击最终确认 |
+| 3 | Agent Loop 批次策略真实 check-mode 演练 | 代码级批次策略已测试，但未用真实 job_leads 跑多候选 check-mode 端到端批次 | 多候选 DISCOVER/GATE/DELIVER 顺序与 submission 日志可对账，且通道频控仍生效 |
 
 ## 8. 关键证据索引
 
@@ -187,7 +188,7 @@
 | Composer | tools/config/composer.py | 组装点（含 build_agent_loop） |
 | Sidecar | tools/sidecar/server.py | GUI-Python JSON-RPC 桥接 |
 | GUI 设计 | ui/design/DESIGN.md | 终版 9 页 IA |
-| 测试 | tests/ | 301 tests |
+| 测试 | tests/ | 324 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |
 | **反反爬基础设施** | **tools/submission/_browser.py** | **stealth + human pacing + 安全护栏** |
 | **端到端投递 PoC** | **tools/poc_e2e_send.py** | **6 步 dry-run/real-send 脚本** |
@@ -200,6 +201,7 @@
 | **Agent Loop check-mode 闭环验证** | **outputs/agent_runs/run-agent-liepin-chat-005/ + outputs/submissions/run-agent-liepin-chat-005/** | **login_check/target_verify/chat_send_resume success；submit skipped** |
 | **Liepin 小批量频控验证** | **outputs/submissions/batch-rate-limit-001/** | **2 次 check-mode success；第 3 次 blocked=batch_cooldown** |
 | **已验证 job_leads** | **job_leads/jl-validated-20260513.yaml** | **3 个新增低风险真实 URL，均有 check-mode 日志** |
+| **Agent Loop 批次策略** | **tools/orchestration/agent_loop.py + tests/unit/domain/test_full_pipeline.py** | **confidence_desc_round_robin；dry-run 计划遵守 max_deliveries；DELIVER 事件记录 candidate + selection_strategy** |
 | **GUI 投递状态可视化** | **tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx** | **submission.list 返回并展示 error/last_step/rate_limit** |
 | **submit 安全门禁** | **tools/submission/liepin.py + tools/submission/run_submission.py + tools/channels/liepin.py** | **PDF + jobId + recruiter 三重确认，target_verify 后二次匹配** |
 | 发版记录 | release-notes/ | v0.1.3 ~ v0.1.9 |
