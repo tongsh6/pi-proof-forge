@@ -117,6 +117,39 @@ class ProcessRequestTests(unittest.TestCase):
         self.assertIn("error", response)
         self.assertEqual(response["error"]["code"], "CONFLICT")
 
+    def test_submission_detail_method_returns_success(self) -> None:
+        request = {
+            "jsonrpc": "2.0",
+            "id": "req_007",
+            "method": "submission.detail",
+            "params": {
+                "meta": {"correlation_id": "corr_007"},
+                "submission_id": "run-001",
+            },
+        }
+        with TemporaryDirectory() as tmp_dir:
+            submissions_dir = Path(tmp_dir) / "submissions"
+            run_dir = submissions_dir / "liepin" / "run-001"
+            run_dir.mkdir(parents=True)
+            (run_dir / "submission_log.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": "run-001",
+                        "platform": "liepin",
+                        "status": "success",
+                        "steps": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir
+            ):
+                response = process_request(request)
+
+        self.assertIn("result", response)
+        self.assertEqual(response["result"]["submission"]["submission_id"], "run-001")
+
 
 class BuildResponseTests(unittest.TestCase):
     def test_build_success_response(self) -> None:

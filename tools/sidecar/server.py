@@ -32,6 +32,7 @@ from tools.sidecar.handlers.resume import (
     handle_resume_upload,
 )
 from tools.sidecar.handlers.submission import (
+    handle_submission_detail,
     handle_submission_list,
     handle_submission_retry,
 )
@@ -67,6 +68,7 @@ def _create_router() -> Router:
     router.register("resume.upload", handle_resume_upload)
     router.register("resume.getPreview", handle_resume_get_preview)
     router.register("resume.exportPdf", handle_resume_export_pdf)
+    router.register("submission.detail", handle_submission_detail)
     router.register("submission.list", handle_submission_list)
     router.register("submission.retry", handle_submission_retry)
     router.register("settings.get", handle_settings_get)

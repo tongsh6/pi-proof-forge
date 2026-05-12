@@ -27,6 +27,7 @@ import type {
   ReviewDecisionItem,
   SettingsGetResult,
   SettingsUpdateResult,
+  SubmissionDetailResult,
   SubmissionListResult,
   SubmissionRetryResult,
   SubmitReviewResult,
@@ -283,6 +284,14 @@ export async function listSubmissions(): Promise<SubmissionListResult> {
     page_size: 20,
     sort: { field: "submitted_at", order: "desc" },
     filters: { company: null, channel: null, status: null, date_range: null },
+  });
+}
+
+export async function getSubmissionDetail(
+  submissionId: string
+): Promise<SubmissionDetailResult> {
+  return client.call<SubmissionDetailResult>("submission.detail", {
+    submission_id: submissionId,
   });
 }
 

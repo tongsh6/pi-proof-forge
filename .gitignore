@@ -16,6 +16,7 @@ ui/src-tauri/resources/job_profiles/**
 # Generated artifacts
 outputs/
 ui/src-tauri/gen/
+.playwright-cli/
 
 !ui/src-tauri/resources/python/.gitkeep
 !ui/src-tauri/resources/sidecar/.gitkeep

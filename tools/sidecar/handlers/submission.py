@@ -133,6 +133,69 @@ def _submission_item(path: Path) -> dict[str, Any]:
     }
 
 
+def _find_submission_log(submission_id: str) -> Path | None:
+    for path in _submission_log_paths():
+        payload = _load_submission_log(path)
+        if str(payload.get("run_id", path.parent.name)) == submission_id:
+            return path
+    return None
+
+
+def _detail_step(raw: object, run_dir: Path) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {
+            "name": "",
+            "status": "",
+            "detail": "",
+            "screenshot": "",
+            "screenshot_path": "",
+            "screenshot_exists": False,
+        }
+    screenshot = str(raw.get("screenshot", ""))
+    screenshot_path = str(run_dir / screenshot) if screenshot else ""
+    return {
+        "name": str(raw.get("name", "")),
+        "status": str(raw.get("status", "")),
+        "detail": str(raw.get("detail", "")),
+        "screenshot": screenshot,
+        "screenshot_path": screenshot_path,
+        "screenshot_exists": bool(screenshot and Path(screenshot_path).exists()),
+    }
+
+
+def handle_submission_detail(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    submission_id = str(params["submission_id"])
+    log_path = _find_submission_log(submission_id)
+    if log_path is None:
+        raise KeyError(f"NOT_FOUND: {submission_id}")
+
+    payload = _load_submission_log(log_path)
+    run_dir = log_path.parent
+    steps_raw = payload.get("steps", [])
+    steps = (
+        [_detail_step(step, run_dir) for step in steps_raw]
+        if isinstance(steps_raw, list)
+        else []
+    )
+    yaml_path = run_dir / "submission_log.yaml"
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "submission": {
+            **_submission_item(log_path),
+            "started_at": str(payload.get("started_at", "")),
+            "ended_at": str(payload.get("ended_at", "")),
+            "resume_path": str(payload.get("resume_path", "")),
+            "profile_path": str(payload.get("profile_path", "")),
+            "headless": bool(payload.get("headless", True)),
+            "browser_channel": str(payload.get("browser_channel", "")),
+            "steps": steps,
+            "log_json_path": str(log_path),
+            "log_yaml_path": str(yaml_path) if yaml_path.exists() else "",
+        },
+    }
+
+
 def handle_submission_list(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
     cursor = _parse_cursor(params.get("cursor"))

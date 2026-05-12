@@ -316,6 +316,31 @@ export interface SubmissionListResult extends RpcResultBase {
   next_cursor: string | null;
 }
 
+export interface SubmissionDetailStep {
+  name: string;
+  status: string;
+  detail: string;
+  screenshot: string;
+  screenshot_path: string;
+  screenshot_exists: boolean;
+}
+
+export interface SubmissionDetail extends SubmissionListItem {
+  started_at: string;
+  ended_at: string;
+  resume_path: string;
+  profile_path: string;
+  headless: boolean;
+  browser_channel: string;
+  steps: SubmissionDetailStep[];
+  log_json_path: string;
+  log_yaml_path: string;
+}
+
+export interface SubmissionDetailResult extends RpcResultBase {
+  submission: SubmissionDetail;
+}
+
 export interface SubmissionRetryResult extends RpcResultBase {
   submission_id: string;
   status: string;

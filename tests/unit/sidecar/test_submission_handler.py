@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from tools.sidecar.handlers.submission import (
+    handle_submission_detail,
     handle_submission_list,
     handle_submission_retry,
 )
@@ -338,6 +339,85 @@ class SubmissionListTests(unittest.TestCase):
         self.assertEqual(result["items"][1]["submission_id"], "20260301-100000")
         self.assertEqual(result["items"][2]["status"], "done")
         self.assertEqual(result["items"][2]["submission_id"], "20260302-110000")
+
+
+class SubmissionDetailTests(unittest.TestCase):
+    def test_detail_returns_steps_screenshots_and_log_paths(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            submissions_dir = Path(tmp_dir) / "submissions"
+            run_dir = submissions_dir / "liepin" / "20260304-124634"
+            screenshot_dir = run_dir / "screenshots"
+            screenshot_dir.mkdir(parents=True)
+            screenshot_path = screenshot_dir / "02_open_job_page.png"
+            screenshot_path.write_bytes(b"png")
+            (run_dir / "submission_log.yaml").write_text(
+                'run_id: "20260304-124634"\n',
+                encoding="utf-8",
+            )
+            (run_dir / "submission_log.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": "20260304-124634",
+                        "platform": "liepin",
+                        "mode": "check",
+                        "status": "success",
+                        "job_url": "https://www.liepin.com/job/123.shtml",
+                        "resume_path": "outputs/v1.md",
+                        "profile_path": "profiles/candidate_profile.yaml",
+                        "started_at": "2026-03-04T12:46:34+00:00",
+                        "ended_at": "2026-03-04T12:46:37+00:00",
+                        "steps": [
+                            {
+                                "name": "open_job_page",
+                                "status": "success",
+                                "detail": "job page opened",
+                                "screenshot": "screenshots/02_open_job_page.png",
+                            },
+                            {
+                                "name": "submit",
+                                "status": "skipped",
+                                "detail": "submit not enabled",
+                                "screenshot": "",
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir
+            ):
+                result = handle_submission_detail(
+                    {
+                        "meta": {"correlation_id": "corr_detail"},
+                        "submission_id": "20260304-124634",
+                    }
+                )
+
+        self.assertEqual(result["meta"]["correlation_id"], "corr_detail")
+        self.assertEqual(result["submission"]["submission_id"], "20260304-124634")
+        self.assertEqual(result["submission"]["log_json_path"], str(run_dir / "submission_log.json"))
+        self.assertEqual(result["submission"]["log_yaml_path"], str(run_dir / "submission_log.yaml"))
+        self.assertEqual(result["submission"]["steps"][0]["name"], "open_job_page")
+        self.assertEqual(result["submission"]["steps"][0]["screenshot"], "screenshots/02_open_job_page.png")
+        self.assertEqual(result["submission"]["steps"][0]["screenshot_path"], str(screenshot_path))
+        self.assertTrue(result["submission"]["steps"][0]["screenshot_exists"])
+        self.assertFalse(result["submission"]["steps"][1]["screenshot_exists"])
+
+    def test_detail_not_found_raises(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            submissions_dir = Path(tmp_dir) / "submissions"
+            with patch(
+                "tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir
+            ):
+                with self.assertRaises(KeyError):
+                    handle_submission_detail(
+                        {
+                            "meta": {"correlation_id": "corr_missing"},
+                            "submission_id": "missing",
+                        }
+                    )
 
 
 class SubmissionRetryTests(unittest.TestCase):
