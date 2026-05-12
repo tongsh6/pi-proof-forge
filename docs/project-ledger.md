@@ -14,12 +14,12 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（306 tests，2026-05-12）**
+- **全链路集成测试 → 已恢复 ✅（314 tests，2026-05-12）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
-- **当前阻塞：无硬阻塞。Agent Loop → Liepin check-mode 已闭环；下一步进入真实批量频控验证（2026-05-12）**
+- **当前阻塞：无硬阻塞。Agent Loop → Liepin check-mode 与小批量频控验证均已闭环（2026-05-12）**
 
 ## 2. 已完成事项
 
@@ -99,12 +99,13 @@
 | **登录态误判修复** | **已验证** | tools/submission/liepin.py | test_liepin_chat_send_resume.py + `run-agent-liepin-chat-004` | 登录弹窗/登录入口优先判定为未登录；不再把公开“聊一聊”按钮误判为已登录 |
 | **Agent Loop → Liepin 新路径联调** | **已接入主流程** | outputs/agent_runs/run-agent-liepin-chat-003/run_log.json + outputs/submissions/run-agent-liepin-chat-003/liepin/20260512-150533/submission_log.yaml | DISCOVER=1、GATE pass、进入 DELIVER；target_verify success | 该轮登录态随后弹出登录框，旧逻辑误报 chat_send_resume_failed；已由 004 修正为 login_required |
 | **Agent Loop → Liepin check-mode 闭环** | **已验证** | outputs/agent_runs/run-agent-liepin-chat-005/run_log.json + outputs/submissions/run-agent-liepin-chat-005/liepin/20260512-152334/submission_log.yaml | login_check/target_verify/chat_send_resume success；submit skipped | 使用刷新后的共享登录态；未点击最终确认发送 |
+| **Liepin 小批量频控真实验证** | **已验证** | outputs/submissions/batch-rate-limit-001/ | 2 次 check-mode success + 第 3 次 `batch_cooldown` blocked | 使用同一 output-dir 共享 `liepin_rate_limit.json`；未点击最终确认发送 |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 306 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 306 passed in 0.34s |
+| 全部 314 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 314 passed in 0.30s |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -129,6 +130,7 @@
 | **13 职位入口采样** | **tools/poc_probe_jobs.py** | **7/13 聊一聊 only，0/13 file input** | **统一入口实证** |
 | **误投 root cause** | **DOM 离线分析** | **text=聊一聊 匹配 40 次（20 雇主），主按钮文本"继续聊"** | **必须使用 data-tlg-elem-id 锁定主按钮** |
 | **Agent Loop→Liepin 新路径联调** | `run-agent-liepin-chat-003` / `run-agent-liepin-chat-004` / `run-agent-liepin-chat-005` | 003 进入 DELIVER 且 target_verify success；004 正确阻断为 login_required；005 check-mode success | 当前真实阻塞已解除 |
+| **Liepin 小批量频控验证** | `outputs/submissions/batch-rate-limit-001/` | 154502/154805 两次 success；155641 blocked=batch_cooldown | 频控在真实 check-mode 路径生效 |
 
 ## 4. 进行中事项
 
@@ -140,7 +142,7 @@
 |--------|------|------|------|----------|
 | ~~P0~~ | ~~猎聘风控限流~~ | ~~AppleScript 搜索和 Playwright 投递可能被重定向~~ | **已解决** | **playwright-stealth + 真实 UA + 人化节奏 绕过** |
 | ~~P0~~ | ~~可用职位页 check-mode 上传未验证~~ | ~~历史 run-deliver-6 实际职位已下线~~ | **已解决** | **PoC 端到端 6 步全通过（dry-run + real-send）** |
-| P1 | 频控真实批量验证 | 频控算法已实现，但未用真实批量职位验证 safe.liepin.com 触发率 | 验证缺口 | 用低风险职位小批量 check-mode 验证 rate_limit blocked/success 日志 |
+| ~~P1~~ | ~~频控真实批量验证~~ | ~~频控算法已实现，但未用真实批量职位验证 safe.liepin.com 触发率~~ | **已解决** | **`batch-rate-limit-001`：2 次 success + 第 3 次 batch_cooldown** |
 | ~~P1~~ | ~~猎聘共享登录态刷新后复跑 Agent Loop~~ | ~~当前 `run-agent-liepin-chat-004` 正确阻断于 login_required~~ | **已解决** | **`run-agent-liepin-chat-005` check-mode success** |
 | ~~P2~~ | ~~LiepinChannel session 路径耦合 run_id~~ | ~~每次新 run 需手动创建 symlink~~ | **已解决** | **新增 `PPF_LIEPIN_SESSION_DIR` 显式覆盖** |
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
@@ -155,9 +157,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | 频控真实批量验证 | 批量投递会触发安全中心；算法已接入但未做真实批次验证 | ≤5 职位/批，批间 ≥15min 冷却，日限额 30，日志记录 rate_limit |
-| 2 | README/运行手册同步 Agent Loop 真实验证命令 | 主流程已前进，需避免新会话继续跑旧上传路径或错误 session-dir | 文档给出 `PPF_LIEPIN_SESSION_DIR=outputs/submissions` 的 Agent Loop check-mode 命令 |
-| 3 | 清理/归档本地残留证据 | 当前存在 debug DOM、图片和 policy_validation 本地残留 | 明确纳入 docs 证据索引或移入归档目录；不混入主流程代码提交 |
+| 1 | 清理/归档本地残留证据 | 当前存在 debug DOM、图片和 policy_validation 本地残留 | 明确纳入 docs 证据索引或移入归档目录；不混入主流程代码提交 |
+| 2 | 批量候选来源扩展 | 当前真实验证主要依赖单一 `job_leads` URL | 至少 3 个低风险真实 URL 进入 `job_leads`，并只跑 check-mode |
+| 3 | GUI/Sidecar 产品化联调 | 后端闭环稳定后，GUI 仍为骨架级别 | GUI 能读取运行日志、展示投递状态和频控阻断原因 |
 
 ## 8. 关键证据索引
 
@@ -191,5 +193,6 @@
 | **Agent Loop Liepin 联调日志** | **outputs/agent_runs/run-agent-liepin-chat-003/ + outputs/submissions/run-agent-liepin-chat-003/** | **进入 DELIVER，target_verify success；暴露登录态误判** |
 | **登录态误判修复验证** | **outputs/agent_runs/run-agent-liepin-chat-004/ + outputs/submissions/run-agent-liepin-chat-004/** | **共享登录态过期时正确阻断为 login_required** |
 | **Agent Loop check-mode 闭环验证** | **outputs/agent_runs/run-agent-liepin-chat-005/ + outputs/submissions/run-agent-liepin-chat-005/** | **login_check/target_verify/chat_send_resume success；submit skipped** |
+| **Liepin 小批量频控验证** | **outputs/submissions/batch-rate-limit-001/** | **2 次 check-mode success；第 3 次 blocked=batch_cooldown** |
 | 发版记录 | release-notes/ | v0.1.3 ~ v0.1.9 |
 | 经验沉淀 | AIEF/context/experience/ | 21 lessons + 2 summaries |

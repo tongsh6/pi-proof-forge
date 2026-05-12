@@ -161,13 +161,22 @@ export PPF_ENABLE_LIEPIN_SEARCH=1
 python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --dry-run
 
 # check mode：打开页面、校验登录态、确认主职位 jobId、执行"聊一聊 -> 发简历"，但停在最终确认发送前
-python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir .sessions --output-dir outputs/submissions --timeout-ms 45000
+.venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/v1.md --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions --timeout-ms 45000 --browser-channel chrome --no-headless
 
 # 频控参数默认值：每批最多 5 个，批间冷却 900 秒，日上限 30 个；传 0 可关闭对应限制
 # --rate-limit-max-per-batch 5 --rate-limit-cooldown-seconds 900 --rate-limit-daily-limit 30
 
+# 共享登录态刷新：会写入 outputs/submissions/liepin/session/liepin
+.venv/bin/python3 tools/setup_liepin_session.py --session-dir outputs/submissions/liepin/session --browser-channel chrome --timeout-ms 45000
+
+# Agent Loop check mode：复用同一共享登录态，submit 默认关闭，停在最终确认发送前
+PPF_LIEPIN_SESSION_DIR=outputs/submissions PPF_OUTPUT_DIR=outputs/submissions PPF_HEADLESS=0 PPF_BROWSER_CHANNEL=chrome .venv/bin/python -m tools.cli.entrypoints agent --policy policy.yaml --run-id run-agent-liepin-chat-005 --output-dir outputs/agent_runs --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml
+
+# 真实小批量频控验证：同一 output-dir 共享 rate-limit 状态；第 3 次应返回 batch_cooldown
+.venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/v1.md --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions/batch-rate-limit-001 --timeout-ms 45000 --browser-channel chrome --no-headless --rate-limit-max-per-batch 2 --rate-limit-cooldown-seconds 900 --rate-limit-daily-limit 30
+
 # submit mode：真实点击投递（要求 --resume 为 PDF）
-python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir .sessions --output-dir outputs/submissions --submit
+.venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions --browser-channel chrome --no-headless --submit
 
 # 投递就绪门禁（要求最新一次 run 为 submit + success + 至少 1 张截图）
 python3 tools/check_submission_readiness.py --root outputs/submissions --platform liepin --require-status success --min-screenshots 1
