@@ -31,3 +31,9 @@ ui/src-tauri/gen/
 
 # Local browser/session state
 .sessions/
+
+# Local IDE and scratch diagnostics
+.idea/
+debug_dom*.html
+debug_dom*.png
+policy_validation.yaml

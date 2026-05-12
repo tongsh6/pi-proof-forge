@@ -100,6 +100,7 @@
 | **Agent Loop → Liepin 新路径联调** | **已接入主流程** | outputs/agent_runs/run-agent-liepin-chat-003/run_log.json + outputs/submissions/run-agent-liepin-chat-003/liepin/20260512-150533/submission_log.yaml | DISCOVER=1、GATE pass、进入 DELIVER；target_verify success | 该轮登录态随后弹出登录框，旧逻辑误报 chat_send_resume_failed；已由 004 修正为 login_required |
 | **Agent Loop → Liepin check-mode 闭环** | **已验证** | outputs/agent_runs/run-agent-liepin-chat-005/run_log.json + outputs/submissions/run-agent-liepin-chat-005/liepin/20260512-152334/submission_log.yaml | login_check/target_verify/chat_send_resume success；submit skipped | 使用刷新后的共享登录态；未点击最终确认发送 |
 | **Liepin 小批量频控真实验证** | **已验证** | outputs/submissions/batch-rate-limit-001/ | 2 次 check-mode success + 第 3 次 `batch_cooldown` blocked | 使用同一 output-dir 共享 `liepin_rate_limit.json`；未点击最终确认发送 |
+| **本地残留证据忽略规则** | **已完成** | .gitignore | `git status --short` | `.idea/`、根目录 debug DOM/截图、`policy_validation.yaml` 不纳入主证据链 |
 
 ## 3. 已验证事项
 
@@ -157,9 +158,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | 清理/归档本地残留证据 | 当前存在 debug DOM、图片和 policy_validation 本地残留 | 明确纳入 docs 证据索引或移入归档目录；不混入主流程代码提交 |
-| 2 | 批量候选来源扩展 | 当前真实验证主要依赖单一 `job_leads` URL | 至少 3 个低风险真实 URL 进入 `job_leads`，并只跑 check-mode |
-| 3 | GUI/Sidecar 产品化联调 | 后端闭环稳定后，GUI 仍为骨架级别 | GUI 能读取运行日志、展示投递状态和频控阻断原因 |
+| 1 | 批量候选来源扩展 | 当前真实验证主要依赖单一 `job_leads` URL | 至少 3 个低风险真实 URL 进入 `job_leads`，并只跑 check-mode |
+| 2 | GUI/Sidecar 产品化联调 | 后端闭环稳定后，GUI 仍为骨架级别 | GUI 能读取运行日志、展示投递状态和频控阻断原因 |
+| 3 | 真实 submit 前安全门禁 | check-mode 已闭环，但真实发送仍需更严格的人审门禁 | submit 模式必须要求显式确认、PDF 简历、目标 jobId/recruiter 二次确认 |
 
 ## 8. 关键证据索引
 
