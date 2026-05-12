@@ -6,7 +6,7 @@ from typing import TypedDict
 
 class ParsedDoc(TypedDict):
     scalars: dict[str, str]
-    lists: dict[str, list[str]]
+    lists: dict[str, list[str | dict[str, str]]]
 
 
 def unquote(value: str) -> str:
@@ -49,7 +49,7 @@ def _fold_block_scalar_lines(lines: list[str]) -> str:
 
 def parse_simple_yaml(text: str) -> ParsedDoc:
     scalars: dict[str, str] = {}
-    lists: dict[str, list[str]] = {}
+    lists: dict[str, list[str | dict[str, str]]] = {}
     current_list_key: str | None = None
     lines = text.splitlines()
     index = 0
@@ -64,6 +64,34 @@ def parse_simple_yaml(text: str) -> ParsedDoc:
         list_match = re.match(r"^\s*-\s*(.+)$", line)
         if list_match and current_list_key is not None:
             value = unquote(list_match.group(1).strip())
+            inline_map_match = re.match(
+                r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$",
+                value,
+            )
+            if current_list_key == "items" and inline_map_match:
+                item = {
+                    inline_map_match.group(1): unquote(
+                        inline_map_match.group(2).strip()
+                    )
+                }
+                index += 1
+                while index < len(lines):
+                    child_line = lines[index].rstrip()
+                    if not child_line or child_line.lstrip().startswith("#"):
+                        index += 1
+                        continue
+                    if re.match(r"^\s*-\s*", child_line) or not child_line[:1].isspace():
+                        break
+                    child_match = re.match(
+                        r"^\s+([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.+)$",
+                        child_line,
+                    )
+                    if not child_match:
+                        break
+                    item[child_match.group(1)] = unquote(child_match.group(2).strip())
+                    index += 1
+                lists[current_list_key].append(item)
+                continue
             lists[current_list_key].append(value)
             index += 1
             continue

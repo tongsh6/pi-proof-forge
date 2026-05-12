@@ -332,18 +332,8 @@ def _is_logged_in(page: Page) -> bool:
     if login_modal.count() > 0:
         return False
 
-    # Positive check: elements that only appear when logged in
-    # These are highly reliable indicators of a valid session
-    user_indicators = page.locator(
-        "[data-selector='chat-chat']:visible, "
-        "[data-selector='c-logout']:visible, "
-        ".recruiter-info-box:visible, "
-        ".nav-user-item:visible"
-    )
-    if user_indicators.count() > 0:
-        return True
-
-    # Negative check: If no positive indicators, look for visible login prompts
+    # Negative login prompts must dominate because public job pages can still
+    # render chat/apply buttons before the user is authenticated.
     inline_login = page.locator("[data-selector='inline-login']:visible, .inline-login-container:visible")
     if inline_login.count() > 0:
         return False
@@ -351,6 +341,15 @@ def _is_logged_in(page: Page) -> bool:
     login_btn = page.locator("a:has-text('登录'):visible, button:has-text('登录/注册'):visible")
     if login_btn.count() > 0:
         return False
+
+    header_login = page.locator("#header-quick-menu-login:visible, span:has-text('登录/注册'):visible")
+    if header_login.count() > 0:
+        return False
+
+    # Positive check: elements that only appear when logged in.
+    user_indicators = page.locator(".nav-user-item:visible")
+    if user_indicators.count() > 0:
+        return True
 
     # Fallback: if we are on a job page and see action buttons, we are likely logged in
     job_action = page.locator("button:has-text('投递简历'):visible, button:has-text('立即沟通'):visible, button:has-text('聊一聊'):visible")

@@ -56,7 +56,8 @@ class LiepinChannel:
             os.getenv("PPF_OUTPUT_DIR", "outputs/submissions/liepin"),
             request.run_id,
         )
-        session_dir = os.path.join(
+        explicit_session_dir = os.getenv("PPF_LIEPIN_SESSION_DIR")
+        session_dir = explicit_session_dir or os.path.join(
             os.getenv("PPF_SESSION_DIR", "outputs/sessions"),
             request.run_id,
         )

@@ -42,8 +42,9 @@ class FakeLocator:
 
 
 class FakePage:
-    def __init__(self, selector_map) -> None:
+    def __init__(self, selector_map, url="https://www.liepin.com/job/123456.shtml") -> None:
         self.selector_map = selector_map
+        self.url = url
         self.waits = []
 
     def locator(self, selector: str):
@@ -86,6 +87,23 @@ class LiepinChatSendResumeTests(unittest.TestCase):
         self.assertEqual(result.dom_jobid, "123456")
         self.assertEqual(result.params_jobid, "123456")
         self.assertEqual(result.recruiter_name, "Sun")
+
+    def test_login_check_rejects_login_prompt_even_when_chat_button_exists(self) -> None:
+        page = FakePage(
+            {
+                (
+                    "[data-selector='chat-chat']:visible, "
+                    "[data-selector='c-logout']:visible, "
+                    ".recruiter-info-box:visible, "
+                    ".nav-user-item:visible"
+                ): FakeLocator([FakeElement(text="聊一聊")]),
+                "a:has-text('登录'):visible, button:has-text('登录/注册'):visible": FakeLocator(
+                    [FakeElement(text="登录/注册")]
+                ),
+            }
+        )
+
+        self.assertFalse(liepin._is_logged_in(page))
 
     def test_verify_main_chat_target_rejects_job_id_mismatch(self) -> None:
         page = FakePage(

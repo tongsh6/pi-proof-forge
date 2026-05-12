@@ -6,7 +6,10 @@ from unittest.mock import patch
 
 from tools.config.fragments import PolicyConfig
 from tools.domain.value_objects import Candidate
-from tools.engines.discovery.job_leads_loader import discover_candidates
+from tools.engines.discovery.job_leads_loader import (
+    discover_candidates,
+    load_candidates_from_job_leads,
+)
 
 
 def _discovery_engine_class():
@@ -112,6 +115,30 @@ class DiscoveryEngineTests(unittest.TestCase):
             search.assert_not_called()
             self.assertEqual(len(candidates), 1)
             self.assertEqual(candidates[0].source, "job_profiles:jp-test")
+
+    def test_loads_structured_job_leads_with_urls(self) -> None:
+        with TemporaryDirectory() as tmp:
+            leads_dir = Path(tmp)
+            (leads_dir / "jl-captured.yaml").write_text(
+                'generated_at: "2026-05-08T18:18:46Z"\n'
+                "items:\n"
+                '  - job_url: "https://www.liepin.com/job/1971416782.shtml"\n'
+                '    position: "架构师"\n'
+                '    company_name: "Example Tech"\n'
+                "    direction: backend\n"
+                "    confidence: 0.85\n",
+                encoding="utf-8",
+            )
+
+            candidates = load_candidates_from_job_leads(leads_dir)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(
+            candidates[0].job_url,
+            "https://www.liepin.com/job/1971416782.shtml",
+        )
+        self.assertEqual(candidates[0].company, "Example Tech")
+        self.assertEqual(candidates[0].confidence, 0.85)
 
 
 if __name__ == "__main__":
