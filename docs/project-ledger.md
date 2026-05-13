@@ -14,7 +14,7 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（329 tests，2026-05-13）**
+- **全链路集成测试 → 已恢复 ✅（332 tests，2026-05-13）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
@@ -107,12 +107,17 @@
 | **GUI 运行日志详情页** | **已验证** | tools/sidecar/handlers/submission.py + tools/sidecar/server.py + ui/src/pages/submissions/index.tsx | test_submission_handler.py + test_server.py + Playwright mock sidecar | `submission.detail` 返回完整 steps、截图路径、JSON/YAML 日志路径；Submissions 页面可点击查看 |
 | **真实 submit 前安全门禁** | **已测试** | tools/submission/liepin.py + tools/submission/run_submission.py + tools/channels/liepin.py | test_liepin_chat_send_resume.py + test_run_submission_cli.py + test_channels.py | submit 必须 PDF、显式 jobId、显式 recruiter，且与 target_verify 二次匹配 |
 | **GUI 详情页 review hardening** | **已验证** | tools/sidecar/handlers/submission.py + tools/submission/storage.py + ui/design/contracts/sidecar-rpc.md + ui/src/i18n/ | test_submission_handler.py + test_submission_storage.py + `pnpm --dir ui build` | screenshot 路径越界防护、browser_channel 写入日志、submission.detail 合同同步、Submissions 页面接入 i18n |
+| **GUI Agent Run 控制 RPC** | **已验证** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/lib/sidecar/api.ts + ui/design/contracts/sidecar-rpc.md | test_server.py + `pnpm --dir ui build` | `run.agent.start/get/stop` 已接入 JSON-RPC 路由和前端 typed client；缺省只创建本地运行控制记录；显式 `execute_dry_run=true` 可执行本地 dry-run AgentLoop，不触发真实投递 |
+| **GUI 一键启停脚本** | **已验证** | app + scripts/appctl.py + .gitignore | `./app start` / `./app status` / `./app stop` | 根目录一键控制 Tauri dev app；运行时 PID 和日志写入 `.app-runtime/`，并已加入 gitignore |
+| **Tauri npm/Rust 版本对齐** | **已验证** | ui/package.json + ui/pnpm-lock.yaml + ui/package-lock.json | `pnpm --dir ui list @tauri-apps/api @tauri-apps/cli --depth 0` + `./app start` 日志 | npm 侧固定 `@tauri-apps/api`/`cli` 为 2.10.1，与 Rust `tauri` 2.10.3 对齐到同一 minor；启动日志不再出现 mismatch 提示 |
+| **GUI 默认中文语言** | **已验证** | ui/src/i18n/index.ts + tests/unit/gui/test_i18n_defaults.py | `python3 -m pytest tests/unit/gui/test_i18n_defaults.py -q` + `pnpm --dir ui build` | 默认 `lng` 与 `fallbackLng` 均使用 `DEFAULT_LANGUAGE = "zh"` |
+| **GUI 启动缓存优化** | **已验证** | ui/scripts/stage_python_runtime.py | `pnpm --dir ui run prepare:python-runtime` + `./app start` 日志 | Python runtime 缺失或解释器变化时才重打包；常规启动命中 `Using staged Python`，避免每次复制/签名整套 Python.framework |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 329 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 329 passed |
+| 全部 332 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 332 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
