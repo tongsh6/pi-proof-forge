@@ -107,6 +107,7 @@ class SubmissionRecorder:
             "resume_path": self.record.resume_path,
             "profile_path": self.record.profile_path,
             "headless": self.record.headless,
+            "browser_channel": self.record.browser_channel,
             "steps": [
                 {
                     "name": s.name,
@@ -132,6 +133,7 @@ class SubmissionRecorder:
             f"resume_path: \"{_escape(self.record.resume_path)}\"",
             f"profile_path: \"{_escape(self.record.profile_path)}\"",
             f"headless: {'true' if self.record.headless else 'false'}",
+            f"browser_channel: \"{_escape(self.record.browser_channel)}\"",
             "steps:",
         ]
         for step in self.record.steps:

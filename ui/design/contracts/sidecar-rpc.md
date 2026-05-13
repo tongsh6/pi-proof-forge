@@ -595,12 +595,80 @@
   "company": "Acme",
   "position": "Backend Engineer",
   "channel": "liepin",
+  "mode": "check",
   "status": "done",
-  "submitted_at": "2026-03-07T10:00:00Z"
+  "error": "",
+  "job_url": "https://www.liepin.com/job/123.shtml",
+  "submitted_at": "2026-03-07T10:00:00Z",
+  "last_step": {
+    "name": "submit",
+    "status": "skipped",
+    "detail": "submit not enabled; stopped before final confirm"
+  },
+  "rate_limit_status": "success",
+  "rate_limit_detail": "batch_count=1; daily_count=1"
 }
 ```
 
-### 6.18 submission.retry
+### 6.18 submission.detail
+
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "submission_id": "sub_001"
+}
+```
+
+`result.submission`
+
+```json
+{
+  "submission_id": "sub_001",
+  "company": "Acme",
+  "position": "Backend Engineer",
+  "channel": "liepin",
+  "mode": "check",
+  "status": "success",
+  "error": "",
+  "job_url": "https://www.liepin.com/job/123.shtml",
+  "submitted_at": "2026-03-07T10:00:12Z",
+  "started_at": "2026-03-07T10:00:00Z",
+  "ended_at": "2026-03-07T10:00:12Z",
+  "resume_path": "outputs/v1.md",
+  "profile_path": "profiles/candidate_profile.yaml",
+  "headless": false,
+  "browser_channel": "chrome",
+  "last_step": {
+    "name": "submit",
+    "status": "skipped",
+    "detail": "submit not enabled; stopped before final confirm"
+  },
+  "rate_limit_status": "success",
+  "rate_limit_detail": "batch_count=1; daily_count=1",
+  "steps": [
+    {
+      "name": "open_job_page",
+      "status": "success",
+      "detail": "job page opened",
+      "screenshot": "screenshots/02_open_job_page.png",
+      "screenshot_path": "outputs/submissions/liepin/sub_001/screenshots/02_open_job_page.png",
+      "screenshot_exists": true
+    }
+  ],
+  "log_json_path": "outputs/submissions/liepin/sub_001/submission_log.json",
+  "log_yaml_path": "outputs/submissions/liepin/sub_001/submission_log.yaml"
+}
+```
+
+规则：
+
+- `steps[]` 必须保持日志中的原始顺序。
+- `screenshot_path` 只允许指向当前 run 目录内文件；越界路径必须返回空字符串且 `screenshot_exists=false`。
+- `log_yaml_path` 在 YAML 日志不存在时返回空字符串。
+
+### 6.19 submission.retry
 
 `params`
 
@@ -626,7 +694,7 @@
 }
 ```
 
-### 6.19 settings.get
+### 6.20 settings.get
 
 `params`
 
@@ -668,7 +736,7 @@
 }
 ```
 
-### 6.20 settings.update
+### 6.21 settings.update
 
 `params`
 
@@ -701,7 +769,7 @@
 }
 ```
 
-### 6.21 evidence.create
+### 6.22 evidence.create
 
 用途：创建一张空白证据卡，对应 Evidence 页面 "New Card / 新增" 按钮。创建成功后 UI 可立即跳转到详情编辑态。
 
@@ -738,7 +806,7 @@
 }
 ```
 
-### 6.22 evidence.update
+### 6.23 evidence.update
 
 用途：更新证据卡的文本字段，对应 Evidence 详情面板编辑功能（编辑图标触发）。
 
@@ -778,7 +846,7 @@
 }
 ```
 
-### 6.23 evidence.delete
+### 6.24 evidence.delete
 
 用途：删除指定证据卡及其所有附件，对应 Evidence 详情面板删除图标触发。
 
@@ -807,7 +875,7 @@
 }
 ```
 
-### 6.24 overview.get
+### 6.25 overview.get
 
 用途：拉取 Overview 页面全部聚合数据，包含 4 个统计指标、最近活动流、匹配趋势折线数据与缺口列表。无分页，一次性返回。
 
@@ -867,7 +935,7 @@
 - `gaps[].severity` 枚举：`high | medium | low`
 - 任一聚合子请求失败时，整体返回 `INTERNAL_ERROR`，不做部分成功
 
-### 6.25 resume.upload
+### 6.26 resume.upload
 
 用途：上传用户本地简历文件，对应 Resumes 页面 "Upload Resume / 上传简历" 按钮。模式固定为 `create`，每次调用创建新的已上传简历记录。
 
@@ -903,7 +971,7 @@
 }
 ```
 
-### 6.26 resume.getPreview
+### 6.27 resume.getPreview
 
 用途：获取指定简历版本的结构化预览数据，供 Resumes 页面 Preview 面板渲染白色纸张预览区。
 
@@ -952,7 +1020,7 @@
 - `preview` 为渲染所需的结构化字段，不含原始 Markdown 或 HTML
 - 若简历尚未生成可渲染预览（如刚上传的原始文件），返回 `preview: null` 并附 `preview_status: "pending"`
 
-### 6.27 profile.get
+### 6.28 profile.get
 
 用途：读取当前用户的个人资料，对应 Resumes 页面 Personal Profile 区域的展示数据。
 
@@ -988,7 +1056,7 @@
 - `missing_fields` 为字段名数组，枚举值为 `name | phone | email | city | current_position`
 - 首次使用时 profile 可能全为空，此时 `completeness` 为 0，`missing_fields` 包含全部 5 个字段
 
-### 6.28 profile.update
+### 6.29 profile.update
 
 用途：保存用户个人资料编辑结果，对应 Resumes 页面 "Edit Info / 编辑资料" 操作提交。
 
@@ -1024,7 +1092,7 @@
 }
 ```
 
-### 6.29 jobs.createProfile
+### 6.30 jobs.createProfile
 
 用途：创建新的 Job Profile，对应 Jobs 页面 "New Profile / 新建" 主按钮。
 
@@ -1058,7 +1126,7 @@
 }
 ```
 
-### 6.30 jobs.updateProfile
+### 6.31 jobs.updateProfile
 
 用途：更新 Job Profile 字段，对应 Jobs 页面卡片编辑操作。
 
@@ -1094,7 +1162,7 @@
 }
 ```
 
-### 6.31 jobs.deleteProfile
+### 6.32 jobs.deleteProfile
 
 用途：删除指定 Job Profile，对应 Jobs 页面卡片删除操作。
 
@@ -1139,7 +1207,7 @@
   - `ui/design/DESIGN.md` 中的协议摘要
   - 相关实现代码与测试
 
-### 6.15 run.agent.getPendingReview
+### 6.33 run.agent.getPendingReview
 
 `params`
 
@@ -1170,7 +1238,7 @@
 }
 ```
 
-### 6.16 run.agent.submitReview
+### 6.34 run.agent.submitReview
 
 `params`
 
@@ -1199,7 +1267,7 @@
 }
 ```
 
-### 6.17 run.agent.createReviewCandidates
+### 6.35 run.agent.createReviewCandidates
 
 Internal API for run_agent to populate review queue.
 

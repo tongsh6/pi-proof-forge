@@ -152,14 +152,22 @@ def _detail_step(raw: object, run_dir: Path) -> dict[str, Any]:
             "screenshot_exists": False,
         }
     screenshot = str(raw.get("screenshot", ""))
-    screenshot_path = str(run_dir / screenshot) if screenshot else ""
+    screenshot_path = ""
+    screenshot_exists = False
+    if screenshot:
+        candidate_raw_path = run_dir / screenshot
+        candidate_path = candidate_raw_path.resolve()
+        run_root = run_dir.resolve()
+        if candidate_path.is_relative_to(run_root):
+            screenshot_path = str(candidate_raw_path)
+            screenshot_exists = candidate_path.exists()
     return {
         "name": str(raw.get("name", "")),
         "status": str(raw.get("status", "")),
         "detail": str(raw.get("detail", "")),
         "screenshot": screenshot,
         "screenshot_path": screenshot_path,
-        "screenshot_exists": bool(screenshot and Path(screenshot_path).exists()),
+        "screenshot_exists": screenshot_exists,
     }
 
 

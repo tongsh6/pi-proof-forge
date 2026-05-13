@@ -14,12 +14,12 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（327 tests，2026-05-13）**
+- **全链路集成测试 → 已恢复 ✅（329 tests，2026-05-13）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
-- **当前阻塞：无硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、多候选批次策略、GUI 投递状态/详情可视化、真实 submit 前安全门禁均已闭环（2026-05-13）**
+- **当前阻塞：无运行硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、多候选批次策略、GUI 投递状态/详情可视化、真实 submit 前安全门禁均已闭环；GUI `.pen` 设计资产同步因 Pencil MCP `Transport closed` 待补验收（2026-05-13）**
 
 ## 2. 已完成事项
 
@@ -106,12 +106,13 @@
 | **GUI 投递状态可视化** | **已验证** | tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx | test_submission_handler.py + `pnpm --dir ui build` | 展示 mode、job_url、error、last_step、rate_limit 状态和详情 |
 | **GUI 运行日志详情页** | **已验证** | tools/sidecar/handlers/submission.py + tools/sidecar/server.py + ui/src/pages/submissions/index.tsx | test_submission_handler.py + test_server.py + Playwright mock sidecar | `submission.detail` 返回完整 steps、截图路径、JSON/YAML 日志路径；Submissions 页面可点击查看 |
 | **真实 submit 前安全门禁** | **已测试** | tools/submission/liepin.py + tools/submission/run_submission.py + tools/channels/liepin.py | test_liepin_chat_send_resume.py + test_run_submission_cli.py + test_channels.py | submit 必须 PDF、显式 jobId、显式 recruiter，且与 target_verify 二次匹配 |
+| **GUI 详情页 review hardening** | **已验证** | tools/sidecar/handlers/submission.py + tools/submission/storage.py + ui/design/contracts/sidecar-rpc.md + ui/src/i18n/ | test_submission_handler.py + test_submission_storage.py + `pnpm --dir ui build` | screenshot 路径越界防护、browser_channel 写入日志、submission.detail 合同同步、Submissions 页面接入 i18n |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 327 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 327 passed |
+| 全部 329 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 329 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -155,6 +156,8 @@
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
 | P4 | Gap tasks 仅检查 must_have，不检查 keywords | SLA/SLO 等关键词缺失不会触发补证据任务 | 设计缺口 | 低优先级 |
 | ~~P5~~ | ~~误投防护需接入 liepin.py 主流程~~ | ~~poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入~~ | **已解决** | **target_verify 已接入并有离线单测覆盖** |
+| P6 | GUI `.pen` 设计资产未随最新 Submissions 详情实现同步复核 | `DESIGN.md` 与 GUI review checklist 明确要求 GUI 结构变更同步 `.pen`；当前 Pencil MCP 返回 `Transport closed` | 设计治理缺口 | Pencil MCP 恢复后打开 `ui/design/piproofforge.pen`，对 `Screen/Submissions` (`upl7d`) 补齐/确认详情侧板与状态 |
+| P7 | Submissions 页面实现仍未完全达到终版设计的统计卡片、表格、截图缩略图/放大预览形态 | 当前实现是可用的列表 + 详情面板垂直切片，未完整复刻 DESIGN.md 第 7 页产品态 | 产品化缺口 | GUI 产品化阶段统一推进，不阻塞当前 sidecar/投递闭环验证 |
 
 ## 6. 已废弃事项
 
@@ -164,9 +167,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | submit 安全门禁真实 dry-run 演练 | 代码级门禁已测试，但未用真实页面跑 submit_safety blocked 路径 | 使用 PDF + 错误 recruiter/jobId 运行 submit，确认阻断在 submit_safety 且未点击最终确认 |
-| 2 | Agent Loop 批次策略真实 check-mode 演练 | 代码级批次策略已测试，但未用真实 job_leads 跑多候选 check-mode 端到端批次 | 多候选 DISCOVER/GATE/DELIVER 顺序与 submission 日志可对账，且通道频控仍生效 |
-| 3 | GUI 详情页接入真实 sidecar 桌面壳验证 | 浏览器 mock 已验证详情页，仍需在 Tauri 桌面壳确认真实 sidecar bridge | 桌面壳中 Submissions 可加载真实 `submission.detail`，无 bridge/布局错误 |
+| 1 | GUI `.pen` 设计资产同步复核 | 本轮 review 已发现 GUI 结构变更未能同步 `.pen`，且 Pencil MCP 暂时不可用 | Pencil MCP 恢复后，`Screen/Submissions` (`upl7d`) 与实现/合同一致；若设计稿已有对应结构，则记录验收证据 |
+| 2 | submit 安全门禁真实 dry-run 演练 | 代码级门禁已测试，但未用真实页面跑 submit_safety blocked 路径 | 使用 PDF + 错误 recruiter/jobId 运行 submit，确认阻断在 submit_safety 且未点击最终确认 |
+| 3 | Agent Loop 批次策略真实 check-mode 演练 | 代码级批次策略已测试，但未用真实 job_leads 跑多候选 check-mode 端到端批次 | 多候选 DISCOVER/GATE/DELIVER 顺序与 submission 日志可对账，且通道频控仍生效 |
 
 ## 8. 关键证据索引
 
@@ -189,7 +192,7 @@
 | Composer | tools/config/composer.py | 组装点（含 build_agent_loop） |
 | Sidecar | tools/sidecar/server.py | GUI-Python JSON-RPC 桥接 |
 | GUI 设计 | ui/design/DESIGN.md | 终版 9 页 IA |
-| 测试 | tests/ | 327 tests |
+| 测试 | tests/ | 329 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |
 | **反反爬基础设施** | **tools/submission/_browser.py** | **stealth + human pacing + 安全护栏** |
 | **端到端投递 PoC** | **tools/poc_e2e_send.py** | **6 步 dry-run/real-send 脚本** |
@@ -206,5 +209,6 @@
 | **GUI 投递状态可视化** | **tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx** | **submission.list 返回并展示 error/last_step/rate_limit** |
 | **GUI 运行日志详情页** | **tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx** | **submission.detail 返回 steps、screenshot_path、log_json_path、log_yaml_path；Playwright mock sidecar 已验证点击 Details 展示** |
 | **submit 安全门禁** | **tools/submission/liepin.py + tools/submission/run_submission.py + tools/channels/liepin.py** | **PDF + jobId + recruiter 三重确认，target_verify 后二次匹配** |
+| **GUI review hardening** | **tests/unit/sidecar/test_submission_handler.py + tests/unit/domain/test_submission_storage.py + ui/design/contracts/sidecar-rpc.md** | **防止 screenshot path 越界；browser_channel 持久化；submission.detail 合同与 i18n 同步** |
 | 发版记录 | release-notes/ | v0.1.3 ~ v0.1.9 |
 | 经验沉淀 | AIEF/context/experience/ | 21 lessons + 2 summaries |

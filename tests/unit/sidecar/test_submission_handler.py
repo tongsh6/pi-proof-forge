@@ -419,6 +419,47 @@ class SubmissionDetailTests(unittest.TestCase):
                         }
                     )
 
+    def test_detail_marks_screenshot_outside_run_dir_missing(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            submissions_dir = Path(tmp_dir) / "submissions"
+            run_dir = submissions_dir / "liepin" / "20260304-124634"
+            run_dir.mkdir(parents=True)
+            outside = submissions_dir / "leaked.png"
+            outside.write_bytes(b"png")
+            (run_dir / "submission_log.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": "20260304-124634",
+                        "platform": "liepin",
+                        "status": "success",
+                        "steps": [
+                            {
+                                "name": "open_job_page",
+                                "status": "success",
+                                "detail": "job page opened",
+                                "screenshot": "../leaked.png",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir
+            ):
+                result = handle_submission_detail(
+                    {
+                        "meta": {"correlation_id": "corr_detail_unsafe"},
+                        "submission_id": "20260304-124634",
+                    }
+                )
+
+        step = result["submission"]["steps"][0]
+        self.assertEqual(step["screenshot"], "../leaked.png")
+        self.assertEqual(step["screenshot_path"], "")
+        self.assertFalse(step["screenshot_exists"])
+
 
 class SubmissionRetryTests(unittest.TestCase):
     def test_retry_returns_queued_for_existing_submission(self) -> None:

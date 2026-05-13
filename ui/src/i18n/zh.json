@@ -178,6 +178,29 @@
       "evalScore": "评测分",
       "round": "轮次"
     },
+    "submissions": {
+      "title": "投递记录",
+      "subtitle": "来自 sidecar 日志的最近投递尝试。",
+      "refresh": "刷新",
+      "runsTitle": "投递运行",
+      "detailTitle": "运行详情",
+      "lastStep": "最后步骤",
+      "rateLimit": "频控",
+      "details": "详情",
+      "retrying": "重试中...",
+      "empty": "暂无投递记录。",
+      "loadingDetail": "正在加载详情...",
+      "selectRun": "选择一条运行记录以查看步骤和日志路径。",
+      "unknownChannel": "未知通道",
+      "noDetail": "暂无详情",
+      "steps": "步骤",
+      "noSteps": "暂无步骤记录。",
+      "missingScreenshot": "{{path}}（缺失）",
+      "fields": {
+        "resume": "简历",
+        "profile": "资料"
+      }
+    },
     "policy": {
       "title": "策略配置",
       "subtitle": "管理门禁规则与企业排除策略。",

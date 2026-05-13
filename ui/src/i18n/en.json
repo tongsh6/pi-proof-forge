@@ -178,6 +178,29 @@
       "evalScore": "Eval",
       "round": "Round"
     },
+    "submissions": {
+      "title": "Submissions",
+      "subtitle": "Recent application attempts from sidecar logs.",
+      "refresh": "Refresh",
+      "runsTitle": "Submission Runs",
+      "detailTitle": "Run Detail",
+      "lastStep": "Last step",
+      "rateLimit": "Rate limit",
+      "details": "Details",
+      "retrying": "Retrying...",
+      "empty": "No submissions yet.",
+      "loadingDetail": "Loading detail...",
+      "selectRun": "Select a run to inspect its steps and log paths.",
+      "unknownChannel": "unknown channel",
+      "noDetail": "No detail",
+      "steps": "Steps",
+      "noSteps": "No steps recorded.",
+      "missingScreenshot": "{{path}} (missing)",
+      "fields": {
+        "resume": "Resume",
+        "profile": "Profile"
+      }
+    },
     "policy": {
       "title": "Policy",
       "subtitle": "Business rules for gating and company exclusions.",
