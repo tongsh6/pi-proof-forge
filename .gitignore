@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 node_modules/
+.pnpm-store/
 dist/
 target/
 ui/src-tauri/resources/python/**
@@ -15,6 +16,7 @@ ui/src-tauri/resources/job_profiles/**
 
 # Generated artifacts
 outputs/
+.app-runtime/
 ui/src-tauri/gen/
 .playwright-cli/
 

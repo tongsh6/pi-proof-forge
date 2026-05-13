@@ -55,13 +55,24 @@ GUI 关键文档：
 - GUI 产品规范已定版，采用桌面应用路线：Tauri + React/TypeScript + Python sidecar
 - 当前 GUI 真源为 `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen`
 - 当前 GUI 信息架构为 9 页：Overview、Resumes、Evidence、Jobs、Quick Run、Agent Run、Submissions、Policy、System Settings
-- 当前仓库尚未提交正式的桌面端实现代码；后续实现、验收与拆解均以终版设计文档为准
+- 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；GUI 仍处于垂直切片产品化阶段
 
 ## 快速开始
 
 ### 环境要求
 
 - Python 3.10+（或兼容 Python 3 运行时）
+
+### 一键启动 / 停止桌面 App
+
+```bash
+./app start    # 后台启动 Tauri dev app
+./app status   # 查看状态和日志路径
+./app stop     # 停止 Tauri/Vite/sidecar 进程链
+./app restart  # 重启
+```
+
+运行日志写入 `.app-runtime/piproofforge-app.log`。
 
 ### 一键跑通样例
 
@@ -223,13 +234,24 @@ GUI key docs:
 - The GUI product spec is finalized as a desktop application: Tauri + React/TypeScript + Python sidecar
 - The GUI source of truth is `ui/design/DESIGN.md` plus `ui/design/piproofforge.pen`
 - The GUI information architecture now contains 9 pages: Overview, Resumes, Evidence, Jobs, Quick Run, Agent Run, Submissions, Policy, and System Settings
-- The formal desktop implementation is not yet committed; future implementation and acceptance should follow the finalized GUI docs
+- The repository now includes the Tauri desktop shell, React frontend, Python sidecar, JSON-RPC bridge, and one-command app control. The GUI is still being productized from vertical slices.
 
 ### Quick Start
 
 Requirements:
 
 - Python 3.10+ (or compatible Python 3 runtime)
+
+Start and stop the desktop app:
+
+```bash
+./app start
+./app status
+./app stop
+./app restart
+```
+
+Runtime logs are written to `.app-runtime/piproofforge-app.log`.
 
 Run the full sample pipeline:
 
