@@ -12,17 +12,17 @@
     "smoke:app": "npm run tauri -- build --bundles app && python3 ./scripts/verify_packaged_app.py"
   },
   "dependencies": {
+    "i18next": "^24.2.0",
+    "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
-    "zustand": "^5.0.0",
-    "i18next": "^24.2.0",
     "react-i18next": "^15.4.0",
-    "lucide-react": "^0.468.0"
+    "react-router-dom": "^6.28.0",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0",
-    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/api": "2.10.1",
+    "@tauri-apps/cli": "2.10.1",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",

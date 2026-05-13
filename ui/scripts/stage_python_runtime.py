@@ -317,7 +317,11 @@ exec \"$PYTHON_ROOT/bin/python3\" \"$@\"
 
 def _write_metadata(version: str) -> None:
     metadata_path = PYTHON_RESOURCES_DIR / "runtime.txt"
-    _ = metadata_path.write_text(
+    _ = metadata_path.write_text(_runtime_metadata(version), encoding="utf-8")
+
+
+def _runtime_metadata(version: str) -> str:
+    return (
         "\n".join(
             [
                 f"python_executable={sys.executable}",
@@ -326,9 +330,19 @@ def _write_metadata(version: str) -> None:
                 f"bundled_version={version}",
             ]
         )
-        + "\n",
-        encoding="utf-8",
+        + "\n"
     )
+
+
+def _staged_runtime_is_current() -> bool:
+    metadata_path = PYTHON_RESOURCES_DIR / "runtime.txt"
+    wrapper_path = SIDECAR_BIN_DIR / "python3"
+    version_dir = PYTHON_RESOURCES_DIR / FRAMEWORK_NAME / "Versions" / PYTHON_VERSION
+    runtime_bin = version_dir / "bin" / "python3"
+
+    if not metadata_path.exists() or not wrapper_path.exists() or not runtime_bin.exists():
+        return False
+    return metadata_path.read_text(encoding="utf-8") == _runtime_metadata(PYTHON_VERSION)
 
 
 def _stage_project_assets() -> None:
@@ -352,6 +366,10 @@ def main() -> None:
         )
 
     _stage_project_assets()
+    if _staged_runtime_is_current():
+        print(f"Using staged Python {PYTHON_VERSION} from {PYTHON_RESOURCES_DIR}")
+        return
+
     _, version = _stage_framework()
     _write_python_wrapper(version)
     _write_metadata(version)
