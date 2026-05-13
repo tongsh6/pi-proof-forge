@@ -8,6 +8,10 @@ import type {
   EvidenceUpdateResult,
   GetPendingReviewResult,
   HandshakeResult,
+  AgentRunGetResult,
+  AgentRunStartOptions,
+  AgentRunStartResult,
+  AgentRunStopResult,
   JobLeadsFilters,
   JobLeadsListResult,
   JobLeadConvertResult,
@@ -314,6 +318,34 @@ export async function submitReview(
 ): Promise<SubmitReviewResult> {
   return client.call<SubmitReviewResult>("run.agent.submitReview", {
     decisions,
+  });
+}
+
+export async function startAgentRun(payload: {
+  job_profile_id: string;
+  options?: AgentRunStartOptions;
+}): Promise<AgentRunStartResult> {
+  return client.call<AgentRunStartResult>("run.agent.start", {
+    job_profile_id: payload.job_profile_id,
+    options: payload.options ?? {},
+  });
+}
+
+export async function getAgentRun(
+  runId: string,
+  eventCursor: string | null = null,
+  eventLimit = 50
+): Promise<AgentRunGetResult> {
+  return client.call<AgentRunGetResult>("run.agent.get", {
+    run_id: runId,
+    event_cursor: eventCursor,
+    event_limit: eventLimit,
+  });
+}
+
+export async function stopAgentRun(runId: string): Promise<AgentRunStopResult> {
+  return client.call<AgentRunStopResult>("run.agent.stop", {
+    run_id: runId,
   });
 }
 

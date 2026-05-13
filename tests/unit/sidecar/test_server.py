@@ -150,6 +150,129 @@ class ProcessRequestTests(unittest.TestCase):
         self.assertIn("result", response)
         self.assertEqual(response["result"]["submission"]["submission_id"], "run-001")
 
+    def test_run_agent_start_get_stop_methods_return_persisted_state(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            runs_dir = Path(tmp_dir) / "agent_runs"
+            with patch("tools.sidecar.handlers.agent._AGENT_RUN_DIR", runs_dir, create=True):
+                start_response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_agent_start",
+                        "method": "run.agent.start",
+                        "params": {
+                            "meta": {"correlation_id": "corr_agent"},
+                            "job_profile_id": "jp-001",
+                            "options": {"max_rounds": 2},
+                        },
+                    }
+                )
+
+                self.assertIn("result", start_response)
+                start_result = start_response["result"]
+                self.assertEqual(start_result["meta"]["correlation_id"], "corr_agent")
+                self.assertEqual(start_result["status"], "queued")
+                self.assertTrue(start_result["run_id"].startswith("ar_"))
+
+                get_response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_agent_get",
+                        "method": "run.agent.get",
+                        "params": {
+                            "meta": {"correlation_id": "corr_agent_get"},
+                            "run_id": start_result["run_id"],
+                            "event_cursor": None,
+                            "event_limit": 50,
+                        },
+                    }
+                )
+
+                self.assertIn("result", get_response)
+                run_payload = get_response["result"]["run"]
+                self.assertEqual(run_payload["run_id"], start_result["run_id"])
+                self.assertEqual(run_payload["status"], "queued")
+                self.assertEqual(run_payload["job_profile_id"], "jp-001")
+                self.assertEqual(get_response["result"]["gate_checks"], [])
+                self.assertEqual(get_response["result"]["events"], [])
+
+                stop_response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_agent_stop",
+                        "method": "run.agent.stop",
+                        "params": {
+                            "meta": {"correlation_id": "corr_agent_stop"},
+                            "run_id": start_result["run_id"],
+                        },
+                    }
+                )
+
+                self.assertIn("result", stop_response)
+                self.assertTrue(stop_response["result"]["accepted"])
+
+                stopped_response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_agent_get_stopped",
+                        "method": "run.agent.get",
+                        "params": {
+                            "meta": {"correlation_id": "corr_agent_stopped"},
+                            "run_id": start_result["run_id"],
+                            "event_cursor": None,
+                            "event_limit": 50,
+                        },
+                    }
+                )
+
+                self.assertEqual(stopped_response["result"]["run"]["status"], "stopped")
+
+    def test_run_agent_start_can_execute_local_dry_run(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            runs_dir = Path(tmp_dir) / "agent_runs"
+            with patch("tools.sidecar.handlers.agent._AGENT_RUN_DIR", runs_dir, create=True):
+                start_response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_agent_dry_run",
+                        "method": "run.agent.start",
+                        "params": {
+                            "meta": {"correlation_id": "corr_agent_dry"},
+                            "job_profile_id": "jp-001",
+                            "options": {
+                                "max_rounds": 3,
+                                "execute_dry_run": True,
+                            },
+                        },
+                    }
+                )
+
+                self.assertIn("result", start_response)
+                start_result = start_response["result"]
+                self.assertEqual(start_result["status"], "DRY_RUN_COMPLETE")
+
+                get_response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_agent_dry_run_get",
+                        "method": "run.agent.get",
+                        "params": {
+                            "meta": {"correlation_id": "corr_agent_dry_get"},
+                            "run_id": start_result["run_id"],
+                            "event_cursor": None,
+                            "event_limit": 50,
+                        },
+                    }
+                )
+
+                self.assertIn("result", get_response)
+                run_payload = get_response["result"]["run"]
+                self.assertEqual(run_payload["status"], "DRY_RUN_COMPLETE")
+                self.assertEqual(run_payload["round"], 1)
+                event_types = [
+                    event["event_type"] for event in get_response["result"]["events"]
+                ]
+                self.assertEqual(event_types, ["INIT", "DISCOVER", "DONE"])
+
 
 class BuildResponseTests(unittest.TestCase):
     def test_build_success_response(self) -> None:

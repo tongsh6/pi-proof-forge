@@ -480,10 +480,15 @@
   "meta": { "correlation_id": "corr_001" },
   "job_profile_id": "jp_001",
   "options": {
-    "max_rounds": 5
+    "max_rounds": 5,
+    "execute_dry_run": false
   }
 }
 ```
+
+说明：
+- `execute_dry_run` 缺省为 `false`；缺省行为只创建桌面端运行控制记录并返回 `queued`。
+- 仅当 `execute_dry_run=true` 时，sidecar 可执行本地 dry-run AgentLoop；该模式不得触发真实投递或外部可见动作。
 
 `result`
 

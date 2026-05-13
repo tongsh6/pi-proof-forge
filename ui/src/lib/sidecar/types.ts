@@ -373,3 +373,35 @@ export interface ReviewDecisionItem {
 export interface SubmitReviewResult extends RpcResultBase {
   accepted: number;
 }
+
+export interface AgentRunStartOptions {
+  max_rounds?: number;
+  execute_dry_run?: boolean;
+  [key: string]: unknown;
+}
+
+export interface AgentRunStartResult extends RpcResultBase {
+  run_id: string;
+  status: "queued" | string;
+}
+
+export interface AgentRunSummary {
+  run_id: string;
+  status: string;
+  round: number;
+  started_at: string;
+  job_profile_id: string;
+  options: AgentRunStartOptions;
+  stopped_at?: string;
+}
+
+export interface AgentRunGetResult extends RpcResultBase {
+  run: AgentRunSummary;
+  gate_checks: Array<Record<string, unknown>>;
+  events: Array<Record<string, unknown>>;
+  next_event_cursor: string | null;
+}
+
+export interface AgentRunStopResult extends RpcResultBase {
+  accepted: boolean;
+}
