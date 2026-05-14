@@ -1,0 +1,648 @@
+version: "2026-05-14"
+purpose: "User-perspective scenario cases for journey-level acceptance validation."
+status_legend:
+  - "draft"
+  - "ready_for_review"
+  - "ready_for_implementation"
+  - "implemented"
+  - "blocked"
+
+cases:
+  - case_id: "first_launch_configure_lm_studio"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "system_settings"
+    user_goal: >
+      用户首次打开应用后，配置 LM Studio 作为本地 LLM 供应商，
+      让后续资料提炼、简历生成和评测可以使用该供应商。
+
+    provider:
+      type: "local_openai_compatible"
+      name: "lm_studio"
+      default_base_url: "http://127.0.0.1:1234/v1"
+      default_api_key: "lm-studio"
+
+    api_key_policy:
+      required_for_client_compatibility: true
+      default_value: "lm-studio"
+      user_visible_behavior: "editable_prefilled_dummy_key"
+
+    model_selection:
+      primary: "auto_fetch_models"
+      fallback: "manual_model_input"
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_system_settings"
+      - "select_provider_lm_studio"
+      - "confirm_or_edit_base_url"
+      - "confirm_or_edit_api_key"
+      - "test_connection"
+      - "select_auto_detected_model_or_enter_manually"
+      - "save_settings"
+      - "verify_quick_run_can_read_config_summary"
+      - "verify_agent_run_can_read_config_summary"
+
+    system_responses:
+      - "show_provider_status"
+      - "auto_fill_default_base_url"
+      - "auto_fill_dummy_api_key"
+      - "fetch_models_from_v1_models"
+      - "show_success_or_structured_error"
+      - "persist_provider_base_url_api_key_model"
+      - "expose_saved_config_summary_to_quick_run_and_agent_run"
+
+    success_path:
+      conditions:
+        - "lm_studio_models_endpoint_available"
+        - "models_list_not_empty"
+      expected_results:
+        - "connection_status_success"
+        - "model_list_visible"
+        - "default_model_selected_first_available_model"
+        - "settings_saved"
+        - "quick_run_reads_saved_provider_summary"
+        - "agent_run_reads_saved_provider_summary"
+
+    fallback_path:
+      conditions:
+        - "lm_studio_unavailable_or_models_empty"
+      expected_results:
+        - "result_status_blocked_local_provider"
+        - "error_message_mentions_base_url"
+        - "manual_model_input_available"
+        - "base_url_editable"
+        - "retry_available"
+        - "app_does_not_crash"
+        - "settings_not_silently_marked_successful"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "sidecar_settings_accepts_lm_studio_config"
+          - "sidecar_settings_returns_saved_config"
+          - "connection_test_returns_structured_success_or_blocked"
+          - "saved_config_summary_available_to_quick_run"
+          - "saved_config_summary_available_to_agent_run"
+      L2:
+        status: "not_started"
+        checks:
+          - "system_settings_page_exposes_provider_selection"
+          - "base_url_api_key_model_controls_visible"
+          - "connection_feedback_visible"
+          - "save_feedback_visible"
+          - "quick_run_provider_summary_visible"
+          - "agent_run_provider_summary_visible"
+      L3_local:
+        status: "not_started"
+        checks:
+          - "real_request_to_http_127_0_0_1_1234_v1_models"
+
+    out_of_scope:
+      - "extract_user_materials"
+      - "generate_resume_content"
+      - "evaluate_resume_scorecard"
+      - "verify_llm_output_quality"
+
+  - case_id: "setup_profile_and_material_library"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "resumes"
+    user_goal: >
+      用户录入个人基础资料，并上传已有简历和文本类工作材料，
+      系统将这些资料作为后续证据卡提炼的输入来源。
+
+    scope:
+      includes:
+        - "personal_profile_input"
+        - "uploaded_resume_management"
+        - "raw_text_material_upload"
+        - "text_preview_or_summary"
+        - "material_library_readiness_feedback"
+        - "evidence_page_can_see_material_sources"
+      excludes:
+        - "evidence_card_extraction"
+        - "quick_run_consumes_materials"
+        - "resume_generation"
+        - "llm_quality_evaluation"
+        - "image_or_screenshot_materials"
+
+    personal_profile:
+      P0_required:
+        - "name"
+        - "email"
+        - "phone"
+        - "city"
+        - "current_title"
+      P1_later:
+        - "target_role"
+        - "target_city"
+        - "years_of_experience"
+        - "core_skills"
+        - "preferred_industries"
+        - "expected_salary"
+
+    uploaded_resume_types:
+      - ".pdf"
+      - ".docx"
+      - ".md"
+      - ".txt"
+
+    raw_work_material_types:
+      - ".md"
+      - ".txt"
+
+    unsupported_file_types:
+      - ".png"
+      - ".jpg"
+      - ".jpeg"
+      - ".heic"
+      - ".pptx"
+      - ".xlsx"
+
+    content_feedback:
+      raw_materials:
+        ".md": "show_text_preview_or_summary"
+        ".txt": "show_text_preview_or_summary"
+      uploaded_resumes:
+        ".md": "show_text_preview_or_summary"
+        ".txt": "show_text_preview_or_summary"
+        ".pdf": "show_file_metadata_only"
+        ".docx": "show_file_metadata_only"
+
+    readiness_feedback:
+      P0:
+        type: "binary_with_missing_items"
+        states:
+          - "ready"
+          - "incomplete"
+        missing_items:
+          - "missing_personal_profile"
+          - "missing_uploaded_resume"
+          - "missing_raw_work_material"
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_resumes"
+      - "fill_basic_profile"
+      - "save_profile"
+      - "upload_existing_resume"
+      - "upload_text_work_material"
+      - "inspect_uploaded_material_list"
+      - "inspect_text_preview_or_summary"
+      - "navigate_to_evidence"
+      - "verify_material_sources_visible"
+
+    system_responses:
+      - "show_profile_save_success"
+      - "persist_personal_profile"
+      - "show_uploaded_resume"
+      - "show_raw_text_material"
+      - "show_text_preview_or_summary"
+      - "show_unsupported_file_type_error"
+      - "show_material_library_ready_or_incomplete"
+      - "expose_material_sources_to_evidence_page"
+
+    expected_results:
+      - "personal_profile_saved"
+      - "uploaded_resume_visible"
+      - "raw_text_material_visible"
+      - "text_preview_or_summary_visible"
+      - "unsupported_file_types_rejected_with_clear_error"
+      - "material_library_readiness_visible"
+      - "evidence_page_reads_material_sources"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "profile_api_accepts_required_fields"
+          - "profile_api_returns_saved_profile"
+          - "resume_upload_metadata_persisted"
+          - "raw_text_material_persisted"
+          - "text_preview_or_summary_generated"
+          - "unsupported_file_type_rejected"
+          - "readiness_status_returns_ready_or_incomplete"
+          - "evidence_api_can_list_material_sources"
+      L2:
+        status: "not_started"
+        checks:
+          - "resumes_page_profile_form_visible"
+          - "resumes_page_upload_resume_visible"
+          - "resumes_page_upload_material_visible"
+          - "uploaded_material_list_visible"
+          - "text_preview_or_summary_visible"
+          - "readiness_feedback_visible"
+          - "evidence_page_material_sources_visible"
+      L3:
+        status: "not_started"
+        checks:
+          - "real_file_upload_roundtrip"
+
+  - case_id: "generate_review_and_complete_evidence_card"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "evidence"
+    depends_on:
+      - "first_launch_configure_lm_studio"
+      - "setup_profile_and_material_library"
+    user_goal: >
+      用户从已上传的 Markdown 工作材料中生成 Evidence Card 草稿，
+      审核并补齐核心字段，最终保存为可进入后续匹配和简历生成的证据卡。
+
+    scope:
+      includes:
+        - "select_uploaded_markdown_material"
+        - "generate_evidence_draft_with_local_llm"
+        - "strict_json_schema_validation"
+        - "source_material_traceability"
+        - "markdown_only_artifact_policy"
+        - "human_review_before_promotion"
+        - "edit_core_evidence_fields"
+        - "save_incomplete_draft"
+        - "save_eligible_card"
+        - "candidate_pool_eligibility"
+      excludes:
+        - "image_artifact_support"
+        - "pdf_docx_artifact_parsing"
+        - "external_url_fetch"
+        - "automatic_promotion_without_review"
+        - "field_level_citation"
+
+    llm_policy:
+      required: true
+      provider: "lm_studio"
+      output_format: "strict_json"
+      unavailable_result: "BLOCKED_LOCAL_PROVIDER"
+
+    llm_output_schema:
+      format: "json_object"
+      required_fields:
+        - "source_material_ids"
+        - "title"
+        - "context"
+        - "actions"
+        - "results"
+        - "artifacts"
+        - "stack"
+        - "tags"
+      optional_fields:
+        - "time_range"
+        - "role_scope"
+        - "interview_hooks"
+      artifact_item_schema:
+        type: "object"
+        required_fields:
+          - "type"
+          - "ref"
+          - "label"
+
+    llm_json_repair_policy:
+      P0:
+        auto_repair_invalid_json: false
+        auto_retry_invalid_json: false
+        invalid_json_result: "llm_output_invalid"
+        user_can_retry_manually: true
+      P1_later:
+        auto_retry_once: true
+        json_repair_attempt: true
+
+    source_material_policy:
+      P0_supported:
+        - ".md"
+      P0_unsupported:
+        - ".txt"
+        - ".pdf"
+        - ".docx"
+        - "image"
+        - "external_url"
+      traceability_rules:
+        - "source_material_ids_not_empty"
+        - "source_material_ids_subset_of_user_selected_materials"
+
+    artifact_policy:
+      supported_artifact_type: "markdown_document"
+      supported_extensions:
+        - ".md"
+      artifact_reference_format: "material_id_or_markdown_path"
+      rules:
+        - "artifacts_not_empty_for_eligible_card"
+        - "each_artifact_type_is_markdown_document"
+        - "each_artifact_ref_points_to_uploaded_md_material"
+        - "unsupported_artifact_types_rejected"
+
+    human_review_policy:
+      llm_output_status: "draft_only"
+      requires_user_review_before_save: true
+      auto_save_to_candidate_pool: false
+
+    editable_fields:
+      P0:
+        - "title"
+        - "context"
+        - "actions"
+        - "results"
+        - "artifacts"
+        - "stack"
+        - "tags"
+      P1_later:
+        - "time_range"
+        - "role_scope"
+        - "interview_hooks"
+
+    incomplete_save_policy:
+      allow_save_incomplete: true
+      incomplete_status_required: true
+      missing_items_required: true
+      can_enter_candidate_pool: false
+
+    candidate_pool_rules:
+      enters_candidate_pool_when:
+        - "status_is_saved_eligible"
+        - "results_not_empty"
+        - "artifacts_not_empty"
+        - "artifact_refs_point_to_uploaded_md_materials"
+      excluded_from_candidate_pool_when:
+        - "schema_invalid"
+        - "draft_incomplete"
+        - "saved_incomplete"
+        - "missing_source_material_ids"
+
+    draft_statuses:
+      - "schema_invalid"
+      - "llm_output_invalid"
+      - "draft_incomplete"
+      - "draft_ready_for_review"
+      - "saved_incomplete"
+      - "saved_eligible"
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_evidence"
+      - "select_uploaded_markdown_material"
+      - "generate_evidence_draft"
+      - "wait_for_local_llm_generation"
+      - "review_generated_draft"
+      - "edit_core_fields"
+      - "save_incomplete_draft_if_needed"
+      - "complete_results_and_markdown_artifacts"
+      - "save_eligible_card"
+      - "verify_candidate_pool_status"
+
+    system_responses:
+      - "show_uploaded_markdown_material_sources"
+      - "call_lm_studio_for_draft_generation"
+      - "show_generation_progress"
+      - "validate_strict_json_schema"
+      - "reject_invalid_json_without_auto_repair"
+      - "validate_source_material_ids"
+      - "validate_markdown_artifact_refs"
+      - "show_missing_items"
+      - "show_incomplete_or_eligible_status"
+      - "persist_incomplete_or_eligible_card"
+      - "exclude_incomplete_card_from_candidate_pool"
+      - "include_eligible_card_in_candidate_pool"
+
+    expected_results:
+      - "uploaded_markdown_material_visible"
+      - "local_llm_generates_strict_json_draft"
+      - "invalid_llm_json_rejected"
+      - "draft_keeps_source_material_ids"
+      - "invalid_source_reference_rejected"
+      - "artifacts_reference_uploaded_markdown_materials_only"
+      - "draft_is_not_auto_promoted"
+      - "user_can_edit_core_fields"
+      - "incomplete_draft_can_be_saved_with_missing_items"
+      - "incomplete_card_excluded_from_candidate_pool"
+      - "eligible_card_can_be_saved_after_user_review"
+      - "eligible_card_enters_candidate_pool"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "material_source_api_lists_uploaded_md_materials"
+          - "draft_generation_calls_lm_studio"
+          - "draft_generation_returns_strict_json_or_blocked"
+          - "draft_schema_validation_rejects_invalid_json"
+          - "source_material_ids_are_required"
+          - "artifact_refs_must_point_to_uploaded_md_materials"
+          - "incomplete_card_saves_with_missing_items"
+          - "incomplete_card_excluded_from_candidate_pool"
+          - "eligible_card_enters_candidate_pool"
+      L2:
+        status: "not_started"
+        checks:
+          - "evidence_page_material_sources_visible"
+          - "generate_draft_action_visible"
+          - "generation_progress_visible"
+          - "draft_fields_visible"
+          - "core_fields_editable"
+          - "missing_items_visible"
+          - "incomplete_status_visible"
+          - "eligible_status_visible"
+          - "save_success_visible"
+          - "candidate_pool_status_visible"
+      L3_local:
+        status: "not_started"
+        checks:
+          - "real_lm_studio_generation_request"
+          - "blocked_local_provider_when_lm_studio_unavailable"
+
+  - case_id: "setup_job_target"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "jobs"
+    depends_on:
+      - "generate_review_and_complete_evidence_card"
+    user_goal: >
+      用户创建一个明确的求职目标，粘贴目标岗位 JD，
+      使用本地 LLM 解析岗位画像，审核后保存为后续 Quick Run 可选择的岗位目标；
+      如果提供可访问来源链接，则同时创建并双向关联 Job Lead。
+
+    scope:
+      includes:
+        - "paste_jd_text"
+        - "local_llm_parse_jd_to_strict_json"
+        - "manual_job_profile_input_fallback"
+        - "human_review_before_save"
+        - "save_incomplete_job_profile_draft"
+        - "save_complete_job_profile"
+        - "active_target_eligibility"
+        - "source_url_accessibility_check"
+        - "job_profile_job_lead_bidirectional_link"
+      excludes:
+        - "fetch_jd_text_from_source_url"
+        - "auto_extract_company_role_from_page"
+        - "full_job_lead_lifecycle"
+        - "lead_follow_up_notes"
+        - "job_board_specific_login_or_captcha"
+
+    jd_input_policy:
+      required_for_first_pass:
+        primary_input: "user_pasted_jd_text"
+        source_url_role: "source_reference_and_job_lead_validation"
+      deferred_enhancements:
+        - "fetch_jd_text_from_source_url"
+        - "auto_extract_company_role_from_page"
+
+    jd_parse_policy:
+      primary: "local_llm_parse_jd"
+      fallback: "manual_job_profile_input"
+      output_format: "strict_json"
+      auto_repair_invalid_json: false
+      auto_retry_invalid_json: false
+      unavailable_result: "BLOCKED_LOCAL_PROVIDER"
+      no_silent_fallback: true
+
+    llm_output_schema:
+      format: "json_object"
+      required_fields:
+        - "target_role"
+        - "must_have"
+        - "keywords"
+        - "jd_summary"
+      optional_fields:
+        - "company"
+        - "city"
+        - "source_url"
+        - "nice_to_have"
+        - "business_domain"
+        - "seniority_signal"
+        - "tone"
+
+    human_review_policy:
+      llm_output_status: "draft_only"
+      requires_user_review_before_save: true
+      auto_save_as_active_target: false
+
+    incomplete_save_policy:
+      allow_save_incomplete: true
+      incomplete_status_required: true
+      missing_items_required: true
+      can_be_active_target: false
+      visible_in_quick_run: false
+
+    complete_profile_requires:
+      - "target_role"
+      - "jd_text"
+      - "must_have_not_empty"
+      - "keywords_not_empty"
+      - "jd_summary"
+
+    source_url_policy:
+      supported_url_scope: "any_accessible_https_jd_or_recruiting_page"
+      required_when_job_lead_expected: true
+      validation:
+        - "url_format_valid"
+        - "https_required"
+        - "page_accessible"
+      inaccessible_result: "job_source_unavailable"
+      no_silent_accept: true
+
+    conditional_outputs:
+      job_profile:
+        can_save_without_source_url: true
+      job_lead:
+        created_when:
+          - "source_url_present"
+          - "source_url_format_valid"
+          - "source_url_page_accessible"
+        blocked_when:
+          - "source_url_page_inaccessible"
+
+    job_profile_job_lead_linking:
+      required_when_source_url_accessible: true
+      direction:
+        - "job_profile.references_job_lead_id"
+        - "job_lead.references_job_profile_id"
+
+    draft_statuses:
+      - "parse_pending"
+      - "parse_blocked_local_provider"
+      - "parse_invalid_json"
+      - "draft_ready_for_review"
+      - "saved_incomplete"
+      - "saved_complete"
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_jobs"
+      - "create_job_target"
+      - "paste_jd_text"
+      - "optionally_input_source_url"
+      - "parse_jd_with_local_llm"
+      - "review_job_profile_draft"
+      - "edit_job_profile_fields"
+      - "save_incomplete_draft_if_needed"
+      - "save_complete_job_profile"
+      - "verify_quick_run_visibility"
+      - "verify_job_lead_link_when_source_url_accessible"
+
+    system_responses:
+      - "show_create_target_action"
+      - "show_jd_text_input"
+      - "show_source_url_input"
+      - "call_lm_studio_for_jd_parse"
+      - "show_parse_progress"
+      - "validate_strict_json_schema"
+      - "reject_invalid_json_without_auto_repair"
+      - "show_draft_fields"
+      - "show_missing_items"
+      - "validate_source_url_accessibility"
+      - "save_incomplete_or_complete_profile"
+      - "hide_incomplete_profile_from_quick_run"
+      - "show_complete_profile_in_quick_run"
+      - "create_or_link_job_lead_when_source_url_accessible"
+      - "show_bidirectional_profile_lead_link"
+
+    expected_results:
+      - "jd_text_can_be_pasted"
+      - "local_llm_generates_strict_json_job_profile_draft"
+      - "invalid_llm_json_rejected"
+      - "draft_is_not_auto_saved_as_active_target"
+      - "user_can_edit_job_profile_fields"
+      - "incomplete_job_profile_can_be_saved_with_missing_items"
+      - "incomplete_profile_not_visible_in_quick_run"
+      - "complete_job_profile_can_be_saved"
+      - "complete_profile_visible_in_quick_run"
+      - "source_url_accessibility_checked_when_present"
+      - "accessible_source_url_creates_or_links_job_lead"
+      - "job_profile_and_job_lead_are_bidirectionally_linked"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "jobs_api_accepts_pasted_jd_text"
+          - "jd_parse_calls_lm_studio"
+          - "jd_parse_returns_strict_json_or_blocked"
+          - "invalid_llm_json_rejected"
+          - "incomplete_profile_saves_with_missing_items"
+          - "incomplete_profile_not_visible_in_quick_run"
+          - "complete_profile_visible_in_quick_run"
+          - "source_url_accessibility_checked"
+          - "accessible_source_url_creates_job_lead"
+          - "profile_and_lead_bidirectional_link_created"
+      L2:
+        status: "not_started"
+        checks:
+          - "jobs_page_create_target_action_visible"
+          - "jd_text_input_visible"
+          - "source_url_input_visible"
+          - "parse_progress_visible"
+          - "draft_fields_visible"
+          - "missing_items_visible"
+          - "source_url_validation_feedback_visible"
+          - "complete_profile_quick_run_visibility_feedback_visible"
+          - "job_lead_link_visible"
+      L3:
+        status: "not_started"
+        checks:
+          - "real_https_source_url_accessibility_check"
+          - "blocked_local_provider_when_lm_studio_unavailable"

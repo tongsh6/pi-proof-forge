@@ -1,0 +1,279 @@
+# User Journey Closed-Loop Validation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use explicit `Status` fields and checkbox syntax for tracking.
+
+**Goal:** Build an automated acceptance system that verifies PiProofForge user scenarios from the user's first application actions through repeatable journey-level outcomes.
+
+**Architecture:** Start from user-perspective scenario cases. Each case defines persona, user goal, entry point, user actions, expected system responses, expected results, fallback behavior, and validation levels. Journey contracts and automated tests are derived from approved cases, not from backend module assumptions.
+
+**Tech Stack:** Python acceptance tests with `pytest`, existing `tools/` domain/orchestration modules, YAML/JSON fixtures, optional Playwright GUI smoke tests, shell runner under `scripts/acceptance/`.
+
+---
+
+## 1. Status Legend
+
+| Status | Meaning | When to Use |
+|--------|---------|-------------|
+| `not_started` | Work is planned but no implementation has begun | Default state for new tasks |
+| `in_progress` | Work has started and is actively being changed | Exactly one owner should be driving it |
+| `blocked` | Work cannot continue without resolving a dependency | Must include blocker and unblock condition |
+| `done` | Work is implemented and verified with evidence | Must include verification command/report |
+| `deferred` | Work is intentionally postponed | Must include reason |
+
+## 2. Overall Plan State
+
+| Item | Status | Evidence | Notes |
+|------|--------|----------|-------|
+| Plan documented in project | `done` | `AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md` | This file is the source plan for the validation track |
+| Project ledger references plan | `done` | `docs/project-ledger.md` | Ledger now lists this validation track in current priorities and evidence index |
+| Scenario case catalog | `in_progress` | `acceptance/scenario_cases.yaml` | Case 1 through Case 4 are ready for implementation; remaining cases still need definition |
+| L1 business closed-loop validation | `not_started` | None yet | First implementation milestone |
+| L2 GUI journey smoke validation | `not_started` | None yet | Starts after L1 contract/report shape stabilizes |
+| L3 external channel check-mode validation | `not_started` | Existing Liepin check-mode logs can seed fixtures | Keep real submit disabled |
+
+## 2.1 Tracking Checklist
+
+- [x] Status: `done` — Plan documented in project.
+- [x] Status: `done` — Project ledger references plan.
+- [ ] Status: `in_progress` — M-1 scenario case catalog.
+- [ ] Status: `not_started` — M0 journey contract derived from approved scenario cases.
+- [ ] Status: `not_started` — M1 headless business closed-loop validation.
+- [ ] Status: `not_started` — M2 acceptance report generator.
+- [ ] Status: `not_started` — M3 GUI journey smoke validation.
+- [ ] Status: `not_started` — M4 external channel check-mode validation.
+- [ ] Status: `not_started` — M5 unified acceptance runner.
+
+## 3. Scenario-First Definition
+
+The validation target is the user's scenario, not a backend pipeline. A scenario case must answer:
+
+```text
+Who is the user?
+What does the user want to accomplish after opening the app?
+Where does the user start?
+What actions does the user take?
+What should the system show or persist?
+What result does the user get?
+How do we verify that result?
+What structured fallback is acceptable?
+```
+
+The GUI journey still matters, but it is evaluated through scenario cases:
+
+```text
+Overview
+  -> Resumes
+  -> Evidence
+  -> Jobs
+  -> Quick Run
+  -> Agent Run
+  -> Submissions
+  -> Policy
+  -> System Settings
+```
+
+Individual cases may cover different slices of this journey. For example, Case 1 starts in System Settings and ends when LM Studio configuration is saved and visible to later flows; it does not run resume generation or submission.
+
+The first approved case is:
+
+| Case | Status | Priority | User Goal |
+|------|--------|----------|-----------|
+| `first_launch_configure_lm_studio` | `ready_for_implementation` | P0 | Configure LM Studio as the local LLM provider after first launch |
+| `setup_profile_and_material_library` | `ready_for_implementation` | P0 | Set up personal profile, uploaded resume, and text material library |
+| `generate_review_and_complete_evidence_card` | `ready_for_implementation` | P0 | Generate a strict-JSON Evidence Card draft from uploaded Markdown with local LLM, review it, and save eligible evidence |
+| `setup_job_target` | `ready_for_implementation` | P0 | Create a job target from pasted JD, parse it with local LLM, review it, and link an accessible source URL to a Job Lead |
+
+## 4. Acceptance Levels
+
+| Level | Name | Status | Purpose | Pass Condition |
+|-------|------|--------|---------|----------------|
+| L1 | Scenario Data/API Validation | `not_started` | Verify scenario data can be persisted and read through backend/sidecar contracts | Case-specific backend checks pass or return structured blocked state |
+| L2 | User Visible Scenario | `not_started` | Verify the user can complete the scenario through GUI-visible controls | Required page controls, feedback, save state, and cross-page summaries are visible |
+| L3 | Local/External Integration | `not_started` | Verify real local or external dependency integration safely | Case-specific real integration succeeds or reports a structured blocked state |
+
+For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible models endpoint. It must never be silently converted into a generic failure if LM Studio is not running.
+
+## 5. Target File Map
+
+| Path | Status | Responsibility |
+|------|--------|----------------|
+| `acceptance/scenario_cases.yaml` | `in_progress` | User-perspective scenario case catalog; Case 1 through Case 4 are ready for implementation |
+| `acceptance/journey_contract.yaml` | `not_started` | Machine-readable execution contract derived from selected approved scenario cases |
+| `tools/acceptance/__init__.py` | `not_started` | Package marker for acceptance helpers |
+| `tools/acceptance/journey_contract.py` | `not_started` | Load and validate the journey contract |
+| `tools/acceptance/journey_report.py` | `not_started` | Build JSON/Markdown acceptance reports from test results |
+| `tests/acceptance/fixtures/scenarios/` | `not_started` | Stable fixture data grouped by `case_id` |
+| `tests/acceptance/test_scenario_first_launch_configure_lm_studio.py` | `not_started` | Case 1 L1/L2 acceptance tests for LM Studio configuration |
+| `tests/acceptance/test_gui_journey_smoke.py` | `not_started` | L2 smoke test for page-level journey continuity |
+| `tests/acceptance/test_liepin_check_mode_journey.py` | `not_started` | L3 check-mode channel acceptance test |
+| `scripts/acceptance/run-acceptance.sh` | `not_started` | One-command runner for L1/L2/L3 validation |
+| `outputs/acceptance/<timestamp>/journey-report.json` | `not_started` | Machine-readable run report generated by the runner |
+| `outputs/acceptance/<timestamp>/journey-report.md` | `not_started` | Human-readable acceptance summary generated by the runner |
+
+## 6. Phase Roadmap
+
+| Phase | Status | Goal | Exit Evidence |
+|-------|--------|------|---------------|
+| M-1 | `in_progress` | Define user-perspective scenario cases before writing automated checks | `acceptance/scenario_cases.yaml` contains approved cases with statuses |
+| M0 | `not_started` | Define the journey contract and report schema from approved cases | `acceptance/journey_contract.yaml` validates against selected `case_id` |
+| M1 | `not_started` | Implement L1 selected-scenario validation | `python3 -m pytest tests/acceptance/test_scenario_first_launch_configure_lm_studio.py -q` passes for Case 1 |
+| M2 | `not_started` | Generate structured acceptance reports | JSON and Markdown reports are produced under `outputs/acceptance/` |
+| M3 | `not_started` | Implement L2 GUI journey smoke validation | GUI smoke test passes with mock sidecar data |
+| M4 | `not_started` | Implement L3 external check-mode validation | Liepin check-mode acceptance passes without final submit |
+| M5 | `not_started` | Wire all levels into a single acceptance runner | `bash scripts/acceptance/run-acceptance.sh` exits 0 and writes reports |
+
+## 7. Detailed Steps
+
+### M-1: Scenario Case Definition
+
+**Phase Status:** `in_progress`
+
+| Step | Status | Action | Output | Verification |
+|------|--------|--------|--------|--------------|
+| M-1.1 | `done` | Define scenario case structure from user perspective | Case fields include persona, goal, entry point, actions, responses, results, fallback, validation | `acceptance/scenario_cases.yaml` contains these fields |
+| M-1.2 | `done` | Define Case 1: first launch and LM Studio configuration | `first_launch_configure_lm_studio` | Case status is `ready_for_implementation` |
+| M-1.3 | `done` | Define Case 2: personal profile and material library preparation | `setup_profile_and_material_library` | Case status is `ready_for_implementation` |
+| M-1.4 | `done` | Define Case 3: evidence card generation, review, and completion | `generate_review_and_complete_evidence_card` | Case status is `ready_for_implementation` |
+| M-1.5 | `done` | Define Case 4: job target setup | `setup_job_target` | Case status is `ready_for_implementation` |
+| M-1.6 | `not_started` | Define Case 5: Quick Run generation and evaluation | New case entry | Case status reaches `ready_for_implementation` |
+| M-1.7 | `not_started` | Define Case 6+: Agent Run, submission check, and feedback iteration | Remaining case entries | Each case has explicit status and validation levels |
+
+### M0: Journey Contract
+
+**Phase Status:** `not_started`
+
+| Step | Status | Action | Output | Verification |
+|------|--------|--------|--------|--------------|
+| M0.1 | `not_started` | Create `acceptance/journey_contract.yaml` from approved scenario cases | Contract with selected `case_id`, stages, artifacts, and acceptance rules | YAML loads with existing YAML IO helper or standard parser |
+| M0.2 | `not_started` | Create `tools/acceptance/journey_contract.py` | Typed loader and validation errors | Unit test rejects missing required stages |
+| M0.3 | `not_started` | Define required journey stages | `overview`, `resumes`, `evidence`, `jobs`, `quick_run`, `agent_run`, `submissions`, `policy`, `system_settings` | Test confirms exact order |
+| M0.4 | `not_started` | Define required scenario outputs | Case-specific saved settings, structured connection result, visible summaries, or generated artifacts | Test confirms no required case output is omitted |
+| M0.5 | `not_started` | Add contract status fields | Each contract rule supports `status`, `evidence`, `message` in reports | Report builder can represent pass/fail/block states |
+
+### M1: Selected Scenario Validation
+
+**Phase Status:** `not_started`
+
+| Step | Status | Action | Output | Verification |
+|------|--------|--------|--------|--------------|
+| M1.1 | `not_started` | Create fixture directory `tests/acceptance/fixtures/scenarios/first_launch_configure_lm_studio/` | Stable local provider fixture values | Test can load the selected `case_id` without network |
+| M1.2 | `not_started` | Implement L1 settings persistence check for Case 1 | LM Studio provider/base_url/api_key/model config can be saved and read | Test confirms sidecar/settings contract returns saved config |
+| M1.3 | `not_started` | Implement structured connection result check for Case 1 | Success or `BLOCKED_LOCAL_PROVIDER` result | Test confirms unavailable LM Studio is structured, not a generic crash |
+| M1.4 | `not_started` | Implement saved config summary checks for Quick Run and Agent Run | Both pages/API summaries can read active provider metadata | Test confirms summaries contain provider/base_url/model without exposing raw secret |
+| M1.5 | `not_started` | Implement Case 1 L3-local optional check | Real request to `http://127.0.0.1:1234/v1/models` when enabled | Test reports PASS or BLOCKED_LOCAL_PROVIDER |
+
+### M2: Acceptance Report
+
+**Phase Status:** `not_started`
+
+| Step | Status | Action | Output | Verification |
+|------|--------|--------|--------|--------------|
+| M2.1 | `not_started` | Create `tools/acceptance/journey_report.py` | Report model for levels, phases, steps, and evidence paths | Unit test serializes JSON deterministically |
+| M2.2 | `not_started` | Add Markdown report rendering | `journey-report.md` with PASS/FAIL/BLOCKED rows | Unit test snapshots key headings |
+| M2.3 | `not_started` | Include stage-level failure messages | Failures identify stage and missing artifact | Test verifies a missing scorecard names `evaluation` stage |
+| M2.4 | `not_started` | Write reports under timestamped output directory | `outputs/acceptance/<timestamp>/` | Runner test confirms files exist |
+
+### M3: GUI Journey Smoke
+
+**Phase Status:** `not_started`
+
+| Step | Status | Action | Output | Verification |
+|------|--------|--------|--------|--------------|
+| M3.1 | `not_started` | Define mock sidecar payloads for journey pages | Overview stats, evidence list, jobs, run status, submissions detail | Test loads mock data without real sidecar |
+| M3.2 | `not_started` | Add GUI smoke test for 9-page navigation | Test visits pages in journey order | Test fails if route or nav label is missing |
+| M3.3 | `not_started` | Verify key visible state per page | Each page exposes at least one journey-specific signal | Test names the page that failed |
+| M3.4 | `not_started` | Verify Submissions detail can open | Detail panel shows steps/log paths/status | Test fails if details are inaccessible |
+| M3.5 | `blocked` | Validate against `.pen` if Pencil MCP is available | Optional design-asset confirmation | Blocked by current Pencil MCP transport issue recorded in project ledger |
+
+### M4: External Channel Check-mode
+
+**Phase Status:** `not_started`
+
+| Step | Status | Action | Output | Verification |
+|------|--------|--------|--------|--------------|
+| M4.1 | `not_started` | Select or create a validated low-risk job lead fixture | Check-mode target with expected jobId/recruiter when available | Fixture has no requirement for real submit |
+| M4.2 | `not_started` | Run Liepin channel in check-mode only | Submission log records login check, target verify, chat send resume, submit skipped | Test fails if submit is not skipped |
+| M4.3 | `not_started` | Classify external failures | `login_required`, `job_unavailable`, `rate_limited`, `target_mismatch`, or `channel_unavailable` | Report groups failure under L3, not L1 |
+| M4.4 | `not_started` | Add safety assertions | PDF/jobId/recruiter safety gates remain enforced | Test confirms unsafe submit cannot proceed |
+
+### M5: Unified Runner
+
+**Phase Status:** `not_started`
+
+| Step | Status | Action | Output | Verification |
+|------|--------|--------|--------|--------------|
+| M5.1 | `not_started` | Create `scripts/acceptance/run-acceptance.sh` | Runs L1 by default; L2/L3 gated by flags or environment | Shell exits non-zero on failure |
+| M5.2 | `not_started` | Add runner modes | `--level L1`, `--level L2`, `--level L3`, `--all` | Command help documents modes |
+| M5.3 | `not_started` | Write combined acceptance report | Aggregated JSON/Markdown report | Report includes each level status |
+| M5.4 | `not_started` | Document expected command in project ledger | Ledger points to runner and report location | New sessions can discover how to verify the journey |
+
+## 8. Recommended Execution Order
+
+| Order | Status | Work | Reason |
+|-------|--------|------|--------|
+| 1 | `in_progress` | M-1.1-M-1.7 | Define user scenarios before deriving automated tests |
+| 2 | `not_started` | M0.1-M0.5 | Establish the case-aware definition of done before implementation |
+| 3 | `not_started` | M1.1-M1.7 | Prove selected cases without GUI fragility where possible |
+| 4 | `not_started` | M2.1-M2.4 | Make acceptance results auditable |
+| 5 | `not_started` | M5.1-M5.4 for selected case/L1 only | Provide a stable one-command verifier per case |
+| 6 | `not_started` | M3.1-M3.4 | Add GUI visibility after case L1 stabilizes |
+| 7 | `blocked` | M3.5 | Resume when Pencil MCP can open `ui/design/piproofforge.pen` |
+| 8 | `not_started` | M4.1-M4.4 | Add external check-mode last because it depends on session/platform state |
+
+## 9. Milestone Definition of Done
+
+| Milestone | Status | Done Criteria |
+|-----------|--------|---------------|
+| M-1 Done | `in_progress` | Scenario case catalog contains all first-batch cases with `ready_for_implementation` status |
+| M0 Done | `not_started` | Contract exists, validates, and is derived from an approved `case_id` |
+| M1 Done | `not_started` | Selected scenario L1 test passes locally and reports structured blocked state for missing local dependencies |
+| M2 Done | `not_started` | Reports include level, phase, step, status, evidence, and failure message |
+| M3 Done | `not_started` | GUI smoke verifies all 9 pages and Submissions detail with mock sidecar data |
+| M4 Done | `not_started` | Check-mode channel run proves external path without final submit |
+| M5 Done | `not_started` | One command runs the selected levels and writes acceptance reports |
+
+## 10. Risk Register
+
+| Risk | Status | Impact | Mitigation |
+|------|--------|--------|------------|
+| Acceptance test becomes too broad and flaky | `not_started` | False failures block delivery | Keep L1 focused on one selected scenario; isolate L3 as optional/external |
+| GUI test depends on live sidecar state | `not_started` | Hard-to-debug UI failures | Use mock sidecar payloads for L2 smoke |
+| Real platform changes break L3 | `not_started` | External validation becomes noisy | Mark L3 separately; never let it obscure selected-scenario L1 status |
+| Pencil MCP unavailable | `blocked` | Cannot verify `.pen` design asset against latest implementation | Keep M3.5 blocked until MCP transport works; do not block L1 |
+| Contract duplicates implementation details | `not_started` | Maintenance cost rises | Contract should define outputs and stage semantics, not internal call order |
+
+## 11. Reporting Format
+
+The final Markdown report should use this shape:
+
+```text
+# User Journey Acceptance Report
+
+Run ID: acceptance-YYYYMMDD-HHMMSS
+Overall: PASS | FAIL | BLOCKED
+
+| Level | Status | Evidence |
+|-------|--------|----------|
+| L1 Scenario Data/API Validation | PASS | outputs/acceptance/... |
+| L2 User Visible Scenario | PASS | outputs/acceptance/... |
+| L3 Local/External Integration | BLOCKED | BLOCKED_LOCAL_PROVIDER |
+
+## Stage Results
+
+| Case | Check | Status | Evidence | Message |
+|------|-------|--------|----------|---------|
+| first_launch_configure_lm_studio | settings_saved | PASS | outputs/acceptance/... | LM Studio config persisted |
+| first_launch_configure_lm_studio | connection_test | BLOCKED | outputs/acceptance/... | LM Studio unavailable at 127.0.0.1:1234 |
+| first_launch_configure_lm_studio | quick_run_summary | PASS | outputs/acceptance/... | Quick Run can read provider summary |
+```
+
+## 12. Current Next Action
+
+| Priority | Status | Action | Owner |
+|----------|--------|--------|-------|
+| P0 | `in_progress` | Continue first-batch scenario case definitions, starting with Case 5 | Unassigned |
+| P0 | `not_started` | Implement M0 case-aware journey contract | Unassigned |
+| P0 | `not_started` | Implement M1 selected-case acceptance test | Unassigned |
+| P1 | `not_started` | Implement M2 report generator | Unassigned |
+| P1 | `not_started` | Wire L1 into acceptance runner | Unassigned |
+| P2 | `not_started` | Implement GUI smoke and external check-mode | Unassigned |
