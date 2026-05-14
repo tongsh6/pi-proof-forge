@@ -20,6 +20,7 @@
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
 - **当前阻塞：无运行硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、多候选批次策略、GUI 投递状态/详情可视化、真实 submit 前安全门禁均已闭环；GUI `.pen` 设计资产同步因 Pencil MCP `Transport closed` 待补验收（2026-05-13）**
+- **新专项：用户场景化自动验收 → scenario-first M-1 推进中；Case 1-4 已定义并进入 `ready_for_implementation`，下一步定义 Case 5 `Quick Run generation and evaluation`（2026-05-15）**
 
 ## 2. 已完成事项
 
@@ -172,9 +173,10 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | GUI `.pen` 设计资产同步复核 | 本轮 review 已发现 GUI 结构变更未能同步 `.pen`，且 Pencil MCP 暂时不可用 | Pencil MCP 恢复后，`Screen/Submissions` (`upl7d`) 与实现/合同一致；若设计稿已有对应结构，则记录验收证据 |
-| 2 | submit 安全门禁真实 dry-run 演练 | 代码级门禁已测试，但未用真实页面跑 submit_safety blocked 路径 | 使用 PDF + 错误 recruiter/jobId 运行 submit，确认阻断在 submit_safety 且未点击最终确认 |
-| 3 | Agent Loop 批次策略真实 check-mode 演练 | 代码级批次策略已测试，但未用真实 job_leads 跑多候选 check-mode 端到端批次 | 多候选 DISCOVER/GATE/DELIVER 顺序与 submission 日志可对账，且通道频控仍生效 |
+| 1 | 用户场景化 case 定义 M-1 | 需要先从用户视角定义场景 case，避免把后端 happy-path 当成用户旅程验收；当前 Case 1-4 已 `ready_for_implementation` | 继续定义 Case 5（Quick Run 生成与评测）和后续 Agent Run/投递/反馈迭代 case；每个 case 有 status、persona、goal、actions、responses、expected_results、validation |
+| 2 | GUI `.pen` 设计资产同步复核 | 本轮 review 已发现 GUI 结构变更未能同步 `.pen`，且 Pencil MCP 暂时不可用 | Pencil MCP 恢复后，`Screen/Submissions` (`upl7d`) 与实现/合同一致；若设计稿已有对应结构，则记录验收证据 |
+| 3 | submit 安全门禁真实 dry-run 演练 | 代码级门禁已测试，但未用真实页面跑 submit_safety blocked 路径 | 使用 PDF + 错误 recruiter/jobId 运行 submit，确认阻断在 submit_safety 且未点击最终确认 |
+| 4 | Agent Loop 批次策略真实 check-mode 演练 | 代码级批次策略已测试，但未用真实 job_leads 跑多候选 check-mode 端到端批次 | 多候选 DISCOVER/GATE/DELIVER 顺序与 submission 日志可对账，且通道频控仍生效 |
 
 ## 8. 关键证据索引
 
@@ -197,6 +199,8 @@
 | Composer | tools/config/composer.py | 组装点（含 build_agent_loop） |
 | Sidecar | tools/sidecar/server.py | GUI-Python JSON-RPC 桥接 |
 | GUI 设计 | ui/design/DESIGN.md | 终版 9 页 IA |
+| 用户场景化 case 定义 | acceptance/scenario_cases.yaml | scenario-first 验收 case 目录；Case 1-4 已 ready_for_implementation，当前推进 Case 5 |
+| 用户旅程闭环自动化验证计划 | AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md | M-1 到 M5 专项推进计划，所有阶段/步骤均含状态字段 |
 | 测试 | tests/ | 329 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |
 | **反反爬基础设施** | **tools/submission/_browser.py** | **stealth + human pacing + 安全护栏** |
