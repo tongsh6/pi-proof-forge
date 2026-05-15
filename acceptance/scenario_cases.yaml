@@ -646,3 +646,1419 @@ cases:
         checks:
           - "real_https_source_url_accessibility_check"
           - "blocked_local_provider_when_lm_studio_unavailable"
+
+  - case_id: "quick_run_generate_and_evaluate_resume"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "quick_run"
+    depends_on:
+      - "first_launch_configure_lm_studio"
+      - "generate_review_and_complete_evidence_card"
+      - "setup_job_target"
+    user_goal: >
+      用户选择一个已完成的岗位目标和一组已进入候选池的 Evidence Cards，
+      使用已配置且可连接的本地 LLM，在 Quick Run 中完成一次单岗位、单轮的
+      匹配、简历生成和质量评测，
+      获得可追溯的匹配报告、定制简历、Scorecard 和补证据建议。
+
+    scope:
+      includes:
+        - "select_active_job_profile"
+        - "select_or_auto_use_eligible_evidence_cards"
+        - "show_saved_llm_provider_summary"
+        - "run_matching_generation_evaluation_once"
+        - "select_resume_positioning"
+        - "custom_resume_positioning_input"
+        - "fact_preserving_resume_generation"
+        - "matching_report_output"
+        - "resume_output_preview_and_version"
+        - "pdf_export_output"
+        - "scorecard_output"
+        - "gap_tasks_output"
+        - "run_log_and_artifact_paths"
+      excludes:
+        - "multi_round_agent_loop"
+        - "external_submission"
+        - "human_review_gate"
+        - "batch_candidate_strategy"
+        - "feedback_iteration"
+        - "real_job_board_interaction"
+
+    input_requirements:
+      active_job_profile:
+        required: true
+        status_required: "saved_complete"
+        missing_result: "missing_active_job_profile"
+      evidence_cards:
+        required: true
+        minimum_count: 1
+        status_required: "saved_eligible"
+        must_have:
+          - "results_not_empty"
+          - "artifacts_not_empty"
+        missing_result: "missing_eligible_evidence_cards"
+      provider_config:
+        required: true
+        source: "saved_lm_studio_settings"
+        missing_result: "missing_provider_config"
+
+    resume_positioning_policy:
+      required: true
+      default_mode: "user_selected_or_custom_positioning"
+      no_hardcoded_ab_variants: true
+      preset_examples_are_role_specific_not_global:
+        technical:
+          - "architecture"
+          - "delivery_owner"
+        product:
+          - "growth"
+          - "strategy"
+        operations:
+          - "process_improvement"
+          - "cross_team_coordination"
+      custom_positioning_allowed: true
+      selected_positioning_recorded_in_resume_output: true
+      selected_positioning_recorded_in_run_log: true
+      P0_resume_variant_count: 1
+      P1_later:
+        - "multi_variant_generation"
+        - "ab_comparison"
+
+    evidence_selection_policy:
+      default_mode: "auto_select_eligible_cards"
+      manual_selection_allowed: true
+      auto_selection_scope: "all_saved_eligible_cards"
+      manual_selection_scope: "user_selected_eligible_cards_only"
+      minimum_selected_count: 1
+      ineligible_cards_cannot_be_selected: true
+      ineligible_card_rules:
+        - "missing_results"
+        - "missing_artifacts"
+        - "not_saved_eligible"
+      empty_selection_result: "missing_eligible_evidence_cards"
+      selected_card_ids_recorded_in_run_log: true
+
+    run_policy:
+      mode: "single_pass_quick_run"
+      require_llm: true
+      no_external_delivery: true
+      no_agent_retry_loop: true
+      no_silent_mock_outputs: true
+      no_rule_mode_fallback: true
+      no_template_only_fallback: true
+      artifact_versioning_required: true
+      run_record_required: true
+
+    llm_policy:
+      required: true
+      provider: "lm_studio"
+      use_saved_provider_config: true
+      unavailable_result: "BLOCKED_LOCAL_PROVIDER"
+      no_silent_fallback_to_fake_llm: true
+      no_silent_fallback_to_rule_final_output: true
+      no_silent_fallback_to_template_only: true
+      affected_stages:
+        - "matching"
+        - "generation"
+        - "evaluation"
+
+    matching_policy:
+      deterministic_preprocessing_allowed: true
+      allowed_preprocessing:
+        - "eligible_evidence_filtering"
+        - "keyword_overlap_context"
+        - "top_n_candidate_retrieval"
+        - "prompt_context_packaging"
+      llm_required_for_final_output: true
+      llm_final_output_owns:
+        - "total_score"
+        - "dimension_scores"
+        - "selected_evidence_card_ids"
+        - "ranking_order"
+        - "selection_reasons"
+        - "gaps"
+      rule_only_matching_report_forbidden: true
+      unavailable_result: "BLOCKED_LOCAL_PROVIDER"
+
+    stage_outputs:
+      matching:
+        required_artifact: "matching_report"
+        required_fields:
+          - "total_score"
+          - "dimension_scores"
+          - "selected_evidence_card_ids"
+          - "gaps"
+      generation:
+        required_artifact: "resume_output"
+        required_fields:
+          - "resume_version_id"
+          - "selected_positioning"
+          - "content"
+          - "source_evidence_card_ids"
+      export:
+        required_artifact: "resume_pdf"
+        required_fields:
+          - "resume_version_id"
+          - "pdf_path"
+          - "source_resume_output_id"
+      evaluation:
+        required_artifact: "scorecard"
+        required_fields:
+          - "total_score"
+          - "dimension_scores"
+          - "issues"
+          - "suggestions"
+      feedback:
+        required_artifact: "gap_tasks"
+        required_fields:
+          - "missing_keyword_or_skill"
+          - "suggested_evidence_update"
+
+    fact_preservation_policy:
+      resume_claims_must_trace_to_evidence: true
+      source_evidence_card_ids_required: true
+      generated_content_must_not_add_new_metrics: true
+      violation_result: "fact_preservation_failed"
+
+    preview_policy:
+      show_before_export: true
+      show_matching_summary: true
+      show_scorecard_summary: true
+      show_gap_tasks: true
+      export_required_for_p0: true
+      P0_required_export_formats:
+        - "pdf"
+      P1_later_export_formats:
+        - "docx"
+
+    run_statuses:
+      - "ready_to_run"
+      - "blocked_missing_inputs"
+      - "blocked_local_provider"
+      - "running_matching"
+      - "running_generation"
+      - "running_evaluation"
+      - "completed"
+      - "failed_fact_preservation"
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_quick_run"
+      - "inspect_saved_provider_summary"
+      - "select_complete_job_profile"
+      - "select_eligible_evidence_cards_or_accept_auto_selection"
+      - "select_or_enter_resume_positioning"
+      - "start_quick_run"
+      - "watch_stage_progress"
+      - "review_matching_report_summary"
+      - "review_generated_resume_preview"
+      - "review_exported_pdf_path"
+      - "review_scorecard_summary"
+      - "review_gap_tasks"
+      - "open_run_artifact_paths"
+
+    system_responses:
+      - "show_saved_lm_studio_provider_summary"
+      - "show_complete_job_profile_options"
+      - "show_eligible_evidence_card_options"
+      - "show_resume_positioning_options_and_custom_input"
+      - "block_run_when_required_inputs_missing"
+      - "block_run_when_provider_config_missing"
+      - "test_lm_studio_connection_before_run"
+      - "block_run_when_lm_studio_unavailable"
+      - "optionally_run_deterministic_matching_preprocessing"
+      - "run_llm_final_matching_stage_with_saved_provider"
+      - "run_generation_stage_with_saved_provider"
+      - "run_evaluation_stage_with_saved_provider"
+      - "show_stage_progress_and_terminal_status"
+      - "persist_matching_report"
+      - "persist_resume_output_with_version_id"
+      - "export_resume_pdf"
+      - "persist_scorecard"
+      - "persist_gap_tasks"
+      - "persist_quick_run_log"
+      - "show_artifact_paths"
+
+    expected_results:
+      - "quick_run_reads_saved_provider_summary"
+      - "complete_job_profile_visible_for_selection"
+      - "eligible_evidence_cards_visible_for_selection"
+      - "resume_positioning_can_be_selected_or_customized"
+      - "no_hardcoded_architecture_delivery_ab_requirement"
+      - "auto_selection_uses_only_eligible_evidence_cards"
+      - "manual_selection_accepts_only_eligible_evidence_cards"
+      - "selected_evidence_card_ids_recorded"
+      - "missing_inputs_block_run_with_structured_message"
+      - "missing_provider_config_blocks_run"
+      - "local_provider_unavailable_blocks_entire_quick_run_with_structured_message"
+      - "matching_report_created"
+      - "resume_output_created_with_version_id"
+      - "resume_output_records_selected_positioning"
+      - "resume_pdf_exported"
+      - "resume_pdf_references_resume_version_id"
+      - "resume_output_references_selected_evidence_cards"
+      - "scorecard_created"
+      - "gap_tasks_created_from_matching_or_evaluation_gaps"
+      - "quick_run_log_records_stage_statuses"
+      - "artifact_paths_visible_to_user"
+      - "no_external_submission_attempted"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "quick_run_api_reads_saved_provider_summary"
+          - "quick_run_api_lists_complete_job_profiles"
+          - "quick_run_api_lists_eligible_evidence_cards"
+          - "quick_run_accepts_user_selected_or_custom_resume_positioning"
+          - "quick_run_does_not_require_hardcoded_ab_variants"
+          - "quick_run_auto_selects_only_eligible_evidence_cards"
+          - "quick_run_rejects_ineligible_manual_card_selection"
+          - "quick_run_records_selected_evidence_card_ids"
+          - "quick_run_blocks_missing_job_profile"
+          - "quick_run_blocks_missing_eligible_evidence_cards"
+          - "quick_run_blocks_missing_provider_config"
+          - "quick_run_tests_lm_studio_connection_before_run"
+          - "quick_run_returns_blocked_local_provider_when_lm_studio_unavailable"
+          - "quick_run_allows_rule_preprocessing_only"
+          - "quick_run_requires_llm_final_matching_report"
+          - "quick_run_does_not_emit_rule_only_matching_report"
+          - "quick_run_does_not_fallback_to_template_only_generation"
+          - "quick_run_creates_matching_report_artifact"
+          - "quick_run_creates_resume_output_artifact"
+          - "quick_run_exports_resume_pdf_artifact"
+          - "resume_pdf_references_resume_version_id"
+          - "quick_run_creates_scorecard_artifact"
+          - "quick_run_creates_gap_tasks_artifact"
+          - "quick_run_log_records_all_stage_statuses"
+          - "resume_output_references_source_evidence_card_ids"
+          - "quick_run_does_not_call_submission_channel"
+      L2:
+        status: "not_started"
+        checks:
+          - "quick_run_page_provider_summary_visible"
+          - "job_profile_selector_visible"
+          - "eligible_evidence_selector_visible"
+          - "resume_positioning_selector_or_custom_input_visible"
+          - "auto_evidence_selection_default_visible"
+          - "manual_evidence_selection_available"
+          - "ineligible_evidence_cards_not_selectable"
+          - "run_button_disabled_or_blocked_when_inputs_missing"
+          - "stage_progress_visible"
+          - "matching_summary_visible"
+          - "resume_preview_visible"
+          - "resume_pdf_path_visible"
+          - "scorecard_summary_visible"
+          - "gap_tasks_visible"
+          - "artifact_paths_visible"
+      L3_local:
+        status: "not_started"
+        checks:
+          - "real_lm_studio_matching_request"
+          - "real_lm_studio_generation_request"
+          - "real_lm_studio_evaluation_request"
+          - "blocked_local_provider_when_lm_studio_unavailable"
+
+  - case_id: "agent_run_guided_batch"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "agent_run"
+    depends_on:
+      - "first_launch_configure_lm_studio"
+      - "quick_run_generate_and_evaluate_resume"
+      - "setup_job_target"
+    user_goal: >
+      用户选择一个已完成的岗位目标、一组候选 Job Leads 和运行策略，
+      让 Agent Run 执行受控批次：为多个候选岗位完成发现/读取、匹配、
+      简历定位、生成、评测、门禁和人工确认前的投递计划；
+      用户能逐个查看候选决策、失败原因、生成产物和下一步建议，
+      且系统默认不触发真实外部投递。
+
+    scope:
+      includes:
+        - "select_active_job_profile"
+        - "select_candidate_job_leads"
+        - "select_or_enter_resume_positioning_policy"
+        - "configure_batch_limits"
+        - "require_saved_llm_provider"
+        - "run_multi_candidate_agent_loop"
+        - "llm_final_matching_per_candidate"
+        - "resume_pdf_generation_per_passed_candidate"
+        - "evaluation_and_gate_per_candidate"
+        - "candidate_decision_table"
+        - "agent_run_event_log"
+        - "delivery_plan_without_real_submit"
+      excludes:
+        - "unattended_real_submit"
+        - "external_platform_check_mode"
+        - "real_job_board_interaction"
+        - "browser_automation"
+        - "submission_channel_invocation"
+        - "live_external_page_fetch"
+        - "feedback_iteration"
+        - "interview_feedback_collection"
+        - "automatic_policy_relaxation"
+
+    input_requirements:
+      active_job_profile:
+        required: true
+        status_required: "saved_complete"
+        missing_result: "missing_active_job_profile"
+      candidate_job_leads:
+        required: true
+        minimum_count: 1
+        source: "existing_saved_or_fixture_job_leads"
+        required_fields:
+          - "job_url_or_source_reference"
+          - "company_or_role_label"
+        missing_result: "missing_candidate_job_leads"
+      provider_config:
+        required: true
+        source: "saved_lm_studio_settings"
+        missing_result: "missing_provider_config"
+      policy_limits:
+        required: true
+        defaults_allowed: true
+        user_editable: true
+        editable_fields:
+          - "max_candidates"
+          - "max_passed_candidates"
+          - "max_generated_resumes"
+        locked_fields:
+          submit_enabled:
+            value: false
+            reason: "real_submit_is_out_of_scope_for_case_6"
+            enable_attempt_result: "submit_enable_blocked_for_case"
+        defaults:
+          max_candidates: 5
+          max_passed_candidates: 3
+          max_generated_resumes: 3
+          submit_enabled: false
+        fields:
+          - "max_candidates"
+          - "max_passed_candidates"
+          - "max_generated_resumes"
+          - "submit_enabled"
+
+    run_policy:
+      mode: "guided_batch_agent_run"
+      require_llm: true
+      preflight_confirmation_required: true
+      submit_enabled_default: false
+      submit_enabled_locked_false: true
+      submit_enable_attempt_blocked: true
+      real_submit_forbidden_in_case: true
+      no_external_delivery: true
+      no_browser_automation: true
+      no_submission_channel_invocation: true
+      no_live_external_page_fetch: true
+      no_silent_mock_outputs: true
+      no_rule_final_matching_output: true
+      no_template_only_generation: true
+      batch_limits_required: true
+      batch_limits_user_editable: true
+      effective_policy_limits_recorded: true
+      run_record_required: true
+
+    preflight_confirmation_policy:
+      required: true
+      user_must_confirm:
+        - "llm_provider_required_and_may_be_used_multiple_times"
+        - "effective_batch_limits"
+        - "no_real_submit_or_external_platform_interaction"
+      start_blocked_until_confirmed: true
+      confirmation_recorded_in_run_log: true
+      confirmation_fields:
+        - "confirmed_at"
+        - "confirmed_by_user"
+        - "confirmed_policy_limits"
+        - "confirmed_no_real_submit"
+
+    llm_policy:
+      required: true
+      provider: "lm_studio"
+      use_saved_provider_config: true
+      unavailable_result: "BLOCKED_LOCAL_PROVIDER"
+      affected_stages:
+        - "candidate_analysis"
+        - "matching"
+        - "generation"
+        - "evaluation"
+        - "delivery_plan_reasoning"
+
+    resume_positioning_policy:
+      source: "user_selected_or_custom_positioning"
+      may_reuse_quick_run_positioning: true
+      per_candidate_override_allowed: true
+      agent_may_recommend_per_candidate_positioning: true
+      recommendation_must_stay_within_user_policy: true
+      positioning_reason_required_per_candidate: true
+      no_hardcoded_ab_variants: true
+      selected_positioning_recorded_per_candidate: true
+
+    candidate_selection_policy:
+      default_order: "user_selected_order"
+      agent_may_rank_candidates: true
+      llm_required_for_agent_ranking: true
+      deterministic_preprocessing_allowed: true
+      user_can_pin_or_exclude_candidates_before_run: true
+      pinned_candidates_keep_priority: true
+      excluded_candidates_never_run: true
+      agent_ranking_reason_required: true
+      final_candidate_order_recorded: true
+      no_candidate_added_outside_user_selected_scope: true
+      selected_candidate_ids_recorded_in_run_log: true
+
+    gate_policy:
+      matching_decision_required_for_all_candidates: true
+      generation_threshold_required: true
+      candidates_below_generation_threshold_do_not_generate_resume: true
+      scorecard_required_only_after_resume_generation: true
+      requires_matching_threshold: true
+      requires_evaluation_threshold: true
+      failed_gate_candidates_not_in_delivery_plan: true
+      gate_reasons_visible: true
+      user_review_required_before_any_future_external_delivery: true
+
+    stage_outputs:
+      agent_run:
+        required_artifact: "agent_run_log"
+        required_fields:
+          - "run_id"
+          - "stage_events"
+          - "selected_candidate_ids"
+          - "policy_limits"
+          - "preflight_confirmation"
+      candidate_decisions:
+        required_artifact: "candidate_decision_table"
+        required_fields:
+          - "candidate_id"
+          - "job_lead_id"
+          - "final_rank"
+          - "status"
+          - "matching_total"
+          - "matching_summary"
+          - "evaluation_total"
+          - "gate_decision"
+          - "reason"
+          - "ranking_reason"
+          - "selected_positioning"
+          - "positioning_reason"
+      generated_outputs:
+        required_artifacts:
+          - "matching_decision_summary"
+          - "matching_report"
+          - "resume_output"
+          - "resume_pdf"
+          - "scorecard"
+        matching_decision_required_for: "each_selected_candidate"
+        resume_pdf_scorecard_required_for: "each_candidate_meeting_generation_threshold"
+      delivery_plan:
+        required_artifact: "delivery_plan"
+        required_fields:
+          - "candidate_id"
+          - "resume_version_id"
+          - "pdf_path"
+          - "recommended_channel"
+          - "submit_status"
+
+    run_statuses:
+      - "ready_to_run"
+      - "blocked_missing_inputs"
+      - "blocked_local_provider"
+      - "running"
+      - "completed"
+      - "completed_with_blocked_candidates"
+      - "failed"
+
+    partial_success_policy:
+      allowed: true
+      candidate_level_blocked_does_not_fail_run: true
+      completed_with_blocked_candidates_when:
+        - "at_least_one_candidate_completes"
+        - "one_or_more_candidates_blocked_or_failed_gate"
+      whole_run_blocked_when:
+        - "missing_required_inputs"
+        - "lm_studio_unavailable_before_run"
+        - "provider_config_missing"
+      whole_run_failed_when:
+        - "run_log_cannot_be_persisted"
+        - "unexpected_system_exception"
+        - "no_candidate_reaches_any_recordable_decision_due_to_system_error"
+      candidate_blocked_reasons:
+        - "low_matching_score"
+        - "below_generation_threshold"
+        - "llm_output_invalid_for_candidate"
+        - "insufficient_evidence_for_candidate"
+        - "gate_failed"
+      blocked_candidate_reasons_recorded: true
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_agent_run"
+      - "inspect_saved_provider_summary"
+      - "select_complete_job_profile"
+      - "select_candidate_job_leads"
+      - "pin_or_exclude_candidates_if_needed"
+      - "select_or_enter_resume_positioning_policy"
+      - "review_batch_limits"
+      - "confirm_submit_disabled"
+      - "confirm_preflight_summary"
+      - "start_agent_run"
+      - "watch_stage_progress"
+      - "review_candidate_decision_table"
+      - "review_generated_artifacts_per_passed_candidate"
+      - "review_delivery_plan_without_submit"
+      - "open_agent_run_event_log"
+
+    system_responses:
+      - "show_saved_lm_studio_provider_summary"
+      - "show_complete_job_profile_options"
+      - "show_candidate_job_lead_options"
+      - "show_resume_positioning_policy_controls"
+      - "show_batch_limit_controls"
+      - "show_submit_disabled_by_default"
+      - "show_preflight_confirmation_summary"
+      - "block_start_until_preflight_confirmed"
+      - "block_run_when_required_inputs_missing"
+      - "test_lm_studio_connection_before_run"
+      - "block_run_when_lm_studio_unavailable"
+      - "run_agent_loop_for_selected_candidates"
+      - "record_stage_events"
+      - "record_candidate_decisions"
+      - "generate_artifacts_for_passed_candidates"
+      - "exclude_failed_gate_candidates_from_delivery_plan"
+      - "create_delivery_plan_without_real_submit"
+      - "show_agent_run_detail"
+
+    expected_results:
+      - "agent_run_reads_saved_provider_summary"
+      - "candidate_job_leads_visible_for_selection"
+      - "batch_limits_visible_before_start"
+      - "batch_limit_defaults_prefilled"
+      - "batch_limits_can_be_edited_before_start"
+      - "effective_batch_limits_recorded"
+      - "submit_disabled_by_default"
+      - "submit_enable_attempt_blocked_with_message"
+      - "preflight_confirmation_required_before_start"
+      - "preflight_confirmation_recorded"
+      - "missing_inputs_block_run_with_structured_message"
+      - "local_provider_unavailable_blocks_entire_agent_run_with_structured_message"
+      - "candidate_selection_or_ranking_recorded"
+      - "pinned_candidates_keep_priority"
+      - "excluded_candidates_not_run"
+      - "agent_ranking_reasons_visible"
+      - "final_candidate_order_recorded"
+      - "per_candidate_positioning_recorded"
+      - "positioning_recommendations_stay_within_user_policy"
+      - "candidate_decision_table_created"
+      - "matching_decision_recorded_for_each_selected_candidate"
+      - "candidate_blocked_reasons_recorded"
+      - "candidate_level_blocked_does_not_fail_whole_run"
+      - "gate_decisions_visible_per_candidate"
+      - "candidates_below_generation_threshold_do_not_generate_resume"
+      - "failed_gate_candidates_excluded_from_delivery_plan"
+      - "candidates_meeting_generation_threshold_have_resume_pdf_scorecard_artifacts"
+      - "delivery_plan_created_without_real_submit"
+      - "agent_run_log_records_stage_events"
+      - "no_browser_automation_attempted"
+      - "no_live_external_page_fetch_attempted"
+      - "no_external_submission_attempted"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "agent_run_api_reads_saved_provider_summary"
+          - "agent_run_api_lists_complete_job_profiles"
+          - "agent_run_api_lists_candidate_job_leads"
+          - "agent_run_blocks_missing_job_profile"
+          - "agent_run_blocks_missing_candidate_job_leads"
+          - "agent_run_blocks_missing_provider_config"
+          - "agent_run_tests_lm_studio_connection_before_run"
+          - "agent_run_returns_blocked_local_provider_when_lm_studio_unavailable"
+          - "agent_run_records_selected_candidate_ids"
+          - "agent_run_respects_pinned_candidates"
+          - "agent_run_excludes_user_excluded_candidates"
+          - "agent_run_records_agent_ranking_reasons"
+          - "agent_run_records_final_candidate_order"
+          - "agent_run_does_not_add_candidates_outside_selected_scope"
+          - "agent_run_records_per_candidate_positioning"
+          - "agent_run_positioning_recommendations_stay_within_user_policy"
+          - "agent_run_records_policy_limits"
+          - "agent_run_prefills_default_policy_limits"
+          - "agent_run_accepts_user_edited_policy_limits"
+          - "agent_run_keeps_submit_enabled_locked_false"
+          - "agent_run_blocks_submit_enable_attempt"
+          - "agent_run_records_effective_policy_limits"
+          - "agent_run_blocks_start_without_preflight_confirmation"
+          - "agent_run_records_preflight_confirmation"
+          - "agent_run_creates_candidate_decision_table"
+          - "agent_run_allows_completed_with_blocked_candidates"
+          - "agent_run_records_candidate_blocked_reasons"
+          - "agent_run_does_not_fail_whole_run_for_candidate_level_blocked"
+          - "agent_run_records_matching_decision_for_each_selected_candidate"
+          - "agent_run_skips_resume_generation_below_generation_threshold"
+          - "agent_run_creates_resume_pdf_scorecard_for_candidates_meeting_generation_threshold"
+          - "agent_run_excludes_failed_gate_candidates_from_delivery_plan"
+          - "agent_run_creates_delivery_plan_without_submit"
+          - "agent_run_log_records_stage_events"
+          - "agent_run_does_not_use_browser_automation"
+          - "agent_run_does_not_fetch_live_external_pages"
+          - "agent_run_does_not_call_external_submission_channel"
+      L2:
+        status: "not_started"
+        checks:
+          - "agent_run_page_provider_summary_visible"
+          - "job_profile_selector_visible"
+          - "candidate_job_lead_selector_visible"
+          - "resume_positioning_policy_controls_visible"
+          - "batch_limit_controls_visible"
+          - "batch_limit_defaults_visible"
+          - "batch_limit_controls_editable"
+          - "submit_disabled_default_visible"
+          - "submit_enable_blocked_message_visible"
+          - "preflight_confirmation_summary_visible"
+          - "start_disabled_until_preflight_confirmed"
+          - "stage_progress_visible"
+          - "candidate_decision_table_visible"
+          - "candidate_blocked_reasons_visible"
+          - "candidate_matching_summaries_visible"
+          - "candidate_ranking_reasons_visible"
+          - "candidate_positioning_reasons_visible"
+          - "candidate_artifact_links_visible"
+          - "delivery_plan_without_submit_visible"
+          - "agent_run_event_log_visible"
+      L3_local:
+        status: "not_started"
+        checks:
+          - "real_lm_studio_candidate_analysis_request"
+          - "real_lm_studio_matching_request"
+          - "real_lm_studio_generation_request"
+          - "real_lm_studio_evaluation_request"
+          - "blocked_local_provider_when_lm_studio_unavailable"
+
+  - case_id: "channel_session_setup"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "submissions"
+    depends_on:
+      - "agent_run_guided_batch"
+    user_goal: >
+      用户选择一个投递渠道，打开受控浏览器会话，人工完成登录或刷新登录态；
+      系统只检测登录状态、保存渠道共享 session、展示有效/过期状态和保存路径，
+      不保存账号密码、不绕过验证码、不代替用户完成敏感登录。
+
+    scope:
+      includes:
+        - "select_submission_channel"
+        - "open_channel_session_browser"
+        - "manual_login_or_session_refresh"
+        - "detect_channel_login_state"
+        - "persist_channel_shared_session"
+        - "show_session_status_and_path"
+        - "session_expiry_or_invalid_state"
+      excludes:
+        - "password_storage"
+        - "captcha_bypass"
+        - "sms_verification_bypass"
+        - "new_account_registration"
+        - "resume_submission"
+        - "job_target_verification"
+        - "attachment_check"
+        - "final_submit"
+
+    input_requirements:
+      channel:
+        required: true
+        P0_supported:
+          - "liepin"
+        unsupported_result: "unsupported_submission_channel"
+
+    channel_session_policy:
+      required: true
+      contract_shape: "multi_channel_extensible"
+      P0_supported_channels:
+        - "liepin"
+      channel_required_in_api_ui_logs: true
+      session_storage_policy: "browser_profile_or_equivalent_session_state"
+      session_path_recorded: true
+      session_status_user_visible: true
+      account_identity_visible_when_safely_available: true
+      account_identity_unknown_result: "account_identity_unknown"
+      account_identity_not_required_for_session_validity: true
+      account_identity_must_be_non_sensitive_or_masked: true
+      account_identity_allowed_fields:
+        - "display_name_or_nickname"
+        - "avatar_presence"
+        - "masked_phone_or_email_suffix"
+      session_clear_supported: true
+      session_clear_scope: "selected_channel_only"
+      clear_session_requires_user_action: true
+      cleared_session_result: "session_cleared"
+      credentials_storage_forbidden: true
+      captcha_bypass_forbidden: true
+      sms_verification_bypass_forbidden: true
+      user_must_complete_sensitive_login_steps_manually: true
+      session_reuse_allowed_for_check_mode: true
+      adapter_specific_fields_must_be_namespaced_by_channel: true
+      positive_login_signal_required_for_valid_session: true
+      absence_of_login_modal_is_not_sufficient: true
+      unknown_login_state_must_not_be_saved_as_valid: true
+      unknown_login_state_result: "session_unknown"
+      login_signal_policy:
+        liepin:
+          positive_indicators_required:
+            - "logged_in_user_ui_or_equivalent_authenticated_signal"
+          login_modal_absence_only_forbidden: true
+      unsupported_channel_result: "unsupported_submission_channel"
+
+    browser_policy:
+      browser_automation_allowed_for_opening_channel_login_page: true
+      browser_automation_must_not_enter_credentials: true
+      browser_automation_must_not_solve_captcha_or_sms: true
+      channel_adapter_controls_browser: true
+      screenshots_allowed: true
+      html_snapshots_allowed: true
+
+    stage_outputs:
+      channel_session:
+        required_artifact: "channel_session"
+        required_fields:
+          - "channel"
+          - "session_id"
+          - "session_path"
+          - "login_status"
+          - "account_identity"
+          - "checked_at"
+          - "expires_or_unknown"
+          - "clear_available"
+        adapter_specific_fields_policy: "namespaced_by_channel"
+      session_check_log:
+        required_artifact: "session_check_log"
+        required_fields:
+          - "channel"
+          - "steps"
+          - "terminal_status"
+          - "screenshot_path"
+          - "log_path"
+
+    run_statuses:
+      - "ready_to_setup"
+      - "unsupported_submission_channel"
+      - "waiting_for_manual_login"
+      - "session_valid"
+      - "login_required"
+      - "session_unknown"
+      - "session_expired"
+      - "session_cleared"
+      - "channel_unavailable"
+      - "failed"
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_submissions"
+      - "open_channel_session_settings"
+      - "select_submission_channel"
+      - "start_channel_session_setup"
+      - "complete_manual_login_or_refresh_in_controlled_browser"
+      - "request_login_state_check"
+      - "inspect_session_status"
+      - "inspect_account_identity_when_available"
+      - "clear_selected_channel_session"
+      - "open_session_log"
+
+    system_responses:
+      - "show_supported_submission_channels"
+      - "block_unsupported_submission_channel"
+      - "open_channel_login_page_in_controlled_browser"
+      - "show_manual_login_required_message"
+      - "do_not_enter_or_store_credentials"
+      - "do_not_bypass_captcha_or_sms"
+      - "run_channel_login_state_check"
+      - "require_positive_login_signal_for_valid_session"
+      - "persist_channel_shared_session_when_valid"
+      - "show_session_valid_status_path_and_safe_account_identity"
+      - "show_account_identity_unknown_when_unavailable"
+      - "show_login_required_unknown_or_expired_status"
+      - "clear_selected_channel_session_on_user_request"
+      - "show_session_cleared_status"
+      - "persist_session_check_log"
+
+    expected_results:
+      - "supported_submission_channels_visible"
+      - "session_setup_contract_is_multi_channel_extensible"
+      - "unsupported_channel_blocks_with_structured_message"
+      - "controlled_browser_opens_channel_login_page"
+      - "manual_login_boundary_visible"
+      - "credentials_are_not_stored"
+      - "browser_automation_does_not_enter_credentials"
+      - "captcha_and_sms_bypass_not_attempted"
+      - "browser_automation_does_not_enter_captcha_or_sms_codes"
+      - "login_state_check_returns_structured_status"
+      - "valid_session_requires_positive_login_signal"
+      - "login_modal_absence_alone_does_not_mark_session_valid"
+      - "unknown_login_state_is_not_persisted_as_valid"
+      - "valid_session_is_persisted_with_channel_and_path"
+      - "session_path_status_checked_at_visible_to_user"
+      - "safe_account_identity_visible_when_available"
+      - "account_identity_unknown_does_not_block_valid_session"
+      - "account_identity_is_masked_or_non_sensitive"
+      - "selected_channel_session_can_be_cleared_by_user"
+      - "cleared_session_is_not_reused_by_submission_check_mode"
+      - "invalid_or_expired_session_returns_structured_status"
+      - "session_status_visible_to_later_submission_check_mode"
+      - "session_check_log_created"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "channel_session_api_requires_channel"
+          - "channel_session_api_rejects_unsupported_channel"
+          - "channel_session_contract_not_liepin_only"
+          - "channel_session_adapter_specific_fields_namespaced_by_channel"
+          - "channel_session_does_not_accept_or_persist_credentials"
+          - "channel_session_browser_automation_does_not_enter_credentials"
+          - "channel_session_browser_automation_does_not_enter_captcha_or_sms_codes"
+          - "channel_session_records_manual_login_boundary"
+          - "channel_session_requires_positive_login_signal_for_valid_session"
+          - "channel_session_rejects_login_modal_absence_as_only_valid_signal"
+          - "channel_session_returns_session_unknown_when_login_state_uncertain"
+          - "channel_session_returns_login_required_when_not_authenticated"
+          - "channel_session_persists_valid_session_path"
+          - "channel_session_returns_visible_session_metadata"
+          - "channel_session_returns_safe_account_identity_when_available"
+          - "channel_session_does_not_require_account_identity_for_valid_session"
+          - "channel_session_masks_sensitive_account_identity"
+          - "channel_session_clear_removes_only_selected_channel_session"
+          - "channel_session_check_mode_does_not_reuse_cleared_session"
+          - "channel_session_log_records_channel_steps_and_terminal_status"
+      L2:
+        status: "not_started"
+        checks:
+          - "channel_session_settings_visible"
+          - "submission_channel_selector_visible"
+          - "session_setup_ui_not_liepin_only"
+          - "manual_login_required_message_visible"
+          - "credential_storage_not_present"
+          - "credential_autofill_not_present"
+          - "captcha_sms_bypass_not_present"
+          - "session_unknown_status_visible"
+          - "session_status_and_path_visible"
+          - "safe_account_identity_or_unknown_visible"
+          - "session_clear_control_visible"
+          - "session_cleared_status_visible"
+          - "session_check_log_visible"
+      L3_external:
+        status: "not_started"
+        checks:
+          - "real_p0_liepin_session_setup_or_login_required"
+          - "real_liepin_login_state_check"
+          - "real_liepin_valid_session_requires_positive_login_signal"
+          - "real_liepin_safe_account_identity_or_unknown_visible"
+          - "real_liepin_valid_session_reusable_by_check_mode"
+
+  - case_id: "submission_check_mode"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "submissions"
+    depends_on:
+      - "agent_run_guided_batch"
+      - "channel_session_setup"
+    user_goal: >
+      用户选择一个受支持渠道的已验证 Job Lead 和一个已生成的 PDF 简历版本，
+      在 Submissions 中执行 check-mode 投递演练，验证渠道登录态、目标职位、
+      渠道特定目标匹配、发简历路径和安全门禁；
+      系统必须记录完整步骤、截图/日志路径和结构化阻断原因，
+      并且无论页面状态如何都不得点击最终确认发送。
+
+    scope:
+      includes:
+        - "select_submission_channel"
+        - "select_channel_job_lead"
+        - "select_resume_pdf_version"
+        - "use_channel_shared_session"
+        - "run_check_mode_only"
+        - "apply_submission_rate_limit"
+        - "login_check"
+        - "target_verify"
+        - "channel_specific_target_safety_check"
+        - "channel_specific_send_resume_path_check"
+        - "safe_resume_attachment_check_when_supported"
+        - "submit_skipped_assertion"
+        - "submission_step_log"
+        - "submission_detail_paths"
+      excludes:
+        - "final_submit"
+        - "bulk_submission"
+        - "sms_verification_bypass"
+        - "new_account_login"
+        - "unbounded_target_guessing"
+        - "auto_retry_after_rate_limit"
+        - "feedback_iteration"
+
+    input_requirements:
+      channel:
+        required: true
+        P0_supported:
+          - "liepin"
+        unsupported_result: "unsupported_submission_channel"
+      job_lead:
+        required: true
+        channel_must_match_selected_channel: true
+        source: "saved_validated_job_lead"
+        required_fields:
+          - "job_url"
+          - "company_or_role_label"
+          - "channel"
+        channel_specific_safety_fields_when_available:
+          liepin:
+            - "job_id"
+            - "recruiter"
+        missing_result: "missing_channel_job_lead"
+      resume_pdf:
+        required: true
+        source: "generated_resume_pdf"
+        required_fields:
+          - "resume_version_id"
+          - "pdf_path"
+        missing_result: "missing_resume_pdf"
+      session:
+        required: true
+        source: "channel_shared_session"
+        P0_liepin_source: "PPF_LIEPIN_SESSION_DIR_or_default_liepin_session"
+        missing_or_expired_result: "login_required"
+        unknown_result: "session_unknown"
+        cleared_result: "session_cleared"
+
+    session_reuse_policy:
+      required: true
+      preflight_must_show_session_metadata: true
+      preflight_must_record_session_metadata: true
+      required_session_metadata:
+        - "channel"
+        - "session_path"
+        - "login_status"
+        - "checked_at"
+        - "account_identity_or_unknown"
+      usable_session_status_required: "session_valid"
+      missing_or_expired_session_blocks_before_open_target: true
+      unknown_or_cleared_session_blocks_before_open_target: true
+      blocked_results:
+        missing: "login_required"
+        expired: "login_required"
+        unknown: "session_unknown"
+        cleared: "session_cleared"
+      account_identity_mismatch_user_path:
+        supported: true
+        user_can_reject_displayed_identity: true
+        result: "account_identity_mismatch"
+        next_action: "go_to_channel_session_setup_to_clear_or_refresh"
+        check_mode_must_not_continue_after_identity_rejected: true
+
+    channel_adapter_policy:
+      required: true
+      contract_shape: "multi_channel_extensible"
+      P0_supported_adapters:
+        liepin:
+          browser_channel: "liepin"
+          target_safety_fields:
+            - "job_id"
+            - "recruiter"
+          send_resume_path: "chat_send_resume"
+          final_submit_control: "confirm_send_button"
+      adapter_must_report_capabilities: true
+      unsupported_adapter_result: "unsupported_submission_channel"
+      liepin_only_contract_forbidden: true
+      channel_required_in_api_ui_logs: true
+      adapter_specific_fields_must_be_namespaced_by_channel: true
+      common_adapter_steps_required:
+        - "rate_limit"
+        - "open_target"
+        - "login_check"
+        - "target_verify"
+        - "target_recovery_attempt_when_configured"
+        - "send_resume_path_check"
+        - "attachment_check_or_structured_not_supported"
+        - "submit_skipped"
+
+    check_mode_policy:
+      required: true
+      submit_enabled: false
+      final_confirm_click_forbidden: true
+      must_record_submit_skipped: true
+      no_real_submit_even_when_all_checks_pass: true
+      no_auto_retry_after_blocked_result: true
+      may_attach_resume_before_final_confirm_when_safe: true
+      stop_before_final_confirm_required: true
+      attachment_check_not_supported_result: "attachment_check_not_supported"
+      terminal_success_status: "check_mode_success_submit_skipped"
+
+    preflight_confirmation_policy:
+      required: true
+      confirmation_required_before_external_access: true
+      confirmation_required_before_attachment_check: true
+      required_confirmation_items:
+        - "check_mode_no_real_submit"
+        - "selected_submission_channel"
+        - "selected_channel_job_lead"
+        - "selected_resume_pdf"
+        - "selected_channel_session_metadata"
+        - "may_open_real_external_platform"
+        - "may_use_channel_shared_session"
+        - "configured_target_recovery_limit"
+        - "may_try_similar_or_recommended_job_targets_after_target_verify_failure"
+        - "may_attach_resume_pdf_when_safe"
+        - "channel_rate_limit_applies"
+        - "final_confirm_disabled_and_forbidden"
+        - "must_stop_before_final_confirm"
+      missing_confirmation_result: "preflight_confirmation_required"
+      confirmation_recorded_in_submission_log: true
+
+    safety_policy:
+      target_verify_required_before_send_resume_path_check: true
+      channel_specific_safety_fields_required_when_available: true
+      liepin:
+        verify_job_id_when_available: true
+        verify_recruiter_when_available: true
+        main_job_button_only: true
+        recommendation_area_allowed_only_for_controlled_recovery: true
+      target_mismatch_result: "target_mismatch"
+      job_unavailable_result: "job_page_unavailable"
+      login_required_result: "login_required"
+      rate_limited_result: "rate_limited"
+      channel_unavailable_result: "channel_unavailable"
+
+    target_recovery_policy:
+      required: true
+      enabled: true
+      default_max_attempts: 2
+      user_configurable_max_attempts: true
+      minimum_max_attempts: 0
+      maximum_max_attempts: 5
+      applies_after:
+        - "target_mismatch"
+        - "job_page_unavailable"
+      allowed_candidate_sources:
+        - "same_channel_similar_jobs"
+        - "same_channel_recommended_jobs"
+        - "same_channel_search_results_when_adapter_supports_it"
+      same_channel_required: true
+      each_recovery_attempt_counts_against_channel_rate_limit: true
+      rate_limited_during_recovery_result: "rate_limited"
+      stop_recovery_immediately_when_rate_limited: true
+      retry_candidates_must_be_logged: true
+      retry_candidate_fields_required:
+        - "attempt_index"
+        - "candidate_source"
+        - "candidate_url_or_identifier"
+        - "reason_selected"
+        - "target_verify_result"
+      target_verify_required_for_each_attempt: true
+      user_confirmation_required_for_non_original_target: true
+      recovered_target_summary_required_before_confirmation: true
+      recovered_target_confirmation_required_fields:
+        - "original_company"
+        - "original_role"
+        - "original_url"
+        - "original_channel"
+        - "recovered_company"
+        - "recovered_role"
+        - "recovered_url"
+        - "recovered_channel"
+        - "candidate_source"
+        - "reason_selected"
+        - "target_verify_result"
+        - "difference_summary"
+      recovered_target_confirmation_result: "recovered_target_confirmed"
+      recovered_target_rejected_result: "recovered_target_rejected"
+      send_resume_path_check_blocked_until_recovered_target_confirmed: true
+      send_resume_path_check_allowed_only_after_verified_recovery_target: true
+      resume_target_mismatch_warning_required_for_recovered_target: true
+      resume_target_mismatch_warning_result: "resume_target_mismatch_warning_acknowledged"
+      resume_pdf_may_remain_user_selected_after_warning: true
+      user_can_abort_to_regenerate_resume_for_recovered_target: true
+      regenerate_resume_next_action: "regenerate_resume_for_recovered_target"
+      regenerate_resume_handled_outside_this_case: true
+      abort_for_regeneration_result: "regenerate_resume_for_recovered_target"
+      attachment_check_blocked_until_resume_target_warning_acknowledged: true
+      final_submit_still_forbidden_for_recovered_target: true
+      exhausted_result: "target_recovery_exhausted"
+      exhausted_terminal_result_falls_back_to:
+        - "target_mismatch"
+        - "job_page_unavailable"
+
+    rate_limit_policy:
+      required: true
+      per_channel_rate_limit_used: true
+      P0_liepin_rate_limit_used: true
+      applies_to_target_recovery_attempts: true
+      blocked_result: "rate_limited"
+      rate_limit_decision_recorded: true
+      no_rate_limit_bypass: true
+
+    browser_policy:
+      browser_automation_allowed_when_required_by_channel: true
+      channel_adapter_controls_browser: true
+      shared_session_required_when_channel_needs_login: true
+      screenshots_allowed: true
+      html_snapshots_allowed: true
+      final_submit_forbidden: true
+
+    stage_outputs:
+      submission_log:
+        required_artifact: "submission_log"
+        required_fields:
+          - "submission_id"
+          - "mode"
+          - "channel"
+          - "adapter_capabilities"
+          - "original_job_lead"
+          - "final_verified_target"
+          - "resume_version_id"
+          - "session_metadata"
+          - "target_recovery_attempts"
+          - "recovered_target_confirmation"
+          - "resume_target_mismatch_warning"
+          - "next_action"
+          - "steps"
+          - "terminal_status"
+        adapter_specific_fields_policy: "namespaced_by_channel"
+      submission_steps:
+        required_steps:
+          - "rate_limit"
+          - "open_target"
+          - "login_check"
+          - "target_verify"
+          - "send_resume_path_check"
+          - "attachment_check"
+          - "submit_skipped"
+      submission_detail:
+        required_fields:
+          - "steps"
+          - "original_job_lead"
+          - "final_verified_target"
+          - "screenshot_path"
+          - "log_json_path"
+          - "log_yaml_path"
+          - "browser_channel"
+
+    run_statuses:
+      - "ready_to_check"
+      - "preflight_confirmation_required"
+      - "blocked_missing_inputs"
+      - "login_required"
+      - "session_unknown"
+      - "session_cleared"
+      - "account_identity_mismatch"
+      - "job_page_unavailable"
+      - "target_mismatch"
+      - "target_recovery_exhausted"
+      - "recovered_target_pending_confirmation"
+      - "recovered_target_rejected"
+      - "resume_target_mismatch_warning_pending"
+      - "regenerate_resume_for_recovered_target"
+      - "rate_limited"
+      - "channel_unavailable"
+      - "unsupported_submission_channel"
+      - "attachment_check_not_supported"
+      - "check_mode_success_submit_skipped"
+      - "failed"
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_submissions"
+      - "select_submission_channel"
+      - "select_channel_job_lead"
+      - "select_resume_pdf_version"
+      - "configure_target_recovery_limit"
+      - "inspect_selected_session_identity"
+      - "reject_session_identity_if_wrong_account"
+      - "go_to_channel_session_setup_to_clear_or_refresh"
+      - "confirm_check_mode"
+      - "start_submission_check"
+      - "watch_submission_steps"
+      - "inspect_rate_limit_result"
+      - "inspect_login_check_result"
+      - "inspect_target_verify_result"
+      - "inspect_target_recovery_attempts"
+      - "confirm_or_reject_recovered_target"
+      - "acknowledge_resume_target_mismatch_warning_when_recovered_target_used"
+      - "abort_to_regenerate_resume_for_recovered_target"
+      - "inspect_send_resume_path_check_result"
+      - "inspect_attachment_check_result"
+      - "verify_submit_skipped"
+      - "open_submission_detail_logs"
+
+    system_responses:
+      - "show_check_mode_badge"
+      - "show_supported_submission_channels"
+      - "show_selected_job_lead_summary"
+      - "show_selected_resume_pdf_summary"
+      - "show_selected_channel_session_metadata"
+      - "show_clear_or_refresh_session_path_when_identity_mismatch"
+      - "show_final_submit_disabled"
+      - "show_preflight_confirmation"
+      - "block_external_access_until_preflight_confirmed"
+      - "block_open_target_when_session_missing_expired_unknown_or_cleared"
+      - "block_check_mode_when_user_rejects_session_identity"
+      - "block_run_when_required_inputs_missing"
+      - "block_unsupported_submission_channel"
+      - "apply_channel_rate_limit"
+      - "open_channel_target_with_shared_session_when_required"
+      - "run_login_check"
+      - "run_target_verify"
+      - "run_bounded_target_recovery_when_configured"
+      - "show_recovered_target_summary_before_continuing"
+      - "block_send_resume_path_until_recovered_target_confirmed"
+      - "record_recovered_target_confirmation_or_rejection"
+      - "show_resume_target_mismatch_warning_for_recovered_target"
+      - "show_regenerate_resume_for_recovered_target_action"
+      - "block_attachment_check_until_resume_target_warning_acknowledged"
+      - "record_regenerate_resume_next_action_without_generating_resume"
+      - "record_resume_target_mismatch_warning_acknowledgement"
+      - "block_when_target_recovery_exhausted"
+      - "run_channel_send_resume_path_check"
+      - "verify_resume_pdf_attached_or_record_not_supported"
+      - "stop_before_final_confirm"
+      - "skip_final_submit"
+      - "persist_submission_log"
+      - "show_structured_terminal_status"
+      - "show_submission_detail_with_steps_and_paths"
+
+    expected_results:
+      - "check_mode_visible_before_start"
+      - "supported_submission_channels_visible"
+      - "submission_contract_is_multi_channel_extensible"
+      - "final_submit_disabled_before_start"
+      - "preflight_confirmation_required_before_external_access"
+      - "preflight_confirmation_records_channel_job_resume_and_safety_boundary"
+      - "preflight_shows_selected_channel_session_metadata"
+      - "submission_log_records_selected_channel_session_metadata"
+      - "unusable_session_blocks_before_open_target"
+      - "wrong_account_identity_can_route_to_channel_session_setup"
+      - "identity_rejection_blocks_check_mode_before_open_target"
+      - "missing_inputs_block_run_with_structured_message"
+      - "unsupported_channel_blocks_with_structured_message"
+      - "rate_limit_decision_recorded"
+      - "target_recovery_attempts_count_against_channel_rate_limit"
+      - "rate_limited_during_recovery_stops_further_attempts"
+      - "target_recovery_limit_visible_and_configurable"
+      - "login_check_success_or_login_required"
+      - "target_verify_success_or_structured_blocked_result"
+      - "target_mismatch_can_trigger_bounded_recovery_when_configured"
+      - "each_recovery_attempt_runs_target_verify_before_send_resume_path_check"
+      - "recovered_non_original_target_requires_user_confirmation"
+      - "recovered_target_confirmation_shows_original_target_recovered_target_source_reason_verify_and_diff"
+      - "recovered_target_rejection_blocks_before_send_resume_path_check"
+      - "recovered_target_resume_mismatch_warning_visible"
+      - "resume_target_mismatch_warning_acknowledged_before_attachment_check"
+      - "user_can_abort_to_regenerate_resume_for_recovered_target"
+      - "check_mode_records_regenerate_resume_next_action_without_generation"
+      - "target_recovery_attempts_recorded"
+      - "submission_log_keeps_original_job_lead_and_final_verified_target"
+      - "submission_detail_keeps_original_job_lead_and_final_verified_target"
+      - "target_recovery_exhaustion_blocks_before_send_resume_path_check"
+      - "send_resume_path_checked_when_login_and_target_valid"
+      - "resume_pdf_attachment_checked_or_structured_not_supported"
+      - "flow_stops_before_final_confirm"
+      - "submit_skipped_recorded"
+      - "no_final_submit_attempted"
+      - "submission_log_created"
+      - "submission_detail_shows_steps"
+      - "screenshot_and_log_paths_visible_when_available"
+      - "structured_terminal_status_visible"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "submission_api_accepts_channel_check_mode_request"
+          - "submission_api_requires_channel_field"
+          - "submission_contract_not_liepin_only"
+          - "adapter_specific_fields_namespaced_by_channel"
+          - "submission_api_rejects_unsupported_channel"
+          - "submission_api_requires_channel_job_lead"
+          - "submission_api_requires_resume_pdf"
+          - "submission_api_uses_channel_shared_session"
+          - "submission_api_requires_usable_channel_session_before_open_target"
+          - "submission_api_blocks_when_user_rejects_session_identity"
+          - "submission_api_returns_channel_session_setup_next_action_for_identity_mismatch"
+          - "submission_api_accepts_configurable_target_recovery_limit"
+          - "submission_api_enforces_target_recovery_attempt_limit"
+          - "submission_api_applies_channel_rate_limit_to_target_recovery_attempts"
+          - "submission_api_stops_target_recovery_when_rate_limited"
+          - "submission_api_requires_confirmation_for_recovered_non_original_target"
+          - "submission_api_requires_recovered_target_confirmation_fields"
+          - "submission_api_blocks_send_resume_path_when_recovered_target_unconfirmed"
+          - "submission_api_requires_resume_target_mismatch_warning_acknowledgement_for_recovered_target"
+          - "submission_api_supports_abort_to_regenerate_resume_for_recovered_target"
+          - "submission_api_does_not_generate_resume_inside_check_mode"
+          - "submission_api_applies_channel_rate_limit"
+          - "submission_api_requires_preflight_confirmation_before_external_access"
+          - "submission_log_records_check_mode"
+          - "submission_log_records_preflight_confirmation"
+          - "submission_log_records_selected_channel_session_metadata"
+          - "submission_log_records_channel_and_adapter_capabilities"
+          - "submission_log_records_rate_limit_decision"
+          - "submission_log_records_rate_limit_during_target_recovery"
+          - "submission_log_records_login_check"
+          - "submission_log_records_target_verify"
+          - "submission_log_records_target_recovery_attempts"
+          - "submission_log_records_recovered_target_confirmation"
+          - "submission_log_records_recovered_target_difference_summary"
+          - "submission_log_records_resume_target_mismatch_warning"
+          - "submission_log_records_regenerate_resume_next_action"
+          - "submission_log_records_original_job_lead_and_final_verified_target"
+          - "target_recovery_requires_target_verify_before_send_resume_path_check"
+          - "target_recovery_exhaustion_blocks_before_send_resume_path_check"
+          - "submission_log_records_attachment_check_or_not_supported"
+          - "submission_log_records_submit_skipped"
+          - "submission_never_attempts_final_submit"
+          - "submission_detail_returns_steps_and_paths"
+      L2:
+        status: "not_started"
+        checks:
+          - "submissions_page_check_mode_badge_visible"
+          - "submission_channel_selector_visible"
+          - "submissions_ui_not_liepin_only"
+          - "channel_job_lead_selector_visible"
+          - "resume_pdf_selector_visible"
+          - "selected_channel_session_metadata_visible"
+          - "wrong_account_clear_or_refresh_path_visible"
+          - "target_recovery_limit_control_visible"
+          - "final_submit_disabled_visible"
+          - "preflight_confirmation_panel_visible"
+          - "external_access_blocked_until_preflight_confirmed"
+          - "open_target_blocked_when_session_unusable"
+          - "open_target_blocked_when_session_identity_rejected"
+          - "submission_steps_visible"
+          - "rate_limit_status_visible"
+          - "target_verify_status_visible"
+          - "target_recovery_attempts_visible"
+          - "recovered_target_confirmation_visible"
+          - "recovered_target_difference_summary_visible"
+          - "resume_target_mismatch_warning_visible"
+          - "regenerate_resume_for_recovered_target_action_visible"
+          - "original_job_lead_and_final_verified_target_visible"
+          - "attachment_check_status_visible"
+          - "submit_skipped_status_visible"
+          - "submission_detail_logs_visible"
+      L3_external:
+        status: "not_started"
+        checks:
+          - "real_p0_liepin_adapter_check_mode"
+          - "real_liepin_rate_limit_check"
+          - "real_liepin_target_recovery_respects_rate_limit"
+          - "real_liepin_login_check_or_login_required"
+          - "real_liepin_external_access_requires_preflight_confirmation"
+          - "real_liepin_open_target_requires_usable_shared_session"
+          - "real_liepin_target_verify_or_structured_blocked"
+          - "real_liepin_bounded_target_recovery_when_configured"
+          - "real_liepin_send_resume_path_check_when_safe"
+          - "real_liepin_final_submit_skipped"
