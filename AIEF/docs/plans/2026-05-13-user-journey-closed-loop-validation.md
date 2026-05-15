@@ -26,7 +26,7 @@
 |------|--------|----------|-------|
 | Plan documented in project | `done` | `AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md` | This file is the source plan for the validation track |
 | Project ledger references plan | `done` | `docs/project-ledger.md` | Ledger now lists this validation track in current priorities and evidence index |
-| Scenario case catalog | `in_progress` | `acceptance/scenario_cases.yaml` | Case 1 through Case 4 are ready for implementation; remaining cases still need definition |
+| Scenario case catalog | `in_progress` | `acceptance/scenario_cases.yaml` | Case 1 through submission check-mode are ready for implementation; remaining feedback case still needs definition |
 | L1 business closed-loop validation | `not_started` | None yet | First implementation milestone |
 | L2 GUI journey smoke validation | `not_started` | None yet | Starts after L1 contract/report shape stabilizes |
 | L3 external channel check-mode validation | `not_started` | Existing Liepin check-mode logs can seed fixtures | Keep real submit disabled |
@@ -82,6 +82,10 @@ The first approved case is:
 | `setup_profile_and_material_library` | `ready_for_implementation` | P0 | Set up personal profile, uploaded resume, and text material library |
 | `generate_review_and_complete_evidence_card` | `ready_for_implementation` | P0 | Generate a strict-JSON Evidence Card draft from uploaded Markdown with local LLM, review it, and save eligible evidence |
 | `setup_job_target` | `ready_for_implementation` | P0 | Create a job target from pasted JD, parse it with local LLM, review it, and link an accessible source URL to a Job Lead |
+| `quick_run_generate_and_evaluate_resume` | `ready_for_implementation` | P0 | Run one Quick Run that matches evidence to a job target, generates a fact-preserving resume, exports PDF, evaluates it, and records artifacts |
+| `agent_run_guided_batch` | `ready_for_implementation` | P0 | Run a guarded multi-candidate Agent Run batch with visible decisions, generated artifacts for passed candidates, and no real submit |
+| `channel_session_setup` | `ready_for_implementation` | P0 | Configure or refresh a channel shared session through manual login, requiring positive login signals before saving it as valid, showing session metadata and safe account identity when available, supporting per-channel clear, and without storing credentials or bypassing verification |
+| `submission_check_mode` | `ready_for_implementation` | P0 | Run a channel-abstracted check-mode submission rehearsal; P0 validates the Liepin adapter while keeping the contract generic, requiring visible usable session metadata in preflight, routing wrong-account sessions back to session setup, and allowing rate-limited configurable bounded target recovery with explicit diff-based user confirmation, resume-target mismatch warning, regeneration next-action, and original/final target traceability before safe attachment checks |
 
 ## 4. Acceptance Levels
 
@@ -97,7 +101,7 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 
 | Path | Status | Responsibility |
 |------|--------|----------------|
-| `acceptance/scenario_cases.yaml` | `in_progress` | User-perspective scenario case catalog; Case 1 through Case 4 are ready for implementation |
+| `acceptance/scenario_cases.yaml` | `in_progress` | User-perspective scenario case catalog; Case 1 through submission check-mode are ready for implementation; remaining feedback case still needs definition |
 | `acceptance/journey_contract.yaml` | `not_started` | Machine-readable execution contract derived from selected approved scenario cases |
 | `tools/acceptance/__init__.py` | `not_started` | Package marker for acceptance helpers |
 | `tools/acceptance/journey_contract.py` | `not_started` | Load and validate the journey contract |
@@ -135,8 +139,8 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 | M-1.3 | `done` | Define Case 2: personal profile and material library preparation | `setup_profile_and_material_library` | Case status is `ready_for_implementation` |
 | M-1.4 | `done` | Define Case 3: evidence card generation, review, and completion | `generate_review_and_complete_evidence_card` | Case status is `ready_for_implementation` |
 | M-1.5 | `done` | Define Case 4: job target setup | `setup_job_target` | Case status is `ready_for_implementation` |
-| M-1.6 | `not_started` | Define Case 5: Quick Run generation and evaluation | New case entry | Case status reaches `ready_for_implementation` |
-| M-1.7 | `not_started` | Define Case 6+: Agent Run, submission check, and feedback iteration | Remaining case entries | Each case has explicit status and validation levels |
+| M-1.6 | `done` | Define Case 5: Quick Run generation and evaluation | `quick_run_generate_and_evaluate_resume` | Case status is `ready_for_implementation` |
+| M-1.7 | `in_progress` | Define Case 6+: Agent Run, channel session setup, submission check, and feedback iteration | `agent_run_guided_batch`, `channel_session_setup`, `submission_check_mode` | Case 6, channel session setup, and submission check-mode are `ready_for_implementation`; remaining feedback case still needs definition |
 
 ### M0: Journey Contract
 
@@ -271,8 +275,8 @@ Overall: PASS | FAIL | BLOCKED
 
 | Priority | Status | Action | Owner |
 |----------|--------|--------|-------|
-| P0 | `in_progress` | Continue first-batch scenario case definitions, starting with Case 5 | Unassigned |
-| P0 | `not_started` | Implement M0 case-aware journey contract | Unassigned |
+| P0 | `in_progress` | Define next feedback iteration case after submission check-mode | Unassigned |
+| P0 | `not_started` | Implement M0 case-aware journey contract after approved scenario cases | Unassigned |
 | P0 | `not_started` | Implement M1 selected-case acceptance test | Unassigned |
 | P1 | `not_started` | Implement M2 report generator | Unassigned |
 | P1 | `not_started` | Wire L1 into acceptance runner | Unassigned |
