@@ -21,6 +21,7 @@
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
 - **当前阻塞：无运行硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、多候选批次策略、GUI 投递状态/详情可视化、真实 submit 前安全门禁均已闭环；GUI `.pen` 设计资产同步因 Pencil MCP `Transport closed` 待补验收（2026-05-13）**
 - **新专项：用户场景化自动验收 → scenario-first M-1 推进中；Case 1-6、`channel_session_setup`、`submission_check_mode` 已进入 `ready_for_implementation`，下一步逐个定义反馈迭代 case（2026-05-15）**
+- **外部仓库调研：`boss-agent-cli` 已完成初步解析（2026-05-15）→ 结论是 P2 级参考资产，适合通过薄 CLI adapter 接入 BOSS/智联职位发现与 Agent-friendly JSON/schema/MCP 设计；不建议直接引入其简历/AI 核心或 vendor 整仓**
 
 ## 2. 已完成事项
 
@@ -113,6 +114,7 @@
 | **Tauri npm/Rust 版本对齐** | **已验证** | ui/package.json + ui/pnpm-lock.yaml + ui/package-lock.json | `pnpm --dir ui list @tauri-apps/api @tauri-apps/cli --depth 0` + `./app start` 日志 | npm 侧固定 `@tauri-apps/api`/`cli` 为 2.10.1，与 Rust `tauri` 2.10.3 对齐到同一 minor；启动日志不再出现 mismatch 提示 |
 | **GUI 默认中文语言** | **已验证** | ui/src/i18n/index.ts + tests/unit/gui/test_i18n_defaults.py | `python3 -m pytest tests/unit/gui/test_i18n_defaults.py -q` + `pnpm --dir ui build` | 默认 `lng` 与 `fallbackLng` 均使用 `DEFAULT_LANGUAGE = "zh"` |
 | **GUI 启动缓存优化** | **已验证** | ui/scripts/stage_python_runtime.py | `pnpm --dir ui run prepare:python-runtime` + `./app start` 日志 | Python runtime 缺失或解释器变化时才重打包；常规启动命中 `Using staged Python`，避免每次复制/签名整套 Python.framework |
+| **boss-agent-cli 外部仓库调研** | **已完成** | https://github.com/can4hou6joeng4/boss-agent-cli | 源码/README/能力矩阵/平台抽象/MCP/风险文档阅读 | 对本项目价值主要在多平台 job-discovery、受控 delivery 通道参考、JSON envelope/schema/MCP 工程化；推荐先做 subprocess 薄适配 |
 
 ## 3. 已验证事项
 
@@ -164,6 +166,7 @@
 | ~~P5~~ | ~~误投防护需接入 liepin.py 主流程~~ | ~~poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入~~ | **已解决** | **target_verify 已接入并有离线单测覆盖** |
 | P6 | GUI `.pen` 设计资产未随最新 Submissions 详情实现同步复核 | `DESIGN.md` 与 GUI review checklist 明确要求 GUI 结构变更同步 `.pen`；当前 Pencil MCP 返回 `Transport closed` | 设计治理缺口 | Pencil MCP 恢复后打开 `ui/design/piproofforge.pen`，对 `Screen/Submissions` (`upl7d`) 补齐/确认详情侧板与状态 |
 | P7 | Submissions 页面实现仍未完全达到终版设计的统计卡片、表格、截图缩略图/放大预览形态 | 当前实现是可用的列表 + 详情面板垂直切片，未完整复刻 DESIGN.md 第 7 页产品态 | 产品化缺口 | GUI 产品化阶段统一推进，不阻塞当前 sidecar/投递闭环验证 |
+| P8 | BOSS/智联平台未接入 PiProofForge job-discovery / delivery | `boss-agent-cli` 已证明 BOSS/智联具备 CLI/JSON/schema/MCP 能力，但 PiProofForge 当前生产通道仍以 Liepin 为主；多平台候选来源和受控写操作尚未纳入本项目抽象 | 扩展缺口 | 先以 optional subprocess adapter 接入 `boss schema/status/search/detail` 只读发现，映射到 `Candidate`；写操作仅在 review/gate/rate-limit/safety 全部复用后再启用 |
 
 ## 6. 已废弃事项
 
@@ -219,5 +222,6 @@
 | **GUI 运行日志详情页** | **tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx** | **submission.detail 返回 steps、screenshot_path、log_json_path、log_yaml_path；Playwright mock sidecar 已验证点击 Details 展示** |
 | **submit 安全门禁** | **tools/submission/liepin.py + tools/submission/run_submission.py + tools/channels/liepin.py** | **PDF + jobId + recruiter 三重确认，target_verify 后二次匹配** |
 | **GUI review hardening** | **tests/unit/sidecar/test_submission_handler.py + tests/unit/domain/test_submission_storage.py + ui/design/contracts/sidecar-rpc.md** | **防止 screenshot path 越界；browser_channel 持久化；submission.detail 合同与 i18n 同步** |
+| boss-agent-cli 外部参考 | https://github.com/can4hou6joeng4/boss-agent-cli | Python CLI，MIT，当前调研版本 1.11.0；可参考 BOSS/智联平台 adapter、JSON envelope、schema、MCP server、CDP/浏览器通道、平台风险边界；不作为核心依赖直接引入 |
 | 发版记录 | release-notes/ | v0.1.3 ~ v0.1.9 |
 | 经验沉淀 | AIEF/context/experience/ | 21 lessons + 2 summaries |
