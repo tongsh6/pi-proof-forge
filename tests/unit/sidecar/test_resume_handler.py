@@ -401,11 +401,7 @@ class ResumeExportPdfTests(unittest.TestCase):
                     self.assertTrue(destination.exists())
                     self.assertEqual(destination.read_bytes(), source_bytes)
 
-    def test_export_pdf_converts_markdown_to_pdf_when_available(self) -> None:
-        from tools.infra.export.pdf_exporter import WEASYPRINT_AVAILABLE
-
-        if not WEASYPRINT_AVAILABLE:
-            return
+    def test_export_pdf_converts_markdown_to_pdf(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             outputs_dir = Path(tmp_dir) / "outputs"
             outputs_dir.mkdir()
@@ -426,13 +422,10 @@ class ResumeExportPdfTests(unittest.TestCase):
                     )
                     self.assertTrue(result["resource_id"].startswith("pdf_"))
                     self.assertTrue(destination.exists())
+                    self.assertTrue(destination.read_bytes().startswith(b"%PDF-"))
                     self.assertGreater(destination.stat().st_size, 0)
 
-    def test_export_pdf_raises_when_markdown_and_weasyprint_unavailable(self) -> None:
-        from tools.infra.export.pdf_exporter import WEASYPRINT_AVAILABLE
-
-        if WEASYPRINT_AVAILABLE:
-            return
+    def test_export_pdf_creates_destination_parent_for_markdown(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             outputs_dir = Path(tmp_dir) / "outputs"
             outputs_dir.mkdir()
@@ -444,16 +437,15 @@ class ResumeExportPdfTests(unittest.TestCase):
                     "tools.sidecar.handlers.resume._UPLOADED_DIR",
                     Path(tmp_dir) / "uploaded",
                 ):
-                    with self.assertRaises(RuntimeError) as ctx:
-                        handle_resume_export_pdf(
-                            {
-                                "meta": {"correlation_id": "corr_008"},
-                                "resume_id": "gen_resume_mr-2026-005_A",
-                                "destination": str(destination),
-                            }
-                        )
-                    self.assertIn("weasyprint", str(ctx.exception).lower())
-                    self.assertFalse(destination.exists())
+                    result = handle_resume_export_pdf(
+                        {
+                            "meta": {"correlation_id": "corr_008"},
+                            "resume_id": "gen_resume_mr-2026-005_A",
+                            "destination": str(destination),
+                        }
+                    )
+                    self.assertTrue(result["resource_id"].startswith("pdf_"))
+                    self.assertTrue(destination.exists())
 
 
 if __name__ == "__main__":

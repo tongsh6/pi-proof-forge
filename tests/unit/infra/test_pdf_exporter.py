@@ -5,7 +5,11 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from tools.infra.export.pdf_exporter import (
+    FALLBACK_LINE_WIDTH,
+    PDF_FALLBACK_AVAILABLE,
     WEASYPRINT_AVAILABLE,
+    _display_width,
+    _wrap_pdf_line,
     is_pdf_export_available,
     markdown_to_pdf,
 )
@@ -13,7 +17,9 @@ from tools.infra.export.pdf_exporter import (
 
 class TestPdfExporterAvailability:
     def test_availability_reflects_import_status(self):
-        assert is_pdf_export_available() == WEASYPRINT_AVAILABLE
+        assert is_pdf_export_available() == (
+            WEASYPRINT_AVAILABLE or PDF_FALLBACK_AVAILABLE
+        )
 
 
 class TestMarkdownToPdf:
@@ -27,22 +33,35 @@ class TestMarkdownToPdf:
             except FileNotFoundError:
                 pass
 
-    def test_raises_when_weasyprint_not_available(self):
+    def test_converts_without_weasyprint_via_builtin_fallback(self):
         if WEASYPRINT_AVAILABLE:
             return
         with TemporaryDirectory() as tmp:
             md_path = Path(tmp) / "test.md"
             md_path.write_text("# Test", encoding="utf-8")
             pdf_path = Path(tmp) / "output.pdf"
-            try:
-                markdown_to_pdf(md_path, pdf_path)
-                assert False, "Expected RuntimeError"
-            except RuntimeError as e:
-                assert "weasyprint" in str(e).lower()
+            markdown_to_pdf(md_path, pdf_path)
+
+            assert pdf_path.exists()
+            assert pdf_path.read_bytes().startswith(b"%PDF-")
+            assert pdf_path.stat().st_size > 0
+
+    def test_fallback_is_used_when_markdown_package_is_missing(self):
+        with TemporaryDirectory() as tmp:
+            md_path = Path(tmp) / "test.md"
+            md_path.write_text("# Test", encoding="utf-8")
+            pdf_path = Path(tmp) / "output.pdf"
+
+            with patch("tools.infra.export.pdf_exporter.WEASYPRINT_AVAILABLE", True):
+                with patch(
+                    "tools.infra.export.pdf_exporter.MARKDOWN_AVAILABLE", False
+                ):
+                    markdown_to_pdf(md_path, pdf_path)
+
+            assert pdf_path.exists()
+            assert pdf_path.read_bytes().startswith(b"%PDF-")
 
     def test_converts_markdown_to_pdf(self):
-        if not WEASYPRINT_AVAILABLE:
-            return
         with TemporaryDirectory() as tmp:
             md_path = Path(tmp) / "resume.md"
             pdf_path = Path(tmp) / "resume.pdf"
@@ -69,11 +88,10 @@ class TestMarkdownToPdf:
             md_path.write_text(md_content, encoding="utf-8")
             markdown_to_pdf(md_path, pdf_path)
             assert pdf_path.exists()
+            assert pdf_path.read_bytes().startswith(b"%PDF-")
             assert pdf_path.stat().st_size > 0
 
     def test_converts_with_chinese_characters(self):
-        if not WEASYPRINT_AVAILABLE:
-            return
         with TemporaryDirectory() as tmp:
             md_path = Path(tmp) / "resume_cn.md"
             pdf_path = Path(tmp) / "resume_cn.pdf"
@@ -95,4 +113,13 @@ class TestMarkdownToPdf:
             md_path.write_text(md_content, encoding="utf-8")
             markdown_to_pdf(md_path, pdf_path)
             assert pdf_path.exists()
+            assert pdf_path.read_bytes().startswith(b"%PDF-")
             assert pdf_path.stat().st_size > 0
+
+    def test_fallback_wraps_continuous_chinese_by_display_width(self):
+        line = "- " + "主导低代码平台性能治理和稳定性建设" * 8
+
+        wrapped = _wrap_pdf_line(line)
+
+        assert len(wrapped) > 1
+        assert all(_display_width(item) <= FALLBACK_LINE_WIDTH for item in wrapped)
