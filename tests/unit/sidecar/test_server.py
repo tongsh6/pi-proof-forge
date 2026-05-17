@@ -1,4 +1,5 @@
 import json
+import subprocess
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -272,6 +273,74 @@ class ProcessRequestTests(unittest.TestCase):
                     event["event_type"] for event in get_response["result"]["events"]
                 ]
                 self.assertEqual(event_types, ["INIT", "DISCOVER", "DONE"])
+
+    def test_run_quick_start_and_cancel_methods_are_registered(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            quick_runs_dir = Path(tmp_dir) / "quick_runs"
+            raw_path = Path(tmp_dir) / "sample_raw.txt"
+            profile_dir = Path(tmp_dir) / "job_profiles"
+            profile_path = profile_dir / "jp-001.yaml"
+            raw_path.write_text("raw", encoding="utf-8")
+            profile_dir.mkdir()
+            profile_path.write_text("target_role: Backend\n", encoding="utf-8")
+
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="[pipeline] done\n",
+                stderr="",
+            )
+            with (
+                patch(
+                    "tools.sidecar.handlers.agent._QUICK_RUN_DIR",
+                    quick_runs_dir,
+                    create=True,
+                ),
+                patch(
+                    "tools.sidecar.handlers.agent.subprocess.run",
+                    return_value=completed,
+                ) as run_mock,
+            ):
+                start_response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_quick_start",
+                        "method": "run.quick.start",
+                        "params": {
+                            "meta": {"correlation_id": "corr_quick"},
+                            "job_profile_id": "jp-001",
+                            "options": {
+                                "raw_path": str(raw_path),
+                                "job_profile_path": str(profile_path),
+                            },
+                        },
+                    }
+                )
+
+                self.assertIn("result", start_response)
+                start_result = start_response["result"]
+                self.assertEqual(start_result["meta"]["correlation_id"], "corr_quick")
+                self.assertEqual(start_result["status"], "DONE")
+                self.assertTrue(start_result["run_id"].startswith("qr_"))
+                self.assertIn("run_record", start_result)
+                command = run_mock.call_args.args[0]
+                self.assertIn("tools/run_pipeline.py", command)
+                self.assertIn(str(profile_path), command)
+
+                cancel_response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_quick_cancel",
+                        "method": "run.quick.cancel",
+                        "params": {
+                            "meta": {"correlation_id": "corr_quick_cancel"},
+                            "run_id": start_result["run_id"],
+                        },
+                    }
+                )
+
+                self.assertIn("result", cancel_response)
+                self.assertTrue(cancel_response["result"]["accepted"])
 
 
 class BuildResponseTests(unittest.TestCase):

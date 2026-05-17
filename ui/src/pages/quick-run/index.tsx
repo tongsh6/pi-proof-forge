@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
+import { AlertCircle, CheckCircle, Copy, Play, Square } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import {
+  cancelQuickRun,
   listEvidence,
   listJobProfiles,
   getOverview,
+  startQuickRun,
 } from "@/lib/sidecar/api";
 import type {
   EvidenceListItem,
@@ -13,7 +17,7 @@ import type {
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
-type RunState = "idle" | "configuring" | "ready_to_run";
+type RunState = "idle" | "ready_to_run" | "running" | "done" | "error";
 
 const PIPELINE_STEPS = [
   { key: "extract", labelKey: "pages.quickRun.steps.extract" },
@@ -21,6 +25,29 @@ const PIPELINE_STEPS = [
   { key: "generate", labelKey: "pages.quickRun.steps.generate" },
   { key: "evaluate", labelKey: "pages.quickRun.steps.evaluate" },
 ] as const;
+
+const QUICK_RUN_TERMINAL_STATUSES = new Set([
+  "DONE",
+  "FAILED",
+  "SKIPPED",
+  "TIMEOUT",
+  "stopped",
+]);
+
+const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
+
+function recordVerifyEvent(
+  event: string,
+  details: Record<string, unknown> = {}
+) {
+  if (verifyScenario !== "quick-run") return;
+  void invoke("quick_run_verify_event", {
+    event: {
+      event,
+      ...details,
+    },
+  }).catch(() => undefined);
+}
 
 export function QuickRunPage() {
   const { t } = useTranslation();
@@ -32,6 +59,12 @@ export function QuickRunPage() {
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const [copiedCommand, setCopiedCommand] = useState(false);
+  const [quickRunId, setQuickRunId] = useState<string | null>(null);
+  const [quickRunStatus, setQuickRunStatus] = useState<string | null>(null);
+  const [quickRunRecord, setQuickRunRecord] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const quickRunInFlightRef = useRef(false);
+  const verifyStartedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -48,10 +81,19 @@ export function QuickRunPage() {
       if (jobs.items.length > 0 && !selectedProfileId) {
         setSelectedProfileId(jobs.items[0].job_profile_id);
       }
+      recordVerifyEvent("quick_run.load.ready", {
+        evidence_count: evidence.items.length,
+        job_profile_count: jobs.items.length,
+        selected_profile_id:
+          selectedProfileId || jobs.items[0]?.job_profile_id || null,
+      });
       setLoadState("ready");
     } catch (e) {
       setLoadState("error");
       setError(getErrorMessage(e));
+      recordVerifyEvent("quick_run.load.error", {
+        error: getErrorMessage(e),
+      });
     }
   }, [selectedProfileId]);
 
@@ -64,10 +106,12 @@ export function QuickRunPage() {
   );
 
   const eligibleCards = evidenceCards.filter((c) => c.status !== "draft");
-  const canRun =
-    runState === "ready_to_run" &&
-    eligibleCards.length > 0 &&
-    selectedProfileId !== "";
+  const canShowRunPanel = selectedProfileId !== "";
+  const canStartRun = canShowRunPanel && runState !== "running";
+  const canCancelRun =
+    quickRunId !== null &&
+    quickRunStatus !== null &&
+    !QUICK_RUN_TERMINAL_STATUSES.has(quickRunStatus);
 
   const pipelineCliCommand = selectedProfile
     ? `python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/${selectedProfile.job_profile_id}.yaml`
@@ -82,6 +126,98 @@ export function QuickRunPage() {
     setCopiedCommand(true);
     setTimeout(() => setCopiedCommand(false), 2000);
   };
+
+  const handleStartQuickRun = useCallback(async () => {
+    if (!selectedProfileId || quickRunInFlightRef.current) return;
+    quickRunInFlightRef.current = true;
+    setRunState("running");
+    setRunError(null);
+    setQuickRunStatus(null);
+    setQuickRunRecord(null);
+    recordVerifyEvent("quick_run.start.request", {
+      selected_profile_id: selectedProfileId,
+    });
+    try {
+      const result = await startQuickRun({
+        job_profile_id: selectedProfileId,
+        options: { generate_resume: true },
+      });
+      setQuickRunId(result.run_id);
+      setQuickRunStatus(result.status);
+      setQuickRunRecord(result.run_record ?? null);
+      setRunState(
+        result.status === "DONE" || result.status === "SKIPPED" ? "done" : "error"
+      );
+      if (result.status !== "DONE" && result.status !== "SKIPPED") {
+        setRunError(
+          `${result.status}${result.exit_code != null ? ` (${result.exit_code})` : ""}`
+        );
+      }
+      recordVerifyEvent("quick_run.start.result", {
+        run_id: result.run_id,
+        status: result.status,
+        run_record: result.run_record ?? null,
+      });
+    } catch (e) {
+      setRunState("error");
+      setRunError(getErrorMessage(e));
+      recordVerifyEvent("quick_run.start.error", {
+        error: getErrorMessage(e),
+      });
+    } finally {
+      quickRunInFlightRef.current = false;
+    }
+  }, [selectedProfileId]);
+
+  const handleCancelQuickRun = async () => {
+    if (!quickRunId) return;
+    setRunError(null);
+    try {
+      await cancelQuickRun(quickRunId);
+      setQuickRunStatus("stopped");
+      setRunState("idle");
+    } catch (e) {
+      setRunError(getErrorMessage(e));
+    }
+  };
+
+  useEffect(() => {
+    if (
+      verifyScenario !== "quick-run" ||
+      verifyStartedRef.current ||
+      loadState !== "ready" ||
+      runState === "running"
+    ) {
+      return;
+    }
+
+    if (!selectedProfileId) {
+      recordVerifyEvent("quick_run.autorun.blocked", {
+        reason: "missing_profile",
+        job_profile_count: jobProfiles.length,
+      });
+      return;
+    }
+
+    verifyStartedRef.current = true;
+    window.setTimeout(() => {
+      const button = document.querySelector<HTMLButtonElement>(
+        '[data-automation-id="quick-run-start"]'
+      );
+      recordVerifyEvent("quick_run.autorun.click", {
+        selected_profile_id: selectedProfileId,
+        has_button: Boolean(button),
+        button_disabled: button?.disabled ?? null,
+      });
+      button?.click();
+      if (!quickRunInFlightRef.current) {
+        recordVerifyEvent("quick_run.autorun.direct_fallback", {
+          selected_profile_id: selectedProfileId,
+        });
+        void handleStartQuickRun();
+      }
+    }, 250);
+  }, [handleStartQuickRun, jobProfiles.length, loadState, runState, selectedProfileId]);
 
   return (
     <div className="space-y-6">
@@ -207,6 +343,10 @@ export function QuickRunPage() {
                       onClick={() => {
                         setSelectedProfileId(jp.job_profile_id);
                         setRunState("ready_to_run");
+                        setQuickRunId(null);
+                        setQuickRunStatus(null);
+                        setQuickRunRecord(null);
+                        setRunError(null);
                       }}
                       className={`rounded-card border p-4 text-left transition-colors ${
                         isSelected
@@ -243,8 +383,8 @@ export function QuickRunPage() {
             )}
           </section>
 
-          {/* CLI Commands */}
-          {canRun ? (
+          {/* Quick Run */}
+          {canShowRunPanel ? (
             <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
               <h2 className="text-lg font-semibold text-text-primary">
                 {t("pages.quickRun.runTitle")}
@@ -253,7 +393,65 @@ export function QuickRunPage() {
                 {t("pages.quickRun.runSubtitle")}
               </p>
 
-              <div className="mt-4 space-y-4">
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  data-automation-id="quick-run-start"
+                  onClick={() => void handleStartQuickRun()}
+                  disabled={!canStartRun}
+                  className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Play className="h-4 w-4" aria-hidden="true" />
+                  {runState === "running"
+                    ? t("pages.quickRun.running")
+                    : t("pages.quickRun.startRun")}
+                </button>
+                {canCancelRun ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleCancelQuickRun()}
+                    className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover"
+                  >
+                    <Square className="h-4 w-4" aria-hidden="true" />
+                    {t("pages.quickRun.cancelRun")}
+                  </button>
+                ) : null}
+              </div>
+
+              {quickRunStatus ? (
+                <div
+                  className={`mt-4 flex items-start gap-3 rounded-card border p-4 ${
+                    runState === "done"
+                      ? "border-success/30 bg-success/5"
+                      : "border-error/30 bg-error/5"
+                  }`}
+                >
+                  {runState === "done" ? (
+                    <CheckCircle className="mt-0.5 h-4 w-4 text-success" aria-hidden="true" />
+                  ) : (
+                    <AlertCircle className="mt-0.5 h-4 w-4 text-error" aria-hidden="true" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text-primary">
+                      {t("pages.quickRun.runStatus", {
+                        status: quickRunStatus,
+                        runId: quickRunId,
+                      })}
+                    </p>
+                    {quickRunRecord ? (
+                      <p className="mt-1 break-all text-xs text-text-secondary">
+                        {quickRunRecord}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {runError ? (
+                <p className="mt-3 text-sm text-error">{runError}</p>
+              ) : null}
+
+              <div className="mt-5 space-y-4">
                 {/* Pipeline Command */}
                 <div>
                   <p className="text-xs font-medium uppercase tracking-[0.14em] text-text-muted">
@@ -266,8 +464,9 @@ export function QuickRunPage() {
                     <button
                       type="button"
                       onClick={() => handleCopy(pipelineCliCommand)}
-                      className="shrink-0 rounded-card border border-accent/30 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-card border border-accent/30 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
                     >
+                      <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                       {copiedCommand ? "Copied!" : "Copy"}
                     </button>
                   </div>
@@ -285,8 +484,9 @@ export function QuickRunPage() {
                     <button
                       type="button"
                       onClick={() => handleCopy(agentCliCommand)}
-                      className="shrink-0 rounded-card border border-accent/30 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-card border border-accent/30 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
                     >
+                      <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                       Copy
                     </button>
                   </div>
@@ -299,8 +499,7 @@ export function QuickRunPage() {
                     evidence cards
                   </p>
                   <p className="mt-1 text-xs text-text-secondary">
-                    Run the command above in your terminal. Results will appear
-                    in the Overview and Resumes pages.
+                    {t("pages.quickRun.selectedHint")}
                   </p>
                 </div>
               </div>

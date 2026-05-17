@@ -42,6 +42,8 @@ from tools.sidecar.handlers.agent import (
     handle_agent_stop,
     handle_create_review_candidates,
     handle_get_pending_review,
+    handle_quick_cancel,
+    handle_quick_start,
     handle_submit_review,
 )
 from tools.sidecar.handlers.settings import handle_settings_get, handle_settings_update
@@ -76,6 +78,8 @@ def _create_router() -> Router:
     router.register("submission.retry", handle_submission_retry)
     router.register("settings.get", handle_settings_get)
     router.register("settings.update", handle_settings_update)
+    router.register("run.quick.start", handle_quick_start)
+    router.register("run.quick.cancel", handle_quick_cancel)
     router.register("run.agent.start", handle_agent_start)
     router.register("run.agent.get", handle_agent_get)
     router.register("run.agent.stop", handle_agent_stop)

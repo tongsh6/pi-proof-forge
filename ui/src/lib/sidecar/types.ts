@@ -374,6 +374,28 @@ export interface SubmitReviewResult extends RpcResultBase {
   accepted: number;
 }
 
+export interface QuickRunStartOptions {
+  generate_resume?: boolean;
+  raw_path?: string;
+  job_profile_path?: string;
+  timeout_seconds?: number;
+  use_llm?: boolean;
+  require_llm?: boolean;
+  [key: string]: unknown;
+}
+
+export interface QuickRunStartResult extends RpcResultBase {
+  run_id: string;
+  status: string;
+  exit_code?: number | null;
+  run_record?: string;
+  summary?: string;
+}
+
+export interface QuickRunCancelResult extends RpcResultBase {
+  accepted: boolean;
+}
+
 export interface AgentRunStartOptions {
   max_rounds?: number;
   execute_dry_run?: boolean;

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 _AGENT_RUN_DIR = Path("outputs") / "agent_runs"
+_QUICK_RUN_DIR = Path("outputs") / "quick_runs"
 _REVIEW_QUEUE_DIR = Path("outputs") / "review_queue"
 
 
@@ -28,14 +31,37 @@ def _ensure_agent_run_dir() -> None:
     _AGENT_RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _ensure_quick_run_dir() -> None:
+    _QUICK_RUN_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def _build_agent_run_id() -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     return f"ar_{timestamp}"
 
 
+def _build_quick_run_id() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    return f"qr_{timestamp}"
+
+
+def _validate_run_resource_id(name: str, value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} is required")
+    normalized = value.strip()
+    if "/" in normalized or "\\" in normalized or normalized.startswith("."):
+        raise ValueError(f"{name} is invalid")
+    return normalized
+
+
 def _get_agent_run_file(run_id: str) -> Path:
     _ensure_agent_run_dir()
     return _AGENT_RUN_DIR / f"{run_id}.json"
+
+
+def _get_quick_run_file(run_id: str) -> Path:
+    _ensure_quick_run_dir()
+    return _QUICK_RUN_DIR / f"{run_id}.json"
 
 
 def _load_agent_run(run_id: str) -> dict[str, Any]:
@@ -46,6 +72,19 @@ def _load_agent_run(run_id: str) -> dict[str, Any]:
 
 
 def _save_agent_run(run_file: Path, payload: dict[str, Any]) -> None:
+    run_file.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _load_quick_run(run_id: str) -> dict[str, Any]:
+    run_file = _get_quick_run_file(run_id)
+    if not run_file.exists():
+        raise KeyError(f"NOT_FOUND: quick run not found: {run_id}")
+    return json.loads(run_file.read_text(encoding="utf-8"))
+
+
+def _save_quick_run(run_file: Path, payload: dict[str, Any]) -> None:
     run_file.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -106,6 +145,128 @@ def _execute_local_dry_run(run_id: str, options: dict[str, Any]) -> dict[str, An
         "status": result.status,
         "round": result.rounds_completed,
         "events": events,
+    }
+
+
+def _quick_run_paths(job_profile_id: str, options: dict[str, Any]) -> tuple[Path, Path]:
+    raw_path = Path(str(options.get("raw_path") or "tools/sample_raw.txt"))
+    job_profile_path = Path(
+        str(options.get("job_profile_path") or f"job_profiles/{job_profile_id}.yaml")
+    )
+    if not raw_path.exists():
+        raise ValueError(f"raw_path does not exist: {raw_path}")
+    if not job_profile_path.exists():
+        raise ValueError(f"job_profile_path does not exist: {job_profile_path}")
+    return raw_path, job_profile_path
+
+
+def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
+    """Run the single-pass pipeline from the desktop Quick Run page."""
+    correlation_id = params["meta"]["correlation_id"]
+    job_profile_id = _validate_run_resource_id(
+        "job_profile_id", params.get("job_profile_id")
+    )
+    evidence_id = params.get("evidence_id")
+    if evidence_id is not None:
+        _validate_run_resource_id("evidence_id", evidence_id)
+    options = params.get("options", {})
+    if not isinstance(options, dict):
+        raise ValueError("options must be an object")
+
+    raw_path, job_profile_path = _quick_run_paths(job_profile_id, options)
+    run_id = _build_quick_run_id()
+    started_at = _utcnow_iso()
+    command = [
+        sys.executable,
+        "tools/run_pipeline.py",
+        "--raw",
+        str(raw_path),
+        "--job-profile",
+        str(job_profile_path),
+        "--run-id",
+        run_id,
+    ]
+    timeout_seconds = _coerce_positive_int(options.get("timeout_seconds"), 120)
+    if options.get("use_llm") is True:
+        command.append("--use-llm")
+    if options.get("require_llm") is True:
+        command.append("--require-llm")
+
+    status = "queued"
+    exit_code: int | None = None
+    stdout = ""
+    stderr = ""
+    finished_at = ""
+
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+        exit_code = completed.returncode
+        stdout = completed.stdout
+        stderr = completed.stderr
+        if completed.returncode == 0:
+            status = "DONE"
+        elif completed.returncode == 2:
+            status = "SKIPPED"
+        else:
+            status = "FAILED"
+        finished_at = _utcnow_iso()
+    except subprocess.TimeoutExpired as exc:
+        status = "TIMEOUT"
+        exit_code = None
+        stdout = str(exc.stdout or "")
+        stderr = str(exc.stderr or "")
+        finished_at = _utcnow_iso()
+
+    payload = {
+        "run": {
+            "run_id": run_id,
+            "status": status,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "job_profile_id": job_profile_id,
+            "evidence_id": evidence_id or "",
+            "raw_path": str(raw_path),
+            "job_profile_path": str(job_profile_path),
+            "command": command,
+            "exit_code": exit_code,
+            "options": options,
+        },
+        "stdout": stdout[-4000:],
+        "stderr": stderr[-4000:],
+    }
+    _save_quick_run(_get_quick_run_file(run_id), payload)
+
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "run_id": run_id,
+        "status": status,
+        "exit_code": exit_code,
+        "run_record": str(Path("outputs") / "agent_runs" / run_id / "run_log.json"),
+        "summary": str(Path("outputs") / "agent_runs" / run_id / "summary.json"),
+    }
+
+
+def handle_quick_cancel(params: dict[str, Any]) -> dict[str, Any]:
+    """Best-effort cancellation marker for Quick Run records."""
+    correlation_id = params["meta"]["correlation_id"]
+    run_id = _validate_run_resource_id("run_id", params.get("run_id"))
+    run_file = _get_quick_run_file(run_id)
+    payload = _load_quick_run(run_id)
+    run_payload = payload.setdefault("run", {})
+    if run_payload.get("status") not in {"DONE", "FAILED", "SKIPPED", "TIMEOUT"}:
+        run_payload["status"] = "stopped"
+    run_payload["cancel_requested_at"] = _utcnow_iso()
+    _save_quick_run(run_file, payload)
+
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "accepted": True,
     }
 
 

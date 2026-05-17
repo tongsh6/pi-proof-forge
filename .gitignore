@@ -19,6 +19,7 @@ outputs/
 .app-runtime/
 ui/src-tauri/gen/
 .playwright-cli/
+ui/test-results/
 
 !ui/src-tauri/resources/python/.gitkeep
 !ui/src-tauri/resources/sidecar/.gitkeep

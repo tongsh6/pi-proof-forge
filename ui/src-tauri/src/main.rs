@@ -2,6 +2,7 @@
 
 use serde_json::{json, Value};
 use std::env;
+use std::fs::{create_dir_all, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -38,6 +39,10 @@ impl SidecarLaunchConfig {
         app_handle: &AppHandle,
         python_override: Option<String>,
     ) -> Result<Self, String> {
+        if cfg!(debug_assertions) {
+            return Self::from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")), python_override);
+        }
+
         let resource_dir = app_handle
             .path()
             .resolve(".", BaseDirectory::Resource)
@@ -71,10 +76,12 @@ impl SidecarProcess {
     fn spawn(app_handle: &AppHandle) -> Result<Self, String> {
         let python_override = env::var("PIPROOFFORGE_PYTHON_BIN").ok();
         let config = SidecarLaunchConfig::from_app_handle(app_handle, python_override)?;
+        let python_path = build_python_path(&config.working_dir)?;
 
         let mut child = Command::new(&config.python_bin)
             .arg(&config.script_path)
             .current_dir(&config.working_dir)
+            .env("PYTHONPATH", python_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -264,6 +271,14 @@ fn resolve_python_bin(resource_root: &Path, python_override: Option<String>) -> 
     "python3".to_string()
 }
 
+fn build_python_path(working_dir: &Path) -> Result<std::ffi::OsString, String> {
+    let mut paths = vec![working_dir.to_path_buf()];
+    if let Some(existing) = env::var_os("PYTHONPATH") {
+        paths.extend(env::split_paths(&existing));
+    }
+    env::join_paths(paths).map_err(|error| format!("Failed to build PYTHONPATH: {}", error))
+}
+
 fn smoke_test_requested() -> bool {
     matches!(
         env::var("PIPROOFFORGE_SMOKE_TEST")
@@ -384,6 +399,37 @@ fn sidecar_shutdown(manager: State<'_, SidecarManager>) -> Result<(), String> {
     manager.shutdown()
 }
 
+#[tauri::command]
+fn quick_run_verify_event(event: Value) -> Result<(), String> {
+    if env::var("QUICK_RUN_VERIFY_AUTORUN").ok().as_deref() != Some("quick-run") {
+        return Ok(());
+    }
+
+    let repo_root = resolve_repo_root(Path::new(env!("CARGO_MANIFEST_DIR")))?;
+    let output_dir = repo_root.join("ui/test-results/quick-run-native");
+    create_dir_all(&output_dir)
+        .map_err(|error| format!("Failed to create verifier event dir: {}", error))?;
+
+    let mut payload = event;
+    if let Some(object) = payload.as_object_mut() {
+        let recorded_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_millis()
+            .to_string();
+        object.insert("recorded_at".to_string(), Value::String(recorded_at));
+    }
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(output_dir.join("app-events.jsonl"))
+        .map_err(|error| format!("Failed to open verifier event log: {}", error))?;
+    writeln!(file, "{}", payload)
+        .map_err(|error| format!("Failed to write verifier event: {}", error))?;
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(SidecarManager::default())
@@ -407,7 +453,11 @@ fn main() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_request, sidecar_shutdown])
+        .invoke_handler(tauri::generate_handler![
+            sidecar_request,
+            sidecar_shutdown,
+            quick_run_verify_event
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

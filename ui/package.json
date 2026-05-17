@@ -8,8 +8,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "prepare:python-runtime": "python3 ./scripts/stage_python_runtime.py",
-    "tauri": "npm run prepare:python-runtime && tauri",
-    "smoke:app": "npm run tauri -- build --bundles app && python3 ./scripts/verify_packaged_app.py"
+    "tauri": "pnpm run prepare:python-runtime && tauri",
+    "smoke:app": "pnpm run tauri build --bundles app && python3 ./scripts/verify_packaged_app.py",
+    "e2e:quick-run": "node ./scripts/verify_quick_run_native.mjs",
+    "e2e:quick-run:webdriver": "node ./scripts/verify_quick_run_webdriver.mjs"
   },
   "dependencies": {
     "i18next": "^24.2.0",

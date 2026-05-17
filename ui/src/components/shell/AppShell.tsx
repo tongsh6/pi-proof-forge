@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useSidecarStore } from "@/state/sidecar-store";
+import { NativeVerifyController } from "./NativeVerifyController";
 import { SideNav } from "./SideNav";
 
 const stateToneMap = {
@@ -25,6 +26,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen w-screen bg-bg-primary">
+      <NativeVerifyController />
       <SideNav />
       <main className="flex-1 overflow-y-auto p-6">
         <section className="mb-6 rounded-panel border border-border bg-bg-panel px-5 py-4 shadow-[var(--shadow-panel)]">

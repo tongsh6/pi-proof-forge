@@ -24,6 +24,9 @@ import type {
   PingResult,
   ProfileGetResult,
   ProfileUpdateResult,
+  QuickRunCancelResult,
+  QuickRunStartOptions,
+  QuickRunStartResult,
   ResumeExportResult,
   ResumeListResult,
   ResumePreviewResult,
@@ -318,6 +321,26 @@ export async function submitReview(
 ): Promise<SubmitReviewResult> {
   return client.call<SubmitReviewResult>("run.agent.submitReview", {
     decisions,
+  });
+}
+
+export async function startQuickRun(payload: {
+  job_profile_id: string;
+  evidence_id?: string;
+  options?: QuickRunStartOptions;
+}): Promise<QuickRunStartResult> {
+  return client.call<QuickRunStartResult>("run.quick.start", {
+    job_profile_id: payload.job_profile_id,
+    evidence_id: payload.evidence_id,
+    options: payload.options ?? {},
+  });
+}
+
+export async function cancelQuickRun(
+  runId: string
+): Promise<QuickRunCancelResult> {
+  return client.call<QuickRunCancelResult>("run.quick.cancel", {
+    run_id: runId,
   });
 }
 
