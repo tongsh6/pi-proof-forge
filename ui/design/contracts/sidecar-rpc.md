@@ -454,9 +454,18 @@
 {
   "meta": { "correlation_id": "corr_001" },
   "run_id": "qr_001",
-  "status": "queued"
+  "status": "DONE",
+  "exit_code": 0,
+  "run_record": "outputs/agent_runs/qr_001/run_log.json",
+  "summary": "outputs/agent_runs/qr_001/summary.json"
 }
 ```
+
+说明：
+- `run.quick.start` 启动本地单次 pipeline；当前 sidecar 同步返回执行结果。
+- `status` 可为 `DONE`、`SKIPPED`、`FAILED` 或 `TIMEOUT`。
+- CLI fallback 仍可由 UI 展示，但 Quick Run 页面不再只展示命令。
+- 桌面端 Quick Run 自动化不属于 sidecar JSON-RPC contract。主入口是 native verifier：`pnpm tauri dev` 启动真实 Tauri 窗口，前端在 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 下点击稳定 selector，外部脚本只轮询 `outputs/quick_runs` 与 summary 校验结果。
 
 ### 6.11 run.quick.cancel
 

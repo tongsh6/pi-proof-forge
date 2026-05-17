@@ -56,7 +56,8 @@ GUI 关键文档：
 - 当前 GUI 真源为 `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen`
 - 当前 GUI 信息架构为 9 页：Overview、Resumes、Evidence、Jobs、Quick Run、Agent Run、Submissions、Policy、System Settings
 - 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；GUI 仍处于垂直切片产品化阶段
-- Quick Run 当前只展示/复制 CLI 命令，尚未通过 GUI 直接启动主链路；Resumes 页已接入 PDF export RPC。Markdown 转 PDF 会优先使用 `weasyprint`/`markdown` 高保真渲染；依赖缺失时自动使用内置基础 PDF writer，避免 runtime 断链。
+- Quick Run 已接入 `run.quick.start` / `run.quick.cancel`，可从 GUI 直接启动本地单次 pipeline；CLI 命令仍保留为 fallback。Resumes 页已接入 PDF export RPC。Markdown 转 PDF 会优先使用 `weasyprint`/`markdown` 高保真渲染；依赖缺失时自动使用内置基础 PDF writer，避免 runtime 断链。
+- Quick Run 自动化主入口是 native verifier：`pnpm --dir ui run e2e:quick-run` 会用 `pnpm tauri dev` 启动真实 Tauri 窗口，并通过 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，最后用 `outputs/quick_runs` 与 run summary 校验结果。`e2e:quick-run:webdriver` 仅保留为 Windows/Linux 的可选补充。
 
 ## 快速开始
 
@@ -162,7 +163,7 @@ tools/
 - Agent manual REVIEW 会在审批点写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会未经审批进入投递
 - Markdown 简历转 PDF 的代码路径已接入 sidecar；当前环境缺少 `weasyprint`/`markdown` 时也可用内置基础 PDF writer 导出非空 PDF
 - job-discovery 和 submission 属于支撑系统；当前项目主线仍以 evidence-first 求职材料工程为准
-- GUI 终版规范已冻结，当前实现仍是垂直切片，Quick Run 尚未直接运行主链路
+- GUI 终版规范已冻结，当前实现仍是垂直切片；Quick Run 已能从桌面 GUI 直接运行本地单次 pipeline
 - 2026-05-17 收束审计见 `docs/reports/project-state-and-core-flow-review.md`
 
 ## 约定
@@ -239,7 +240,8 @@ GUI key docs:
 - The GUI source of truth is `ui/design/DESIGN.md` plus `ui/design/piproofforge.pen`
 - The GUI information architecture now contains 9 pages: Overview, Resumes, Evidence, Jobs, Quick Run, Agent Run, Submissions, Policy, and System Settings
 - The repository now includes the Tauri desktop shell, React frontend, Python sidecar, JSON-RPC bridge, and one-command app control. The GUI is still being productized from vertical slices.
-- Quick Run currently displays/copies CLI commands instead of launching the core pipeline directly from the GUI. The Resumes page has a PDF export RPC; Markdown-to-PDF prefers `weasyprint` and `markdown` for high-fidelity rendering, then falls back to the built-in basic PDF writer when those packages are missing.
+- Quick Run is wired to `run.quick.start` / `run.quick.cancel` and can launch a local single-pass pipeline directly from the GUI; CLI commands remain as a fallback. The Resumes page has a PDF export RPC; Markdown-to-PDF prefers `weasyprint` and `markdown` for high-fidelity rendering, then falls back to the built-in basic PDF writer when those packages are missing.
+- The primary Quick Run automation path is a native verifier: `pnpm --dir ui run e2e:quick-run` starts the real Tauri window via `pnpm tauri dev`, uses `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` to click stable selectors inside the page, and verifies `outputs/quick_runs` plus the run summary. `e2e:quick-run:webdriver` remains only as an optional Windows/Linux supplement.
 
 ### Quick Start
 
@@ -301,7 +303,7 @@ ui/design/          GUI design mainline (Pencil design assets + design docs)
 - Agent manual REVIEW writes `outputs/review_queue/<run_id>.json` and returns `REVIEW_PENDING` instead of delivering without approval
 - Markdown-to-PDF export is wired through the sidecar and remains available without `weasyprint`/`markdown` through the built-in basic PDF writer
 - Job discovery and submission are supporting systems; the project mainline remains evidence-first career-material engineering
-- The final GUI specification is frozen; the current desktop app is still a vertical-slice implementation, and Quick Run does not yet launch the pipeline directly
+- The final GUI specification is frozen; the current desktop app is still a vertical-slice implementation, and Quick Run can now launch the local single-pass pipeline directly
 - 2026-05-17 state audit: `docs/reports/project-state-and-core-flow-review.md`
 
 ### License

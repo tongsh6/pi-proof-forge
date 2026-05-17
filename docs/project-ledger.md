@@ -5,9 +5,9 @@
 
 ## 1. 当前阶段目标
 
-**状态收束完成 + PDF runtime / pipeline Run Record / Agent REVIEW pause 补齐**
+**状态收束完成 + Quick Run 桌面执行 / native verifier 自动化补齐**
 
-> 2026-05-17 收束审计结论：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record；普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，但已补齐统一 Run Record，写入 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`。PDF Markdown 转换已补上内置无依赖兜底路径，当前环境 `WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF；Agent REVIEW manual 模式已从直接 approve 改为写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会进入 DELIVER；GUI Quick Run 当前只展示/复制 CLI 命令。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
+> 2026-05-18 状态：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record；普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，但已补齐统一 Run Record，写入 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`。PDF Markdown 转换已补上内置无依赖兜底路径，当前环境 `WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF；Agent REVIEW manual 模式已从直接 approve 改为写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会进入 DELIVER；GUI Quick Run 已注册 `run.quick.start` / `run.quick.cancel` 并从页面直接启动本地单次 pipeline，CLI 命令保留为 fallback，且已补上 Tauri native verifier 自动化入口。Quick Run verifier 已按 `pnpm --dir ui run e2e:quick-run` 连续多轮通过；dev 模式 sidecar 工作目录、`PYTHONPATH`、进程树清理和 pnpm 参数转发问题已修复。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -16,7 +16,7 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（341 tests，2026-05-17）**
+- **全链路集成测试 → 已恢复 ✅（343 tests，2026-05-18）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
@@ -65,9 +65,10 @@
 | GUI 前端骨架 | 已实现 | ui/src/ (29 files) | 9 页面路由 + i18n + RPC transport | 骨架级别，非产品级 |
 | **Composer build_agent_loop** | **已完成** | tools/config/composer.py | 集成测试通过 | 组装四大引擎 + GateEngine + ReviewStage + Channels |
 | **AgentLoop 全阶段集成** | **已完成** | tools/orchestration/agent_loop.py | 6 integration tests | INIT→DISCOVER→SCORE→GENERATE→EVALUATE→GATE→REVIEW→DELIVER→LEARN→DONE |
-| **全链路集成测试** | **已完成** | tests/unit/domain/test_full_pipeline.py | 7 tests passed | 含 dry-run 全状态、max_rounds、max_deliveries、企业排除、事件回放、多候选批次策略 |
+| **全链路集成测试** | **已完成** | tests/unit/domain/test_full_pipeline.py | 9 tests passed | 含 dry-run 全状态、max_rounds、max_deliveries、企业排除、事件回放、多候选批次策略 |
 | **Benchmark 基线** | **已完成** | docs/benchmarks/benchmark-001.md | rule-mode 完整评测 | 发现 matching 引擎不搜索 stack 字段 |
 | **Matching 引擎 stack 搜索** | **已完成** | tools/domain/models.py + rule_scorer.py + store.py | 2 new tests | K-score 0.0→0.6，证据卡可区分 |
+| **Matching gap task keywords 覆盖** | **已完成** | tools/engines/matching/rule_scorer.py + tests/unit/domain/test_matching_engines.py | `python3 -m pytest tests/unit/domain/test_matching_engines.py -q` → 7 passed | 空候选证据库和常规评分路径共用 gap task 生成逻辑；缺失 `keywords` 也会生成补证据任务，并避免与 `must_have` 重复 |
 | **Liepin Channel 真实实现** | **已完成** | tools/channels/liepin.py | 集成 tools/submission/liepin.py (464行 Playwright) | 无 Playwright 时优雅降级为模拟模式 |
 | **LLM 对比 Benchmark** | **已完成** | docs/benchmarks/benchmark-003.md | LM Studio openai/gpt-oss-120b | LLM K=0.73 vs Rule K=0.60，LLM 缺口更具体，建议混合策略 |
 | **LLM Matcher prompt 修复** | **已完成** | tools/engines/matching/llm_matcher.py | 新增 stack 字段到 prompt | LLM 可看到技术栈信息 |
@@ -113,7 +114,7 @@
 | **GUI 详情页 review hardening** | **已验证** | tools/sidecar/handlers/submission.py + tools/submission/storage.py + ui/design/contracts/sidecar-rpc.md + ui/src/i18n/ | test_submission_handler.py + test_submission_storage.py + `pnpm --dir ui build` | screenshot 路径越界防护、browser_channel 写入日志、submission.detail 合同同步、Submissions 页面接入 i18n |
 | **GUI Agent Run 控制 RPC** | **已验证** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/lib/sidecar/api.ts + ui/design/contracts/sidecar-rpc.md | test_server.py + `pnpm --dir ui build` | `run.agent.start/get/stop` 已接入 JSON-RPC 路由和前端 typed client；缺省只创建本地运行控制记录；显式 `execute_dry_run=true` 可执行本地 dry-run AgentLoop，不触发真实投递 |
 | **GUI 一键启停脚本** | **已验证** | app + scripts/appctl.py + .gitignore | `./app start` / `./app status` / `./app stop` | 根目录一键控制 Tauri dev app；运行时 PID 和日志写入 `.app-runtime/`，并已加入 gitignore |
-| **Tauri npm/Rust 版本对齐** | **已验证** | ui/package.json + ui/pnpm-lock.yaml + ui/package-lock.json | `pnpm --dir ui list @tauri-apps/api @tauri-apps/cli --depth 0` + `./app start` 日志 | npm 侧固定 `@tauri-apps/api`/`cli` 为 2.10.1，与 Rust `tauri` 2.10.3 对齐到同一 minor；启动日志不再出现 mismatch 提示 |
+| **Tauri pnpm/Rust 版本对齐** | **已验证** | ui/package.json + ui/pnpm-lock.yaml + ui/package-lock.json | `pnpm --dir ui list @tauri-apps/api @tauri-apps/cli --depth 0` + `./app start` 日志 | pnpm 侧固定 `@tauri-apps/api`/`cli` 为 2.10.1，与 Rust `tauri` 2.10.3 对齐到同一 minor；启动日志不再出现 mismatch 提示 |
 | **GUI 默认中文语言** | **已验证** | ui/src/i18n/index.ts + tests/unit/gui/test_i18n_defaults.py | `python3 -m pytest tests/unit/gui/test_i18n_defaults.py -q` + `pnpm --dir ui build` | 默认 `lng` 与 `fallbackLng` 均使用 `DEFAULT_LANGUAGE = "zh"` |
 | **GUI 启动缓存优化** | **已验证** | ui/scripts/stage_python_runtime.py | `pnpm --dir ui run prepare:python-runtime` + `./app start` 日志 | Python runtime 缺失或解释器变化时才重打包；常规启动命中 `Using staged Python`，避免每次复制/签名整套 Python.framework |
 | **boss-agent-cli 外部仓库调研** | **已完成** | https://github.com/can4hou6joeng4/boss-agent-cli | 源码/README/能力矩阵/平台抽象/MCP/风险文档阅读 | 对本项目价值主要在多平台 job-discovery、受控 delivery 通道参考、JSON envelope/schema/MCP 工程化；推荐先做 subprocess 薄适配 |
@@ -121,15 +122,17 @@
 | **M0 journey contract** | **已完成** | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | `python3 -m pytest tests/acceptance/test_journey_contract.py -q` → 4 passed | 合同覆盖 9 个 selected case、固定 9 页 stage 顺序、required outputs、acceptance rule status/evidence/message 字段 |
 | **项目状态与主链路收束审计** | **已完成** | docs/reports/project-state-and-core-flow-review.md | 实跑 CLI/测试/PDF/Agent/GitHub issue 检查 | 当时确认 CLI 主链路可跑，并暴露 PDF runtime、GUI Quick Run、普通 pipeline run record、Agent REVIEW pause 缺口；除 Quick Run 外本轮均已补齐 |
 | **PDF runtime 基础闭环** | **已完成** | tools/infra/export/pdf_exporter.py + tests/unit/infra/test_pdf_exporter.py + tests/unit/sidecar/test_resume_handler.py | `python3 -m pytest tests/unit/infra/test_pdf_exporter.py tests/unit/sidecar/test_resume_handler.py tests/unit/sidecar/test_server.py -q` → 31 passed；smoke 导出 `%PDF-1.4` 非空文件 | WeasyPrint 可用时走高保真 HTML/CSS；依赖缺失时走内置基础 PDF writer；fallback 按显示宽度拆分连续 CJK 长句 |
-| **普通 pipeline Run Record** | **已完成** | tools/run_pipeline.py + tests/unit/pipeline/test_run_pipeline.py | `python3 -m pytest tests/unit/pipeline/test_run_pipeline.py tests/unit/infra/test_file_run_store.py -q` → 6 passed；`python3 -m pytest tests/ -q` → 341 passed | `tools/run_pipeline.py` 保留 legacy subprocess 串联，同时写入 `outputs/agent_runs/<run_id>/run_log.json`、`summary.json`；企业排除兼容旧 `outputs/<run_id>/run_log.json` 审计文件 |
-| **Agent REVIEW pause 收口** | **已完成** | tools/orchestration/agent_loop.py + tests/unit/domain/test_full_pipeline.py | `python3 -m pytest tests/unit/domain/test_full_pipeline.py tests/unit/domain/test_gate_review.py -q` → 19 passed；`python3 -m pytest tests/ -q` → 341 passed | manual 非批量 REVIEW 写 `outputs/review_queue/<run_id>.json` 后返回 `REVIEW_PENDING`，不进入 DELIVER；batch_review 收集候选后统一进入待审批 |
+| **普通 pipeline Run Record** | **已完成** | tools/run_pipeline.py + tests/unit/pipeline/test_run_pipeline.py | `python3 -m pytest tests/unit/pipeline/test_run_pipeline.py tests/unit/infra/test_file_run_store.py -q` → 6 passed；`python3 -m pytest tests/ -q` → 343 passed | `tools/run_pipeline.py` 保留 legacy subprocess 串联，同时写入 `outputs/agent_runs/<run_id>/run_log.json`、`summary.json`；企业排除兼容旧 `outputs/<run_id>/run_log.json` 审计文件 |
+| **Agent REVIEW pause 收口** | **已完成** | tools/orchestration/agent_loop.py + tests/unit/domain/test_full_pipeline.py | `python3 -m pytest tests/unit/domain/test_full_pipeline.py tests/unit/domain/test_gate_review.py -q` → 19 passed；`python3 -m pytest tests/ -q` → 343 passed | manual 非批量 REVIEW 写 `outputs/review_queue/<run_id>.json` 后返回 `REVIEW_PENDING`，不进入 DELIVER；batch_review 收集候选后统一进入待审批 |
+| **GUI Quick Run 直接执行** | **已完成** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/pages/quick-run/index.tsx + ui/src/lib/sidecar/api.ts | `python3 -m pytest tests/unit/sidecar/test_server.py -q` → 12 passed；`pnpm --dir ui build` → pass | `run.quick.start` 同步启动本地 `tools/run_pipeline.py` 单次 pipeline 并返回 run record 路径；`run.quick.cancel` 记录取消请求；Quick Run 页面新增启动按钮、状态回显，CLI 命令保留为 fallback |
+| **Quick Run native verifier 自动化** | **已完成** | ui/scripts/verify_quick_run_native.mjs + ui/src/components/shell/NativeVerifyController.tsx + ui/src/pages/quick-run/index.tsx + ui/package.json | `pnpm --dir ui run e2e:quick-run` 连续多轮通过；`pnpm --dir ui build` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → pass；`python3 -m pytest tests/ -q` → 343 passed | 参考 ai-novel-studio 的 native verifier 方式：主入口 `pnpm --dir ui run e2e:quick-run` 用 `pnpm tauri dev` 启动真实 Tauri 窗口，以 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，并用 `outputs/quick_runs` + summary 校验结果；WebDriver 仅保留为可选补充；dev 模式固定仓库根工作目录并补 `PYTHONPATH`，避免产物写入 `target/debug/resources` |
 | **GitHub issue 状态清理** | **已完成** | GitHub issues #21-#27 | `gh issue close/comment` + `gh issue list` | #24/#26/#27 已关闭；#21/#22/#23/#25 已评论降级或缩小范围；#15/#16 保持关闭 |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 341 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 341 passed |
+| 全部 343 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 343 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -144,7 +147,8 @@
 | Playwright + Liepin 验证 | `tools/channels/liepin.py` | check-mode 通过 | 需登录态完成真实投递 |
 | Agent Loop 端到端验证 | 真实验证脚本 | hybrid + LLM evaluator, 10 状态全通过 | 2 rounds, 18 events, matching 0.772→0.919 |
 | SLA/SLO 证据卡 | `evidence_cards/ec-2026-018.yaml` / `019.yaml` | K-score: Backend 1.0, SRE 0.857 | SLA/SLO 盲区消除 |
-| GUI 编译验证 | `cd ui && npm run build` | TypeScript 零错误, 1627 modules, 1.14s | 9 页全部可编译 |
+| GUI 编译验证 | `pnpm --dir ui build` | TypeScript 零错误, 1628 modules | 9 页全部可编译 |
+| Quick Run native verifier | `pnpm --dir ui run e2e:quick-run` | `outputs/quick_runs/qr_20260517150915671449.json` + `outputs/agent_runs/qr_20260517150915671449/summary.json` | 真实 Tauri 窗口内点击 Quick Run，DONE；多轮无残留进程或 `.env.local` |
 | LLM Evaluator 增强 | `tools/engines/evaluation/llm_evaluator.py` | 6 维度语义评测 | semantic_coverage + fabrication_risk + gaps/strengths/improvements |
 | AppleScript 猎聘搜索 PoC | `tools/poc_liepin_applescript_search.py` | 2.3s/搜索, 23 职位/页, 无 captcha | 真实 Chrome 完全绕过 captcha（初始测试） |
 | Liepin 登录态有效性 | `outputs/submissions/liepin/run-deliver-6/` | login_check: success | 32 个 liepin cookie，Playwright persistent_context 有效 |
@@ -173,11 +177,11 @@
 | ~~P1~~ | ~~猎聘共享登录态刷新后复跑 Agent Loop~~ | ~~当前 `run-agent-liepin-chat-004` 正确阻断于 login_required~~ | **已解决** | **`run-agent-liepin-chat-005` check-mode success** |
 | ~~P2~~ | ~~LiepinChannel session 路径耦合 run_id~~ | ~~每次新 run 需手动创建 symlink~~ | **已解决** | **新增 `PPF_LIEPIN_SESSION_DIR` 显式覆盖** |
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
-| P3a | GUI Quick Run 尚未直接运行主链路 | 当前只展示/复制 CLI 命令，未注册 `run.quick.start` / `run.quick.cancel` | 产品化缺口 | 状态清理后再决定是否进入 GUI 实现 |
+| ~~P3a~~ | ~~GUI Quick Run 尚未直接运行主链路~~ | ~~当前只展示/复制 CLI 命令，未注册 `run.quick.start` / `run.quick.cancel`~~ | **已解决** | **已注册 `run.quick.start` / `run.quick.cancel`；Quick Run 页面可直接启动本地单次 pipeline，CLI 命令作为 fallback 保留** |
 | ~~P3b~~ | ~~Markdown PDF runtime 未闭环~~ | ~~代码已接入，但当前环境缺 `weasyprint`/`markdown`，实际导出失败~~ | **已解决** | **内置基础 PDF writer 兜底；`WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF** |
 | ~~P3c~~ | ~~普通 pipeline 无统一 Run Record~~ | ~~`tools/run_pipeline.py` 可生成产物，但不写 `outputs/agent_runs/<run_id>/run_log.json`~~ | **已解决** | **保留 legacy subprocess 串联，同时写入统一 Run Record 与 summary** |
 | ~~P3d~~ | ~~Agent REVIEW 未完整暂停等待 GUI 审批~~ | ~~sidecar queue handler 已存在，但 AgentLoop 在 REVIEW 后仍直接 approve 进入后续状态~~ | **已解决** | **manual REVIEW 写 queue 并返回 REVIEW_PENDING，不进入 DELIVER** |
-| P4 | Gap tasks 仅检查 must_have，不检查 keywords | SLA/SLO 等关键词缺失不会触发补证据任务 | 设计缺口 | 低优先级 |
+| ~~P4~~ | ~~Gap tasks 仅检查 must_have，不检查 keywords~~ | ~~SLA/SLO 等关键词缺失不会触发补证据任务~~ | **已解决** | **RuleMatchingEngine 空候选和常规路径均覆盖 `keywords` gap task；测试已锁定** |
 | ~~P5~~ | ~~误投防护需接入 liepin.py 主流程~~ | ~~poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入~~ | **已解决** | **target_verify 已接入并有离线单测覆盖** |
 | P6 | GUI `.pen` 设计资产未随最新 Submissions 详情实现同步复核 | `DESIGN.md` 与 GUI review checklist 明确要求 GUI 结构变更同步 `.pen`；当前 Pencil MCP 返回 `Transport closed` | 设计治理缺口 | Pencil MCP 恢复后打开 `ui/design/piproofforge.pen`，对 `Screen/Submissions` (`upl7d`) 补齐/确认详情侧板与状态 |
 | P7 | Submissions 页面实现仍未完全达到终版设计的统计卡片、表格、截图缩略图/放大预览形态 | 当前实现是可用的列表 + 详情面板垂直切片，未完整复刻 DESIGN.md 第 7 页产品态 | 产品化缺口 | GUI 产品化阶段统一推进，不阻塞当前 sidecar/投递闭环验证 |
@@ -218,7 +222,7 @@
 | 用户场景化 case 定义 | acceptance/scenario_cases.yaml | scenario-first 验收 case 目录；Case 1-6、channel_session_setup、submission_check_mode、feedback_iteration_after_check_mode 已 ready_for_implementation |
 | 用户旅程合同 | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | M0 case-aware contract；selected cases、stage 顺序、required outputs、acceptance rules 可由 loader 验证 |
 | 用户旅程闭环自动化验证计划 | AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md | M-1 到 M5 专项推进计划，所有阶段/步骤均含状态字段 |
-| 测试 | tests/ | 341 tests |
+| 测试 | tests/ | 343 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |
 | **反反爬基础设施** | **tools/submission/_browser.py** | **stealth + human pacing + 安全护栏** |
 | **端到端投递 PoC** | **tools/poc_e2e_send.py** | **6 步 dry-run/real-send 脚本** |
