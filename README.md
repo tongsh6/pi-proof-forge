@@ -56,7 +56,7 @@ GUI 关键文档：
 - 当前 GUI 真源为 `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen`
 - 当前 GUI 信息架构为 9 页：Overview、Resumes、Evidence、Jobs、Quick Run、Agent Run、Submissions、Policy、System Settings
 - 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；GUI 仍处于垂直切片产品化阶段
-- Quick Run 已接入 `run.quick.start` / `run.quick.cancel`，可从 GUI 直接启动本地单次 pipeline；CLI 命令仍保留为 fallback。Resumes 页已接入 PDF export RPC。Markdown 转 PDF 会优先使用 `weasyprint`/`markdown` 高保真渲染；依赖缺失时自动使用内置基础 PDF writer，避免 runtime 断链。
+- Quick Run 已接入 `run.quick.start` / `run.quick.cancel`，可从 GUI 直接启动本地单次 pipeline；CLI 命令仍保留为 fallback。Resumes 页已接入 PDF export RPC。Markdown 转 PDF 会优先使用 `weasyprint`/`markdown` 高保真渲染；依赖缺失时自动使用内置基础 PDF writer，避免 runtime 断链。高保真 PDF 依赖见 `requirements-pdf.txt`；安装后 `pnpm --dir ui run prepare:python-runtime` 会把可选 PDF runtime 带入 Tauri packaged sidecar。
 - Quick Run 自动化主入口是 native verifier：`pnpm --dir ui run e2e:quick-run` 会用 `pnpm tauri dev` 启动真实 Tauri 窗口，并通过 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，最后用 `outputs/quick_runs` 与 run summary 校验结果。`e2e:quick-run:webdriver` 仅保留为 Windows/Linux 的可选补充。
 
 ## 快速开始
@@ -64,6 +64,13 @@ GUI 关键文档：
 ### 环境要求
 
 - Python 3.10+（或兼容 Python 3 运行时）
+
+可选高保真 PDF 导出：
+
+```bash
+python3 -m pip install -r requirements-pdf.txt
+pnpm --dir ui run prepare:python-runtime
+```
 
 ### 一键启动 / 停止桌面 App
 
@@ -161,7 +168,7 @@ tools/
 - extraction/matching/generation/evaluation 已可从 CLI 端到端运行，默认产物是 Markdown 简历与 Scorecard
 - 普通 `tools/run_pipeline.py` 可跑通，并会写统一 Run Record 到 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`；内部仍保留 legacy subprocess 串联
 - Agent manual REVIEW 会在审批点写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会未经审批进入投递
-- Markdown 简历转 PDF 的代码路径已接入 sidecar；当前环境缺少 `weasyprint`/`markdown` 时也可用内置基础 PDF writer 导出非空 PDF
+- Markdown 简历转 PDF 的代码路径已接入 sidecar；当前环境缺少 `weasyprint`/`markdown` 时也可用内置基础 PDF writer 导出非空 PDF；如安装 `requirements-pdf.txt`，staging 会将可选 PDF 包复制进 packaged runtime
 - job-discovery 和 submission 属于支撑系统；当前项目主线仍以 evidence-first 求职材料工程为准
 - GUI 终版规范已冻结，当前实现仍是垂直切片；Quick Run 已能从桌面 GUI 直接运行本地单次 pipeline
 - 2026-05-17 收束审计见 `docs/reports/project-state-and-core-flow-review.md`
@@ -240,7 +247,7 @@ GUI key docs:
 - The GUI source of truth is `ui/design/DESIGN.md` plus `ui/design/piproofforge.pen`
 - The GUI information architecture now contains 9 pages: Overview, Resumes, Evidence, Jobs, Quick Run, Agent Run, Submissions, Policy, and System Settings
 - The repository now includes the Tauri desktop shell, React frontend, Python sidecar, JSON-RPC bridge, and one-command app control. The GUI is still being productized from vertical slices.
-- Quick Run is wired to `run.quick.start` / `run.quick.cancel` and can launch a local single-pass pipeline directly from the GUI; CLI commands remain as a fallback. The Resumes page has a PDF export RPC; Markdown-to-PDF prefers `weasyprint` and `markdown` for high-fidelity rendering, then falls back to the built-in basic PDF writer when those packages are missing.
+- Quick Run is wired to `run.quick.start` / `run.quick.cancel` and can launch a local single-pass pipeline directly from the GUI; CLI commands remain as a fallback. The Resumes page has a PDF export RPC; Markdown-to-PDF prefers `weasyprint` and `markdown` for high-fidelity rendering, then falls back to the built-in basic PDF writer when those packages are missing. High-fidelity PDF dependencies are listed in `requirements-pdf.txt`; after installation, `pnpm --dir ui run prepare:python-runtime` stages the optional PDF runtime into the Tauri packaged sidecar.
 - The primary Quick Run automation path is a native verifier: `pnpm --dir ui run e2e:quick-run` starts the real Tauri window via `pnpm tauri dev`, uses `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` to click stable selectors inside the page, and verifies `outputs/quick_runs` plus the run summary. `e2e:quick-run:webdriver` remains only as an optional Windows/Linux supplement.
 
 ### Quick Start
@@ -248,6 +255,13 @@ GUI key docs:
 Requirements:
 
 - Python 3.10+ (or compatible Python 3 runtime)
+
+Optional high-fidelity PDF export:
+
+```bash
+python3 -m pip install -r requirements-pdf.txt
+pnpm --dir ui run prepare:python-runtime
+```
 
 Start and stop the desktop app:
 
@@ -301,7 +315,7 @@ ui/design/          GUI design mainline (Pencil design assets + design docs)
 - End-to-end extraction/matching/generation/evaluation is runnable from the CLI and currently produces Markdown resumes plus scorecards by default
 - `tools/run_pipeline.py` is runnable and writes a unified run record under `outputs/agent_runs/<run_id>/run_log.json` plus `summary.json`; internally it still keeps the legacy subprocess chain
 - Agent manual REVIEW writes `outputs/review_queue/<run_id>.json` and returns `REVIEW_PENDING` instead of delivering without approval
-- Markdown-to-PDF export is wired through the sidecar and remains available without `weasyprint`/`markdown` through the built-in basic PDF writer
+- Markdown-to-PDF export is wired through the sidecar and remains available without `weasyprint`/`markdown` through the built-in basic PDF writer; installing `requirements-pdf.txt` lets staging copy the optional PDF packages into the packaged runtime
 - Job discovery and submission are supporting systems; the project mainline remains evidence-first career-material engineering
 - The final GUI specification is frozen; the current desktop app is still a vertical-slice implementation, and Quick Run can now launch the local single-pass pipeline directly
 - 2026-05-17 state audit: `docs/reports/project-state-and-core-flow-review.md`

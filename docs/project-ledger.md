@@ -8,6 +8,7 @@
 **状态收束完成 + Quick Run 桌面执行 / native verifier 自动化补齐**
 
 > 2026-05-18 状态：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record；普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，但已补齐统一 Run Record，写入 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`。PDF Markdown 转换已补上内置无依赖兜底路径，当前环境 `WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF；Agent REVIEW manual 模式已从直接 approve 改为写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会进入 DELIVER；GUI Quick Run 已注册 `run.quick.start` / `run.quick.cancel` 并从页面直接启动本地单次 pipeline，CLI 命令保留为 fallback，且已补上 Tauri native verifier 自动化入口。Quick Run verifier 已按 `pnpm --dir ui run e2e:quick-run` 连续多轮通过；dev 模式 sidecar 工作目录、`PYTHONPATH`、进程树清理和 pnpm 参数转发问题已修复。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
+> 2026-05-18 补充：WeasyPrint 高保真 PDF 增强已完成工程闭环。`requirements-pdf.txt` 显式声明 `markdown` / `weasyprint` 可选依赖；`pnpm --dir ui run prepare:python-runtime` 会在依赖已安装时把可选 PDF 包和元数据复制进 Tauri packaged runtime；未安装时会清理旧 staged 包并继续使用内置基础 PDF writer 兜底。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -16,7 +17,7 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（343 tests，2026-05-18）**
+- **全链路集成测试 → 已恢复 ✅（351 tests，2026-05-18）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
@@ -122,22 +123,24 @@
 | **M0 journey contract** | **已完成** | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | `python3 -m pytest tests/acceptance/test_journey_contract.py -q` → 4 passed | 合同覆盖 9 个 selected case、固定 9 页 stage 顺序、required outputs、acceptance rule status/evidence/message 字段 |
 | **项目状态与主链路收束审计** | **已完成** | docs/reports/project-state-and-core-flow-review.md | 实跑 CLI/测试/PDF/Agent/GitHub issue 检查 | 当时确认 CLI 主链路可跑，并暴露 PDF runtime、GUI Quick Run、普通 pipeline run record、Agent REVIEW pause 缺口；除 Quick Run 外本轮均已补齐 |
 | **PDF runtime 基础闭环** | **已完成** | tools/infra/export/pdf_exporter.py + tests/unit/infra/test_pdf_exporter.py + tests/unit/sidecar/test_resume_handler.py | `python3 -m pytest tests/unit/infra/test_pdf_exporter.py tests/unit/sidecar/test_resume_handler.py tests/unit/sidecar/test_server.py -q` → 31 passed；smoke 导出 `%PDF-1.4` 非空文件 | WeasyPrint 可用时走高保真 HTML/CSS；依赖缺失时走内置基础 PDF writer；fallback 按显示宽度拆分连续 CJK 长句 |
-| **普通 pipeline Run Record** | **已完成** | tools/run_pipeline.py + tests/unit/pipeline/test_run_pipeline.py | `python3 -m pytest tests/unit/pipeline/test_run_pipeline.py tests/unit/infra/test_file_run_store.py -q` → 6 passed；`python3 -m pytest tests/ -q` → 343 passed | `tools/run_pipeline.py` 保留 legacy subprocess 串联，同时写入 `outputs/agent_runs/<run_id>/run_log.json`、`summary.json`；企业排除兼容旧 `outputs/<run_id>/run_log.json` 审计文件 |
-| **Agent REVIEW pause 收口** | **已完成** | tools/orchestration/agent_loop.py + tests/unit/domain/test_full_pipeline.py | `python3 -m pytest tests/unit/domain/test_full_pipeline.py tests/unit/domain/test_gate_review.py -q` → 19 passed；`python3 -m pytest tests/ -q` → 343 passed | manual 非批量 REVIEW 写 `outputs/review_queue/<run_id>.json` 后返回 `REVIEW_PENDING`，不进入 DELIVER；batch_review 收集候选后统一进入待审批 |
+| **WeasyPrint 高保真 PDF runtime staging** | **已完成** | requirements-pdf.txt + ui/scripts/stage_python_runtime.py + tests/unit/gui/test_stage_python_runtime.py | `python3 -m pytest tests/unit/gui/test_stage_python_runtime.py tests/unit/infra/test_pdf_exporter.py -q` → 15 passed；`pnpm --dir ui run prepare:python-runtime` → pass | 高保真依赖显式放入 `requirements-pdf.txt`；staging 仅在检测到完整 `markdown` + `weasyprint` runtime 时复制 PDF 依赖与 `.dist-info` 元数据，并用 packaged wrapper 做最小 Markdown→PDF 探针；缺失依赖时清理旧 staged 包并保留内置 PDF writer 兜底 |
+| **普通 pipeline Run Record** | **已完成** | tools/run_pipeline.py + tests/unit/pipeline/test_run_pipeline.py | `python3 -m pytest tests/unit/pipeline/test_run_pipeline.py tests/unit/infra/test_file_run_store.py -q` → 6 passed；`python3 -m pytest tests/ -q` → 351 passed | `tools/run_pipeline.py` 保留 legacy subprocess 串联，同时写入 `outputs/agent_runs/<run_id>/run_log.json`、`summary.json`；企业排除兼容旧 `outputs/<run_id>/run_log.json` 审计文件 |
+| **Agent REVIEW pause 收口** | **已完成** | tools/orchestration/agent_loop.py + tests/unit/domain/test_full_pipeline.py | `python3 -m pytest tests/unit/domain/test_full_pipeline.py tests/unit/domain/test_gate_review.py -q` → 19 passed；`python3 -m pytest tests/ -q` → 351 passed | manual 非批量 REVIEW 写 `outputs/review_queue/<run_id>.json` 后返回 `REVIEW_PENDING`，不进入 DELIVER；batch_review 收集候选后统一进入待审批 |
 | **GUI Quick Run 直接执行** | **已完成** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/pages/quick-run/index.tsx + ui/src/lib/sidecar/api.ts | `python3 -m pytest tests/unit/sidecar/test_server.py -q` → 12 passed；`pnpm --dir ui build` → pass | `run.quick.start` 同步启动本地 `tools/run_pipeline.py` 单次 pipeline 并返回 run record 路径；`run.quick.cancel` 记录取消请求；Quick Run 页面新增启动按钮、状态回显，CLI 命令保留为 fallback |
-| **Quick Run native verifier 自动化** | **已完成** | ui/scripts/verify_quick_run_native.mjs + ui/src/components/shell/NativeVerifyController.tsx + ui/src/pages/quick-run/index.tsx + ui/package.json | `pnpm --dir ui run e2e:quick-run` 连续多轮通过；`pnpm --dir ui build` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → pass；`python3 -m pytest tests/ -q` → 343 passed | 参考 ai-novel-studio 的 native verifier 方式：主入口 `pnpm --dir ui run e2e:quick-run` 用 `pnpm tauri dev` 启动真实 Tauri 窗口，以 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，并用 `outputs/quick_runs` + summary 校验结果；WebDriver 仅保留为可选补充；dev 模式固定仓库根工作目录并补 `PYTHONPATH`，避免产物写入 `target/debug/resources` |
+| **Quick Run native verifier 自动化** | **已完成** | ui/scripts/verify_quick_run_native.mjs + ui/src/components/shell/NativeVerifyController.tsx + ui/src/pages/quick-run/index.tsx + ui/package.json | `pnpm --dir ui run e2e:quick-run` 连续多轮通过；`pnpm --dir ui build` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → pass；`python3 -m pytest tests/ -q` → 351 passed | 参考 ai-novel-studio 的 native verifier 方式：主入口 `pnpm --dir ui run e2e:quick-run` 用 `pnpm tauri dev` 启动真实 Tauri 窗口，以 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，并用 `outputs/quick_runs` + summary 校验结果；WebDriver 仅保留为可选补充；dev 模式固定仓库根工作目录并补 `PYTHONPATH`，避免产物写入 `target/debug/resources` |
 | **GitHub issue 状态清理** | **已完成** | GitHub issues #21-#27 | `gh issue close/comment` + `gh issue list` | #24/#26/#27 已关闭；#21/#22/#23/#25 已评论降级或缩小范围；#15/#16 保持关闭 |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 343 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 343 passed |
+| 全部 351 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 351 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
 | Core CLI pipeline smoke | `python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --run-id state-review-20260517` | `docs/reports/project-state-and-core-flow-review.md` | 生成 Evidence Card、Matching Report、A/B Resume、Scorecard |
 | Markdown PDF runtime check | `python3 -c '... markdown_to_pdf(...)'` | 终端 smoke + `tests/unit/infra/test_pdf_exporter.py` | 当前环境 `WEASYPRINT_AVAILABLE=False`，但 `is_pdf_export_available()` 为 true；可导出 `%PDF-1.4` 非空文件 |
+| Optional PDF runtime staging | `python3 -m pytest tests/unit/gui/test_stage_python_runtime.py tests/unit/infra/test_pdf_exporter.py -q` + `pnpm --dir ui run prepare:python-runtime` | 终端输出 | 15 passed；staging 可在无完整 WeasyPrint/Markdown runtime 时保持 packaged runtime 干净并继续兜底 |
 | Benchmark 001 (rule baseline) | `docs/benchmarks/benchmark-001.md` | Matching Total=0.5, Eval Total=0.65 | 发现 K-score=0（已修复） |
 | Benchmark 002 (stack fix 后) | 同命令复现 | Matching Total=0.8, K-score=0.6 | 证据卡可按技术栈区分 |
 | Benchmark 003 (LLM vs Rule) | `docs/benchmarks/benchmark-003.md` | LLM K=0.73, Rule K=0.60 | LLM 更精准但更慢，建议混合策略 |
@@ -196,7 +199,7 @@
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
 | 1 | GUI / Demo 二选一 | PDF runtime、普通 pipeline Run Record、Agent REVIEW pause 已完成，下一步应只选择一个产品化方向推进 | 不并行展开；一次只进入一个最高优先级实现方向 |
-| 2 | WeasyPrint 高保真 PDF 增强 | 内置 writer 已保证 runtime 不断链，但排版能力弱于 HTML/CSS 渲染 | 将 `weasyprint`/`markdown` 作为可选依赖纳入 dev/packaged runtime，并保留内置兜底 |
+| ~~2~~ | ~~WeasyPrint 高保真 PDF 增强~~ | ~~内置 writer 已保证 runtime 不断链，但排版能力弱于 HTML/CSS 渲染~~ | **已解决**：`requirements-pdf.txt` + packaged runtime staging；保留内置兜底 |
 
 ## 8. 关键证据索引
 
@@ -222,7 +225,7 @@
 | 用户场景化 case 定义 | acceptance/scenario_cases.yaml | scenario-first 验收 case 目录；Case 1-6、channel_session_setup、submission_check_mode、feedback_iteration_after_check_mode 已 ready_for_implementation |
 | 用户旅程合同 | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | M0 case-aware contract；selected cases、stage 顺序、required outputs、acceptance rules 可由 loader 验证 |
 | 用户旅程闭环自动化验证计划 | AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md | M-1 到 M5 专项推进计划，所有阶段/步骤均含状态字段 |
-| 测试 | tests/ | 343 tests |
+| 测试 | tests/ | 351 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |
 | **反反爬基础设施** | **tools/submission/_browser.py** | **stealth + human pacing + 安全护栏** |
 | **端到端投递 PoC** | **tools/poc_e2e_send.py** | **6 步 dry-run/real-send 脚本** |
