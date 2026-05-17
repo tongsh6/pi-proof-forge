@@ -102,7 +102,8 @@ filters:
 退出码约定：
 
 - `tools/run_pipeline.py` 与 `tools/run_matching_scoring.py` 若命中企业例外清单，返回退出码 `2`。
-- 命中排除时会在 `outputs/<run_id>/run_log.json`（pipeline）或 `matching_reports/run_log.json`（matching）写入 `excluded_by_policy` 事件。
+- `tools/run_pipeline.py` 每次运行会写统一 Run Record：`outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`。
+- 命中排除时会额外保留兼容审计文件：`outputs/<run_id>/run_log.json`（pipeline）或 `matching_reports/run_log.json`（matching）写入 `excluded_by_policy` 事件。
 
 ## 打包副本约定
 

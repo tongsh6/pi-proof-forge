@@ -13,8 +13,10 @@ if str(ROOT) not in sys.path:
 
 from tools.discovery.filters import filter_candidates_by_policy
 
+from tools.domain.events import RunEvent
 from tools.domain.result import Err
 from tools.domain.value_objects import Candidate
+from tools.infra.persistence.file_run_store import FileRunStore
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.policy.audit import write_exclusion_audit
 from tools.policy.exclusions import (
@@ -30,11 +32,99 @@ def has_llm_env() -> bool:
     return bool(os.getenv("LLM_API_KEY")) and bool(os.getenv("LLM_MODEL"))
 
 
-def run_step(cmd: list[str], name: str) -> int:
+def _now_utc() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
+def _append_pipeline_event(
+    run_store: FileRunStore,
+    run_id: str,
+    event_type: str,
+    payload: dict[str, object],
+) -> None:
+    run_store.append_event(
+        RunEvent(
+            run_id=run_id,
+            event_type=event_type,
+            round_index=0,
+            payload=payload,
+            timestamp=_now_utc(),
+        )
+    )
+
+
+def _finish_pipeline_run(
+    run_store: FileRunStore,
+    run_id: str,
+    status: str,
+    exit_code: int,
+    artifacts: dict[str, object],
+    *,
+    reason: str = "",
+    failed_step: str = "",
+) -> int:
+    payload: dict[str, object] = {
+        "status": status,
+        "exit_code": exit_code,
+        "artifacts": artifacts,
+    }
+    if reason:
+        payload["reason"] = reason
+    if failed_step:
+        payload["failed_step"] = failed_step
+    _append_pipeline_event(
+        run_store,
+        run_id,
+        "PIPELINE_DONE" if exit_code == 0 else "PIPELINE_FAILED",
+        payload,
+    )
+    run_store.finalize(
+        run_id,
+        {
+            "run_id": run_id,
+            "status": status,
+            "exit_code": exit_code,
+            "reason": reason,
+            "failed_step": failed_step,
+            "artifacts": artifacts,
+            "finished_at": _now_utc(),
+        },
+    )
+    return exit_code
+
+
+def run_step(
+    cmd: list[str],
+    name: str,
+    *,
+    run_store: FileRunStore | None = None,
+    run_id: str | None = None,
+) -> int:
+    if run_store is not None and run_id is not None:
+        _append_pipeline_event(
+            run_store,
+            run_id,
+            "PIPELINE_STEP_START",
+            {"step": name, "command": cmd},
+        )
     print(f"[pipeline] {name}: {' '.join(cmd)}")
     result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
         print(f"[pipeline] failed at step: {name}")
+        if run_store is not None and run_id is not None:
+            _append_pipeline_event(
+                run_store,
+                run_id,
+                "PIPELINE_STEP_FAILURE",
+                {"step": name, "command": cmd, "returncode": result.returncode},
+            )
+    elif run_store is not None and run_id is not None:
+        _append_pipeline_event(
+            run_store,
+            run_id,
+            "PIPELINE_STEP_SUCCESS",
+            {"step": name, "command": cmd, "returncode": result.returncode},
+        )
     return result.returncode
 
 
@@ -62,10 +152,34 @@ def _legacy_main() -> int:
     )
     use_llm = cast(bool, args.use_llm)
     require_llm = cast(bool, args.require_llm)
+    run_store = FileRunStore(base_dir=str(Path("outputs") / "agent_runs"))
+    artifacts: dict[str, object] = {
+        "raw": raw_path,
+        "job_profile": job_profile,
+    }
+    _append_pipeline_event(
+        run_store,
+        run_id,
+        "PIPELINE_START",
+        {
+            "raw": raw_path,
+            "job_profile": job_profile,
+            "use_llm": use_llm,
+            "require_llm": require_llm,
+            "mode": "legacy_subprocess",
+        },
+    )
 
     if require_llm and not use_llm:
         print("[pipeline] --require-llm requires --use-llm")
-        return 1
+        return _finish_pipeline_run(
+            run_store,
+            run_id,
+            "FAILED",
+            1,
+            artifacts,
+            reason="require_llm_requires_use_llm",
+        )
 
     job_doc = parse_simple_yaml(Path(job_profile).read_text(encoding="utf-8"))
     company = job_doc["scalars"].get("company", "")
@@ -101,8 +215,27 @@ def _legacy_main() -> int:
             "discovery_filter",
             exclusion_reason or "excluded_company",
         )
+        _append_pipeline_event(
+            run_store,
+            run_id,
+            "PIPELINE_POLICY_EXCLUDED",
+            {
+                "candidate_id": candidate.candidate_id,
+                "company": candidate.company,
+                "legal_entity": candidate.legal_entity,
+                "reason": exclusion_reason or "excluded_company",
+                "source": "discovery_filter",
+            },
+        )
         print(f"[pipeline] skipped: job profile company excluded: {company}")
-        return 2
+        return _finish_pipeline_run(
+            run_store,
+            run_id,
+            "SKIPPED",
+            2,
+            artifacts,
+            reason=exclusion_reason or "excluded_company",
+        )
     gate_result = evaluate_candidate_exclusion(
         candidate,
         exclusions,
@@ -116,13 +249,41 @@ def _legacy_main() -> int:
             "gate_fallback",
             gate_result.error.reason,
         )
+        _append_pipeline_event(
+            run_store,
+            run_id,
+            "PIPELINE_POLICY_EXCLUDED",
+            {
+                "candidate_id": candidate.candidate_id,
+                "company": candidate.company,
+                "legal_entity": candidate.legal_entity,
+                "reason": gate_result.error.reason,
+                "source": "gate_fallback",
+            },
+        )
         print(f"[pipeline] skipped: {gate_result.error.details}")
-        return 2
+        return _finish_pipeline_run(
+            run_store,
+            run_id,
+            "SKIPPED",
+            2,
+            artifacts,
+            reason=gate_result.error.reason,
+        )
 
     evidence_output = Path("evidence_cards") / f"ec-{run_id}.yaml"
     matching_output = Path("matching_reports") / f"mr-{run_id}.yaml"
     resume_dir = Path("outputs") / run_id
     scorecard_output = Path("outputs/scorecards") / f"scorecard_mr-{run_id}_A.md"
+    artifacts.update(
+        {
+            "evidence": str(evidence_output),
+            "matching": str(matching_output),
+            "resume_dir": str(resume_dir),
+            "scorecard": str(scorecard_output),
+            "run_record": str(Path("outputs") / "agent_runs" / run_id / "run_log.json"),
+        }
+    )
 
     evidence_output.parent.mkdir(parents=True, exist_ok=True)
     matching_output.parent.mkdir(parents=True, exist_ok=True)
@@ -139,12 +300,32 @@ def _legacy_main() -> int:
                 "--output",
                 str(evidence_output),
             ]
-            code = run_step(extract_cmd, "evidence-extraction-llm")
+            code = run_step(
+                extract_cmd,
+                "evidence-extraction-llm",
+                run_store=run_store,
+                run_id=run_id,
+            )
             if code != 0:
-                return code
+                return _finish_pipeline_run(
+                    run_store,
+                    run_id,
+                    "FAILED",
+                    code,
+                    artifacts,
+                    failed_step="evidence-extraction-llm",
+                )
         elif require_llm:
             print("[pipeline] LLM required but env is missing (LLM_API_KEY/LLM_MODEL)")
-            return 1
+            return _finish_pipeline_run(
+                run_store,
+                run_id,
+                "FAILED",
+                1,
+                artifacts,
+                reason="missing_llm_env",
+                failed_step="evidence-extraction-llm",
+            )
         else:
             extract_cmd = [
                 "python3",
@@ -156,9 +337,21 @@ def _legacy_main() -> int:
                 "--id",
                 f"ec-{run_id}",
             ]
-            code = run_step(extract_cmd, "evidence-extraction-rule")
+            code = run_step(
+                extract_cmd,
+                "evidence-extraction-rule",
+                run_store=run_store,
+                run_id=run_id,
+            )
             if code != 0:
-                return code
+                return _finish_pipeline_run(
+                    run_store,
+                    run_id,
+                    "FAILED",
+                    code,
+                    artifacts,
+                    failed_step="evidence-extraction-rule",
+                )
     else:
         extract_cmd = [
             "python3",
@@ -170,9 +363,21 @@ def _legacy_main() -> int:
             "--id",
             f"ec-{run_id}",
         ]
-        code = run_step(extract_cmd, "evidence-extraction-rule")
+        code = run_step(
+            extract_cmd,
+            "evidence-extraction-rule",
+            run_store=run_store,
+            run_id=run_id,
+        )
         if code != 0:
-            return code
+            return _finish_pipeline_run(
+                run_store,
+                run_id,
+                "FAILED",
+                code,
+                artifacts,
+                failed_step="evidence-extraction-rule",
+            )
 
     match_cmd = [
         "python3",
@@ -188,9 +393,16 @@ def _legacy_main() -> int:
         match_cmd.append("--use-llm")
     if require_llm:
         match_cmd.append("--require-llm")
-    code = run_step(match_cmd, "matching-scoring")
+    code = run_step(match_cmd, "matching-scoring", run_store=run_store, run_id=run_id)
     if code != 0:
-        return code
+        return _finish_pipeline_run(
+            run_store,
+            run_id,
+            "FAILED",
+            code,
+            artifacts,
+            failed_step="matching-scoring",
+        )
 
     gen_cmd = [
         "python3",
@@ -204,9 +416,16 @@ def _legacy_main() -> int:
         gen_cmd.append("--use-llm")
     if require_llm:
         gen_cmd.append("--require-llm")
-    code = run_step(gen_cmd, "generation")
+    code = run_step(gen_cmd, "generation", run_store=run_store, run_id=run_id)
     if code != 0:
-        return code
+        return _finish_pipeline_run(
+            run_store,
+            run_id,
+            "FAILED",
+            code,
+            artifacts,
+            failed_step="generation",
+        )
 
     resume_a = resume_dir / f"resume_mr-{run_id}_A.md"
     eval_cmd = [
@@ -223,16 +442,24 @@ def _legacy_main() -> int:
         eval_cmd.append("--use-llm")
     if require_llm:
         eval_cmd.append("--require-llm")
-    code = run_step(eval_cmd, "evaluation")
+    code = run_step(eval_cmd, "evaluation", run_store=run_store, run_id=run_id)
     if code != 0:
-        return code
+        return _finish_pipeline_run(
+            run_store,
+            run_id,
+            "FAILED",
+            code,
+            artifacts,
+            failed_step="evaluation",
+        )
 
     print("[pipeline] done")
     print(f"- evidence: {evidence_output}")
     print(f"- matching: {matching_output}")
     print(f"- resume A/B: {resume_dir}")
     print(f"- scorecard: {scorecard_output}")
-    return 0
+    print(f"- run record: {Path('outputs') / 'agent_runs' / run_id / 'run_log.json'}")
+    return _finish_pipeline_run(run_store, run_id, "DONE", 0, artifacts)
 
 
 def main() -> int:
