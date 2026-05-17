@@ -5,6 +5,8 @@ stages (DISCOVER → SCORE → GENERATE → EVALUATE → GATE → REVIEW → DEL
 LEARN → DONE) when built via Composer with real rule-mode engines.
 """
 
+import json
+import os
 import unittest
 from importlib import import_module
 from pathlib import Path
@@ -271,6 +273,120 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             # so REVIEW and DELIVER should appear
             self.assertIn("REVIEW", event_types)
             self.assertIn("DELIVER", event_types)
+
+    def test_manual_review_pauses_before_delivery_and_writes_queue(self) -> None:
+        """Manual REVIEW should create a GUI-visible queue and stop before DELIVER."""
+        with TemporaryDirectory() as tmp:
+            cwd = os.getcwd()
+            policy_path = Path(tmp) / "policy.yaml"
+            policy_path.write_text(
+                "n_pass_required: 1\n"
+                "matching_threshold: 0.3\n"
+                "evaluation_threshold: 0.3\n"
+                "max_rounds: 1\n"
+                "gate_mode: strict\n"
+                "delivery_mode: manual\n"
+                "batch_review: false\n"
+                "excluded_companies: []\n"
+                "excluded_legal_entities: []\n",
+                encoding="utf-8",
+            )
+            composer = _composer_class().from_policy_path(str(policy_path))
+            store = _file_run_store_class()(base_dir=tmp)
+            os.chdir(tmp)
+            try:
+                loop = composer.build_agent_loop(
+                    run_id="run-review-pending",
+                    dry_run=True,
+                    run_store=store,
+                    evidence_cards=_make_evidence_cards(),
+                    job_profile=_make_job_profile(),
+                    candidates=_make_candidates(),
+                )
+
+                result = loop.run()
+            finally:
+                os.chdir(cwd)
+
+            self.assertEqual(result.status, "REVIEW_PENDING")
+            self.assertEqual(result.rounds_completed, 1)
+
+            events = store.load_events("run-review-pending")
+            event_types = [event.event_type for event in events]
+            self.assertIn("REVIEW", event_types)
+            self.assertNotIn("DELIVER", event_types)
+            review_event = [event for event in events if event.event_type == "REVIEW"][
+                -1
+            ]
+            self.assertEqual(review_event.payload.get("waiting_for_review"), True)
+            self.assertEqual(review_event.payload.get("pending_candidates"), 1)
+
+            queue_path = (
+                Path(tmp) / "outputs" / "review_queue" / "run-review-pending.json"
+            )
+            queue = json.loads(queue_path.read_text(encoding="utf-8"))
+            self.assertEqual(queue["run_id"], "run-review-pending")
+            self.assertEqual(queue["candidates"][0]["status"], "pending")
+            self.assertEqual(queue["candidates"][0]["job_lead_id"], "cand-001")
+
+    def test_manual_batch_review_collects_candidates_before_pause(self) -> None:
+        """Batch REVIEW should collect candidates and pause once the batch is ready."""
+        with TemporaryDirectory() as tmp:
+            cwd = os.getcwd()
+            policy_path = Path(tmp) / "policy.yaml"
+            policy_path.write_text(
+                "n_pass_required: 1\n"
+                "matching_threshold: 0.3\n"
+                "evaluation_threshold: 0.3\n"
+                "max_rounds: 3\n"
+                "gate_mode: strict\n"
+                "delivery_mode: manual\n"
+                "batch_review: true\n"
+                "excluded_companies: []\n"
+                "excluded_legal_entities: []\n",
+                encoding="utf-8",
+            )
+            composer = _composer_class().from_policy_path(str(policy_path))
+            store = _file_run_store_class()(base_dir=tmp)
+            os.chdir(tmp)
+            try:
+                loop = composer.build_agent_loop(
+                    run_id="run-batch-review-pending",
+                    dry_run=True,
+                    run_store=store,
+                    evidence_cards=_make_evidence_cards(),
+                    job_profile=_make_job_profile(),
+                    candidates=_make_candidates(),
+                )
+
+                result = loop.run()
+            finally:
+                os.chdir(cwd)
+
+            self.assertEqual(result.status, "REVIEW_PENDING")
+            self.assertEqual(result.rounds_completed, 2)
+            events = store.load_events("run-batch-review-pending")
+            event_types = [event.event_type for event in events]
+            self.assertNotIn("DELIVER", event_types)
+            self.assertEqual(event_types.count("REVIEW"), 2)
+            review_events = [event for event in events if event.event_type == "REVIEW"]
+            self.assertEqual(review_events[0].payload.get("collecting"), True)
+            self.assertEqual(review_events[-1].payload.get("waiting_for_review"), True)
+
+            queue_path = (
+                Path(tmp) / "outputs" / "review_queue" / "run-batch-review-pending.json"
+            )
+            queue = json.loads(queue_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                [candidate["job_lead_id"] for candidate in queue["candidates"]],
+                ["cand-001", "cand-002"],
+            )
+            self.assertTrue(
+                all(
+                    candidate["status"] == "pending"
+                    for candidate in queue["candidates"]
+                )
+            )
 
     def test_full_pipeline_batches_multiple_candidates_without_repeating_selection(self) -> None:
         """Multi-candidate delivery should advance through the candidate batch once per round."""

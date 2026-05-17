@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import datetime
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from tools.channels.base import DeliveryChannel, DeliveryRequest, deliver_with_fallback
@@ -179,6 +182,7 @@ class AgentLoop:
         rounds_completed = 0
         deliveries_completed = 0
         selected_candidate_ids: set[str] = set()
+        batch_review_candidates: list[dict[str, object]] = []
         sm = self._state_machine
 
         self._log_state("INIT", 0, {"dry_run": self._dry_run})
@@ -299,9 +303,81 @@ class AgentLoop:
             current_state = self._transition(sm, current_state, "pass")
 
             # --- REVIEW ---
-            review_ctx: dict[str, object] = {"events": [], "all_rounds_done": False}
+            review_candidate = _build_review_candidate_payload(
+                candidate=gate_candidate,
+                matching_score=matching_total,
+                evaluation_score=scorecard.total_score,
+                round_index=round_index,
+                resume_version=resume.version,
+            )
+            if self._policy.delivery_mode == "manual" and self._policy.batch_review:
+                batch_review_candidates.append(review_candidate)
+
+            remaining_after_selection = _rank_candidate_batch(
+                [
+                    c for c in accepted_candidates
+                    if c.job_url and c.job_url.startswith("http")
+                ],
+                selected_candidate_ids,
+            )
+            is_last_round = round_index + 1 >= self._policy.max_rounds
+            no_more_deliverable = len(remaining_after_selection) == 0
+            batch_ready = bool(
+                self._policy.delivery_mode == "manual"
+                and self._policy.batch_review
+                and (is_last_round or no_more_deliverable)
+            )
+            review_events: list[str] = []
+            review_ctx: dict[str, object] = {
+                "events": review_events,
+                "all_rounds_done": batch_ready,
+            }
             review_result = self._review.execute(review_ctx) if self._review else None
-            self._log_state("REVIEW", round_index, {"mode": self._policy.delivery_mode})
+
+            review_payload: dict[str, object] = {
+                "mode": self._policy.delivery_mode,
+                "events": review_events,
+            }
+            if review_result is not None:
+                review_payload.update(dict(review_result.data))
+
+            if review_payload.get("waiting_for_review") is True:
+                pending_candidates = (
+                    batch_review_candidates
+                    if self._policy.batch_review
+                    else [review_candidate]
+                )
+                _write_review_queue(self._run_id, pending_candidates)
+                review_payload["pending_candidates"] = len(pending_candidates)
+                review_payload["queue_path"] = str(_review_queue_path(self._run_id))
+                self._log_state("REVIEW", round_index, review_payload)
+                return AgentLoopResult(
+                    run_id=self._run_id,
+                    status="REVIEW_PENDING",
+                    rounds_completed=rounds_completed,
+                )
+
+            self._log_state("REVIEW", round_index, review_payload)
+            if review_payload.get("collecting") is True:
+                self._log_state(
+                    "LEARN",
+                    round_index,
+                    {
+                        "action": "collect_review",
+                        "pending_candidates": len(batch_review_candidates),
+                    },
+                )
+                current_state = self._transition(sm, current_state, "reject")
+                if round_index + 1 < self._policy.max_rounds:
+                    current_state = self._transition(sm, current_state, "next")
+                    continue
+                _write_review_queue(self._run_id, batch_review_candidates)
+                return AgentLoopResult(
+                    run_id=self._run_id,
+                    status="REVIEW_PENDING",
+                    rounds_completed=rounds_completed,
+                )
+
             current_state = self._transition(sm, current_state, "approve")
 
             # --- DELIVER ---
@@ -486,3 +562,53 @@ def _rank_candidate_batch(
         remaining,
         key=lambda candidate: (-candidate.confidence, candidate.candidate_id),
     )
+
+
+def _review_queue_path(run_id: str) -> Path:
+    return Path("outputs") / "review_queue" / f"{run_id}.json"
+
+
+def _utcnow_iso() -> str:
+    return (
+        datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _build_review_candidate_payload(
+    *,
+    candidate: Candidate | None,
+    matching_score: float,
+    evaluation_score: float,
+    round_index: int,
+    resume_version: str,
+) -> dict[str, object]:
+    return {
+        "job_lead_id": candidate.candidate_id if candidate else "",
+        "company": candidate.company if candidate else "",
+        "position": candidate.direction if candidate else "",
+        "matching_score": matching_score,
+        "evaluation_score": evaluation_score,
+        "round_index": round_index,
+        "resume_version": resume_version,
+        "job_url": candidate.job_url if candidate else "",
+        "status": "pending",
+        "created_at": _utcnow_iso(),
+    }
+
+
+def _write_review_queue(run_id: str, candidates: Sequence[dict[str, object]]) -> Path:
+    queue_path = _review_queue_path(run_id)
+    queue_path.parent.mkdir(parents=True, exist_ok=True)
+    queue = {
+        "run_id": run_id,
+        "candidates": list(candidates),
+        "created_at": _utcnow_iso(),
+    }
+    queue_path.write_text(
+        json.dumps(queue, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return queue_path
