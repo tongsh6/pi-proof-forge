@@ -158,7 +158,8 @@ tools/
 
 - AIEF Level: L3
 - extraction/matching/generation/evaluation 已可从 CLI 端到端运行，默认产物是 Markdown 简历与 Scorecard
-- 普通 `tools/run_pipeline.py` 可跑通，但不会写统一 Run Record；Run Record 当前主要由 Agent Loop 写入 `outputs/agent_runs/<run_id>/run_log.json`
+- 普通 `tools/run_pipeline.py` 可跑通，并会写统一 Run Record 到 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`；内部仍保留 legacy subprocess 串联
+- Agent manual REVIEW 会在审批点写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会未经审批进入投递
 - Markdown 简历转 PDF 的代码路径已接入 sidecar；当前环境缺少 `weasyprint`/`markdown` 时也可用内置基础 PDF writer 导出非空 PDF
 - job-discovery 和 submission 属于支撑系统；当前项目主线仍以 evidence-first 求职材料工程为准
 - GUI 终版规范已冻结，当前实现仍是垂直切片，Quick Run 尚未直接运行主链路
@@ -296,7 +297,8 @@ ui/design/          GUI design mainline (Pencil design assets + design docs)
 
 - AIEF level: L3
 - End-to-end extraction/matching/generation/evaluation is runnable from the CLI and currently produces Markdown resumes plus scorecards by default
-- `tools/run_pipeline.py` is runnable but does not write a unified run record; Agent Loop writes run records under `outputs/agent_runs/<run_id>/run_log.json`
+- `tools/run_pipeline.py` is runnable and writes a unified run record under `outputs/agent_runs/<run_id>/run_log.json` plus `summary.json`; internally it still keeps the legacy subprocess chain
+- Agent manual REVIEW writes `outputs/review_queue/<run_id>.json` and returns `REVIEW_PENDING` instead of delivering without approval
 - Markdown-to-PDF export is wired through the sidecar and remains available without `weasyprint`/`markdown` through the built-in basic PDF writer
 - Job discovery and submission are supporting systems; the project mainline remains evidence-first career-material engineering
 - The final GUI specification is frozen; the current desktop app is still a vertical-slice implementation, and Quick Run does not yet launch the pipeline directly

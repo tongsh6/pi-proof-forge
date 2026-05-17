@@ -4,7 +4,7 @@
 > 设计依据：`design.md` Section 0 / 1 / 8 / 9 / 13
 > 迁移策略：自下而上建新架构，旧 CLI 同期保持可用，Phase E 收口
 
-> 2026-05-17 状态收束审计：本任务清单里的多数条目已经有组件级实现和测试覆盖，但不能再理解为“产品主链路全部闭环”。当前真实边界见 `docs/reports/project-state-and-core-flow-review.md`：`tools/run_pipeline.py` 仍进入 legacy subprocess 兼容路径；GUI Quick Run 尚未直接启动主链路；Markdown PDF export 代码存在但 runtime 依赖未闭环；manual REVIEW 有 sidecar queue handler，但 AgentLoop 尚未真正暂停等待 GUI 审批。
+> 2026-05-17 状态收束审计：本任务清单里的多数条目已经有组件级实现和测试覆盖，但不能再理解为“产品主链路全部闭环”。当前真实边界见 `docs/reports/project-state-and-core-flow-review.md`：`tools/run_pipeline.py` 仍进入 legacy subprocess 兼容路径，但已补齐 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`；GUI Quick Run 尚未直接启动主链路；Markdown PDF export 已有内置基础 writer 兜底，缺少 `weasyprint`/`markdown` 时不再断链；manual REVIEW 已接入 AgentLoop 暂停语义，写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不再直接 approve 进入投递。
 
 ---
 
@@ -169,7 +169,7 @@
   - manual + batch_review=false：逐轮审批，GATE 通过后暂停，发出 agent.review.pending 事件，等待用户通过 RPC 提交 ReviewDecision
   - manual + batch_review=true：批量审批，所有轮次跑完后一次性展示 TopN 候选
   - 测试须覆盖三种模式的行为差异
-  - 2026-05-17 审计补充：ReviewStage 组件与 sidecar queue handler 已存在，但 AgentLoop 尚未把 manual REVIEW 实现为真正暂停等待 GUI 审批；该项需要后续用窄 issue 收束。
+  - 2026-05-17 收口补充：AgentLoop 已接入 manual REVIEW 暂停语义；非批量审批写入 `outputs/review_queue/<run_id>.json` 后返回 `REVIEW_PENDING`，不进入 `DELIVER`；批量审批先收集候选，最终统一进入待审批。
 - [x] C5 新增 `tools/orchestration/agent_loop.py`
   - 驱动完整 INIT→DISCOVER→SCORE→GENERATE→EVALUATE→GATE→REVIEW→DELIVER→LEARN→DONE 循环
   - 复用 pipeline 的 Stage，不重复实现阶段逻辑
