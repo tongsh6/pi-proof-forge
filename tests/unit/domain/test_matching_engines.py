@@ -46,6 +46,21 @@ class MatchingEngineTests(unittest.TestCase):
         report = engine.score([self._card()], self._profile())
         self.assertTrue(any("Kafka" in task for task in report.gap_tasks))
 
+    def test_rule_matching_engine_generates_keyword_gaps_without_cards(self) -> None:
+        engine = _rule_matching_engine_class()()
+        profile = JobProfile(
+            id="jp-empty",
+            title="SRE",
+            keywords=("SLA", "Kubernetes"),
+            level="senior",
+            must_have=("Incident response",),
+        )
+        report = engine.score([], profile)
+        self.assertEqual(report.score_breakdown["K"], 0.0)
+        self.assertTrue(any("Incident response" in task for task in report.gap_tasks))
+        self.assertTrue(any("SLA" in task for task in report.gap_tasks))
+        self.assertTrue(any("Kubernetes" in task for task in report.gap_tasks))
+
     def test_rule_matching_engine_searches_stack_field(self) -> None:
         """Keywords in stack field should be detected (regression test for benchmark-001 fix)."""
         engine = _rule_matching_engine_class()()

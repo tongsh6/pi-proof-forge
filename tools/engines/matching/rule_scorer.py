@@ -21,7 +21,7 @@ class RuleMatchingEngine:
                 job_profile_id=profile.id,
                 card_ids=(),
                 score_breakdown={"K": 0.0, "Q": 0.0, "E": 0.0, "total": 0.0},
-                gap_tasks=tuple(f"补充 {kw} 相关证据" for kw in profile.must_have),
+                gap_tasks=_build_gap_tasks(profile, normalized_signals=""),
             )
 
         keyword_hits = 0
@@ -51,15 +51,6 @@ class RuleMatchingEngine:
         e_score = artifact_cards / len(evidence_cards)
         total = (k_score * 0.5) + (q_score * 0.25) + (e_score * 0.25)
 
-        gap_tasks_list: list[str] = []
-        for must_have in profile.must_have:
-            if must_have.casefold() not in normalized_signals:
-                gap_tasks_list.append(f"补充 {must_have} 相关证据")
-        for keyword in profile.keywords:
-            if keyword.casefold() not in normalized_signals:
-                gap_tasks_list.append(f"补充 {keyword} 相关技术栈或经验证据")
-        gap_tasks = tuple(gap_tasks_list)
-
         return self._builder.build(
             job_profile_id=profile.id,
             card_ids=tuple(card_ids),
@@ -69,5 +60,27 @@ class RuleMatchingEngine:
                 "E": round(e_score, 4),
                 "total": round(total, 4),
             },
-            gap_tasks=gap_tasks,
+            gap_tasks=_build_gap_tasks(profile, normalized_signals=normalized_signals),
         )
+
+
+def _build_gap_tasks(profile: JobProfile, normalized_signals: str) -> tuple[str, ...]:
+    gap_tasks: list[str] = []
+    seen_terms: set[str] = set()
+
+    for must_have in profile.must_have:
+        normalized = must_have.casefold()
+        if normalized and normalized not in normalized_signals:
+            gap_tasks.append(f"补充 {must_have} 相关证据")
+            seen_terms.add(normalized)
+
+    for keyword in profile.keywords:
+        normalized = keyword.casefold()
+        if (
+            normalized
+            and normalized not in normalized_signals
+            and normalized not in seen_terms
+        ):
+            gap_tasks.append(f"补充 {keyword} 相关技术栈或经验证据")
+
+    return tuple(gap_tasks)
