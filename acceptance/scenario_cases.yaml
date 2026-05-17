@@ -1,4 +1,4 @@
-version: "2026-05-14"
+version: "2026-05-17"
 purpose: "User-perspective scenario cases for journey-level acceptance validation."
 status_legend:
   - "draft"
@@ -2062,3 +2062,216 @@ cases:
           - "real_liepin_bounded_target_recovery_when_configured"
           - "real_liepin_send_resume_path_check_when_safe"
           - "real_liepin_final_submit_skipped"
+
+  - case_id: "feedback_iteration_after_check_mode"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "submissions"
+    depends_on:
+      - "quick_run_generate_and_evaluate_resume"
+      - "agent_run_guided_batch"
+      - "submission_check_mode"
+    user_goal: >
+      用户完成一次 check-mode 投递演练后，基于系统记录的评测结果、
+      缺口任务、投递演练阻断原因或目标恢复提示，选择一个明确的反馈动作，
+      回到证据、岗位目标或简历生成环节补充材料并重新生成版本；
+      系统必须保留原始版本、反馈来源、用户决策、改动摘要和新版本关联，
+      让用户能判断下一轮 check-mode 是否比上一轮更接近可投递状态。
+
+    scope:
+      includes:
+        - "inspect_previous_run_feedback"
+        - "classify_feedback_source"
+        - "create_iteration_decision"
+        - "route_to_evidence_job_or_resume_workflow"
+        - "record_user_selected_feedback_actions"
+        - "preserve_original_artifacts"
+        - "generate_new_resume_version_when_requested"
+        - "compare_previous_and_new_version"
+        - "link_iteration_to_next_check_mode_candidate"
+      excludes:
+        - "automatic_real_submit"
+        - "unreviewed_llm_autofix"
+        - "silent_overwrite_of_previous_resume"
+        - "external_platform_retry_without_user_confirmation"
+        - "new_evidence_fabrication"
+
+    feedback_sources:
+      allowed:
+        - "evaluation_scorecard"
+        - "matching_gap_tasks"
+        - "gate_decision"
+        - "review_decision"
+        - "submission_check_mode_terminal_status"
+        - "target_recovery_result"
+        - "resume_target_mismatch_warning"
+      source_fields_required:
+        - "source_type"
+        - "source_run_id"
+        - "source_artifact_path_or_id"
+        - "summary"
+        - "severity_or_priority"
+        - "recommended_next_action"
+      unsupported_source_result: "unsupported_feedback_source"
+
+    iteration_decision:
+      required: true
+      user_must_choose_action: true
+      available_actions:
+        - "add_or_edit_evidence_card"
+        - "update_job_target"
+        - "regenerate_resume_from_existing_evidence"
+        - "acknowledge_and_skip"
+        - "prepare_next_check_mode"
+      action_policy:
+        add_or_edit_evidence_card:
+          requires_user_provided_material_or_existing_evidence_reference: true
+          llm_draft_requires_review_before_save: true
+          fabrication_guard_required: true
+        update_job_target:
+          requires_jd_or_job_lead_reference: true
+          source_url_validation_feedback_required: true
+        regenerate_resume_from_existing_evidence:
+          requires_matching_report_or_job_profile: true
+          preserves_previous_resume_version: true
+          creates_new_version_id: true
+        acknowledge_and_skip:
+          requires_note: true
+          does_not_modify_artifacts: true
+        prepare_next_check_mode:
+          requires_resume_pdf_and_channel_job_lead: true
+          real_submit_remains_disabled: true
+      missing_action_result: "feedback_action_required"
+
+    iteration_record:
+      required_artifact: "feedback_iteration_record"
+      required_fields:
+        - "iteration_id"
+        - "created_at"
+        - "source_run_id"
+        - "source_feedback_items"
+        - "selected_actions"
+        - "user_notes"
+        - "affected_artifacts"
+        - "previous_resume_version_id"
+        - "new_resume_version_id_or_none"
+        - "evidence_card_ids_added_or_updated"
+        - "job_target_id_or_none"
+        - "comparison_summary"
+        - "next_recommended_step"
+      immutable_source_snapshot_required: true
+      previous_artifacts_must_not_be_overwritten: true
+      traceability_required_to:
+        - "source_scorecard_or_submission_log"
+        - "affected_evidence_cards"
+        - "generated_resume_version"
+        - "next_check_mode_candidate"
+
+    comparison_policy:
+      required_when_new_resume_version_created: true
+      compare_against_previous_version: true
+      required_comparison_fields:
+        - "previous_version_id"
+        - "new_version_id"
+        - "changed_sections"
+        - "evidence_ids_used"
+        - "new_or_updated_claims"
+        - "removed_claims"
+        - "score_delta_when_available"
+        - "remaining_gap_tasks"
+      new_claims_must_reference_evidence: true
+      unsupported_comparison_result: "comparison_unavailable"
+
+    user_actions:
+      - "open_app"
+      - "navigate_to_submissions_or_agent_run"
+      - "select_previous_run_or_submission"
+      - "inspect_feedback_summary"
+      - "open_feedback_items"
+      - "choose_feedback_item"
+      - "select_iteration_action"
+      - "add_user_note_or_accept_required_note"
+      - "route_to_evidence_job_or_resume_page"
+      - "review_llm_draft_when_created"
+      - "save_updated_artifact"
+      - "generate_new_resume_version_when_needed"
+      - "inspect_version_comparison"
+      - "confirm_next_step"
+
+    system_responses:
+      - "show_feedback_summary_grouped_by_source"
+      - "show_blocked_or_warning_status_with_recommended_next_action"
+      - "show_supported_iteration_actions"
+      - "block_iteration_without_user_selected_action"
+      - "route_user_to_correct_workflow"
+      - "require_review_before_saving_llm_drafted_evidence"
+      - "preserve_previous_artifacts"
+      - "create_feedback_iteration_record"
+      - "create_new_resume_version_instead_of_overwrite"
+      - "show_previous_new_version_comparison"
+      - "show_remaining_gaps"
+      - "link_new_version_to_next_check_mode_preparation"
+
+    expected_results:
+      - "feedback_items_visible_from_previous_run"
+      - "feedback_source_and_artifact_trace_visible"
+      - "user_can_choose_one_or_more_iteration_actions"
+      - "missing_action_blocks_with_feedback_action_required"
+      - "llm_drafted_evidence_requires_user_review"
+      - "new_or_updated_claims_remain_evidence_linked"
+      - "previous_resume_version_preserved"
+      - "new_resume_version_created_when_regeneration_selected"
+      - "feedback_iteration_record_created"
+      - "iteration_record_links_source_feedback_and_new_artifacts"
+      - "comparison_summary_visible_when_new_resume_created"
+      - "remaining_gap_tasks_visible"
+      - "next_check_mode_candidate_can_use_new_version"
+      - "real_submit_still_disabled"
+
+    fallback_path:
+      conditions:
+        - "source_feedback_artifact_missing"
+        - "comparison_unavailable"
+        - "no_action_selected"
+      expected_results:
+        - "missing_feedback_source_returns_structured_blocked_status"
+        - "comparison_unavailable_does_not_delete_new_version"
+        - "feedback_action_required_before_modification"
+        - "user_can_return_to_previous_run"
+        - "app_does_not_silently_apply_changes"
+
+    validation:
+      L1:
+        status: "not_started"
+        checks:
+          - "feedback_iteration_api_lists_feedback_items_for_previous_run"
+          - "feedback_iteration_api_requires_source_run_id"
+          - "feedback_iteration_api_rejects_unsupported_feedback_source"
+          - "feedback_iteration_api_requires_user_selected_action"
+          - "feedback_iteration_record_preserves_source_snapshot"
+          - "feedback_iteration_record_links_source_artifact_and_actions"
+          - "feedback_iteration_does_not_overwrite_previous_resume_version"
+          - "feedback_iteration_creates_new_resume_version_when_requested"
+          - "feedback_iteration_records_evidence_card_ids_added_or_updated"
+          - "feedback_iteration_comparison_requires_evidence_links_for_new_claims"
+          - "feedback_iteration_records_remaining_gap_tasks"
+          - "feedback_iteration_next_check_mode_uses_new_version_only_after_user_confirmation"
+      L2:
+        status: "not_started"
+        checks:
+          - "feedback_summary_visible_from_submissions_or_agent_run"
+          - "feedback_items_grouped_by_source_visible"
+          - "iteration_action_selector_visible"
+          - "required_user_note_visible_for_skip"
+          - "evidence_review_required_state_visible"
+          - "previous_and_new_resume_version_ids_visible"
+          - "comparison_summary_visible"
+          - "remaining_gap_tasks_visible"
+          - "next_check_mode_preparation_visible"
+          - "real_submit_disabled_visible"
+      L3_local:
+        status: "not_started"
+        checks:
+          - "local_fixture_feedback_iteration_round_trip"
+          - "local_fixture_resume_comparison_without_external_platform"
