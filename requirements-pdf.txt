@@ -1,0 +1,8 @@
+# Optional high-fidelity Markdown -> PDF runtime.
+#
+# Install this in the Python environment used by `pnpm --dir ui run prepare:python-runtime`.
+# The Tauri staging script will copy installed packages into the packaged runtime while
+# `tools.infra.export.pdf_exporter` continues to fall back to its built-in writer when
+# these packages are absent.
+markdown>=3.7
+weasyprint>=65

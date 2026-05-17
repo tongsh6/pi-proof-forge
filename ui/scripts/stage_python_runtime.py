@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,24 @@ KEEP_LIB_NAMES = {
     "libcrypto.dylib",
     "libcrypto.3.dylib",
 }
+PDF_RUNTIME_PACKAGES = {
+    "markdown": ("Markdown",),
+    "weasyprint": ("weasyprint",),
+    "pydyf": ("pydyf",),
+    "tinycss2": ("tinycss2",),
+    "cssselect2": ("cssselect2",),
+    "tinyhtml5": ("tinyhtml5",),
+    "html5lib": ("html5lib",),
+    "webencodings": ("webencodings",),
+    "fontTools": ("fonttools",),
+    "PIL": ("pillow",),
+    "pyphen": ("pyphen",),
+    "cffi": ("cffi",),
+    "pycparser": ("pycparser",),
+    "brotli": ("brotli", "brotlicffi"),
+    "zopfli": ("zopfli",),
+}
+PDF_RUNTIME_ACTIVATION_IMPORTS = ("markdown", "weasyprint")
 RUNTIME_IGNORE = shutil.ignore_patterns(
     "__pycache__",
     "*.pyc",
@@ -36,6 +55,14 @@ RUNTIME_IGNORE = shutil.ignore_patterns(
     "idlelib",
     "ensurepip",
     "lib2to3",
+)
+OPTIONAL_PACKAGE_IGNORE = shutil.ignore_patterns(
+    "__pycache__",
+    "*.pyc",
+    "*.pyo",
+    ".DS_Store",
+    "tests",
+    "test",
 )
 
 
@@ -53,6 +80,17 @@ def _copytree_with_ignore(source: Path, target: Path, *ignore_patterns: str) -> 
         target,
         symlinks=False,
         ignore=shutil.ignore_patterns(*ignore_patterns),
+    )
+
+
+def _copy_optional_tree(source: Path, target: Path) -> None:
+    if target.exists():
+        shutil.rmtree(target)
+    _ = shutil.copytree(
+        source,
+        target,
+        symlinks=False,
+        ignore=OPTIONAL_PACKAGE_IGNORE,
     )
 
 
@@ -135,6 +173,231 @@ def _copy_framework_resources(
     if source_resources_dir.exists():
         _copytree_with_ignore(
             source_resources_dir, target_resources_dir, "_CodeSignature"
+        )
+
+
+def _normalize_distribution_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _metadata_distribution_stem(path: Path) -> str:
+    for suffix in (".dist-info", ".egg-info"):
+        if path.name.endswith(suffix):
+            return path.name[: -len(suffix)]
+    return path.name
+
+
+def _metadata_distribution_name(path: Path) -> str:
+    metadata_candidates = (
+        [path / "METADATA", path / "PKG-INFO"] if path.is_dir() else [path]
+    )
+    for metadata_path in metadata_candidates:
+        if not metadata_path.exists():
+            continue
+        try:
+            for line in metadata_path.read_text(encoding="utf-8").splitlines():
+                if line.lower().startswith("name:"):
+                    return _normalize_distribution_name(line.split(":", 1)[1].strip())
+        except UnicodeDecodeError:
+            continue
+
+    stem = _metadata_distribution_stem(path)
+    name_without_version = stem.rsplit("-", maxsplit=1)[0]
+    return _normalize_distribution_name(name_without_version)
+
+
+def _metadata_matches_distribution(path: Path, dist_names: set[str]) -> bool:
+    return _metadata_distribution_name(path) in dist_names
+
+
+def _site_package_roots() -> list[Path]:
+    candidates: list[Path] = []
+    paths = sysconfig.get_paths()
+    for key in ("purelib", "platlib"):
+        value = paths.get(key)
+        if value:
+            candidates.append(Path(value))
+
+    for entry in sys.path:
+        path = Path(entry)
+        if path.name in {"site-packages", "dist-packages"}:
+            candidates.append(path)
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved.exists() and resolved not in seen:
+            unique.append(resolved)
+            seen.add(resolved)
+    return unique
+
+
+def _target_site_packages(version: str) -> Path:
+    return (
+        PYTHON_RESOURCES_DIR
+        / FRAMEWORK_NAME
+        / "Versions"
+        / version
+        / "lib"
+        / f"python{PYTHON_VERSION}"
+        / "site-packages"
+    )
+
+
+def _remove_staged_optional_packages(
+    target_site_packages: Path,
+    package_map: dict[str, tuple[str, ...]],
+) -> None:
+    dist_names = {
+        _normalize_distribution_name(dist_name)
+        for dist_names_for_import in package_map.values()
+        for dist_name in dist_names_for_import
+    }
+
+    for import_name in package_map:
+        target = target_site_packages / import_name
+        if target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+
+    if not target_site_packages.exists():
+        return
+
+    for child in target_site_packages.iterdir():
+        if not child.name.endswith((".dist-info", ".egg-info")):
+            continue
+        if _metadata_matches_distribution(child, dist_names):
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+
+
+def _copy_distribution_metadata(
+    source_roots: list[Path],
+    target_site_packages: Path,
+    dist_names: tuple[str, ...],
+) -> list[str]:
+    copied: list[str] = []
+    normalized_names = {_normalize_distribution_name(name) for name in dist_names}
+    for source_root in source_roots:
+        for child in source_root.iterdir():
+            if not child.name.endswith((".dist-info", ".egg-info")):
+                continue
+            if not _metadata_matches_distribution(child, normalized_names):
+                continue
+            target = target_site_packages / child.name
+            if child.is_dir():
+                _copy_optional_tree(child, target)
+            else:
+                _copy_file(child, target)
+            copied.append(child.name)
+    return copied
+
+
+def _has_optional_runtime_activation_package(
+    source_roots: list[Path],
+    package_map: dict[str, tuple[str, ...]],
+) -> bool:
+    activation_imports = [
+        import_name
+        for import_name in PDF_RUNTIME_ACTIVATION_IMPORTS
+        if import_name in package_map
+    ] or list(package_map)
+    return all(
+        any((source_root / import_name).exists() for source_root in source_roots)
+        for import_name in activation_imports
+    )
+
+
+def _stage_optional_python_packages(
+    version: str,
+    source_roots: list[Path] | None = None,
+    target_site_packages: Path | None = None,
+    package_map: dict[str, tuple[str, ...]] | None = None,
+) -> list[str]:
+    if package_map is None:
+        package_map = PDF_RUNTIME_PACKAGES
+    if source_roots is None:
+        source_roots = _site_package_roots()
+    if target_site_packages is None:
+        target_site_packages = _target_site_packages(version)
+    target_site_packages.mkdir(parents=True, exist_ok=True)
+    _remove_staged_optional_packages(target_site_packages, package_map)
+
+    if not _has_optional_runtime_activation_package(source_roots, package_map):
+        _write_optional_runtime_manifest(target_site_packages, [])
+        return []
+
+    copied: list[str] = []
+    for import_name, dist_names in package_map.items():
+        for source_root in source_roots:
+            source = source_root / import_name
+            if not source.exists():
+                continue
+            target = target_site_packages / import_name
+            if source.is_dir():
+                _copy_optional_tree(source, target)
+            else:
+                _copy_file(source, target)
+            copied.append(import_name)
+            copied.extend(
+                _copy_distribution_metadata(
+                    source_roots, target_site_packages, dist_names
+                )
+            )
+            break
+
+    _write_optional_runtime_manifest(target_site_packages, copied)
+    return copied
+
+
+def _write_optional_runtime_manifest(
+    target_site_packages: Path, copied_packages: list[str]
+) -> None:
+    manifest_path = target_site_packages / "piproofforge-pdf-runtime.txt"
+    manifest_path.write_text(
+        "\n".join(sorted(set(copied_packages))) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _validate_optional_pdf_runtime(copied_packages: list[str]) -> None:
+    copied = set(copied_packages)
+    if not {"markdown", "weasyprint"}.issubset(copied):
+        return
+
+    wrapper_path = SIDECAR_BIN_DIR / "python3"
+    if not wrapper_path.exists():
+        raise RuntimeError(f"Python wrapper not found: {wrapper_path}")
+
+    completed = subprocess.run(
+        [
+            str(wrapper_path),
+            "-c",
+            (
+                "from pathlib import Path\n"
+                "from tempfile import TemporaryDirectory\n"
+                "from tools.infra.export.pdf_exporter import markdown_to_pdf\n"
+                "with TemporaryDirectory() as tmp:\n"
+                "    md = Path(tmp) / 'probe.md'\n"
+                "    pdf = Path(tmp) / 'probe.pdf'\n"
+                "    md.write_text('# PDF Runtime Probe\\n', encoding='utf-8')\n"
+                "    markdown_to_pdf(md, pdf)\n"
+                "    assert pdf.read_bytes().startswith(b'%PDF-')\n"
+                "print('optional pdf runtime ok')\n"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "Staged optional PDF runtime failed to import markdown/weasyprint:\n"
+            f"{completed.stderr or completed.stdout}"
         )
 
 
@@ -367,13 +630,21 @@ def main() -> None:
 
     _stage_project_assets()
     if _staged_runtime_is_current():
+        copied = _stage_optional_python_packages(PYTHON_VERSION)
+        _validate_optional_pdf_runtime(copied)
         print(f"Using staged Python {PYTHON_VERSION} from {PYTHON_RESOURCES_DIR}")
+        if copied:
+            print(f"Staged optional PDF packages: {', '.join(sorted(set(copied)))}")
         return
 
     _, version = _stage_framework()
     _write_python_wrapper(version)
+    copied = _stage_optional_python_packages(version)
+    _validate_optional_pdf_runtime(copied)
     _write_metadata(version)
     print(f"Bundled Python {version} into {PYTHON_RESOURCES_DIR}")
+    if copied:
+        print(f"Staged optional PDF packages: {', '.join(sorted(set(copied)))}")
 
 
 if __name__ == "__main__":
