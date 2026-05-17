@@ -1,0 +1,215 @@
+version: "2026-05-17"
+source_scenario_cases: "acceptance/scenario_cases.yaml"
+status: "ready_for_implementation"
+purpose: "Machine-readable journey contract derived from approved scenario cases."
+
+journey:
+  stages:
+    - "overview"
+    - "resumes"
+    - "evidence"
+    - "jobs"
+    - "quick_run"
+    - "agent_run"
+    - "submissions"
+    - "policy"
+    - "system_settings"
+
+levels:
+  L1:
+    name: "Scenario Data/API Validation"
+    status: "not_started"
+  L2:
+    name: "User Visible Scenario"
+    status: "not_started"
+  L3:
+    name: "Local/External Integration"
+    status: "not_started"
+
+selected_cases:
+  - "first_launch_configure_lm_studio"
+  - "setup_profile_and_material_library"
+  - "generate_review_and_complete_evidence_card"
+  - "setup_job_target"
+  - "quick_run_generate_and_evaluate_resume"
+  - "agent_run_guided_batch"
+  - "channel_session_setup"
+  - "submission_check_mode"
+  - "feedback_iteration_after_check_mode"
+
+case_contracts:
+  first_launch_configure_lm_studio:
+    primary_stage: "system_settings"
+    supporting_stages:
+      - "quick_run"
+      - "agent_run"
+    required_outputs:
+      - "provider_config_saved"
+      - "connection_test_structured_result"
+      - "quick_run_provider_summary"
+      - "agent_run_provider_summary"
+    acceptance_rules:
+      - rule_id: "lm_studio_config_persisted"
+        level: "L1"
+        stage: "system_settings"
+        status: "not_started"
+        evidence: ""
+        message: "LM Studio provider/base_url/api_key/model can be saved and read without exposing raw secrets."
+      - rule_id: "lm_studio_visible_to_run_pages"
+        level: "L2"
+        stage: "quick_run"
+        status: "not_started"
+        evidence: ""
+        message: "Quick Run and Agent Run show the saved provider summary."
+
+  setup_profile_and_material_library:
+    primary_stage: "resumes"
+    supporting_stages:
+      - "evidence"
+    required_outputs:
+      - "personal_profile_saved"
+      - "uploaded_resume_metadata"
+      - "raw_material_library_entries"
+      - "material_readiness_feedback"
+    acceptance_rules:
+      - rule_id: "profile_and_materials_persisted"
+        level: "L1"
+        stage: "resumes"
+        status: "not_started"
+        evidence: ""
+        message: "Profile, uploaded resume metadata, and text materials are persisted as reusable inputs."
+
+  generate_review_and_complete_evidence_card:
+    primary_stage: "evidence"
+    supporting_stages:
+      - "resumes"
+    required_outputs:
+      - "evidence_card_draft"
+      - "user_review_decision"
+      - "saved_evidence_card"
+      - "fabrication_guard_result"
+    acceptance_rules:
+      - rule_id: "evidence_card_requires_review"
+        level: "L1"
+        stage: "evidence"
+        status: "not_started"
+        evidence: ""
+        message: "LLM-drafted evidence must be reviewed and remain linked to raw material before save."
+
+  setup_job_target:
+    primary_stage: "jobs"
+    supporting_stages:
+      - "quick_run"
+      - "agent_run"
+    required_outputs:
+      - "job_profile_saved"
+      - "job_lead_saved"
+      - "source_url_validation_result"
+      - "job_target_readiness_summary"
+    acceptance_rules:
+      - rule_id: "job_target_ready_for_runs"
+        level: "L1"
+        stage: "jobs"
+        status: "not_started"
+        evidence: ""
+        message: "A reviewed job target and linked job lead can be read by Quick Run and Agent Run."
+
+  quick_run_generate_and_evaluate_resume:
+    primary_stage: "quick_run"
+    supporting_stages:
+      - "evidence"
+      - "jobs"
+      - "resumes"
+    required_outputs:
+      - "matching_report"
+      - "generated_resume_markdown"
+      - "generated_resume_pdf"
+      - "evaluation_scorecard"
+      - "gap_tasks"
+    acceptance_rules:
+      - rule_id: "quick_run_outputs_are_traceable"
+        level: "L1"
+        stage: "quick_run"
+        status: "not_started"
+        evidence: ""
+        message: "Generated resume artifacts link back to matching report, evidence cards, job target, scorecard, and gap tasks."
+
+  agent_run_guided_batch:
+    primary_stage: "agent_run"
+    supporting_stages:
+      - "quick_run"
+      - "submissions"
+      - "policy"
+    required_outputs:
+      - "agent_run_log"
+      - "review_decisions"
+      - "selected_candidates"
+      - "generated_artifacts_for_passed_candidates"
+      - "no_real_submit_record"
+    acceptance_rules:
+      - rule_id: "agent_run_batch_is_guarded"
+        level: "L1"
+        stage: "agent_run"
+        status: "not_started"
+        evidence: ""
+        message: "Batch run records candidate decisions and generated artifacts without real submit."
+
+  channel_session_setup:
+    primary_stage: "system_settings"
+    supporting_stages:
+      - "submissions"
+    required_outputs:
+      - "channel_session_status"
+      - "session_metadata"
+      - "safe_account_identity_or_unknown"
+      - "session_check_log"
+    acceptance_rules:
+      - rule_id: "channel_session_validity_is_positive_signal_based"
+        level: "L1"
+        stage: "system_settings"
+        status: "not_started"
+        evidence: ""
+        message: "A valid session requires a positive login signal and never stores credentials or bypasses captcha/SMS."
+
+  submission_check_mode:
+    primary_stage: "submissions"
+    supporting_stages:
+      - "agent_run"
+      - "system_settings"
+      - "policy"
+    required_outputs:
+      - "submission_log"
+      - "submission_steps"
+      - "selected_channel_session_metadata"
+      - "original_job_lead"
+      - "final_verified_target"
+      - "submit_skipped_status"
+    acceptance_rules:
+      - rule_id: "check_mode_never_final_submits"
+        level: "L1"
+        stage: "submissions"
+        status: "not_started"
+        evidence: ""
+        message: "Check-mode records rate limit, login, target verification, attachment/check result, and submit_skipped without final submit."
+
+  feedback_iteration_after_check_mode:
+    primary_stage: "submissions"
+    supporting_stages:
+      - "evidence"
+      - "jobs"
+      - "resumes"
+      - "quick_run"
+      - "agent_run"
+    required_outputs:
+      - "feedback_iteration_record"
+      - "source_feedback_snapshot"
+      - "selected_iteration_actions"
+      - "version_comparison_summary"
+      - "next_check_mode_candidate"
+    acceptance_rules:
+      - rule_id: "feedback_iteration_preserves_traceability"
+        level: "L1"
+        stage: "submissions"
+        status: "not_started"
+        evidence: ""
+        message: "Feedback iteration preserves source artifacts, selected actions, previous version, new version when created, and next check-mode link."

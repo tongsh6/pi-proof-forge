@@ -20,7 +20,7 @@
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
 - **当前阻塞：无运行硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、多候选批次策略、GUI 投递状态/详情可视化、真实 submit 前安全门禁均已闭环；GUI `.pen` 设计资产同步因 Pencil MCP `Transport closed` 待补验收（2026-05-13）**
-- **新专项：用户场景化自动验收 → scenario-first M-1 推进中；Case 1-6、`channel_session_setup`、`submission_check_mode` 已进入 `ready_for_implementation`，下一步逐个定义反馈迭代 case（2026-05-15）**
+- **新专项：用户场景化自动验收 → scenario-first M-1 与 M0 case-aware journey contract 已完成；Case 1-6、`channel_session_setup`、`submission_check_mode`、`feedback_iteration_after_check_mode` 均已进入合同，下一步进入 M1 selected-case acceptance test（2026-05-17）**
 - **外部仓库调研：`boss-agent-cli` 已完成初步解析（2026-05-15）→ 结论是 P2 级参考资产，适合通过薄 CLI adapter 接入 BOSS/智联职位发现与 Agent-friendly JSON/schema/MCP 设计；不建议直接引入其简历/AI 核心或 vendor 整仓**
 
 ## 2. 已完成事项
@@ -115,6 +115,8 @@
 | **GUI 默认中文语言** | **已验证** | ui/src/i18n/index.ts + tests/unit/gui/test_i18n_defaults.py | `python3 -m pytest tests/unit/gui/test_i18n_defaults.py -q` + `pnpm --dir ui build` | 默认 `lng` 与 `fallbackLng` 均使用 `DEFAULT_LANGUAGE = "zh"` |
 | **GUI 启动缓存优化** | **已验证** | ui/scripts/stage_python_runtime.py | `pnpm --dir ui run prepare:python-runtime` + `./app start` 日志 | Python runtime 缺失或解释器变化时才重打包；常规启动命中 `Using staged Python`，避免每次复制/签名整套 Python.framework |
 | **boss-agent-cli 外部仓库调研** | **已完成** | https://github.com/can4hou6joeng4/boss-agent-cli | 源码/README/能力矩阵/平台抽象/MCP/风险文档阅读 | 对本项目价值主要在多平台 job-discovery、受控 delivery 通道参考、JSON envelope/schema/MCP 工程化；推荐先做 subprocess 薄适配 |
+| **反馈迭代场景 case 定义** | **已完成** | acceptance/scenario_cases.yaml | YAML 解析通过 | 新增 `feedback_iteration_after_check_mode`，覆盖 check-mode 后从反馈到证据/岗位/简历迭代、新版本对比、下一轮 check-mode 准备；M-1 场景目录完成 |
+| **M0 journey contract** | **已完成** | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | `python3 -m pytest tests/acceptance/test_journey_contract.py -q` → 4 passed | 合同覆盖 9 个 selected case、固定 9 页 stage 顺序、required outputs、acceptance rule status/evidence/message 字段 |
 
 ## 3. 已验证事项
 
@@ -176,7 +178,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | 用户场景化 case 定义 M-1 | 需要先从用户视角定义场景 case，避免把后端 happy-path 当成用户旅程验收；当前 Case 1-6、`channel_session_setup`、`submission_check_mode` 已 `ready_for_implementation` | 继续逐个定义反馈迭代 case；每个 case 有 status、persona、goal、actions、responses、expected_results、validation |
+| 1 | M1 selected-case acceptance test | M0 合同已完成，需要先用一个 selected case 打通 L1 验证，证明合同能驱动可重复的 API/data 层验收 | `tests/acceptance/test_scenario_first_launch_configure_lm_studio.py` 存在并验证 Case 1 的 settings persistence、structured connection result、Quick Run/Agent Run provider summary |
 | 2 | GUI `.pen` 设计资产同步复核 | 本轮 review 已发现 GUI 结构变更未能同步 `.pen`，且 Pencil MCP 暂时不可用 | Pencil MCP 恢复后，`Screen/Submissions` (`upl7d`) 与实现/合同一致；若设计稿已有对应结构，则记录验收证据 |
 | 3 | submit 安全门禁真实 dry-run 演练 | 代码级门禁已测试，但未用真实页面跑 submit_safety blocked 路径 | 使用 PDF + 错误 recruiter/jobId 运行 submit，确认阻断在 submit_safety 且未点击最终确认 |
 | 4 | Agent Loop 批次策略真实 check-mode 演练 | 代码级批次策略已测试，但未用真实 job_leads 跑多候选 check-mode 端到端批次 | 多候选 DISCOVER/GATE/DELIVER 顺序与 submission 日志可对账，且通道频控仍生效 |
@@ -202,7 +204,8 @@
 | Composer | tools/config/composer.py | 组装点（含 build_agent_loop） |
 | Sidecar | tools/sidecar/server.py | GUI-Python JSON-RPC 桥接 |
 | GUI 设计 | ui/design/DESIGN.md | 终版 9 页 IA |
-| 用户场景化 case 定义 | acceptance/scenario_cases.yaml | scenario-first 验收 case 目录；Case 1-6、channel_session_setup、submission_check_mode 已 ready_for_implementation |
+| 用户场景化 case 定义 | acceptance/scenario_cases.yaml | scenario-first 验收 case 目录；Case 1-6、channel_session_setup、submission_check_mode、feedback_iteration_after_check_mode 已 ready_for_implementation |
+| 用户旅程合同 | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | M0 case-aware contract；selected cases、stage 顺序、required outputs、acceptance rules 可由 loader 验证 |
 | 用户旅程闭环自动化验证计划 | AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md | M-1 到 M5 专项推进计划，所有阶段/步骤均含状态字段 |
 | 测试 | tests/ | 329 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |

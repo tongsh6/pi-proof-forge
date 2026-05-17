@@ -1,0 +1,2 @@
+"""Acceptance validation helpers."""
+

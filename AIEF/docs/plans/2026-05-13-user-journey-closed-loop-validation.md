@@ -26,7 +26,8 @@
 |------|--------|----------|-------|
 | Plan documented in project | `done` | `AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md` | This file is the source plan for the validation track |
 | Project ledger references plan | `done` | `docs/project-ledger.md` | Ledger now lists this validation track in current priorities and evidence index |
-| Scenario case catalog | `in_progress` | `acceptance/scenario_cases.yaml` | Case 1 through submission check-mode are ready for implementation; remaining feedback case still needs definition |
+| Scenario case catalog | `done` | `acceptance/scenario_cases.yaml` | Case 1 through feedback iteration are ready for implementation |
+| Journey contract | `done` | `acceptance/journey_contract.yaml` + `tools/acceptance/journey_contract.py` | Contract loads selected ready cases, exact journey stages, required outputs, and report status fields |
 | L1 business closed-loop validation | `not_started` | None yet | First implementation milestone |
 | L2 GUI journey smoke validation | `not_started` | None yet | Starts after L1 contract/report shape stabilizes |
 | L3 external channel check-mode validation | `not_started` | Existing Liepin check-mode logs can seed fixtures | Keep real submit disabled |
@@ -35,8 +36,8 @@
 
 - [x] Status: `done` — Plan documented in project.
 - [x] Status: `done` — Project ledger references plan.
-- [ ] Status: `in_progress` — M-1 scenario case catalog.
-- [ ] Status: `not_started` — M0 journey contract derived from approved scenario cases.
+- [x] Status: `done` — M-1 scenario case catalog.
+- [x] Status: `done` — M0 journey contract derived from approved scenario cases.
 - [ ] Status: `not_started` — M1 headless business closed-loop validation.
 - [ ] Status: `not_started` — M2 acceptance report generator.
 - [ ] Status: `not_started` — M3 GUI journey smoke validation.
@@ -86,6 +87,7 @@ The first approved case is:
 | `agent_run_guided_batch` | `ready_for_implementation` | P0 | Run a guarded multi-candidate Agent Run batch with visible decisions, generated artifacts for passed candidates, and no real submit |
 | `channel_session_setup` | `ready_for_implementation` | P0 | Configure or refresh a channel shared session through manual login, requiring positive login signals before saving it as valid, showing session metadata and safe account identity when available, supporting per-channel clear, and without storing credentials or bypassing verification |
 | `submission_check_mode` | `ready_for_implementation` | P0 | Run a channel-abstracted check-mode submission rehearsal; P0 validates the Liepin adapter while keeping the contract generic, requiring visible usable session metadata in preflight, routing wrong-account sessions back to session setup, and allowing rate-limited configurable bounded target recovery with explicit diff-based user confirmation, resume-target mismatch warning, regeneration next-action, and original/final target traceability before safe attachment checks |
+| `feedback_iteration_after_check_mode` | `ready_for_implementation` | P0 | Use scorecard/gap/check-mode feedback to choose a user-approved iteration action, preserve source artifacts, update evidence/job/resume artifacts, compare versions, and prepare the next safe check-mode run |
 
 ## 4. Acceptance Levels
 
@@ -101,10 +103,10 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 
 | Path | Status | Responsibility |
 |------|--------|----------------|
-| `acceptance/scenario_cases.yaml` | `in_progress` | User-perspective scenario case catalog; Case 1 through submission check-mode are ready for implementation; remaining feedback case still needs definition |
-| `acceptance/journey_contract.yaml` | `not_started` | Machine-readable execution contract derived from selected approved scenario cases |
-| `tools/acceptance/__init__.py` | `not_started` | Package marker for acceptance helpers |
-| `tools/acceptance/journey_contract.py` | `not_started` | Load and validate the journey contract |
+| `acceptance/scenario_cases.yaml` | `done` | User-perspective scenario case catalog; Case 1 through feedback iteration are ready for implementation |
+| `acceptance/journey_contract.yaml` | `done` | Machine-readable execution contract derived from selected approved scenario cases |
+| `tools/acceptance/__init__.py` | `done` | Package marker for acceptance helpers |
+| `tools/acceptance/journey_contract.py` | `done` | Load and validate the journey contract |
 | `tools/acceptance/journey_report.py` | `not_started` | Build JSON/Markdown acceptance reports from test results |
 | `tests/acceptance/fixtures/scenarios/` | `not_started` | Stable fixture data grouped by `case_id` |
 | `tests/acceptance/test_scenario_first_launch_configure_lm_studio.py` | `not_started` | Case 1 L1/L2 acceptance tests for LM Studio configuration |
@@ -118,8 +120,8 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 
 | Phase | Status | Goal | Exit Evidence |
 |-------|--------|------|---------------|
-| M-1 | `in_progress` | Define user-perspective scenario cases before writing automated checks | `acceptance/scenario_cases.yaml` contains approved cases with statuses |
-| M0 | `not_started` | Define the journey contract and report schema from approved cases | `acceptance/journey_contract.yaml` validates against selected `case_id` |
+| M-1 | `done` | Define user-perspective scenario cases before writing automated checks | `acceptance/scenario_cases.yaml` contains approved cases with statuses |
+| M0 | `done` | Define the journey contract and report schema from approved cases | `acceptance/journey_contract.yaml` validates against selected `case_id` |
 | M1 | `not_started` | Implement L1 selected-scenario validation | `python3 -m pytest tests/acceptance/test_scenario_first_launch_configure_lm_studio.py -q` passes for Case 1 |
 | M2 | `not_started` | Generate structured acceptance reports | JSON and Markdown reports are produced under `outputs/acceptance/` |
 | M3 | `not_started` | Implement L2 GUI journey smoke validation | GUI smoke test passes with mock sidecar data |
@@ -130,7 +132,7 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 
 ### M-1: Scenario Case Definition
 
-**Phase Status:** `in_progress`
+**Phase Status:** `done`
 
 | Step | Status | Action | Output | Verification |
 |------|--------|--------|--------|--------------|
@@ -140,19 +142,19 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 | M-1.4 | `done` | Define Case 3: evidence card generation, review, and completion | `generate_review_and_complete_evidence_card` | Case status is `ready_for_implementation` |
 | M-1.5 | `done` | Define Case 4: job target setup | `setup_job_target` | Case status is `ready_for_implementation` |
 | M-1.6 | `done` | Define Case 5: Quick Run generation and evaluation | `quick_run_generate_and_evaluate_resume` | Case status is `ready_for_implementation` |
-| M-1.7 | `in_progress` | Define Case 6+: Agent Run, channel session setup, submission check, and feedback iteration | `agent_run_guided_batch`, `channel_session_setup`, `submission_check_mode` | Case 6, channel session setup, and submission check-mode are `ready_for_implementation`; remaining feedback case still needs definition |
+| M-1.7 | `done` | Define Case 6+: Agent Run, channel session setup, submission check, and feedback iteration | `agent_run_guided_batch`, `channel_session_setup`, `submission_check_mode`, `feedback_iteration_after_check_mode` | All four cases are `ready_for_implementation` |
 
 ### M0: Journey Contract
 
-**Phase Status:** `not_started`
+**Phase Status:** `done`
 
 | Step | Status | Action | Output | Verification |
 |------|--------|--------|--------|--------------|
-| M0.1 | `not_started` | Create `acceptance/journey_contract.yaml` from approved scenario cases | Contract with selected `case_id`, stages, artifacts, and acceptance rules | YAML loads with existing YAML IO helper or standard parser |
-| M0.2 | `not_started` | Create `tools/acceptance/journey_contract.py` | Typed loader and validation errors | Unit test rejects missing required stages |
-| M0.3 | `not_started` | Define required journey stages | `overview`, `resumes`, `evidence`, `jobs`, `quick_run`, `agent_run`, `submissions`, `policy`, `system_settings` | Test confirms exact order |
-| M0.4 | `not_started` | Define required scenario outputs | Case-specific saved settings, structured connection result, visible summaries, or generated artifacts | Test confirms no required case output is omitted |
-| M0.5 | `not_started` | Add contract status fields | Each contract rule supports `status`, `evidence`, `message` in reports | Report builder can represent pass/fail/block states |
+| M0.1 | `done` | Create `acceptance/journey_contract.yaml` from approved scenario cases | Contract with selected `case_id`, stages, artifacts, and acceptance rules | `python3 -m pytest tests/acceptance/test_journey_contract.py -q` |
+| M0.2 | `done` | Create `tools/acceptance/journey_contract.py` | Typed loader and validation errors | Unit test rejects missing required stages |
+| M0.3 | `done` | Define required journey stages | `overview`, `resumes`, `evidence`, `jobs`, `quick_run`, `agent_run`, `submissions`, `policy`, `system_settings` | Test confirms exact order |
+| M0.4 | `done` | Define required scenario outputs | Case-specific saved settings, structured connection result, visible summaries, or generated artifacts | Test confirms each selected case has required outputs |
+| M0.5 | `done` | Add contract status fields | Each contract rule supports `status`, `evidence`, `message` in reports | Test confirms rule status/evidence/message fields |
 
 ### M1: Selected Scenario Validation
 
@@ -215,8 +217,8 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 
 | Order | Status | Work | Reason |
 |-------|--------|------|--------|
-| 1 | `in_progress` | M-1.1-M-1.7 | Define user scenarios before deriving automated tests |
-| 2 | `not_started` | M0.1-M0.5 | Establish the case-aware definition of done before implementation |
+| 1 | `done` | M-1.1-M-1.7 | Define user scenarios before deriving automated tests |
+| 2 | `done` | M0.1-M0.5 | Establish the case-aware definition of done before implementation |
 | 3 | `not_started` | M1.1-M1.7 | Prove selected cases without GUI fragility where possible |
 | 4 | `not_started` | M2.1-M2.4 | Make acceptance results auditable |
 | 5 | `not_started` | M5.1-M5.4 for selected case/L1 only | Provide a stable one-command verifier per case |
@@ -228,8 +230,8 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 
 | Milestone | Status | Done Criteria |
 |-----------|--------|---------------|
-| M-1 Done | `in_progress` | Scenario case catalog contains all first-batch cases with `ready_for_implementation` status |
-| M0 Done | `not_started` | Contract exists, validates, and is derived from an approved `case_id` |
+| M-1 Done | `done` | Scenario case catalog contains all first-batch cases with `ready_for_implementation` status |
+| M0 Done | `done` | Contract exists, validates, and is derived from an approved `case_id` |
 | M1 Done | `not_started` | Selected scenario L1 test passes locally and reports structured blocked state for missing local dependencies |
 | M2 Done | `not_started` | Reports include level, phase, step, status, evidence, and failure message |
 | M3 Done | `not_started` | GUI smoke verifies all 9 pages and Submissions detail with mock sidecar data |
@@ -275,8 +277,8 @@ Overall: PASS | FAIL | BLOCKED
 
 | Priority | Status | Action | Owner |
 |----------|--------|--------|-------|
-| P0 | `in_progress` | Define next feedback iteration case after submission check-mode | Unassigned |
-| P0 | `not_started` | Implement M0 case-aware journey contract after approved scenario cases | Unassigned |
+| P0 | `done` | Define next feedback iteration case after submission check-mode | Completed 2026-05-17 |
+| P0 | `done` | Implement M0 case-aware journey contract after approved scenario cases | Completed 2026-05-17 |
 | P0 | `not_started` | Implement M1 selected-case acceptance test | Unassigned |
 | P1 | `not_started` | Implement M2 report generator | Unassigned |
 | P1 | `not_started` | Wire L1 into acceptance runner | Unassigned |
