@@ -5,9 +5,9 @@
 
 ## 1. 当前阶段目标
 
-**状态收束完成 + PDF runtime 闭环准备**
+**状态收束完成 + PDF runtime 基础闭环完成**
 
-> 2026-05-17 收束审计结论：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record。普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，不写统一 Run Record；PDF Markdown 转换依赖未在当前环境闭环；GUI Quick Run 当前只展示/复制 CLI 命令；Agent REVIEW backend 有 queue handler，但 AgentLoop 尚未真正暂停等待 GUI 审批。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
+> 2026-05-17 收束审计结论：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record。普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，不写统一 Run Record；PDF Markdown 转换已补上内置无依赖兜底路径，当前环境 `WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF；GUI Quick Run 当前只展示/复制 CLI 命令；Agent REVIEW backend 有 queue handler，但 AgentLoop 尚未真正暂停等待 GUI 审批。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -16,12 +16,12 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（336 tests，2026-05-17）**
+- **全链路集成测试 → 已恢复 ✅（338 tests，2026-05-17）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
-- **当前阻塞：PDF runtime 未闭环。Markdown→PDF 代码已接入，但当前环境 `WEASYPRINT_AVAILABLE=False`，主链路验收中的 PDF Export 仍不可实际运行。**
+- **PDF runtime 基础闭环 → ✅ 已完成（2026-05-17）。Markdown→PDF 在缺少 `weasyprint`/`markdown` 时使用内置基础 PDF writer；WeasyPrint 仍作为高保真可选路径。**
 - **用户场景化自动验收 → scenario-first M-1 与 M0 case-aware journey contract 已完成；在状态清理完成前不作为 Top Priority。**
 - **外部仓库调研：`boss-agent-cli` 已完成初步解析（2026-05-15）→ 结论是 P2 级参考资产，适合通过薄 CLI adapter 接入 BOSS/智联职位发现与 Agent-friendly JSON/schema/MCP 设计；不建议直接引入其简历/AI 核心或 vendor 整仓**
 
@@ -120,18 +120,19 @@
 | **反馈迭代场景 case 定义** | **已完成** | acceptance/scenario_cases.yaml | YAML 解析通过 | 新增 `feedback_iteration_after_check_mode`，覆盖 check-mode 后从反馈到证据/岗位/简历迭代、新版本对比、下一轮 check-mode 准备；M-1 场景目录完成 |
 | **M0 journey contract** | **已完成** | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | `python3 -m pytest tests/acceptance/test_journey_contract.py -q` → 4 passed | 合同覆盖 9 个 selected case、固定 9 页 stage 顺序、required outputs、acceptance rule status/evidence/message 字段 |
 | **项目状态与主链路收束审计** | **已完成** | docs/reports/project-state-and-core-flow-review.md | 实跑 CLI/测试/PDF/Agent/GitHub issue 检查 | 确认 CLI 主链路可跑；PDF runtime、GUI Quick Run、普通 pipeline run record、Agent REVIEW pause 未闭环 |
+| **PDF runtime 基础闭环** | **已完成** | tools/infra/export/pdf_exporter.py + tests/unit/infra/test_pdf_exporter.py + tests/unit/sidecar/test_resume_handler.py | `python3 -m pytest tests/unit/infra/test_pdf_exporter.py tests/unit/sidecar/test_resume_handler.py tests/unit/sidecar/test_server.py -q` → 31 passed；smoke 导出 `%PDF-1.4` 非空文件 | WeasyPrint 可用时走高保真 HTML/CSS；依赖缺失时走内置基础 PDF writer；fallback 按显示宽度拆分连续 CJK 长句 |
 | **GitHub issue 状态清理** | **已完成** | GitHub issues #21-#27 | `gh issue close/comment` + `gh issue list` | #24/#26/#27 已关闭；#21/#22/#23/#25 已评论降级或缩小范围；#15/#16 保持关闭 |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 336 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 336 passed |
+| 全部 338 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 338 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
 | Core CLI pipeline smoke | `python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --run-id state-review-20260517` | `docs/reports/project-state-and-core-flow-review.md` | 生成 Evidence Card、Matching Report、A/B Resume、Scorecard |
-| Markdown PDF runtime check | `python3 -c '... markdown_to_pdf(...)'` | `docs/reports/project-state-and-core-flow-review.md` | 当前环境 `WEASYPRINT_AVAILABLE=False`，导出失败 |
+| Markdown PDF runtime check | `python3 -c '... markdown_to_pdf(...)'` | 终端 smoke + `tests/unit/infra/test_pdf_exporter.py` | 当前环境 `WEASYPRINT_AVAILABLE=False`，但 `is_pdf_export_available()` 为 true；可导出 `%PDF-1.4` 非空文件 |
 | Benchmark 001 (rule baseline) | `docs/benchmarks/benchmark-001.md` | Matching Total=0.5, Eval Total=0.65 | 发现 K-score=0（已修复） |
 | Benchmark 002 (stack fix 后) | 同命令复现 | Matching Total=0.8, K-score=0.6 | 证据卡可按技术栈区分 |
 | Benchmark 003 (LLM vs Rule) | `docs/benchmarks/benchmark-003.md` | LLM K=0.73, Rule K=0.60 | LLM 更精准但更慢，建议混合策略 |
@@ -171,7 +172,7 @@
 | ~~P2~~ | ~~LiepinChannel session 路径耦合 run_id~~ | ~~每次新 run 需手动创建 symlink~~ | **已解决** | **新增 `PPF_LIEPIN_SESSION_DIR` 显式覆盖** |
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
 | P3a | GUI Quick Run 尚未直接运行主链路 | 当前只展示/复制 CLI 命令，未注册 `run.quick.start` / `run.quick.cancel` | 产品化缺口 | 状态清理后再决定是否进入 GUI 实现 |
-| P3b | Markdown PDF runtime 未闭环 | 代码已接入，但当前环境缺 `weasyprint`/`markdown`，实际导出失败 | 运行环境缺口 | 状态清理后再决定是否进入 PDF runtime |
+| ~~P3b~~ | ~~Markdown PDF runtime 未闭环~~ | ~~代码已接入，但当前环境缺 `weasyprint`/`markdown`，实际导出失败~~ | **已解决** | **内置基础 PDF writer 兜底；`WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF** |
 | P3c | 普通 pipeline 无统一 Run Record | `tools/run_pipeline.py` 可生成产物，但不写 `outputs/agent_runs/<run_id>/run_log.json` | 审计/可追溯缺口 | 状态清理后再决定是否进入 pipeline 收口 |
 | P3d | Agent REVIEW 未完整暂停等待 GUI 审批 | sidecar queue handler 已存在，但 AgentLoop 在 REVIEW 后仍直接 approve 进入后续状态 | 编排语义缺口 | 状态清理后再决定是否进入 Agent REVIEW 收口 |
 | P4 | Gap tasks 仅检查 must_have，不检查 keywords | SLA/SLO 等关键词缺失不会触发补证据任务 | 设计缺口 | 低优先级 |
@@ -188,8 +189,8 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | PDF runtime 闭环 | 主链路已能生成 Markdown Resume，但 PDF Export 是验收链路里的明确项；当前实际导出失败 | 本地/dev/packaged runtime 中 `is_pdf_export_available()` 为 true；Markdown 简历可导出非空 PDF；依赖安装与失败提示文档同步 |
-| 2 | GUI / Demo / pipeline run record 三选一 | PDF runtime 闭环后再选择唯一方向推进 | 不并行展开；一次只进入一个最高优先级实现方向 |
+| 1 | GUI / Demo / pipeline run record 三选一 | PDF runtime 基础闭环已完成，下一步应只选择一个方向推进 | 不并行展开；一次只进入一个最高优先级实现方向 |
+| 2 | WeasyPrint 高保真 PDF 增强 | 内置 writer 已保证 runtime 不断链，但排版能力弱于 HTML/CSS 渲染 | 将 `weasyprint`/`markdown` 作为可选依赖纳入 dev/packaged runtime，并保留内置兜底 |
 
 ## 8. 关键证据索引
 
@@ -215,7 +216,7 @@
 | 用户场景化 case 定义 | acceptance/scenario_cases.yaml | scenario-first 验收 case 目录；Case 1-6、channel_session_setup、submission_check_mode、feedback_iteration_after_check_mode 已 ready_for_implementation |
 | 用户旅程合同 | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | M0 case-aware contract；selected cases、stage 顺序、required outputs、acceptance rules 可由 loader 验证 |
 | 用户旅程闭环自动化验证计划 | AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md | M-1 到 M5 专项推进计划，所有阶段/步骤均含状态字段 |
-| 测试 | tests/ | 329 tests |
+| 测试 | tests/ | 338 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |
 | **反反爬基础设施** | **tools/submission/_browser.py** | **stealth + human pacing + 安全护栏** |
 | **端到端投递 PoC** | **tools/poc_e2e_send.py** | **6 步 dry-run/real-send 脚本** |

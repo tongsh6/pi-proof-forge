@@ -56,7 +56,7 @@ GUI 关键文档：
 - 当前 GUI 真源为 `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen`
 - 当前 GUI 信息架构为 9 页：Overview、Resumes、Evidence、Jobs、Quick Run、Agent Run、Submissions、Policy、System Settings
 - 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；GUI 仍处于垂直切片产品化阶段
-- Quick Run 当前只展示/复制 CLI 命令，尚未通过 GUI 直接启动主链路；Resumes 页已接入 PDF export RPC，但 Markdown 转 PDF 依赖 `weasyprint`/`markdown`，未安装时会明确失败。
+- Quick Run 当前只展示/复制 CLI 命令，尚未通过 GUI 直接启动主链路；Resumes 页已接入 PDF export RPC。Markdown 转 PDF 会优先使用 `weasyprint`/`markdown` 高保真渲染；依赖缺失时自动使用内置基础 PDF writer，避免 runtime 断链。
 
 ## 快速开始
 
@@ -159,7 +159,7 @@ tools/
 - AIEF Level: L3
 - extraction/matching/generation/evaluation 已可从 CLI 端到端运行，默认产物是 Markdown 简历与 Scorecard
 - 普通 `tools/run_pipeline.py` 可跑通，但不会写统一 Run Record；Run Record 当前主要由 Agent Loop 写入 `outputs/agent_runs/<run_id>/run_log.json`
-- Markdown 简历转 PDF 的代码路径已接入 sidecar；当前环境是否可用取决于 `weasyprint`/`markdown` 依赖
+- Markdown 简历转 PDF 的代码路径已接入 sidecar；当前环境缺少 `weasyprint`/`markdown` 时也可用内置基础 PDF writer 导出非空 PDF
 - job-discovery 和 submission 属于支撑系统；当前项目主线仍以 evidence-first 求职材料工程为准
 - GUI 终版规范已冻结，当前实现仍是垂直切片，Quick Run 尚未直接运行主链路
 - 2026-05-17 收束审计见 `docs/reports/project-state-and-core-flow-review.md`
@@ -238,7 +238,7 @@ GUI key docs:
 - The GUI source of truth is `ui/design/DESIGN.md` plus `ui/design/piproofforge.pen`
 - The GUI information architecture now contains 9 pages: Overview, Resumes, Evidence, Jobs, Quick Run, Agent Run, Submissions, Policy, and System Settings
 - The repository now includes the Tauri desktop shell, React frontend, Python sidecar, JSON-RPC bridge, and one-command app control. The GUI is still being productized from vertical slices.
-- Quick Run currently displays/copies CLI commands instead of launching the core pipeline directly from the GUI. The Resumes page has a PDF export RPC, but Markdown-to-PDF requires `weasyprint` and `markdown` at runtime.
+- Quick Run currently displays/copies CLI commands instead of launching the core pipeline directly from the GUI. The Resumes page has a PDF export RPC; Markdown-to-PDF prefers `weasyprint` and `markdown` for high-fidelity rendering, then falls back to the built-in basic PDF writer when those packages are missing.
 
 ### Quick Start
 
@@ -297,7 +297,7 @@ ui/design/          GUI design mainline (Pencil design assets + design docs)
 - AIEF level: L3
 - End-to-end extraction/matching/generation/evaluation is runnable from the CLI and currently produces Markdown resumes plus scorecards by default
 - `tools/run_pipeline.py` is runnable but does not write a unified run record; Agent Loop writes run records under `outputs/agent_runs/<run_id>/run_log.json`
-- Markdown-to-PDF export is wired in code but depends on `weasyprint` and `markdown` being installed in the runtime
+- Markdown-to-PDF export is wired through the sidecar and remains available without `weasyprint`/`markdown` through the built-in basic PDF writer
 - Job discovery and submission are supporting systems; the project mainline remains evidence-first career-material engineering
 - The final GUI specification is frozen; the current desktop app is still a vertical-slice implementation, and Quick Run does not yet launch the pipeline directly
 - 2026-05-17 state audit: `docs/reports/project-state-and-core-flow-review.md`
