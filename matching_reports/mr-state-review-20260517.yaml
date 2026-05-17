@@ -1,0 +1,36 @@
+job_profile_id: "jp-2026-001"
+evidence_card_ids:
+  - "ec-2026-001"
+  - "ec-2026-002"
+  - "ec-2026-003"
+  - "ec-2026-011"
+  - "ec-2026-012"
+  - "ec-2026-013"
+  - "ec-2026-014"
+  - "ec-2026-015"
+  - "ec-2026-016"
+  - "ec-2026-017"
+  - "ec-2026-018"
+  - "ec-2026-019"
+  - "ec-state-review-20260517"
+score_total: 95
+score_breakdown:
+  K: { score: 25, reason: "关键词覆盖 5/5" }
+  D: { score: 10, reason: "业务域信号命中 4/6" }
+  S: { score: 15, reason: "级别信号命中 2/2" }
+  Q: { score: 20, reason: "量化结果条数 29" }
+  E: { score: 15, reason: "证据附件条数 43" }
+  R: { score: 10, reason: "最近经历距今 4 月" }
+top_cards:
+  - id: "ec-2026-018"
+    reason: "关键词命中 5，量化 4，证据 5"
+  - id: "ec-2026-019"
+    reason: "关键词命中 4，量化 4，证据 5"
+  - id: "ec-2026-016"
+    reason: "关键词命中 2，量化 5，证据 2"
+gaps:
+  - "暂无明显缺口"
+gap_tasks:
+  - "保持当前证据完整度，按新 JD 微调关键词"
+generated_at: "2026-05-17T16:09:32+08:00"
+version_id: "mr-state-review-20260517"

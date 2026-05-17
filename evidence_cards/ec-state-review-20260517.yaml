@@ -1,0 +1,25 @@
+evidence_card:
+  id: "ec-state-review-20260517"
+  title: "库存同步链路优化复盘"
+  time_range: "2025-06 ~ 2025-09"
+  context: "大促期间库存一致性要求 2 秒内，峰值 3k QPS。"
+  role_scope: "执行"
+  actions:
+    - "重构为异步队列，削峰填谷"
+    - "引入幂等与补偿机制"
+    - "建立延迟指标与报警"
+  results:
+    - "同步延迟 P95 从 6s 降至 1.8s"
+  stack:
+    - "Go"
+    - "Kafka"
+    - "MySQL"
+  artifacts:
+    - "design-inventory-sync.md"
+    - "latency-metrics.png"
+  tags:
+    - "一致性"
+  interview_hooks:
+[]
+gaps:
+[]
