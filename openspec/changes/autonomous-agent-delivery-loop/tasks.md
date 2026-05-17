@@ -4,6 +4,8 @@
 > 设计依据：`design.md` Section 0 / 1 / 8 / 9 / 13
 > 迁移策略：自下而上建新架构，旧 CLI 同期保持可用，Phase E 收口
 
+> 2026-05-17 状态收束审计：本任务清单里的多数条目已经有组件级实现和测试覆盖，但不能再理解为“产品主链路全部闭环”。当前真实边界见 `docs/reports/project-state-and-core-flow-review.md`：`tools/run_pipeline.py` 仍进入 legacy subprocess 兼容路径；GUI Quick Run 尚未直接启动主链路；Markdown PDF export 代码存在但 runtime 依赖未闭环；manual REVIEW 有 sidecar queue handler，但 AgentLoop 尚未真正暂停等待 GUI 审批。
+
 ---
 
 ## Phase A - 领域核心与基础设施地基
@@ -167,6 +169,7 @@
   - manual + batch_review=false：逐轮审批，GATE 通过后暂停，发出 agent.review.pending 事件，等待用户通过 RPC 提交 ReviewDecision
   - manual + batch_review=true：批量审批，所有轮次跑完后一次性展示 TopN 候选
   - 测试须覆盖三种模式的行为差异
+  - 2026-05-17 审计补充：ReviewStage 组件与 sidecar queue handler 已存在，但 AgentLoop 尚未把 manual REVIEW 实现为真正暂停等待 GUI 审批；该项需要后续用窄 issue 收束。
 - [x] C5 新增 `tools/orchestration/agent_loop.py`
   - 驱动完整 INIT→DISCOVER→SCORE→GENERATE→EVALUATE→GATE→REVIEW→DELIVER→LEARN→DONE 循环
   - 复用 pipeline 的 Stage，不重复实现阶段逻辑
@@ -217,9 +220,10 @@
   - `commands/extract.py / match.py / generate.py / evaluate.py / pipeline.py / agent.py`
   - 每个 command：仅解析参数 → 构造 `Composer` → 调用对应编排或引擎
   - `entrypoints.py`：统一注册入口
-- [x] E2 旧 CLI 入口（`tools/run_pipeline.py` 等）内部转调 `Composer` + 新架构
+- [x] E2 旧 CLI 入口（`tools/run_pipeline.py` 等）保持兼容入口
   - CLI 参数语义保持不破坏
   - 删除旧文件前必须通过 end-to-end 回归测试
+  - 2026-05-17 审计补充：`agent` 入口已通过 Composer/AgentLoop 跑通；`pipeline` 入口仍转入 legacy `_legacy_main()`，并通过 subprocess 串联四阶段。该行为是兼容现状，不应再描述为已完全转调 Composer + 新编排层。
 - [x] E3 测试分层（按 `design.md` Section 12）
   - Domain 单测（约 70%）：不可变模型、状态迁移、预算控制、Result 行为、事件回放
   - 引擎单测：各引擎独立测试（不依赖 IO）

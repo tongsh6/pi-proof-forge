@@ -5,7 +5,9 @@
 
 ## 1. 当前阶段目标
 
-**v2 统一核心引擎架构 + Agent Loop 闭环验证 + 猎聘真实投递**
+**状态收束完成 + PDF runtime 闭环准备**
+
+> 2026-05-17 收束审计结论：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record。普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，不写统一 Run Record；PDF Markdown 转换依赖未在当前环境闭环；GUI Quick Run 当前只展示/复制 CLI 命令；Agent REVIEW backend 有 queue handler，但 AgentLoop 尚未真正暂停等待 GUI 审批。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -14,13 +16,13 @@
 - Result 类型 + 事件溯源（domain/）→ 已完成
 - 通道层 + CLI 收口 → 已完成
 - **AgentLoop 全阶段集成 → 已完成 ✅（2026-05-08）**
-- **全链路集成测试 → 已恢复 ✅（332 tests，2026-05-13）**
+- **全链路集成测试 → 已恢复 ✅（336 tests，2026-05-17）**
 - **Benchmark 基线 → 已完成 ✅（4 份，docs/benchmarks/）**
 - **AppleScript 猎聘搜索 → 已完成 ✅（2026-05-09）**
 - **Agent Loop → Liepin 投递链路 → 已验证登录，已修正下线职位误报上传失败（2026-05-09）**
 - **猎聘真实投递闭环验证 → ✅ 已完成（2026-05-11）**
-- **当前阻塞：无运行硬阻塞。Agent Loop → Liepin check-mode、小批量频控、批量候选来源扩展、多候选批次策略、GUI 投递状态/详情可视化、真实 submit 前安全门禁均已闭环；GUI `.pen` 设计资产同步因 Pencil MCP `Transport closed` 待补验收（2026-05-13）**
-- **新专项：用户场景化自动验收 → scenario-first M-1 与 M0 case-aware journey contract 已完成；Case 1-6、`channel_session_setup`、`submission_check_mode`、`feedback_iteration_after_check_mode` 均已进入合同，下一步进入 M1 selected-case acceptance test（2026-05-17）**
+- **当前阻塞：PDF runtime 未闭环。Markdown→PDF 代码已接入，但当前环境 `WEASYPRINT_AVAILABLE=False`，主链路验收中的 PDF Export 仍不可实际运行。**
+- **用户场景化自动验收 → scenario-first M-1 与 M0 case-aware journey contract 已完成；在状态清理完成前不作为 Top Priority。**
 - **外部仓库调研：`boss-agent-cli` 已完成初步解析（2026-05-15）→ 结论是 P2 级参考资产，适合通过薄 CLI adapter 接入 BOSS/智联职位发现与 Agent-friendly JSON/schema/MCP 设计；不建议直接引入其简历/AI 核心或 vendor 整仓**
 
 ## 2. 已完成事项
@@ -54,7 +56,7 @@
 | Liepin Channel | 已实现 | tools/channels/liepin.py | test_channels.py | 纯 Python，无 subprocess |
 | Email Channel | 已实现 | tools/channels/email.py | test_channels.py | smtplib，环境变量凭据 |
 | CLI 统一入口 | 已验证 | tools/cli/entrypoints.py + 6 commands | test_cli_entrypoints.py | extract/match/generate/evaluate/pipeline/agent |
-| 旧 CLI 兼容层 | 已验证 | run_pipeline.py 等转调新架构 | test_legacy_entrypoint_redirect.py | 参数语义不破坏 |
+| 旧 CLI 兼容层 | 部分完成 | run_pipeline.py 等入口 | test_legacy_entrypoint_redirect.py + 2026-05-17 审计 | 参数语义不破坏；`run_pipeline.py` 仍转入 legacy subprocess 串联，不是纯 Composer/LinearPipeline |
 | 企业例外清单 | 已验证 | discovery filter + gate guard | test_exclusions.py + test_gate.py | 双层防护 |
 | Sidecar Bridge | 已验证 | tools/sidecar/ | 12 test files | JSON-RPC router + 9 handlers + REVIEW RPC |
 | v2 约束检查 | 已通过 | tools/check_v2_constraints.py | PASS | 无重复 LLM/YAML、业务层无 subprocess、无 if use_llm；AppleScript 系统调用已收口到 infra/browser |
@@ -117,15 +119,19 @@
 | **boss-agent-cli 外部仓库调研** | **已完成** | https://github.com/can4hou6joeng4/boss-agent-cli | 源码/README/能力矩阵/平台抽象/MCP/风险文档阅读 | 对本项目价值主要在多平台 job-discovery、受控 delivery 通道参考、JSON envelope/schema/MCP 工程化；推荐先做 subprocess 薄适配 |
 | **反馈迭代场景 case 定义** | **已完成** | acceptance/scenario_cases.yaml | YAML 解析通过 | 新增 `feedback_iteration_after_check_mode`，覆盖 check-mode 后从反馈到证据/岗位/简历迭代、新版本对比、下一轮 check-mode 准备；M-1 场景目录完成 |
 | **M0 journey contract** | **已完成** | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | `python3 -m pytest tests/acceptance/test_journey_contract.py -q` → 4 passed | 合同覆盖 9 个 selected case、固定 9 页 stage 顺序、required outputs、acceptance rule status/evidence/message 字段 |
+| **项目状态与主链路收束审计** | **已完成** | docs/reports/project-state-and-core-flow-review.md | 实跑 CLI/测试/PDF/Agent/GitHub issue 检查 | 确认 CLI 主链路可跑；PDF runtime、GUI Quick Run、普通 pipeline run record、Agent REVIEW pause 未闭环 |
+| **GitHub issue 状态清理** | **已完成** | GitHub issues #21-#27 | `gh issue close/comment` + `gh issue list` | #24/#26/#27 已关闭；#21/#22/#23/#25 已评论降级或缩小范围；#15/#16 保持关闭 |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 332 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 332 passed |
+| 全部 336 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 336 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
+| Core CLI pipeline smoke | `python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --run-id state-review-20260517` | `docs/reports/project-state-and-core-flow-review.md` | 生成 Evidence Card、Matching Report、A/B Resume、Scorecard |
+| Markdown PDF runtime check | `python3 -c '... markdown_to_pdf(...)'` | `docs/reports/project-state-and-core-flow-review.md` | 当前环境 `WEASYPRINT_AVAILABLE=False`，导出失败 |
 | Benchmark 001 (rule baseline) | `docs/benchmarks/benchmark-001.md` | Matching Total=0.5, Eval Total=0.65 | 发现 K-score=0（已修复） |
 | Benchmark 002 (stack fix 后) | 同命令复现 | Matching Total=0.8, K-score=0.6 | 证据卡可按技术栈区分 |
 | Benchmark 003 (LLM vs Rule) | `docs/benchmarks/benchmark-003.md` | LLM K=0.73, Rule K=0.60 | LLM 更精准但更慢，建议混合策略 |
@@ -164,6 +170,10 @@
 | ~~P1~~ | ~~猎聘共享登录态刷新后复跑 Agent Loop~~ | ~~当前 `run-agent-liepin-chat-004` 正确阻断于 login_required~~ | **已解决** | **`run-agent-liepin-chat-005` check-mode success** |
 | ~~P2~~ | ~~LiepinChannel session 路径耦合 run_id~~ | ~~每次新 run 需手动创建 symlink~~ | **已解决** | **新增 `PPF_LIEPIN_SESSION_DIR` 显式覆盖** |
 | P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
+| P3a | GUI Quick Run 尚未直接运行主链路 | 当前只展示/复制 CLI 命令，未注册 `run.quick.start` / `run.quick.cancel` | 产品化缺口 | 状态清理后再决定是否进入 GUI 实现 |
+| P3b | Markdown PDF runtime 未闭环 | 代码已接入，但当前环境缺 `weasyprint`/`markdown`，实际导出失败 | 运行环境缺口 | 状态清理后再决定是否进入 PDF runtime |
+| P3c | 普通 pipeline 无统一 Run Record | `tools/run_pipeline.py` 可生成产物，但不写 `outputs/agent_runs/<run_id>/run_log.json` | 审计/可追溯缺口 | 状态清理后再决定是否进入 pipeline 收口 |
+| P3d | Agent REVIEW 未完整暂停等待 GUI 审批 | sidecar queue handler 已存在，但 AgentLoop 在 REVIEW 后仍直接 approve 进入后续状态 | 编排语义缺口 | 状态清理后再决定是否进入 Agent REVIEW 收口 |
 | P4 | Gap tasks 仅检查 must_have，不检查 keywords | SLA/SLO 等关键词缺失不会触发补证据任务 | 设计缺口 | 低优先级 |
 | ~~P5~~ | ~~误投防护需接入 liepin.py 主流程~~ | ~~poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入~~ | **已解决** | **target_verify 已接入并有离线单测覆盖** |
 | P6 | GUI `.pen` 设计资产未随最新 Submissions 详情实现同步复核 | `DESIGN.md` 与 GUI review checklist 明确要求 GUI 结构变更同步 `.pen`；当前 Pencil MCP 返回 `Transport closed` | 设计治理缺口 | Pencil MCP 恢复后打开 `ui/design/piproofforge.pen`，对 `Screen/Submissions` (`upl7d`) 补齐/确认详情侧板与状态 |
@@ -178,10 +188,8 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | M1 selected-case acceptance test | M0 合同已完成，需要先用一个 selected case 打通 L1 验证，证明合同能驱动可重复的 API/data 层验收 | `tests/acceptance/test_scenario_first_launch_configure_lm_studio.py` 存在并验证 Case 1 的 settings persistence、structured connection result、Quick Run/Agent Run provider summary |
-| 2 | GUI `.pen` 设计资产同步复核 | 本轮 review 已发现 GUI 结构变更未能同步 `.pen`，且 Pencil MCP 暂时不可用 | Pencil MCP 恢复后，`Screen/Submissions` (`upl7d`) 与实现/合同一致；若设计稿已有对应结构，则记录验收证据 |
-| 3 | submit 安全门禁真实 dry-run 演练 | 代码级门禁已测试，但未用真实页面跑 submit_safety blocked 路径 | 使用 PDF + 错误 recruiter/jobId 运行 submit，确认阻断在 submit_safety 且未点击最终确认 |
-| 4 | Agent Loop 批次策略真实 check-mode 演练 | 代码级批次策略已测试，但未用真实 job_leads 跑多候选 check-mode 端到端批次 | 多候选 DISCOVER/GATE/DELIVER 顺序与 submission 日志可对账，且通道频控仍生效 |
+| 1 | PDF runtime 闭环 | 主链路已能生成 Markdown Resume，但 PDF Export 是验收链路里的明确项；当前实际导出失败 | 本地/dev/packaged runtime 中 `is_pdf_export_available()` 为 true；Markdown 简历可导出非空 PDF；依赖安装与失败提示文档同步 |
+| 2 | GUI / Demo / pipeline run record 三选一 | PDF runtime 闭环后再选择唯一方向推进 | 不并行展开；一次只进入一个最高优先级实现方向 |
 
 ## 8. 关键证据索引
 
@@ -189,7 +197,7 @@
 |------|------|------|
 | 核心规范 | openspec/specs/pi-proof-forge-core.md | v2 架构规范（535 行） |
 | 架构设计 | openspec/changes/autonomous-agent-delivery-loop/design.md | v2 设计（779 行） |
-| 任务清单 | openspec/changes/autonomous-agent-delivery-loop/tasks.md | 全 [x]（注意：组件级完成 ≠ 集成级完成） |
+| 任务清单 | openspec/changes/autonomous-agent-delivery-loop/tasks.md | 历史任务多数已完成；2026-05-17 审计补充了 legacy pipeline、PDF runtime、Quick Run、REVIEW pause 的真实缺口 |
 | 实施计划 | AIEF/docs/plans/autonomous-agent-delivery-loop-v2.md | 5 里程碑 + 文件级拆分 |
 | 项目计划 | PLAN.md | 完整项目计划书（17k 字） |
 | 项目宪法 | constitution.md | 不可妥协工程原则 |

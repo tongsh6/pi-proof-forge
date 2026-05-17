@@ -23,11 +23,11 @@ Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -
 
 ## 架构状态
 
-- 当前规范目标：统一核心引擎 v2
+- 当前规范目标：统一核心引擎 v2（组件层已落地，CLI 主链路仍保留 legacy 兼容串联）
 - 架构方向：`domain/` + `infra/` + `engines/` + `orchestration/` + `config/` + `channels/` + `cli/`
 - GUI 终版路线：`Tauri desktop app + React/TypeScript frontend + Python sidecar`
 - 设计原则：高内聚、低耦合、组合优于继承、扩展优于修改、evidence-first
-- 迁移策略：旧 CLI 保持兼容，逐步迁移到底层 v2 架构
+- 迁移策略：旧 CLI 保持兼容；`agent` 入口已使用 Composer/AgentLoop，`pipeline` 入口仍会转入 legacy subprocess 兼容路径
 
 关键文档：
 
@@ -56,6 +56,7 @@ GUI 关键文档：
 - 当前 GUI 真源为 `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen`
 - 当前 GUI 信息架构为 9 页：Overview、Resumes、Evidence、Jobs、Quick Run、Agent Run、Submissions、Policy、System Settings
 - 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；GUI 仍处于垂直切片产品化阶段
+- Quick Run 当前只展示/复制 CLI 命令，尚未通过 GUI 直接启动主链路；Resumes 页已接入 PDF export RPC，但 Markdown 转 PDF 依赖 `weasyprint`/`markdown`，未安装时会明确失败。
 
 ## 快速开始
 
@@ -156,10 +157,12 @@ tools/
 ## 当前状态
 
 - AIEF Level: L3
-- extraction/matching/generation/evaluation 已可端到端运行
-- job-discovery 多源职位发现流程已定义，自动化采集实现中
-- submission 自动投递已完成流程设计，代码实现进行中
-- GUI 终版规范已冻结，桌面端实现待按终版文档落地
+- extraction/matching/generation/evaluation 已可从 CLI 端到端运行，默认产物是 Markdown 简历与 Scorecard
+- 普通 `tools/run_pipeline.py` 可跑通，但不会写统一 Run Record；Run Record 当前主要由 Agent Loop 写入 `outputs/agent_runs/<run_id>/run_log.json`
+- Markdown 简历转 PDF 的代码路径已接入 sidecar；当前环境是否可用取决于 `weasyprint`/`markdown` 依赖
+- job-discovery 和 submission 属于支撑系统；当前项目主线仍以 evidence-first 求职材料工程为准
+- GUI 终版规范已冻结，当前实现仍是垂直切片，Quick Run 尚未直接运行主链路
+- 2026-05-17 收束审计见 `docs/reports/project-state-and-core-flow-review.md`
 
 ## 约定
 
@@ -202,11 +205,11 @@ Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -
 
 ### Architecture Status
 
-- Current target spec: Unified Core Engine v2
+- Current target spec: Unified Core Engine v2 (component layer implemented; CLI pipeline still keeps a legacy subprocess compatibility path)
 - Architecture direction: `domain/` + `infra/` + `engines/` + `orchestration/` + `config/` + `channels/` + `cli/`
 - Final GUI path: `Tauri desktop app + React/TypeScript frontend + Python sidecar`
 - Design principles: high cohesion, low coupling, composition over inheritance, extension over modification, evidence-first
-- Migration strategy: keep legacy CLI compatible while moving the core to v2
+- Migration strategy: keep legacy CLI compatible; the `agent` entrypoint uses Composer/AgentLoop, while the `pipeline` entrypoint still falls back to the legacy subprocess path
 
 Key docs:
 
@@ -235,6 +238,7 @@ GUI key docs:
 - The GUI source of truth is `ui/design/DESIGN.md` plus `ui/design/piproofforge.pen`
 - The GUI information architecture now contains 9 pages: Overview, Resumes, Evidence, Jobs, Quick Run, Agent Run, Submissions, Policy, and System Settings
 - The repository now includes the Tauri desktop shell, React frontend, Python sidecar, JSON-RPC bridge, and one-command app control. The GUI is still being productized from vertical slices.
+- Quick Run currently displays/copies CLI commands instead of launching the core pipeline directly from the GUI. The Resumes page has a PDF export RPC, but Markdown-to-PDF requires `weasyprint` and `markdown` at runtime.
 
 ### Quick Start
 
@@ -291,10 +295,12 @@ ui/design/          GUI design mainline (Pencil design assets + design docs)
 ### Status
 
 - AIEF level: L3
-- End-to-end extraction/matching/generation/evaluation is runnable
-- Job discovery workflow is defined; automation implementation is in progress
-- Submission automation is documented and planned for implementation
-- The final GUI specification is frozen; desktop implementation remains to be built against the final docs
+- End-to-end extraction/matching/generation/evaluation is runnable from the CLI and currently produces Markdown resumes plus scorecards by default
+- `tools/run_pipeline.py` is runnable but does not write a unified run record; Agent Loop writes run records under `outputs/agent_runs/<run_id>/run_log.json`
+- Markdown-to-PDF export is wired in code but depends on `weasyprint` and `markdown` being installed in the runtime
+- Job discovery and submission are supporting systems; the project mainline remains evidence-first career-material engineering
+- The final GUI specification is frozen; the current desktop app is still a vertical-slice implementation, and Quick Run does not yet launch the pipeline directly
+- 2026-05-17 state audit: `docs/reports/project-state-and-core-flow-review.md`
 
 ### License
 
