@@ -273,6 +273,22 @@
     "policy": {
       "title": "策略配置",
       "subtitle": "管理门禁规则与企业排除策略。",
+      "save": "保存",
+      "nav": {
+        "gate": "门禁策略",
+        "gateHint": "阈值与审批模式",
+        "exclusions": "排除清单",
+        "exclusionsHint": "企业与主体护栏"
+      },
+      "audit": {
+        "title": "策略来源",
+        "description": "数据从本地 sidecar 读取，并通过 settings.update 持久化。"
+      },
+      "saveState": {
+        "saving": "保存中...",
+        "saved": "已保存",
+        "error": "保存失败"
+      },
       "gatePolicy": {
         "title": "门禁策略",
         "subtitle": "当前多轮门禁策略快照",
@@ -287,6 +303,16 @@
         "batchReview": "批量审批",
         "batchReviewHint": "仅当投递模式为人工时生效",
         "saveDelivery": "保存投递设置"
+      },
+      "gatePolicyDescriptions": {
+        "nPassRequired": "运行被视为可投递前，需要累计通过门禁的轮数。",
+        "matchingThreshold": "N-pass 门禁要求的最低匹配分。",
+        "evaluationThreshold": "N-pass 门禁要求的最低简历评估分。",
+        "maxRounds": "自主运行停止或进入批量审批前允许的最大轮次。",
+        "mode": "strict 模式会在必要检查失败时阻断投递。",
+        "deliveryMode": "自动模式会在 REVIEW pass-through 后继续；人工模式会暂停等待审批。",
+        "batchReviewAuto": "投递模式为自动时，批量审批不可启用。",
+        "batchReviewManual": "收集通过门禁的候选，在运行结束后一次性审批。"
       },
       "excludedCompanies": {
         "title": "排除企业展示名",
@@ -305,6 +331,18 @@
         "save": "保存主体规则",
         "saving": "保存中...",
         "saved": "已保存"
+      },
+      "exclusionList": {
+        "title": "排除清单",
+        "subtitle": "企业展示名与企业主体分区维护，保证策略命中原因可解释。",
+        "companyPreview": "企业规则预览",
+        "legalEntityPreview": "主体规则预览",
+        "emptyCompanies": "还没有企业展示名规则。",
+        "emptyLegalEntities": "还没有企业主体规则。",
+        "matchingTitle": "命中说明",
+        "matchingDescription": "Discovery 阶段会在评分前过滤已排除候选；Gate 阶段保留二次护栏，阻断绕过发现阶段的候选。",
+        "discoveryGuard": "Discovery 护栏",
+        "gateFallback": "Gate 兜底"
       }
     },
     "systemSettings": {

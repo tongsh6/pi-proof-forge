@@ -273,6 +273,22 @@
     "policy": {
       "title": "Policy",
       "subtitle": "Business rules for gating and company exclusions.",
+      "save": "Save",
+      "nav": {
+        "gate": "Gate Policy",
+        "gateHint": "Thresholds and review mode",
+        "exclusions": "Exclusion List",
+        "exclusionsHint": "Company and legal entity guards"
+      },
+      "audit": {
+        "title": "Policy source",
+        "description": "Values are loaded from the local sidecar and persisted through settings.update."
+      },
+      "saveState": {
+        "saving": "Saving...",
+        "saved": "Saved",
+        "error": "Save failed"
+      },
       "gatePolicy": {
         "title": "Gate policy",
         "subtitle": "Current policy snapshot for multi-round gating.",
@@ -287,6 +303,16 @@
         "batchReview": "Batch review",
         "batchReviewHint": "Only when delivery mode is manual",
         "saveDelivery": "Save delivery settings"
+      },
+      "gatePolicyDescriptions": {
+        "nPassRequired": "Number of passing rounds required before a run is considered eligible.",
+        "matchingThreshold": "Minimum matching score required by the N-pass gate.",
+        "evaluationThreshold": "Minimum resume evaluation score required by the N-pass gate.",
+        "maxRounds": "Maximum autonomous rounds before the run stops or enters batch review.",
+        "mode": "Strict mode blocks delivery when required checks fail.",
+        "deliveryMode": "Auto continues after review pass-through; manual pauses for user approval.",
+        "batchReviewAuto": "Batch review is disabled while delivery mode is auto.",
+        "batchReviewManual": "Collect passing candidates and ask for one batch decision after the run."
       },
       "excludedCompanies": {
         "title": "Excluded companies",
@@ -305,6 +331,18 @@
         "save": "Save legal entities",
         "saving": "Saving...",
         "saved": "Saved"
+      },
+      "exclusionList": {
+        "title": "Exclusion list",
+        "subtitle": "Company display names and legal entities are kept separate so policy hits remain explainable.",
+        "companyPreview": "Company rule preview",
+        "legalEntityPreview": "Legal entity preview",
+        "emptyCompanies": "No company display-name rules yet.",
+        "emptyLegalEntities": "No legal entity rules yet.",
+        "matchingTitle": "Match explanation",
+        "matchingDescription": "Discovery filters excluded candidates before scoring; Gate keeps a second guard for candidates that bypass discovery.",
+        "discoveryGuard": "Discovery guard",
+        "gateFallback": "Gate fallback"
       }
     },
     "systemSettings": {
