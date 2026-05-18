@@ -50,6 +50,17 @@ class ConfigLoaderTests(unittest.TestCase):
             with self.assertRaises(PolicyError):
                 validate_policy_config(cfg)
 
+    def test_validate_policy_config_fails_for_batch_review_in_auto_mode(self) -> None:
+        with TemporaryDirectory() as tmp:
+            policy_path = Path(tmp) / "policy.yaml"
+            policy_path.write_text(
+                _VALID_POLICY.replace("batch_review: false", "batch_review: true"),
+                encoding="utf-8",
+            )
+            cfg = load_policy_config(str(policy_path))
+            with self.assertRaises(PolicyError):
+                validate_policy_config(cfg)
+
     def test_validate_policy_config_fails_for_invalid_exclusion_prefix(self) -> None:
         with TemporaryDirectory() as tmp:
             policy_path = Path(tmp) / "policy.yaml"

@@ -13,7 +13,9 @@ export function NativeVerifyController() {
         ? "/quick-run"
         : verifyScenario === "system-settings"
           ? "/system-settings"
-          : null;
+          : verifyScenario === "policy"
+            ? "/policy"
+            : null;
 
     if (!targetPath || location.pathname === targetPath) {
       return;

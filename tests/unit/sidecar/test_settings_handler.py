@@ -133,6 +133,20 @@ class SettingsGetTests(unittest.TestCase):
         self.assertEqual(result["gate_policy"]["delivery_mode"], "manual")
         self.assertTrue(result["gate_policy"]["batch_review"])
 
+    def test_auto_delivery_forces_batch_review_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            policy_path.write_text(
+                'delivery_mode: "auto"\nbatch_review: "true"\n',
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                result = handle_settings_get(
+                    {"meta": {"correlation_id": "corr_auto_batch"}}
+                )
+        self.assertEqual(result["gate_policy"]["delivery_mode"], "auto")
+        self.assertFalse(result["gate_policy"]["batch_review"])
+
 
 class SettingsUpdateTests(unittest.TestCase):
     def test_update_exclusion_list_persists(self) -> None:
@@ -198,6 +212,23 @@ class SettingsUpdateTests(unittest.TestCase):
                 stored = handle_settings_get({"meta": {"correlation_id": "corr_dm2"}})
         self.assertEqual(stored["gate_policy"]["delivery_mode"], "manual")
         self.assertTrue(stored["gate_policy"]["batch_review"])
+
+    def test_update_auto_delivery_persists_batch_review_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            params = {
+                "meta": {"correlation_id": "corr_dm_auto"},
+                "section": "gate_policy",
+                "payload": {"delivery_mode": "auto", "batch_review": True},
+            }
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}):
+                result = handle_settings_update(params)
+                self.assertTrue(result["saved"])
+                stored = handle_settings_get(
+                    {"meta": {"correlation_id": "corr_dm_auto2"}}
+                )
+        self.assertEqual(stored["gate_policy"]["delivery_mode"], "auto")
+        self.assertFalse(stored["gate_policy"]["batch_review"])
 
     def test_update_gate_policy_rejects_unsupported_fields(self) -> None:
         params = {

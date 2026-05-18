@@ -113,6 +113,8 @@ def load_delivery_settings(path: Path | None = None) -> tuple[str, bool]:
     if mode not in ("auto", "manual"):
         mode = "auto"
     batch = (scalars.get("batch_review", "false").lower() in ("true", "1"))
+    if mode == "auto":
+        batch = False
     return (mode, batch)
 
 
@@ -131,8 +133,11 @@ def save_delivery_settings(
         doc = parse_simple_yaml(policy_path.read_text(encoding="utf-8"))
         scalars = doc.get("scalars", {})
         lists = doc.get("lists", {})
-    scalars["delivery_mode"] = delivery_mode if delivery_mode in ("auto", "manual") else "auto"
-    scalars["batch_review"] = "true" if batch_review else "false"
+    normalized_mode = delivery_mode if delivery_mode in ("auto", "manual") else "auto"
+    scalars["delivery_mode"] = normalized_mode
+    scalars["batch_review"] = (
+        "true" if normalized_mode == "manual" and batch_review else "false"
+    )
     policy_path.parent.mkdir(parents=True, exist_ok=True)
     policy_path.write_text(dump_yaml(scalars, lists), encoding="utf-8")
     return policy_path

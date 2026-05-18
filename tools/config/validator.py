@@ -24,6 +24,9 @@ def validate_policy_config(config: PolicyConfig) -> None:
     if config.delivery_mode not in ("auto", "manual"):
         raise PolicyError("delivery_mode must be auto or manual")
 
+    if config.delivery_mode == "auto" and config.batch_review:
+        raise PolicyError("batch_review requires delivery_mode=manual")
+
     if config.gate_mode not in ("strict", "simulate"):
         raise PolicyError("gate_mode must be strict or simulate")
 

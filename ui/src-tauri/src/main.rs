@@ -402,7 +402,7 @@ fn sidecar_shutdown(manager: State<'_, SidecarManager>) -> Result<(), String> {
 #[tauri::command]
 fn quick_run_verify_event(event: Value) -> Result<(), String> {
     let scenario = match env::var("QUICK_RUN_VERIFY_AUTORUN").ok() {
-        Some(value) if value == "quick-run" || value == "system-settings" => value,
+        Some(value) if value == "quick-run" || value == "system-settings" || value == "policy" => value,
         _ => return Ok(()),
     };
 
@@ -410,6 +410,7 @@ fn quick_run_verify_event(event: Value) -> Result<(), String> {
         let allowed_event = match scenario.as_str() {
             "quick-run" => event_name.starts_with("quick_run."),
             "system-settings" => event_name.starts_with("system_settings."),
+            "policy" => event_name.starts_with("policy."),
             _ => false,
         };
         if !allowed_event {
