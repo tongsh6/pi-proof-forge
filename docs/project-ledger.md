@@ -9,6 +9,7 @@
 
 > 2026-05-18 状态：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record；普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，但已补齐统一 Run Record，写入 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`。PDF Markdown 转换已补上内置无依赖兜底路径，当前环境 `WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF；Agent REVIEW manual 模式已从直接 approve 改为写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会进入 DELIVER；GUI Quick Run 已注册 `run.quick.start` / `run.quick.cancel` 并从页面直接启动本地单次 pipeline，CLI 命令保留为 fallback，且已补上 Tauri native verifier 自动化入口。Quick Run verifier 已按 `pnpm --dir ui run e2e:quick-run` 连续多轮通过；dev 模式 sidecar 工作目录、`PYTHONPATH`、进程树清理和 pnpm 参数转发问题已修复。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
 > 2026-05-18 补充：WeasyPrint 高保真 PDF 增强已完成工程闭环。`requirements-pdf.txt` 显式声明 `markdown` / `weasyprint` 可选依赖；`pnpm --dir ui run prepare:python-runtime` 会在依赖已安装时把可选 PDF 包和元数据复制进 Tauri packaged runtime；未安装时会清理旧 staged 包并继续使用内置基础 PDF writer 兜底。
+> 2026-05-18 补充：Submissions 页面产品化垂直切片已按终版 GUI 第 7 页补齐统计卡片、投递表格、详情基本信息、步骤时间线、截图缩略图/预览、失败详情与两种重试策略按钮；实现复用既有 `submission.list/detail/retry` 合同，不新增 sidecar 协议。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -113,6 +114,7 @@
 | **GUI 运行日志详情页** | **已验证** | tools/sidecar/handlers/submission.py + tools/sidecar/server.py + ui/src/pages/submissions/index.tsx | test_submission_handler.py + test_server.py + Playwright mock sidecar | `submission.detail` 返回完整 steps、截图路径、JSON/YAML 日志路径；Submissions 页面可点击查看 |
 | **真实 submit 前安全门禁** | **已测试** | tools/submission/liepin.py + tools/submission/run_submission.py + tools/channels/liepin.py | test_liepin_chat_send_resume.py + test_run_submission_cli.py + test_channels.py | submit 必须 PDF、显式 jobId、显式 recruiter，且与 target_verify 二次匹配 |
 | **GUI 详情页 review hardening** | **已验证** | tools/sidecar/handlers/submission.py + tools/submission/storage.py + ui/design/contracts/sidecar-rpc.md + ui/src/i18n/ | test_submission_handler.py + test_submission_storage.py + `pnpm --dir ui build` | screenshot 路径越界防护、browser_channel 写入日志、submission.detail 合同同步、Submissions 页面接入 i18n |
+| **GUI Submissions 产品化切片** | **已验证** | ui/src/pages/submissions/index.tsx + ui/src/i18n/ | `pnpm --dir ui build` + `python3 -m pytest tests/ -q` + Playwright mock sidecar 视觉验收 | 补齐统计卡片、表格、详情基础信息、步骤时间线、截图缩略图/预览、失败详情、原通道/Email 降级重试按钮 |
 | **GUI Agent Run 控制 RPC** | **已验证** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/lib/sidecar/api.ts + ui/design/contracts/sidecar-rpc.md | test_server.py + `pnpm --dir ui build` | `run.agent.start/get/stop` 已接入 JSON-RPC 路由和前端 typed client；缺省只创建本地运行控制记录；显式 `execute_dry_run=true` 可执行本地 dry-run AgentLoop，不触发真实投递 |
 | **GUI 一键启停脚本** | **已验证** | app + scripts/appctl.py + .gitignore | `./app start` / `./app status` / `./app stop` | 根目录一键控制 Tauri dev app；运行时 PID 和日志写入 `.app-runtime/`，并已加入 gitignore |
 | **Tauri pnpm/Rust 版本对齐** | **已验证** | ui/package.json + ui/pnpm-lock.yaml + ui/package-lock.json | `pnpm --dir ui list @tauri-apps/api @tauri-apps/cli --depth 0` + `./app start` 日志 | pnpm 侧固定 `@tauri-apps/api`/`cli` 为 2.10.1，与 Rust `tauri` 2.10.3 对齐到同一 minor；启动日志不再出现 mismatch 提示 |
@@ -187,8 +189,8 @@
 | ~~P3d~~ | ~~Agent REVIEW 未完整暂停等待 GUI 审批~~ | ~~sidecar queue handler 已存在，但 AgentLoop 在 REVIEW 后仍直接 approve 进入后续状态~~ | **已解决** | **manual REVIEW 写 queue 并返回 REVIEW_PENDING，不进入 DELIVER** |
 | ~~P4~~ | ~~Gap tasks 仅检查 must_have，不检查 keywords~~ | ~~SLA/SLO 等关键词缺失不会触发补证据任务~~ | **已解决** | **RuleMatchingEngine 空候选和常规路径均覆盖 `keywords` gap task；测试已锁定** |
 | ~~P5~~ | ~~误投防护需接入 liepin.py 主流程~~ | ~~poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入~~ | **已解决** | **target_verify 已接入并有离线单测覆盖** |
-| P6 | GUI `.pen` 设计资产未随最新 Submissions 详情实现同步复核 | `DESIGN.md` 与 GUI review checklist 明确要求 GUI 结构变更同步 `.pen`；当前 Pencil MCP 返回 `Transport closed` | 设计治理缺口 | Pencil MCP 恢复后打开 `ui/design/piproofforge.pen`，对 `Screen/Submissions` (`upl7d`) 补齐/确认详情侧板与状态 |
-| P7 | Submissions 页面实现仍未完全达到终版设计的统计卡片、表格、截图缩略图/放大预览形态 | 当前实现是可用的列表 + 详情面板垂直切片，未完整复刻 DESIGN.md 第 7 页产品态 | 产品化缺口 | GUI 产品化阶段统一推进，不阻塞当前 sidecar/投递闭环验证 |
+| ~~P6~~ | ~~GUI `.pen` 设计资产未随最新 Submissions 详情实现同步复核~~ | ~~`DESIGN.md` 与 GUI review checklist 明确要求 GUI 结构变更同步 `.pen`；当前 Pencil MCP 返回 `Transport closed`~~ | **已解决** | **Pencil MCP 已恢复；已打开 `ui/design/piproofforge.pen` 并复核 `Screen/Submissions` (`upl7d`)、`subTable`、`subDetail`，现有设计资产已包含统计、表格、详情、时间线、截图、重试和失败详情结构，无需改设计源** |
+| ~~P7~~ | ~~Submissions 页面实现仍未完全达到终版设计的统计卡片、表格、截图缩略图/放大预览形态~~ | ~~当前实现是可用的列表 + 详情面板垂直切片，未完整复刻 DESIGN.md 第 7 页产品态~~ | **已解决** | **已补齐统计卡片、表格、详情基础信息、步骤时间线、截图缩略图/预览、失败详情与原通道/Email 降级重试按钮；Playwright mock sidecar 视觉验收通过** |
 | P8 | BOSS/智联平台未接入 PiProofForge job-discovery / delivery | `boss-agent-cli` 已证明 BOSS/智联具备 CLI/JSON/schema/MCP 能力，但 PiProofForge 当前生产通道仍以 Liepin 为主；多平台候选来源和受控写操作尚未纳入本项目抽象 | 扩展缺口 | 先以 optional subprocess adapter 接入 `boss schema/status/search/detail` 只读发现，映射到 `Candidate`；写操作仅在 review/gate/rate-limit/safety 全部复用后再启用 |
 
 ## 6. 已废弃事项
