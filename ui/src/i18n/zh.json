@@ -310,8 +310,13 @@
     "systemSettings": {
       "title": "系统设置",
       "subtitle": "读取桌面 sidecar 返回的实时配置快照。",
+      "save": "保存",
       "secretConfigured": "已配置（掩码）",
       "secretMissing": "未配置",
+      "nav": {
+        "channels": "通道",
+        "llm": "模型"
+      },
       "exclusionList": {
         "title": "企业例外清单",
         "subtitle": "一行一条，支持 contains: 前缀",
@@ -321,7 +326,21 @@
         "saving": "保存中...",
         "saved": "已保存"
       },
-      "channels": "通道数",
+      "channels": {
+        "title": "通道",
+        "subtitle": "投递通道顺序、降级、凭证状态与最近运行检查。",
+        "none": "无",
+        "priority": "优先级",
+        "fallback": "降级通道",
+        "credential": "凭证",
+        "lastCheck": "最近检查",
+        "lastSuccess": "最近成功",
+        "lastError": "最近错误",
+        "fallbackOrder": "降级顺序",
+        "connectionTests": "连通检查",
+        "credentialStore": "凭证存储",
+        "credentialStoreStatus": "只显示掩码状态；不会返回明文密钥。"
+      },
       "gatePolicy": {
         "title": "门禁策略",
         "subtitle": "当前只读策略快照",
@@ -339,7 +358,14 @@
         "baseUrl": "基础地址",
         "apiKey": "API Key",
         "timeout": "超时",
-        "temperature": "温度"
+        "temperature": "温度",
+        "defaultModel": "默认模型",
+        "connectionTest": "连通检查",
+        "defaultEndpoint": "OpenAI-compatible 默认端点"
+      },
+      "secretStatus": {
+        "title": "凭证状态",
+        "updatedAt": "更新时间"
       }
     }
   }

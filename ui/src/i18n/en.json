@@ -310,8 +310,13 @@
     "systemSettings": {
       "title": "System Settings",
       "subtitle": "Live configuration from the desktop sidecar.",
+      "save": "Save",
       "secretConfigured": "Configured (masked)",
       "secretMissing": "Not configured",
+      "nav": {
+        "channels": "Channels",
+        "llm": "LLM Config"
+      },
       "exclusionList": {
         "title": "Company exclusion list",
         "subtitle": "One entry per line, supports contains: prefix",
@@ -321,7 +326,21 @@
         "saving": "Saving...",
         "saved": "Saved"
       },
-      "channels": "Channels",
+      "channels": {
+        "title": "Channels",
+        "subtitle": "Delivery channel order, fallback, credential state and last runtime check.",
+        "none": "none",
+        "priority": "Priority",
+        "fallback": "Fallback",
+        "credential": "Credential",
+        "lastCheck": "Last Check",
+        "lastSuccess": "Last Success",
+        "lastError": "Last Error",
+        "fallbackOrder": "Fallback Order",
+        "connectionTests": "Connection Tests",
+        "credentialStore": "Credential Store",
+        "credentialStoreStatus": "Only masked status is shown; plaintext secrets are not returned."
+      },
       "gatePolicy": {
         "title": "Gate policy",
         "subtitle": "Current read-only policy snapshot",
@@ -339,7 +358,14 @@
         "baseUrl": "Base URL",
         "apiKey": "API key",
         "timeout": "Timeout",
-        "temperature": "Temperature"
+        "temperature": "Temperature",
+        "defaultModel": "Default model",
+        "connectionTest": "Connection Test",
+        "defaultEndpoint": "OpenAI-compatible default endpoint"
+      },
+      "secretStatus": {
+        "title": "Secret Status",
+        "updatedAt": "Updated at"
       }
     }
   }

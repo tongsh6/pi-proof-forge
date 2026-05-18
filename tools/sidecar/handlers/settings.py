@@ -19,6 +19,10 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
 
     api_key_configured = bool(os.environ.get("LLM_API_KEY"))
+    smtp_configured = bool(os.environ.get("SMTP_USER")) and bool(
+        os.environ.get("SMTP_PASS")
+    )
+    liepin_session_configured = bool(os.environ.get("PPF_LIEPIN_SESSION_DIR"))
     exclusion_list = load_exclusion_list()
     legal_entity_exclusion_list = load_legal_entity_exclusion_list()
     delivery_mode, batch_review = load_delivery_settings()
@@ -36,7 +40,36 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
         },
         "exclusion_list": exclusion_list,
         "excluded_legal_entities": legal_entity_exclusion_list,
-        "channels": [],
+        "channels": [
+            {
+                "id": "liepin",
+                "label": "Liepin",
+                "enabled": True,
+                "priority": 1,
+                "fallback_to": "email",
+                "credential_status": "configured"
+                if liepin_session_configured
+                else "missing",
+                "last_check_status": "unknown",
+                "last_success_at": "",
+                "last_error": ""
+                if liepin_session_configured
+                else "PPF_LIEPIN_SESSION_DIR is not configured",
+            },
+            {
+                "id": "email",
+                "label": "Email",
+                "enabled": True,
+                "priority": 2,
+                "fallback_to": "",
+                "credential_status": "configured" if smtp_configured else "missing",
+                "last_check_status": "unknown",
+                "last_success_at": "",
+                "last_error": ""
+                if smtp_configured
+                else "SMTP_USER and SMTP_PASS are not configured",
+            },
+        ],
         "llm_config": {
             "provider": os.environ.get("LLM_PROVIDER", "openai"),
             "model": os.environ.get("LLM_MODEL", "gpt-4"),

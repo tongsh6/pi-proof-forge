@@ -64,6 +64,38 @@ class SettingsGetTests(unittest.TestCase):
         self.assertIn("timeout", llm)
         self.assertIn("temperature", llm)
 
+    def test_channels_include_runtime_status_fields(self) -> None:
+        params = {"meta": {"correlation_id": "corr_channels"}}
+        result = handle_settings_get(params)
+        channels = result["channels"]
+        self.assertEqual([channel["id"] for channel in channels], ["liepin", "email"])
+        for channel in channels:
+            self.assertIn("label", channel)
+            self.assertIn("enabled", channel)
+            self.assertIn("priority", channel)
+            self.assertIn("fallback_to", channel)
+            self.assertIn("credential_status", channel)
+            self.assertIn("last_check_status", channel)
+            self.assertIn("last_success_at", channel)
+            self.assertIn("last_error", channel)
+
+    def test_channel_credential_status_uses_environment(self) -> None:
+        params = {"meta": {"correlation_id": "corr_channels_env"}}
+        with patch.dict(
+            os.environ,
+            {
+                "PPF_LIEPIN_SESSION_DIR": "/tmp/ppf-liepin-session",
+                "SMTP_USER": "bot@example.com",
+                "SMTP_PASS": "secret",
+            },
+        ):
+            result = handle_settings_get(params)
+        statuses = {
+            channel["id"]: channel["credential_status"]
+            for channel in result["channels"]
+        }
+        self.assertEqual(statuses, {"liepin": "configured", "email": "configured"})
+
     def test_exclusion_list_loads_from_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             policy_path = Path(tmp_dir) / "policy.yaml"

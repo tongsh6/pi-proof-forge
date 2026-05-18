@@ -174,13 +174,25 @@ export interface LlmConfig {
   temperature: number;
 }
 
+export interface ChannelConfig {
+  id: string;
+  label: string;
+  enabled: boolean;
+  priority: number;
+  fallback_to: string;
+  credential_status: "configured" | "missing" | "unknown" | string;
+  last_check_status: "pass" | "fail" | "unknown" | string;
+  last_success_at: string;
+  last_error: string;
+}
+
 export type DeliveryMode = "auto" | "manual";
 
 export interface SettingsGetResult extends RpcResultBase {
   gate_policy: GatePolicy;
   exclusion_list: string[];
   excluded_legal_entities: string[];
-  channels: Array<Record<string, unknown>>;
+  channels: ChannelConfig[];
   llm_config: LlmConfig;
 }
 
