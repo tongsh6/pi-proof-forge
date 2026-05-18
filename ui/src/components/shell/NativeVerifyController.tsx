@@ -8,11 +8,18 @@ export function NativeVerifyController() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (verifyScenario !== "quick-run" || location.pathname === "/quick-run") {
+    const targetPath =
+      verifyScenario === "quick-run"
+        ? "/quick-run"
+        : verifyScenario === "system-settings"
+          ? "/system-settings"
+          : null;
+
+    if (!targetPath || location.pathname === targetPath) {
       return;
     }
 
-    navigate("/quick-run", { replace: true });
+    navigate(targetPath, { replace: true });
   }, [location.pathname, navigate]);
 
   return null;

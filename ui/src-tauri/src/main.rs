@@ -401,12 +401,26 @@ fn sidecar_shutdown(manager: State<'_, SidecarManager>) -> Result<(), String> {
 
 #[tauri::command]
 fn quick_run_verify_event(event: Value) -> Result<(), String> {
-    if env::var("QUICK_RUN_VERIFY_AUTORUN").ok().as_deref() != Some("quick-run") {
+    let scenario = match env::var("QUICK_RUN_VERIFY_AUTORUN").ok() {
+        Some(value) if value == "quick-run" || value == "system-settings" => value,
+        _ => return Ok(()),
+    };
+
+    if let Some(event_name) = event.get("event").and_then(Value::as_str) {
+        let allowed_event = match scenario.as_str() {
+            "quick-run" => event_name.starts_with("quick_run."),
+            "system-settings" => event_name.starts_with("system_settings."),
+            _ => false,
+        };
+        if !allowed_event {
+            return Ok(());
+        }
+    } else {
         return Ok(());
     }
 
     let repo_root = resolve_repo_root(Path::new(env!("CARGO_MANIFEST_DIR")))?;
-    let output_dir = repo_root.join("ui/test-results/quick-run-native");
+    let output_dir = repo_root.join(format!("ui/test-results/{}-native", scenario));
     create_dir_all(&output_dir)
         .map_err(|error| format!("Failed to create verifier event dir: {}", error))?;
 
