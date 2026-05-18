@@ -9,9 +9,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_AGENT_RUN_DIR = Path("outputs") / "agent_runs"
-_QUICK_RUN_DIR = Path("outputs") / "quick_runs"
-_REVIEW_QUEUE_DIR = Path("outputs") / "review_queue"
+
+def _find_project_root(start: Path) -> Path:
+    for parent in start.parents:
+        if (parent / "tools" / "run_pipeline.py").exists():
+            return parent
+    return start.parents[3] if len(start.parents) > 3 else start.parent
+
+
+_PROJECT_ROOT = _find_project_root(Path(__file__).resolve())
+_AGENT_RUN_DIR = _PROJECT_ROOT / "outputs" / "agent_runs"
+_QUICK_RUN_DIR = _PROJECT_ROOT / "outputs" / "quick_runs"
+_REVIEW_QUEUE_DIR = _PROJECT_ROOT / "outputs" / "review_queue"
 
 
 def _utcnow_iso() -> str:
@@ -104,6 +113,13 @@ def _coerce_positive_int(value: Any, default: int) -> int:
     return default
 
 
+def _resolve_project_path(value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return _PROJECT_ROOT / path
+
+
 def _event_to_payload(event: Any) -> dict[str, Any]:
     return {
         "run_id": getattr(event, "run_id", ""),
@@ -149,8 +165,10 @@ def _execute_local_dry_run(run_id: str, options: dict[str, Any]) -> dict[str, An
 
 
 def _quick_run_paths(job_profile_id: str, options: dict[str, Any]) -> tuple[Path, Path]:
-    raw_path = Path(str(options.get("raw_path") or "tools/sample_raw.txt"))
-    job_profile_path = Path(
+    raw_path = _resolve_project_path(
+        str(options.get("raw_path") or "tools/sample_raw.txt")
+    )
+    job_profile_path = _resolve_project_path(
         str(options.get("job_profile_path") or f"job_profiles/{job_profile_id}.yaml")
     )
     if not raw_path.exists():
@@ -176,9 +194,10 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     raw_path, job_profile_path = _quick_run_paths(job_profile_id, options)
     run_id = _build_quick_run_id()
     started_at = _utcnow_iso()
+    pipeline_script = _PROJECT_ROOT / "tools" / "run_pipeline.py"
     command = [
         sys.executable,
-        "tools/run_pipeline.py",
+        str(pipeline_script),
         "--raw",
         str(raw_path),
         "--job-profile",
@@ -205,6 +224,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            cwd=str(_PROJECT_ROOT),
         )
         exit_code = completed.returncode
         stdout = completed.stdout

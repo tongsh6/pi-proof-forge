@@ -324,8 +324,9 @@ class ProcessRequestTests(unittest.TestCase):
                 self.assertTrue(start_result["run_id"].startswith("qr_"))
                 self.assertIn("run_record", start_result)
                 command = run_mock.call_args.args[0]
-                self.assertIn("tools/run_pipeline.py", command)
+                self.assertTrue(command[1].endswith("tools/run_pipeline.py"))
                 self.assertIn(str(profile_path), command)
+                self.assertIn("cwd", run_mock.call_args.kwargs)
 
                 cancel_response = process_request(
                     {
