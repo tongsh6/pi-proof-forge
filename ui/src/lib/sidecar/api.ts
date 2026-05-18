@@ -312,14 +312,20 @@ export async function retrySubmission(
   });
 }
 
-export async function getPendingReview(): Promise<GetPendingReviewResult> {
-  return client.call<GetPendingReviewResult>("run.agent.getPendingReview", {});
+export async function getPendingReview(
+  runId?: string
+): Promise<GetPendingReviewResult> {
+  return client.call<GetPendingReviewResult>("run.agent.getPendingReview", {
+    ...(runId ? { run_id: runId } : {}),
+  });
 }
 
 export async function submitReview(
-  decisions: ReviewDecisionItem[]
+  decisions: ReviewDecisionItem[],
+  runId?: string
 ): Promise<SubmitReviewResult> {
   return client.call<SubmitReviewResult>("run.agent.submitReview", {
+    ...(runId ? { run_id: runId } : {}),
     decisions,
   });
 }

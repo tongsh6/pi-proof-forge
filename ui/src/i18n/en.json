@@ -171,6 +171,18 @@
     "agentRun": {
       "title": "Agent Run",
       "subtitle": "Multi-round run with gate and optional manual review.",
+      "start": "Start",
+      "startDryRun": "Dry Run",
+      "stop": "Stop",
+      "statusMachine": "State Machine",
+      "gateTitle": "N-Pass Gate",
+      "eventStream": "Event Stream",
+      "runId": "Run ID",
+      "startedAt": "Started at",
+      "currentRound": "Current round",
+      "jobProfile": "Job profile",
+      "noRun": "No run yet",
+      "noEvents": "No events recorded.",
       "pendingReview": "Pending review",
       "pendingReviewSubtitle": "Candidates waiting for approve / reject.",
       "emptyReview": "No candidates pending",
@@ -181,7 +193,23 @@
       "skip": "Skip",
       "matchScore": "Match",
       "evalScore": "Eval",
-      "round": "Round"
+      "round": "Round",
+      "gates": {
+        "matching": "Matching Gate",
+        "evaluation": "Evaluation Gate",
+        "channel": "Channel Ready",
+        "exclusion": "Company Exclusion",
+        "notRecorded": "Not recorded",
+        "observed": "Observed in gate stage",
+        "score": "Score",
+        "result": "Result"
+      },
+      "gateStatus": {
+        "pass": "PASS",
+        "fail": "FAIL",
+        "running": "RUNNING",
+        "waiting": "WAITING"
+      }
     },
     "submissions": {
       "title": "Submissions",

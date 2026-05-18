@@ -171,6 +171,18 @@
     "agentRun": {
       "title": "Agent 运行",
       "subtitle": "多轮运行与门禁，可选人工审批。",
+      "start": "启动",
+      "startDryRun": "Dry Run",
+      "stop": "停止",
+      "statusMachine": "状态机",
+      "gateTitle": "多轮门禁",
+      "eventStream": "事件流",
+      "runId": "Run ID",
+      "startedAt": "开始时间",
+      "currentRound": "当前轮次",
+      "jobProfile": "岗位画像",
+      "noRun": "尚未运行",
+      "noEvents": "暂无事件记录。",
       "pendingReview": "待审批",
       "pendingReviewSubtitle": "等待批准或拒绝的候选。",
       "emptyReview": "暂无待审批候选",
@@ -181,7 +193,23 @@
       "skip": "跳过",
       "matchScore": "匹配分",
       "evalScore": "评测分",
-      "round": "轮次"
+      "round": "轮次",
+      "gates": {
+        "matching": "匹配门禁",
+        "evaluation": "评测门禁",
+        "channel": "通道就绪",
+        "exclusion": "企业排除",
+        "notRecorded": "暂无记录",
+        "observed": "已在门禁阶段观测",
+        "score": "分数",
+        "result": "结果"
+      },
+      "gateStatus": {
+        "pass": "PASS",
+        "fail": "FAIL",
+        "running": "RUNNING",
+        "waiting": "WAITING"
+      }
     },
     "submissions": {
       "title": "投递记录",
