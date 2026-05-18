@@ -199,9 +199,45 @@
       "unknownChannel": "未知通道",
       "noDetail": "暂无详情",
       "steps": "步骤",
+      "timeline": "步骤时间线",
       "noSteps": "暂无步骤记录。",
       "missingScreenshot": "{{path}}（缺失）",
+      "stats": {
+        "total": "总投递",
+        "delivered": "成功",
+        "failed": "失败",
+        "fallback": "降级"
+      },
+      "table": {
+        "company": "公司",
+        "position": "职位",
+        "channel": "通道",
+        "date": "日期",
+        "status": "状态",
+        "action": "操作"
+      },
+      "screenshots": {
+        "title": "截图",
+        "preview": "截图预览",
+        "empty": "暂无截图记录。",
+        "emptyPreview": "选择可用截图后查看预览。",
+        "missing": "截图缺失"
+      },
+      "failure": {
+        "title": "失败详情",
+        "empty": "暂无失败原因。"
+      },
+      "retryStrategy": {
+        "sameChannel": "原通道重试",
+        "fallbackEmail": "降级到 Email"
+      },
       "fields": {
+        "company": "公司",
+        "position": "职位",
+        "channel": "通道",
+        "browser": "浏览器",
+        "submittedAt": "提交时间",
+        "jobUrl": "职位链接",
         "resume": "简历",
         "profile": "资料"
       }

@@ -199,9 +199,45 @@
       "unknownChannel": "unknown channel",
       "noDetail": "No detail",
       "steps": "Steps",
+      "timeline": "Step Timeline",
       "noSteps": "No steps recorded.",
       "missingScreenshot": "{{path}} (missing)",
+      "stats": {
+        "total": "Total",
+        "delivered": "Delivered",
+        "failed": "Failed",
+        "fallback": "Fallback"
+      },
+      "table": {
+        "company": "Company",
+        "position": "Position",
+        "channel": "Channel",
+        "date": "Date",
+        "status": "Status",
+        "action": "Action"
+      },
+      "screenshots": {
+        "title": "Screenshots",
+        "preview": "Screenshot preview",
+        "empty": "No screenshots recorded.",
+        "emptyPreview": "Select an available screenshot to preview it.",
+        "missing": "Screenshot missing"
+      },
+      "failure": {
+        "title": "Failure Detail",
+        "empty": "No failure detail."
+      },
+      "retryStrategy": {
+        "sameChannel": "Retry same channel",
+        "fallbackEmail": "Fallback to Email"
+      },
       "fields": {
+        "company": "Company",
+        "position": "Position",
+        "channel": "Channel",
+        "browser": "Browser",
+        "submittedAt": "Submitted at",
+        "jobUrl": "Job URL",
         "resume": "Resume",
         "profile": "Profile"
       }
