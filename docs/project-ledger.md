@@ -10,6 +10,7 @@
 > 2026-05-18 状态：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record；普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，但已补齐统一 Run Record，写入 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`。PDF Markdown 转换已补上内置无依赖兜底路径，当前环境 `WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF；Agent REVIEW manual 模式已从直接 approve 改为写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会进入 DELIVER；GUI Quick Run 已注册 `run.quick.start` / `run.quick.cancel` 并从页面直接启动本地单次 pipeline，CLI 命令保留为 fallback，且已补上 Tauri native verifier 自动化入口。Quick Run verifier 已按 `pnpm --dir ui run e2e:quick-run` 连续多轮通过；dev 模式 sidecar 工作目录、`PYTHONPATH`、进程树清理和 pnpm 参数转发问题已修复。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
 > 2026-05-18 补充：WeasyPrint 高保真 PDF 增强已完成工程闭环。`requirements-pdf.txt` 显式声明 `markdown` / `weasyprint` 可选依赖；`pnpm --dir ui run prepare:python-runtime` 会在依赖已安装时把可选 PDF 包和元数据复制进 Tauri packaged runtime；未安装时会清理旧 staged 包并继续使用内置基础 PDF writer 兜底。
 > 2026-05-18 补充：Submissions 页面产品化垂直切片已按终版 GUI 第 7 页补齐统计卡片、投递表格、详情基本信息、步骤时间线、截图缩略图/预览、失败详情与两种重试策略按钮；实现复用既有 `submission.list/detail/retry` 合同，不新增 sidecar 协议。
+> 2026-05-18 补充：Agent Run 页面产品化垂直切片已按终版 GUI 第 6 页补齐运行启动/停止/刷新、10 状态机、N-Pass Gate 摘要、事件流与人工审批面板；实现复用既有 `run.agent.start/get/stop` 与 REVIEW RPC 合同，仅为 `getPendingReview` / `submitReview` 前端调用补上可选 `run_id` 参数，不新增 sidecar 协议。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -116,6 +117,7 @@
 | **GUI 详情页 review hardening** | **已验证** | tools/sidecar/handlers/submission.py + tools/submission/storage.py + ui/design/contracts/sidecar-rpc.md + ui/src/i18n/ | test_submission_handler.py + test_submission_storage.py + `pnpm --dir ui build` | screenshot 路径越界防护、browser_channel 写入日志、submission.detail 合同同步、Submissions 页面接入 i18n |
 | **GUI Submissions 产品化切片** | **已验证** | ui/src/pages/submissions/index.tsx + ui/src/i18n/ | `pnpm --dir ui build` + `python3 -m pytest tests/ -q` + Playwright mock sidecar 视觉验收 | 补齐统计卡片、表格、详情基础信息、步骤时间线、截图缩略图/预览、失败详情、原通道/Email 降级重试按钮 |
 | **GUI Agent Run 控制 RPC** | **已验证** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/lib/sidecar/api.ts + ui/design/contracts/sidecar-rpc.md | test_server.py + `pnpm --dir ui build` | `run.agent.start/get/stop` 已接入 JSON-RPC 路由和前端 typed client；缺省只创建本地运行控制记录；显式 `execute_dry_run=true` 可执行本地 dry-run AgentLoop，不触发真实投递 |
+| **GUI Agent Run 产品化切片** | **已验证** | ui/src/pages/agent-run/index.tsx + ui/src/i18n/ + tests/unit/gui/test_agent_run_page_contract.py | `python3 -m pytest tests/unit/gui tests/unit/sidecar/test_agent_handler.py tests/unit/sidecar/test_server.py -q` + `pnpm --dir ui build` + Playwright Vite 冒烟 | 补齐运行控制、10 状态机、门禁摘要、事件流和 REVIEW 候选审批；`REVIEW_PENDING` 按暂停态处理，不误标为完成态 |
 | **GUI 一键启停脚本** | **已验证** | app + scripts/appctl.py + .gitignore | `./app start` / `./app status` / `./app stop` | 根目录一键控制 Tauri dev app；运行时 PID 和日志写入 `.app-runtime/`，并已加入 gitignore |
 | **Tauri pnpm/Rust 版本对齐** | **已验证** | ui/package.json + ui/pnpm-lock.yaml + ui/package-lock.json | `pnpm --dir ui list @tauri-apps/api @tauri-apps/cli --depth 0` + `./app start` 日志 | pnpm 侧固定 `@tauri-apps/api`/`cli` 为 2.10.1，与 Rust `tauri` 2.10.3 对齐到同一 minor；启动日志不再出现 mismatch 提示 |
 | **GUI 默认中文语言** | **已验证** | ui/src/i18n/index.ts + tests/unit/gui/test_i18n_defaults.py | `python3 -m pytest tests/unit/gui/test_i18n_defaults.py -q` + `pnpm --dir ui build` | 默认 `lng` 与 `fallbackLng` 均使用 `DEFAULT_LANGUAGE = "zh"` |
@@ -137,7 +139,7 @@
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 351 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 351 passed |
+| 全部 355 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 355 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -154,6 +156,7 @@
 | Agent Loop 端到端验证 | 真实验证脚本 | hybrid + LLM evaluator, 10 状态全通过 | 2 rounds, 18 events, matching 0.772→0.919 |
 | SLA/SLO 证据卡 | `evidence_cards/ec-2026-018.yaml` / `019.yaml` | K-score: Backend 1.0, SRE 0.857 | SLA/SLO 盲区消除 |
 | GUI 编译验证 | `pnpm --dir ui build` | TypeScript 零错误, 1628 modules | 9 页全部可编译 |
+| GUI Agent Run 页面冒烟 | `pnpm --dir ui build` + Playwright 打开 `http://127.0.0.1:1420/agent-run` | Vite/Playwright 终端输出 | 页面渲染出 10 状态节点、门禁摘要、审批面板与事件流；纯 Vite 模式下 Tauri bridge 未连接属预期 |
 | Quick Run native verifier | `pnpm --dir ui run e2e:quick-run` | `outputs/quick_runs/qr_20260517150915671449.json` + `outputs/agent_runs/qr_20260517150915671449/summary.json` | 真实 Tauri 窗口内点击 Quick Run，DONE；多轮无残留进程或 `.env.local` |
 | LLM Evaluator 增强 | `tools/engines/evaluation/llm_evaluator.py` | 6 维度语义评测 | semantic_coverage + fabrication_risk + gaps/strengths/improvements |
 | AppleScript 猎聘搜索 PoC | `tools/poc_liepin_applescript_search.py` | 2.3s/搜索, 23 职位/页, 无 captcha | 真实 Chrome 完全绕过 captcha（初始测试） |
@@ -187,6 +190,7 @@
 | ~~P3b~~ | ~~Markdown PDF runtime 未闭环~~ | ~~代码已接入，但当前环境缺 `weasyprint`/`markdown`，实际导出失败~~ | **已解决** | **内置基础 PDF writer 兜底；`WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF** |
 | ~~P3c~~ | ~~普通 pipeline 无统一 Run Record~~ | ~~`tools/run_pipeline.py` 可生成产物，但不写 `outputs/agent_runs/<run_id>/run_log.json`~~ | **已解决** | **保留 legacy subprocess 串联，同时写入统一 Run Record 与 summary** |
 | ~~P3d~~ | ~~Agent REVIEW 未完整暂停等待 GUI 审批~~ | ~~sidecar queue handler 已存在，但 AgentLoop 在 REVIEW 后仍直接 approve 进入后续状态~~ | **已解决** | **manual REVIEW 写 queue 并返回 REVIEW_PENDING，不进入 DELIVER** |
+| ~~P3e~~ | ~~GUI Agent Run 页面仍停留在待审批队列骨架，未体现终版第 6 页状态机/门禁/事件流职责~~ | ~~无法产品化展示多轮 Agent 运行与 REVIEW pause 语义~~ | **已解决** | **已补齐运行控制、10 状态机、N-Pass Gate 摘要、事件流与审批面板；`python3 -m pytest tests/ -q` 355 passed，`pnpm --dir ui build` 通过** |
 | ~~P4~~ | ~~Gap tasks 仅检查 must_have，不检查 keywords~~ | ~~SLA/SLO 等关键词缺失不会触发补证据任务~~ | **已解决** | **RuleMatchingEngine 空候选和常规路径均覆盖 `keywords` gap task；测试已锁定** |
 | ~~P5~~ | ~~误投防护需接入 liepin.py 主流程~~ | ~~poc_e2e_send.py 已有 sanity check，但主流程 `liepin.py` 未接入~~ | **已解决** | **target_verify 已接入并有离线单测覆盖** |
 | ~~P6~~ | ~~GUI `.pen` 设计资产未随最新 Submissions 详情实现同步复核~~ | ~~`DESIGN.md` 与 GUI review checklist 明确要求 GUI 结构变更同步 `.pen`；当前 Pencil MCP 返回 `Transport closed`~~ | **已解决** | **Pencil MCP 已恢复；已打开 `ui/design/piproofforge.pen` 并复核 `Screen/Submissions` (`upl7d`)、`subTable`、`subDetail`，现有设计资产已包含统计、表格、详情、时间线、截图、重试和失败详情结构，无需改设计源** |
