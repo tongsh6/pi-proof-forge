@@ -11,6 +11,7 @@
 > 2026-05-18 补充：WeasyPrint 高保真 PDF 增强已完成工程闭环。`requirements-pdf.txt` 显式声明 `markdown` / `weasyprint` 可选依赖；`pnpm --dir ui run prepare:python-runtime` 会在依赖已安装时把可选 PDF 包和元数据复制进 Tauri packaged runtime；未安装时会清理旧 staged 包并继续使用内置基础 PDF writer 兜底。
 > 2026-05-18 补充：Submissions 页面产品化垂直切片已按终版 GUI 第 7 页补齐统计卡片、投递表格、详情基本信息、步骤时间线、截图缩略图/预览、失败详情与两种重试策略按钮；实现复用既有 `submission.list/detail/retry` 合同，不新增 sidecar 协议。
 > 2026-05-18 补充：Agent Run 页面产品化垂直切片已按终版 GUI 第 6 页补齐运行启动/停止/刷新、10 状态机、N-Pass Gate 摘要、事件流与人工审批面板；实现复用既有 `run.agent.start/get/stop` 与 REVIEW RPC 合同，仅为 `getPendingReview` / `submitReview` 前端调用补上可选 `run_id` 参数，不新增 sidecar 协议。
+> 2026-05-19 补充：System Settings 页面产品化垂直切片已按终版 GUI 第 9 页补齐左侧 Channels / LLM Config 分组导航、通道状态卡、fallback 顺序、连接检查、凭证状态、LLM 配置字段与 API key 掩码状态；`settings.get` 返回 Liepin / Email 通道运行状态快照，不返回明文 secret，不新增敏感信息写入路径。该页已补上真实 Tauri native verifier：`pnpm --dir ui run e2e:system-settings` 会启动桌面壳、自动导航到 `/system-settings`，并等待真实 bridge + sidecar 写出 `system_settings.load.ready`，普通 Vite/mock bridge 不再作为最终验收口径。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -118,6 +119,7 @@
 | **GUI Submissions 产品化切片** | **已验证** | ui/src/pages/submissions/index.tsx + ui/src/i18n/ | `pnpm --dir ui build` + `python3 -m pytest tests/ -q` + Playwright mock sidecar 视觉验收 | 补齐统计卡片、表格、详情基础信息、步骤时间线、截图缩略图/预览、失败详情、原通道/Email 降级重试按钮 |
 | **GUI Agent Run 控制 RPC** | **已验证** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/lib/sidecar/api.ts + ui/design/contracts/sidecar-rpc.md | test_server.py + `pnpm --dir ui build` | `run.agent.start/get/stop` 已接入 JSON-RPC 路由和前端 typed client；缺省只创建本地运行控制记录；显式 `execute_dry_run=true` 可执行本地 dry-run AgentLoop，不触发真实投递 |
 | **GUI Agent Run 产品化切片** | **已验证** | ui/src/pages/agent-run/index.tsx + ui/src/i18n/ + tests/unit/gui/test_agent_run_page_contract.py | `python3 -m pytest tests/unit/gui tests/unit/sidecar/test_agent_handler.py tests/unit/sidecar/test_server.py -q` + `pnpm --dir ui build` + Playwright Vite 冒烟 | 补齐运行控制、10 状态机、门禁摘要、事件流和 REVIEW 候选审批；`REVIEW_PENDING` 按暂停态处理，不误标为完成态 |
+| **GUI System Settings 产品化切片** | **已验证** | tools/sidecar/handlers/settings.py + ui/src/pages/system-settings/index.tsx + ui/scripts/verify_system_settings_native.mjs + tests/unit/gui/test_system_settings_page_contract.py | `pnpm --dir ui run e2e:system-settings` → pass；`python3 -m pytest tests/ -q` → 360 passed；`pnpm --dir ui build` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → 7 passed；`python3 tools/check_v2_constraints.py --root .` → PASS；`python3 tools/check_aief_l3.py --root . --base-dir AIEF` → PASS | 补齐 Channels / LLM Config 分组导航、通道卡、fallback 顺序、连接检查、凭证状态和 LLM 掩码配置；native verifier 必须等真实 Tauri bridge + sidecar `settings.get` 写出 `system_settings.load.ready`，避免 Vite/mock 冒充桌面验收 |
 | **GUI 一键启停脚本** | **已验证** | app + scripts/appctl.py + .gitignore | `./app start` / `./app status` / `./app stop` | 根目录一键控制 Tauri dev app；运行时 PID 和日志写入 `.app-runtime/`，并已加入 gitignore |
 | **Tauri pnpm/Rust 版本对齐** | **已验证** | ui/package.json + ui/pnpm-lock.yaml + ui/package-lock.json | `pnpm --dir ui list @tauri-apps/api @tauri-apps/cli --depth 0` + `./app start` 日志 | pnpm 侧固定 `@tauri-apps/api`/`cli` 为 2.10.1，与 Rust `tauri` 2.10.3 对齐到同一 minor；启动日志不再出现 mismatch 提示 |
 | **GUI 默认中文语言** | **已验证** | ui/src/i18n/index.ts + tests/unit/gui/test_i18n_defaults.py | `python3 -m pytest tests/unit/gui/test_i18n_defaults.py -q` + `pnpm --dir ui build` | 默认 `lng` 与 `fallbackLng` 均使用 `DEFAULT_LANGUAGE = "zh"` |
@@ -139,7 +141,7 @@
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 355 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 355 passed |
+| 全部 360 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 360 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -158,6 +160,7 @@
 | GUI 编译验证 | `pnpm --dir ui build` | TypeScript 零错误, 1628 modules | 9 页全部可编译 |
 | GUI Agent Run 页面冒烟 | `pnpm --dir ui build` + Playwright 打开 `http://127.0.0.1:1420/agent-run` | Vite/Playwright 终端输出 | 页面渲染出 10 状态节点、门禁摘要、审批面板与事件流；纯 Vite 模式下 Tauri bridge 未连接属预期 |
 | Quick Run native verifier | `pnpm --dir ui run e2e:quick-run` | `outputs/quick_runs/qr_20260517150915671449.json` + `outputs/agent_runs/qr_20260517150915671449/summary.json` | 真实 Tauri 窗口内点击 Quick Run，DONE；多轮无残留进程或 `.env.local` |
+| System Settings native verifier | `pnpm --dir ui run e2e:system-settings` | `ui/test-results/system-settings-native/app-events.jsonl` | 真实 Tauri 窗口内自动导航 `/system-settings`，sidecar ready 后写出 `system_settings.load.ready`，包含 `channel_ids=["liepin","email"]` |
 | LLM Evaluator 增强 | `tools/engines/evaluation/llm_evaluator.py` | 6 维度语义评测 | semantic_coverage + fabrication_risk + gaps/strengths/improvements |
 | AppleScript 猎聘搜索 PoC | `tools/poc_liepin_applescript_search.py` | 2.3s/搜索, 23 职位/页, 无 captcha | 真实 Chrome 完全绕过 captcha（初始测试） |
 | Liepin 登录态有效性 | `outputs/submissions/liepin/run-deliver-6/` | login_check: success | 32 个 liepin cookie，Playwright persistent_context 有效 |

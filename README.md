@@ -58,6 +58,7 @@ GUI 关键文档：
 - 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；GUI 仍处于垂直切片产品化阶段
 - Quick Run 已接入 `run.quick.start` / `run.quick.cancel`，可从 GUI 直接启动本地单次 pipeline；CLI 命令仍保留为 fallback。Resumes 页已接入 PDF export RPC。Markdown 转 PDF 会优先使用 `weasyprint`/`markdown` 高保真渲染；依赖缺失时自动使用内置基础 PDF writer，避免 runtime 断链。高保真 PDF 依赖见 `requirements-pdf.txt`；安装后 `pnpm --dir ui run prepare:python-runtime` 会把可选 PDF runtime 带入 Tauri packaged sidecar。
 - Quick Run 自动化主入口是 native verifier：`pnpm --dir ui run e2e:quick-run` 会用 `pnpm tauri dev` 启动真实 Tauri 窗口，并通过 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，最后用 `outputs/quick_runs` 与 run summary 校验结果。`e2e:quick-run:webdriver` 仅保留为 Windows/Linux 的可选补充。
+- System Settings 桌面验收主入口是 `pnpm --dir ui run e2e:system-settings`。该命令启动真实 Tauri dev shell，自动导航到 `/system-settings`，并等待页面通过真实 Tauri bridge + sidecar `settings.get` 写出 `system_settings.load.ready` 事件；普通 Vite 浏览器页或 mock bridge 不算该页面的最终验收。
 
 ## 快速开始
 
