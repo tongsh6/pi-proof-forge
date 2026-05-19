@@ -35,7 +35,7 @@ def test_overview_native_verifier_is_registered():
     package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
     script = VERIFY_SCRIPT.read_text(encoding="utf-8")
 
-    assert 'verifyScenario === "overview"' in controller
+    assert 'overview: "/"' in controller
     assert package["scripts"]["e2e:overview"] == "node ./scripts/verify_overview_native.mjs"
     assert "overview.load.ready" in script
     assert "validateReadyEvent" in script

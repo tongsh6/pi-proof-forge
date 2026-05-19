@@ -84,6 +84,59 @@
         "agent_run_completed": "Agent"
       }
     },
+    "resumes": {
+      "title": "简历中心",
+      "subtitle": "维护个人资料、上传简历、系统生成版本、预览与导出。",
+      "refresh": "刷新",
+      "upload": "上传简历",
+      "exportPdf": "导出 PDF",
+      "exporting": "导出中...",
+      "profile": {
+        "title": "个人资料",
+        "subtitle": "生成简历时使用的基础身份信息。",
+        "save": "保存资料",
+        "completeness": "完整度",
+        "updatedAt": "更新于 {{value}}",
+        "missingTitle": "资料状态",
+        "noMissing": "必填字段已完整。",
+        "fields": {
+          "name": "姓名",
+          "phone": "手机号",
+          "email": "邮箱",
+          "city": "城市",
+          "current_position": "当前职位"
+        }
+      },
+      "uploaded": {
+        "title": "已上传简历",
+        "count": "{{count}} 个上传文件",
+        "empty": "暂无上传简历。",
+        "sourcePlaceholder": "绝对路径，例如 /Users/.../resume.pdf",
+        "labelPlaceholder": "可选标签",
+        "submit": "上传文件",
+        "uploading": "上传中..."
+      },
+      "generated": {
+        "title": "系统生成简历",
+        "count": "{{count}} 个生成版本",
+        "empty": "暂无系统生成简历。",
+        "destinationPlaceholder": "PDF 导出目标路径",
+        "score": "分数 {{score}}"
+      },
+      "preview": {
+        "label": "预览",
+        "summary": "职业摘要",
+        "experience": "项目经历",
+        "skills": "技能",
+        "pending": "上传原始文件暂不生成预览。系统生成版本会展示完整简历预览。",
+        "empty": "选择一个系统生成版本以查看简历预览。"
+      },
+      "errors": {
+        "sourcePathRequired": "请填写源文件路径。",
+        "selectResume": "请先选择一份简历。",
+        "destinationRequired": "请填写导出目标路径。"
+      }
+    },
     "quickRun": {
       "title": "快速运行",
       "subtitle": "从工作区配置并启动管道运行。",

@@ -84,6 +84,59 @@
         "agent_run_completed": "Agent"
       }
     },
+    "resumes": {
+      "title": "Resumes",
+      "subtitle": "Personal profile, uploaded files, generated versions, preview, and export.",
+      "refresh": "Refresh",
+      "upload": "Upload Resume",
+      "exportPdf": "Export PDF",
+      "exporting": "Exporting...",
+      "profile": {
+        "title": "Personal Profile",
+        "subtitle": "Basic identity used by generated resumes.",
+        "save": "Save profile",
+        "completeness": "Completeness",
+        "updatedAt": "Updated {{value}}",
+        "missingTitle": "Profile Status",
+        "noMissing": "No missing required fields.",
+        "fields": {
+          "name": "Name",
+          "phone": "Phone",
+          "email": "Email",
+          "city": "City",
+          "current_position": "Current position"
+        }
+      },
+      "uploaded": {
+        "title": "Uploaded Resumes",
+        "count": "{{count}} uploaded files",
+        "empty": "No uploaded resumes yet.",
+        "sourcePlaceholder": "Absolute source path, e.g. /Users/.../resume.pdf",
+        "labelPlaceholder": "Optional label",
+        "submit": "Upload file",
+        "uploading": "Uploading..."
+      },
+      "generated": {
+        "title": "Generated Resumes",
+        "count": "{{count}} generated versions",
+        "empty": "No generated resume versions yet.",
+        "destinationPlaceholder": "PDF destination path",
+        "score": "Score {{score}}"
+      },
+      "preview": {
+        "label": "Preview",
+        "summary": "Professional Summary",
+        "experience": "Experience",
+        "skills": "Skills",
+        "pending": "Preview is pending for uploaded raw files. Generated versions render a full resume preview.",
+        "empty": "Select a generated resume version to inspect the rendered preview."
+      },
+      "errors": {
+        "sourcePathRequired": "Source path is required.",
+        "selectResume": "Select a resume first.",
+        "destinationRequired": "Destination path is required."
+      }
+    },
     "quickRun": {
       "title": "Quick Run",
       "subtitle": "Configure and launch a pipeline run directly from your workspace.",
