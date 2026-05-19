@@ -11,7 +11,7 @@
     "systemSettings": "系统设置"
   },
   "shell": {
-    "sidecar": "Sidecar 连接",
+    "sidecar": "本地后端连接",
     "lastHeartbeat": "最近心跳",
     "waitingForHeartbeat": "等待心跳"
   },
@@ -34,8 +34,8 @@
   "pages": {
     "overview": {
       "title": "概览",
-      "subtitle": "由本地 sidecar 聚合驱动的桌面首页。",
-      "startAgent": "启动 Agent",
+      "subtitle": "由本地后端服务聚合驱动的桌面首页。",
+      "startAgent": "启动智能运行",
       "refresh": "刷新",
       "gapCount": "{{count}} 项待办",
       "viewAllGaps": "查看证据缺口",
@@ -54,7 +54,7 @@
         },
         "submission_count": {
           "label": "投递次数",
-          "hint": "outputs/submissions 中记录的投递尝试"
+          "hint": "本地投递尝试目录中的记录"
         }
       },
       "recentActivity": {
@@ -81,7 +81,7 @@
         "resume_generated": "简历",
         "submission_sent": "投递",
         "evidence_imported": "证据",
-        "agent_run_completed": "Agent"
+        "agent_run_completed": "智能运行"
       }
     },
     "resumes": {
@@ -111,7 +111,7 @@
         "title": "已上传简历",
         "count": "{{count}} 个上传文件",
         "empty": "暂无上传简历。",
-        "sourcePlaceholder": "绝对路径，例如 /Users/.../resume.pdf",
+        "sourcePlaceholder": "绝对路径，例如 /Users/.../简历.pdf",
         "labelPlaceholder": "可选标签",
         "submit": "上传文件",
         "uploading": "上传中..."
@@ -171,13 +171,13 @@
       },
       "selectedHint": "也可以复制命令在终端中运行；结果会出现在概览和简历页面。",
       "pipelineCommand": "管道模式（单次执行）",
-      "agentCommand": "Agent 模式（多轮门禁）",
+      "agentCommand": "智能运行模式（多轮门禁）",
       "agentRunLink": "智能运行",
       "agentRunLinkHint": "如需多轮自主执行、质量门禁和人工审批，请使用智能运行页面。"
     },
     "evidence": {
       "title": "证据卡",
-      "subtitle": "维护 Evidence Card、附件和缺口标记，作为所有匹配与生成的事实源。",
+      "subtitle": "维护证据卡、附件和缺口标记，作为所有匹配与生成的事实源。",
       "listTitle": "证据列表",
       "listCount": "已加载 {{count}} 张证据卡",
       "artifactFallback": "附件",
@@ -207,11 +207,11 @@
         "artifacts": "当前附件"
       },
       "status": {
-        "ready": "Ready",
-        "pass": "Pass",
-        "draft": "Draft",
-        "gap": "Gap",
-        "needs_review": "Review"
+        "ready": "可用",
+        "pass": "通过",
+        "draft": "草稿",
+        "gap": "缺口",
+        "needs_review": "待复核"
       },
       "score": "分数",
       "sections": {
@@ -232,8 +232,8 @@
       },
       "artifacts": {
         "title": "附件",
-        "empty": "暂无附件。使用导入入口把源文件纳入 sidecar 管理目录。",
-        "sourcePlaceholder": "源文件绝对路径，例如 /Users/.../postmortem.pdf",
+        "empty": "暂无附件。使用导入入口把源文件纳入本地后端管理目录。",
+        "sourcePlaceholder": "源文件绝对路径，例如 /Users/.../复盘.pdf",
         "modeCreate": "新建证据卡",
         "modeAppend": "追加到当前卡",
         "modeReplace": "替换当前卡附件",
@@ -270,7 +270,7 @@
       },
       "newProfile": {
         "titlePlaceholder": "新岗位画像标题",
-        "tagsPlaceholder": "关键词，例如 Python, Tauri, Delivery Ops"
+        "tagsPlaceholder": "关键词，例如后端、桌面端、交付治理"
       },
       "actions": {
         "newProfile": "新建画像",
@@ -286,20 +286,20 @@
         "status": "状态",
         "allStatuses": "全部状态",
         "tags": "标签",
-        "tagsPlaceholder": "逗号分隔关键词，例如 Python, Redis",
+        "tagsPlaceholder": "逗号分隔关键词，例如后端、缓存、接口治理",
         "apply": "应用",
         "reset": "重置"
       },
       "status": {
-        "active": "Active",
-        "draft": "Draft",
-        "archived": "Archived"
+        "active": "启用",
+        "draft": "草稿",
+        "archived": "归档"
       },
       "leadStatus": {
-        "new": "New",
-        "qualified": "Qualified",
-        "contacted": "Contacted",
-        "archived": "Archived"
+        "new": "新线索",
+        "qualified": "已确认",
+        "contacted": "已联系",
+        "archived": "已归档"
       },
       "metrics": {
         "matchScore": "匹配分",
@@ -318,7 +318,7 @@
         "title": "标题",
         "businessDomain": "业务领域",
         "updatedAt": "更新时间",
-        "sourceJd": "来源 JD",
+        "sourceJd": "来源岗位描述",
         "tone": "语气偏向",
         "keywords": "关键词",
         "mustHave": "必备要求",
@@ -347,15 +347,15 @@
       }
     },
     "agentRun": {
-      "title": "Agent 运行",
+      "title": "智能运行",
       "subtitle": "多轮运行与门禁，可选人工审批。",
       "start": "启动",
-      "startDryRun": "Dry Run",
+      "startDryRun": "本地演练",
       "stop": "停止",
       "statusMachine": "状态机",
       "gateTitle": "多轮门禁",
       "eventStream": "事件流",
-      "runId": "Run ID",
+      "runId": "运行编号",
       "startedAt": "开始时间",
       "currentRound": "当前轮次",
       "jobProfile": "岗位画像",
@@ -364,7 +364,7 @@
       "pendingReview": "待审批",
       "pendingReviewSubtitle": "等待批准或拒绝的候选。",
       "emptyReview": "暂无待审批候选",
-      "emptyReviewHint": "使用 delivery_mode=manual 启动运行后，候选将显示在此。",
+      "emptyReviewHint": "使用人工投递模式启动运行后，候选将显示在此。",
       "refresh": "刷新",
       "approve": "批准",
       "reject": "拒绝",
@@ -383,23 +383,23 @@
         "result": "结果"
       },
       "gateStatus": {
-        "pass": "PASS",
-        "fail": "FAIL",
-        "running": "RUNNING",
-        "waiting": "WAITING"
+        "pass": "通过",
+        "fail": "失败",
+        "running": "运行中",
+        "waiting": "待记录"
       }
     },
     "submissions": {
-      "title": "投递记录",
-      "subtitle": "来自 sidecar 日志的最近投递尝试。",
+      "title": "投递尝试",
+      "subtitle": "来自本地后端日志的最近投递尝试。",
       "refresh": "刷新",
-      "runsTitle": "投递运行",
+      "runsTitle": "尝试记录",
       "detailTitle": "运行详情",
       "lastStep": "最后步骤",
       "rateLimit": "频控",
       "details": "详情",
       "retrying": "重试中...",
-      "empty": "暂无投递记录。",
+      "empty": "暂无投递尝试记录。",
       "loadingDetail": "正在加载详情...",
       "selectRun": "选择一条运行记录以查看步骤和日志路径。",
       "unknownChannel": "未知通道",
@@ -409,8 +409,8 @@
       "noSteps": "暂无步骤记录。",
       "missingScreenshot": "{{path}}（缺失）",
       "stats": {
-        "total": "总投递",
-        "delivered": "成功",
+        "total": "总尝试",
+        "delivered": "成功记录",
         "failed": "失败",
         "fallback": "降级"
       },
@@ -434,15 +434,23 @@
         "empty": "暂无失败原因。"
       },
       "retryStrategy": {
-        "sameChannel": "原通道重试",
-        "fallbackEmail": "降级到 Email"
+        "sameChannel": "排队原通道重试",
+        "fallbackEmail": "排队邮件降级"
+      },
+      "status": {
+        "success": "成功",
+        "done": "完成",
+        "failed": "失败",
+        "blocked": "已阻断",
+        "queued": "已排队",
+        "unknown": "未知"
       },
       "fields": {
         "company": "公司",
         "position": "职位",
         "channel": "通道",
         "browser": "浏览器",
-        "submittedAt": "提交时间",
+        "submittedAt": "运行时间",
         "jobUrl": "职位链接",
         "resume": "简历",
         "profile": "资料"
@@ -460,7 +468,7 @@
       },
       "audit": {
         "title": "策略来源",
-        "description": "数据从本地 sidecar 读取，并通过 settings.update 持久化。"
+        "description": "数据从本地后端服务读取，并通过设置更新持久化。"
       },
       "saveState": {
         "saving": "保存中...",
@@ -484,18 +492,18 @@
       },
       "gatePolicyDescriptions": {
         "nPassRequired": "运行被视为可投递前，需要累计通过门禁的轮数。",
-        "matchingThreshold": "N-pass 门禁要求的最低匹配分。",
-        "evaluationThreshold": "N-pass 门禁要求的最低简历评估分。",
+        "matchingThreshold": "多轮通过门禁要求的最低匹配分。",
+        "evaluationThreshold": "多轮通过门禁要求的最低简历评估分。",
         "maxRounds": "自主运行停止或进入批量审批前允许的最大轮次。",
-        "mode": "strict 模式会在必要检查失败时阻断投递。",
-        "deliveryMode": "自动模式会在 REVIEW pass-through 后继续；人工模式会暂停等待审批。",
+        "mode": "严格模式会在必要检查失败时阻断投递。",
+        "deliveryMode": "自动模式会通过复核阶段后继续；人工模式会暂停等待审批。",
         "batchReviewAuto": "投递模式为自动时，批量审批不可启用。",
         "batchReviewManual": "收集通过门禁的候选，在运行结束后一次性审批。"
       },
       "excludedCompanies": {
         "title": "排除企业展示名",
-        "subtitle": "用于展示名、别名和常用名过滤，支持 exact: 与 contains:。",
-        "placeholder": "示例：\nexact:Acme Inc\ncontains:外包",
+        "subtitle": "用于展示名、别名和常用名过滤，支持精确匹配与包含匹配前缀。",
+        "placeholder": "示例：\nexact:示例科技有限公司\ncontains:外包",
         "helper": "当前 {{count}} 条企业规则",
         "save": "保存企业规则",
         "saving": "保存中...",
@@ -518,15 +526,16 @@
         "emptyCompanies": "还没有企业展示名规则。",
         "emptyLegalEntities": "还没有企业主体规则。",
         "matchingTitle": "命中说明",
-        "matchingDescription": "Discovery 阶段会在评分前过滤已排除候选；Gate 阶段保留二次护栏，阻断绕过发现阶段的候选。",
-        "discoveryGuard": "Discovery 护栏",
-        "gateFallback": "Gate 兜底"
+        "matchingDescription": "发现阶段会在评分前过滤已排除候选；门禁阶段保留二次护栏，阻断绕过发现阶段的候选。",
+        "discoveryGuard": "发现护栏",
+        "gateFallback": "门禁兜底"
       }
     },
     "systemSettings": {
       "title": "系统设置",
-      "subtitle": "读取桌面 sidecar 返回的实时配置快照。",
+      "subtitle": "读取桌面本地后端返回的当前配置快照。",
       "save": "保存",
+      "readOnly": "只读",
       "secretConfigured": "已配置（掩码）",
       "secretMissing": "未配置",
       "nav": {
@@ -535,8 +544,8 @@
       },
       "exclusionList": {
         "title": "企业例外清单",
-        "subtitle": "一行一条，支持 contains: 前缀",
-        "placeholder": "示例：\nAcme Inc\ncontains:外包",
+        "subtitle": "一行一条，支持包含匹配前缀",
+        "placeholder": "示例：\n示例科技有限公司\ncontains:外包",
         "helper": "当前 {{count}} 条",
         "save": "保存清单",
         "saving": "保存中...",
@@ -553,9 +562,21 @@
         "lastSuccess": "最近成功",
         "lastError": "最近错误",
         "fallbackOrder": "降级顺序",
-        "connectionTests": "连通检查",
+        "connectionTests": "检查状态",
         "credentialStore": "凭证存储",
         "credentialStoreStatus": "只显示掩码状态；不会返回明文密钥。"
+      },
+      "status": {
+        "enabled": "已启用",
+        "disabled": "已禁用",
+        "configured": "已配置",
+        "missing": "缺失",
+        "unknown": "未知",
+        "ready": "就绪",
+        "failed": "失败",
+        "error": "错误",
+        "notConfigured": "未配置",
+        "missingCredential": "凭证缺失"
       },
       "gatePolicy": {
         "title": "门禁策略",
@@ -567,17 +588,17 @@
         "mode": "门禁模式"
       },
       "llm": {
-        "title": "LLM 配置",
-        "subtitle": "来自 settings.get 的掩码模型配置",
+        "title": "模型配置",
+        "subtitle": "来自设置读取的掩码模型配置",
         "provider": "提供方",
         "model": "模型",
         "baseUrl": "基础地址",
-        "apiKey": "API Key",
+        "apiKey": "接口密钥",
         "timeout": "超时",
         "temperature": "温度",
         "defaultModel": "默认模型",
-        "connectionTest": "连通检查",
-        "defaultEndpoint": "OpenAI-compatible 默认端点"
+        "connectionTest": "端点与凭证状态",
+        "defaultEndpoint": "OpenAI 兼容默认端点"
       },
       "secretStatus": {
         "title": "凭证状态",

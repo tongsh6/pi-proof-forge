@@ -390,16 +390,16 @@
       }
     },
     "submissions": {
-      "title": "Submissions",
+      "title": "Submission Attempts",
       "subtitle": "Recent application attempts from sidecar logs.",
       "refresh": "Refresh",
-      "runsTitle": "Submission Runs",
+      "runsTitle": "Attempt Records",
       "detailTitle": "Run Detail",
       "lastStep": "Last step",
       "rateLimit": "Rate limit",
       "details": "Details",
       "retrying": "Retrying...",
-      "empty": "No submissions yet.",
+      "empty": "No submission attempts yet.",
       "loadingDetail": "Loading detail...",
       "selectRun": "Select a run to inspect its steps and log paths.",
       "unknownChannel": "unknown channel",
@@ -409,8 +409,8 @@
       "noSteps": "No steps recorded.",
       "missingScreenshot": "{{path}} (missing)",
       "stats": {
-        "total": "Total",
-        "delivered": "Delivered",
+        "total": "Attempts",
+        "delivered": "Successful records",
         "failed": "Failed",
         "fallback": "Fallback"
       },
@@ -434,15 +434,23 @@
         "empty": "No failure detail."
       },
       "retryStrategy": {
-        "sameChannel": "Retry same channel",
-        "fallbackEmail": "Fallback to Email"
+        "sameChannel": "Queue same-channel retry",
+        "fallbackEmail": "Queue Email fallback"
+      },
+      "status": {
+        "success": "Success",
+        "done": "Done",
+        "failed": "Failed",
+        "blocked": "Blocked",
+        "queued": "Queued",
+        "unknown": "Unknown"
       },
       "fields": {
         "company": "Company",
         "position": "Position",
         "channel": "Channel",
         "browser": "Browser",
-        "submittedAt": "Submitted at",
+        "submittedAt": "Run time",
         "jobUrl": "Job URL",
         "resume": "Resume",
         "profile": "Profile"
@@ -525,8 +533,9 @@
     },
     "systemSettings": {
       "title": "System Settings",
-      "subtitle": "Live configuration from the desktop sidecar.",
+      "subtitle": "Current configuration snapshot returned by the desktop sidecar.",
       "save": "Save",
+      "readOnly": "Read-only",
       "secretConfigured": "Configured (masked)",
       "secretMissing": "Not configured",
       "nav": {
@@ -553,9 +562,21 @@
         "lastSuccess": "Last Success",
         "lastError": "Last Error",
         "fallbackOrder": "Fallback Order",
-        "connectionTests": "Connection Tests",
+        "connectionTests": "Check Status",
         "credentialStore": "Credential Store",
         "credentialStoreStatus": "Only masked status is shown; plaintext secrets are not returned."
+      },
+      "status": {
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "configured": "Configured",
+        "missing": "Missing",
+        "unknown": "Unknown",
+        "ready": "Ready",
+        "failed": "Failed",
+        "error": "Error",
+        "notConfigured": "Not configured",
+        "missingCredential": "Missing credential"
       },
       "gatePolicy": {
         "title": "Gate policy",
@@ -576,7 +597,7 @@
         "timeout": "Timeout",
         "temperature": "Temperature",
         "defaultModel": "Default model",
-        "connectionTest": "Connection Test",
+        "connectionTest": "Endpoint and credential status",
         "defaultEndpoint": "OpenAI-compatible default endpoint"
       },
       "secretStatus": {

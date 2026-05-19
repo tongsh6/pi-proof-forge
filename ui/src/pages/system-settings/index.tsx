@@ -60,6 +60,24 @@ function statusTone(value: string): StatusTone {
   return "muted";
 }
 
+function statusLabel(value: string, t: (key: string) => string): string {
+  const normalized = value.toLowerCase();
+  if (normalized === "enabled") return t("pages.systemSettings.status.enabled");
+  if (normalized === "disabled") return t("pages.systemSettings.status.disabled");
+  if (normalized === "configured") return t("pages.systemSettings.status.configured");
+  if (normalized === "missing") return t("pages.systemSettings.status.missing");
+  if (normalized === "unknown") return t("pages.systemSettings.status.unknown");
+  if (normalized === "ready") return t("pages.systemSettings.status.ready");
+  if (normalized === "fail" || normalized === "failed") {
+    return t("pages.systemSettings.status.failed");
+  }
+  if (normalized === "error") return t("pages.systemSettings.status.error");
+  if (normalized === "not configured") {
+    return t("pages.systemSettings.status.notConfigured");
+  }
+  return value;
+}
+
 function statusClassName(tone: StatusTone): string {
   if (tone === "success") {
     return "border-success/40 bg-success/10 text-success";
@@ -74,6 +92,7 @@ function statusClassName(tone: StatusTone): string {
 }
 
 function StatusChip({ value }: { value: string }) {
+  const { t } = useTranslation();
   const tone = statusTone(value);
   const Icon =
     tone === "success" ? CheckCircle2 : tone === "error" ? XCircle : AlertTriangle;
@@ -82,7 +101,7 @@ function StatusChip({ value }: { value: string }) {
       className={`inline-flex items-center gap-1.5 rounded-chip border px-2.5 py-1 text-xs font-medium ${statusClassName(tone)}`}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-      {value}
+      {statusLabel(value, t)}
     </span>
   );
 }
@@ -243,13 +262,15 @@ export function SystemSettingsPage() {
       (channel) => channel.last_check_status.toLowerCase() === "fail"
     );
     if (failing) {
-      return `${failing.id}: ${failing.last_error || "failed"}`;
+      return `${failing.id}: ${failing.last_error || t("pages.systemSettings.status.failed")}`;
     }
     const missing = settings.channels.find(
       (channel) => channel.credential_status.toLowerCase() === "missing"
     );
-    return missing ? `${missing.id}: missing credential` : "ready";
-  }, [settings]);
+    return missing
+      ? `${missing.id}: ${t("pages.systemSettings.status.missingCredential")}`
+      : "ready";
+  }, [settings, t]);
 
   return (
     <div className="space-y-6">
@@ -277,7 +298,7 @@ export function SystemSettingsPage() {
             type="button"
           >
             <Save className="h-4 w-4" aria-hidden="true" />
-            {t("pages.systemSettings.save")}
+            {t("pages.systemSettings.readOnly")}
           </button>
         </div>
       </header>

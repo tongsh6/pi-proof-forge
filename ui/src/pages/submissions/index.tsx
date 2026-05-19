@@ -84,6 +84,11 @@ function detailText(item: SubmissionListItem, fallback: string): string {
   return fallback;
 }
 
+function submissionStatusLabel(status: string, t: (key: string, options?: Record<string, string>) => string): string {
+  const normalized = status || "unknown";
+  return t(`pages.submissions.status.${normalized}`, { defaultValue: normalized });
+}
+
 function screenshotSource(path: string): string | null {
   if (!path) return null;
   try {
@@ -270,7 +275,7 @@ export function SubmissionsPage() {
                       <p className="truncate text-text-secondary">{formatDate(item.submitted_at, i18n.language)}</p>
                       <div>
                         <span className={`rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(item.status)}`}>
-                          {item.status || "unknown"}
+                          {submissionStatusLabel(item.status, t)}
                         </span>
                       </div>
                       <div className="flex justify-end gap-2">
@@ -305,7 +310,7 @@ export function SubmissionsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-base font-semibold text-text-primary">{detail.submission_id}</p>
                     <span className={`rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(detail.status)}`}>
-                      {detail.status || "unknown"}
+                      {submissionStatusLabel(detail.status, t)}
                     </span>
                     {detail.mode ? <span className="rounded-chip border border-border px-2 py-0.5 text-xs text-text-secondary">{detail.mode}</span> : null}
                   </div>
