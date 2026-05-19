@@ -16,6 +16,10 @@ ui/src-tauri/resources/job_profiles/**
 
 # Generated artifacts
 outputs/
+evidence_cards/ec-demo_*.yaml
+evidence_cards/ec-qr_*.yaml
+matching_reports/mr-demo_*.yaml
+matching_reports/mr-qr_*.yaml
 .app-runtime/
 ui/src-tauri/gen/
 .playwright-cli/
