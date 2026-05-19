@@ -22,6 +22,9 @@
 > 2026-05-20 补充：Demo runbook 已补齐。`docs/demo-runbook.md` 固化演示前检查、可选 GUI 检查、演示顺序、失败排障和安全范围；`tests/acceptance/test_demo_runbook.py` 锁定主入口命令、报告路径、核心产物路径和“不做真实投递/外部发现”的边界。验证：`python3 -m pytest tests/acceptance/test_demo_run.py tests/acceptance/test_demo_readiness.py tests/acceptance/test_demo_runbook.py -q` → 11 passed；`python3 tools/check_v2_constraints.py --root .` → PASS。
 > 2026-05-20 补充：已按 Demo runbook 在当前工作区完成一次默认 readiness 试跑。`bash scripts/acceptance/run-demo-readiness.sh` → pass，生成 `outputs/demo/demo_ready_20260519164944/readiness-report.md` 与 `demo-report.md`；按 runbook 抽查 Evidence、Matching、A/B Resume、Scorecard、Run Record 均存在且非空。`.gitignore` 已收窄忽略 `evidence_cards/ec-demo_*.yaml` / `ec-qr_*.yaml` 与 `matching_reports/mr-demo_*.yaml` / `mr-qr_*.yaml`，避免演示/Quick Run 产物污染源码状态，同时不影响正常证据卡/匹配报告版本控制。验证：`python3 -m pytest tests/ -q` → 391 passed；`python3 tools/check_v2_constraints.py --root .` → PASS；`python3 tools/check_aief_l3.py --root . --base-dir AIEF` → PASS。
 > 2026-05-20 补充：桌面 GUI 验收已按 Demo runbook 执行。首次 `--include-gui` 在沙箱内因 `listen EPERM ::1:1420` 失败；提升权限后发现 1420 被本仓库残留 `pnpm run dev` / Vite 进程占用，停止残留进程后重跑成功。`bash scripts/acceptance/run-demo-readiness.sh --include-gui` → pass，生成 `outputs/demo/demo_ready_20260519165837/readiness-report.md`；`ui/test-results/quick-run-native/app-events.jsonl` 记录 `quick_run.load.ready`、`quick_run.autorun.click`、`quick_run.start.result`，其中 `run_id=qr_20260519165844857109`、`status=DONE`、`score_total=95`。1420 端口收尾检查无监听残留。
+> 2026-05-20 补充：发布前构建检查已通过：`pnpm --dir ui build` → pass；`python3 -m pytest tests/ -q` → 395 passed；`python3 tools/check_v2_constraints.py --root .` → PASS；`python3 tools/check_aief_l3.py --root . --base-dir AIEF` → PASS。
+> 2026-05-20 补充：BOSS/智联只读发现 adapter 已完成第一阶段接入。新增 `tools/infra/discovery/boss_agent_cli.py`，把外部 `boss schema/status/search/detail --json` 类读操作隔离在 infra 层；`tools/engines/discovery/job_leads_loader.py` 通过 `PPF_ENABLE_BOSS_AGENT_SEARCH=1` 或 `enable_boss_agent_search=True` 显式开启，默认不触发外部 CLI，并将 search 结果映射为 `Candidate(source="boss_agent:<platform>")`。当前只做 read-only discovery，不启用投递/沟通等写操作；真实外部 CLI 联调仍需在安装并配置 `PPF_BOSS_AGENT_CLI` 后单独执行。验证：`python3 -m pytest tests/unit/domain/test_discovery_engine.py tests/unit/infra/test_boss_agent_cli.py -q` → 10 passed；`python3 tools/check_v2_constraints.py --root .` → PASS。
+> 2026-05-20 补充：GUI 页面可见文案合法性与准确性审计已完成。`ui/src/i18n/zh.json` 清理了普通 UI 文案里的中英文混排，将 Sidecar / Agent / Evidence Card / Discovery / Gate / Dry Run / PASS 等面向用户状态改为中文；仅保留 `PDF`、`OpenAI`、路径示例和 `exact:` / `contains:` 等必要技术字面量。Submissions 文案从“投递记录/提交时间/重试”收窄为“投递尝试/运行时间/排队重试”，避免把本地尝试日志误导成真实成功投递；System Settings 禁用动作从“保存”改为“只读”，并把“连通检查/实时配置”改为更准确的状态快照文案。验证：`zh.json` / `en.json` key 数一致（449 / 449）；`pnpm --dir ui build` → pass；`python3 -m pytest tests/unit/gui -q` → 30 passed；`python3 -m pytest tests/ -q` → 395 passed。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -121,6 +124,8 @@
 | **Liepin 小批量频控真实验证** | **已验证** | outputs/submissions/batch-rate-limit-001/ | 2 次 check-mode success + 第 3 次 `batch_cooldown` blocked | 使用同一 output-dir 共享 `liepin_rate_limit.json`；未点击最终确认发送 |
 | **本地残留证据忽略规则** | **已完成** | .gitignore | `git status --short` | `.idea/`、根目录 debug DOM/截图、`policy_validation.yaml` 不纳入主证据链 |
 | **批量候选来源扩展** | **已验证** | job_leads/jl-validated-20260513.yaml + outputs/submissions/job-leads-expanded-001/ | 3 个新增真实 URL 均 check-mode success | 未点击最终确认发送；loader 可读取结构化 `items` |
+| **BOSS/智联只读发现 adapter** | **已完成（mock 合同验证）** | tools/infra/discovery/boss_agent_cli.py + tools/engines/discovery/job_leads_loader.py | `python3 -m pytest tests/unit/domain/test_discovery_engine.py tests/unit/infra/test_boss_agent_cli.py -q` → 10 passed；v2 PASS | 默认关闭；显式 `PPF_ENABLE_BOSS_AGENT_SEARCH=1` 后调用外部 CLI search 并映射 Candidate；仅只读发现，未启用投递写操作，真实 CLI smoke 待外部工具安装后执行 |
+| **GUI 文案合法性与准确性审计** | **已完成** | ui/src/i18n/zh.json + ui/src/i18n/en.json + ui/src/pages/submissions/index.tsx + ui/src/pages/system-settings/index.tsx | `pnpm --dir ui build` → pass；`python3 -m pytest tests/unit/gui -q` → 30 passed；`python3 -m pytest tests/ -q` → 395 passed | 中文界面普通文案去除不必要英文混排；Submissions/System Settings 文案改为尝试日志、排队重试、只读快照等更准确表述 |
 | **多候选 Agent Loop 批次策略** | **已测试** | tools/orchestration/agent_loop.py | test_full_pipeline.py + test_agent_loop.py | 按 confidence desc + candidate_id 稳定排序；每轮排除已选候选；dry-run 也遵守 max_deliveries 计划上限 |
 | **GUI 投递状态可视化** | **已验证** | tools/sidecar/handlers/submission.py + ui/src/pages/submissions/index.tsx | test_submission_handler.py + `pnpm --dir ui build` | 展示 mode、job_url、error、last_step、rate_limit 状态和详情 |
 | **GUI 运行日志详情页** | **已验证** | tools/sidecar/handlers/submission.py + tools/sidecar/server.py + ui/src/pages/submissions/index.tsx | test_submission_handler.py + test_server.py + Playwright mock sidecar | `submission.detail` 返回完整 steps、截图路径、JSON/YAML 日志路径；Submissions 页面可点击查看 |
@@ -227,7 +232,7 @@
 | ~~P7a~~ | ~~Resumes 页面实现仍停留在功能表单，未完整体现终版第 2 页个人资料、上传简历、系统生成简历和预览三栏资产中心~~ | ~~简历中心是 evidence-first 输出资产入口，可演示性和导出可信度不足~~ | **已解决** | **已补齐三栏资产中心、单语 i18n、native verifier；复用既有 profile/resume RPC，不新增协议面** |
 | ~~P7b~~ | ~~Evidence 页面仍停留在基础列表/表单，未完整体现终版第 3 页 Evidence Card 表格、详情字段卡、Artifacts 导入/回看职责~~ | ~~Evidence 是项目事实源，页面不足会直接削弱 evidence-first 可演示性和长期资产维护能力~~ | **已解决** | **已补齐证据统计、筛选、表格、详情编辑、Artifacts 列表与导入/追加/替换入口；native verifier 通过真实 bridge + sidecar 验收** |
 | ~~P7c~~ | ~~Quick Run 页面仍偏命令面板，未完整体现终版第 5 页单次 pipeline 操作台~~ | ~~Quick Run 是 Demo 与本地单次 pipeline 的主入口，缺少阶段输出和评分会削弱可演示性~~ | **已解决** | **已补齐 Profile 选择、Run/Cancel、4 阶段状态、终端式输出、K/D/S/Q/E/R ScoreBar；native verifier 通过真实 bridge + sidecar 验收** |
-| P8 | BOSS/智联平台未接入 PiProofForge job-discovery / delivery | `boss-agent-cli` 已证明 BOSS/智联具备 CLI/JSON/schema/MCP 能力，但 PiProofForge 当前生产通道仍以 Liepin 为主；多平台候选来源和受控写操作尚未纳入本项目抽象 | 扩展缺口 | 先以 optional subprocess adapter 接入 `boss schema/status/search/detail` 只读发现，映射到 `Candidate`；写操作仅在 review/gate/rate-limit/safety 全部复用后再启用 |
+| P8 | BOSS/智联平台尚未完成真实联调和 delivery 接入 | 只读 discovery adapter 已接入并有 mock 合同测试，但尚未在已安装的外部 `boss-agent-cli` 上做真实 schema/status/search/detail smoke；投递/沟通写操作仍未纳入安全门禁 | 扩展缺口 | 先完成外部 CLI live smoke；写操作仅在 review/gate/rate-limit/safety 全部复用后再启用 |
 
 ## 6. 已废弃事项
 
@@ -237,8 +242,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | 发布前构建检查 | 默认本地 readiness 与桌面 GUI readiness 均已通过；下一步应跑前端生产构建和必要静态约束，确认演示代码可打包 | `pnpm --dir ui build` 通过；`python3 -m pytest tests/ -q` / v2 / AIEF 检查保持通过 |
-| 2 | BOSS/智联只读发现 adapter | 多平台发现仍是 P8 扩展缺口；应等 Demo GUI/发布检查稳定后再接入 optional subprocess adapter | 仅接入只读 `schema/status/search/detail`，映射到 `Candidate`，不启用写操作 |
+| ~~1~~ | ~~发布前构建检查~~ | ~~默认本地 readiness 与桌面 GUI readiness 均已通过；下一步应跑前端生产构建和必要静态约束，确认演示代码可打包~~ | **已完成**：`pnpm --dir ui build`、`python3 -m pytest tests/ -q` → 395 passed、v2、AIEF 均通过 |
+| ~~2~~ | ~~BOSS/智联只读发现 adapter~~ | ~~多平台发现仍是 P8 扩展缺口；应等 Demo GUI/发布检查稳定后再接入 optional subprocess adapter~~ | **已完成第一阶段**：只读 search adapter + Candidate 映射 + 默认关闭；真实外部 CLI smoke 未做 |
+| 3 | BOSS/智联外部 CLI live smoke | 只读 adapter 已有 mock 合同，但还需要在本机安装/配置外部工具后确认 `schema/status/search/detail --json` 真实输出 envelope 与 mapper 兼容 | `PPF_ENABLE_BOSS_AGENT_SEARCH=1 PPF_BOSS_AGENT_CLI=<cmd>` 下 dry-run Agent Loop 可发现 BOSS/智联 URL，且不触发写操作 |
 | ~~3~~ | ~~WeasyPrint 高保真 PDF 增强~~ | ~~内置 writer 已保证 runtime 不断链，但排版能力弱于 HTML/CSS 渲染~~ | **已解决**：`requirements-pdf.txt` + packaged runtime staging；保留内置兜底 |
 
 ## 8. 关键证据索引
