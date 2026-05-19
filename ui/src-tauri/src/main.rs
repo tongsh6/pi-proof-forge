@@ -408,7 +408,7 @@ fn quick_run_verify_event(event: Value) -> Result<(), String> {
     };
     if !matches!(
         scenario.as_str(),
-        "quick-run" | "overview" | "system-settings" | "policy" | "resumes"
+        "quick-run" | "overview" | "system-settings" | "policy" | "resumes" | "jobs"
     ) {
         return Ok(());
     }
@@ -420,6 +420,7 @@ fn quick_run_verify_event(event: Value) -> Result<(), String> {
             "system-settings" => event_name.starts_with("system_settings."),
             "policy" => event_name.starts_with("policy."),
             "resumes" => event_name.starts_with("resumes."),
+            "jobs" => event_name.starts_with("jobs."),
             _ => false,
         };
         if !allowed_event {
