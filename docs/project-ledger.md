@@ -5,7 +5,7 @@
 
 ## 1. 当前阶段目标
 
-**状态收束完成 + Quick Run 桌面执行 / native verifier 自动化补齐**
+**状态收束完成 + GUI 9 页产品化垂直切片收口**
 
 > 2026-05-18 状态：核心 CLI 主链路已可生成 Evidence Card、Matching Report、Markdown Resume、Evaluation Scorecard；Agent dry-run 可写 Run Record；普通 `tools/run_pipeline.py` 保留 legacy subprocess 串联，但已补齐统一 Run Record，写入 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`。PDF Markdown 转换已补上内置无依赖兜底路径，当前环境 `WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF；Agent REVIEW manual 模式已从直接 approve 改为写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会进入 DELIVER；GUI Quick Run 已注册 `run.quick.start` / `run.quick.cancel` 并从页面直接启动本地单次 pipeline，CLI 命令保留为 fallback，且已补上 Tauri native verifier 自动化入口。Quick Run verifier 已按 `pnpm --dir ui run e2e:quick-run` 连续多轮通过；dev 模式 sidecar 工作目录、`PYTHONPATH`、进程树清理和 pnpm 参数转发问题已修复。审计报告见 `docs/reports/project-state-and-core-flow-review.md`。状态清理已同步到 README、project-ledger、OpenSpec tasks，并已处理 GitHub issues #21-#27。
 > 2026-05-18 补充：WeasyPrint 高保真 PDF 增强已完成工程闭环。`requirements-pdf.txt` 显式声明 `markdown` / `weasyprint` 可选依赖；`pnpm --dir ui run prepare:python-runtime` 会在依赖已安装时把可选 PDF 包和元数据复制进 Tauri packaged runtime；未安装时会清理旧 staged 包并继续使用内置基础 PDF writer 兜底。
@@ -17,6 +17,7 @@
 > 2026-05-19 补充：Resumes 页面产品化垂直切片已按终版 GUI 第 2 页补齐三栏资产中心：Personal Profile 资料完整度/缺失字段/编辑保存、Uploaded Resumes 上传文件列表与路径上传入口、Generated Resumes 版本列表/分数/目标上下文/纸张式预览/PDF 导出目标路径。实现继续复用既有 `profile.get/update` 与 `resume.list/upload/getPreview/exportPdf` 合同，不新增 sidecar 协议；运行态文案已接入单语 i18n。该页已补上真实 Tauri native verifier：`pnpm --dir ui run e2e:resumes` 会启动桌面壳、自动导航到 `/resumes`，并等待真实 bridge + sidecar 写出 `resumes.load.ready`。
 > 2026-05-20 补充：Jobs 页面产品化垂直切片已按终版 GUI 第 4 页补齐岗位画像统计、Profile / Lead 分段视图、岗位画像卡片网格、画像详情编辑、线索表格、线索详情与转为 Job Profile 操作；实现继续复用既有 `jobs.listProfiles/listLeads/createProfile/updateProfile/convertLead` 合同，不新增 sidecar 协议。该页已补上真实 Tauri native verifier：`pnpm --dir ui run e2e:jobs` 会启动桌面壳、自动导航到 `/jobs`，并等待真实 bridge + sidecar 写出 `jobs.load.ready`。
 > 2026-05-20 补充：Evidence 页面产品化垂直切片已按终版 GUI 第 3 页补齐证据统计、筛选入口、证据卡表格、右侧详情编辑、Results 高亮信息、Stack & Tags、Artifacts 文件列表与导入/追加/替换入口；实现继续复用既有 `evidence.list/get/create/update/delete/import` 合同，不新增 sidecar 协议。该页已补上真实 Tauri native verifier：`pnpm --dir ui run e2e:evidence` 会启动桌面壳、自动导航到 `/evidence`，并等待真实 bridge + sidecar 写出 `evidence.load.ready`。
+> 2026-05-20 补充：Quick Run 页面产品化垂直切片已按终版 GUI 第 5 页从“命令复制/资源摘要”收口为单次 pipeline 操作台：顶部 Profile 选择与 Run/Cancel 主动作、4 阶段状态条、终端式 Stage Output、K/D/S/Q/E/R ScoreBar 和总分。实现复用既有 `run.quick.start/cancel` 合同，仅扩展 `run.quick.start` 返回 stdout/stderr、summary artifacts 与匹配分项，未新增 RPC 方法；native verifier 现在会先等待真实 bridge + sidecar 写出 `quick_run.load.ready`，再触发 autorun 并校验 run summary。验证：`python3 -m pytest tests/ -q` → 380 passed；`pnpm --dir ui build` → pass；`python3 tools/check_v2_constraints.py --root .` → PASS；`python3 tools/check_aief_l3.py --root . --base-dir AIEF` → PASS；`pnpm --dir ui run e2e:quick-run` → DONE（`qr_20260519163230256817`）。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -141,6 +142,7 @@
 | **GUI Quick Run 直接执行** | **已完成** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/pages/quick-run/index.tsx + ui/src/lib/sidecar/api.ts | `python3 -m pytest tests/unit/sidecar/test_server.py -q` → 12 passed；`pnpm --dir ui build` → pass | `run.quick.start` 同步启动本地 `tools/run_pipeline.py` 单次 pipeline 并返回 run record 路径；`run.quick.cancel` 记录取消请求；Quick Run 页面新增启动按钮、状态回显，CLI 命令保留为 fallback |
 | **Quick Run native verifier 自动化** | **已完成** | ui/scripts/verify_quick_run_native.mjs + ui/src/components/shell/NativeVerifyController.tsx + ui/src/pages/quick-run/index.tsx + ui/package.json | `pnpm --dir ui run e2e:quick-run` 连续多轮通过；`pnpm --dir ui build` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → pass；`python3 -m pytest tests/ -q` → 351 passed | 参考 ai-novel-studio 的 native verifier 方式：主入口 `pnpm --dir ui run e2e:quick-run` 用 `pnpm tauri dev` 启动真实 Tauri 窗口，以 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，并用 `outputs/quick_runs` + summary 校验结果；WebDriver 仅保留为可选补充；dev 模式固定仓库根工作目录并补 `PYTHONPATH`，避免产物写入 `target/debug/resources` |
 | **Quick Run sidecar 项目根锚定** | **已完成** | tools/sidecar/handlers/agent.py + tests/unit/sidecar/test_agent_handler.py + tests/unit/sidecar/test_server.py | `python3 -m pytest tests/ -q` → 352 passed；`python3 tools/check_v2_constraints.py --root .` → PASS；`python3 tools/check_aief_l3.py --root . --base-dir AIEF` → PASS；`pnpm --dir ui run e2e:quick-run` → DONE | `run.quick.start` 默认 raw/profile、pipeline 脚本、subprocess cwd 与 sidecar 运行目录均锚定项目根，避免 sidecar cwd 偏移导致 Quick Run 产物写到错误目录 |
+| **Quick Run 页面产品化垂直切片** | **已完成** | ui/src/pages/quick-run/index.tsx + tools/sidecar/handlers/agent.py + ui/scripts/verify_quick_run_native.mjs + tests/unit/gui/test_quick_run_page_contract.py | `python3 -m pytest tests/ -q` → 380 passed；`pnpm --dir ui build` → pass；`python3 tools/check_v2_constraints.py --root .` → PASS；`python3 tools/check_aief_l3.py --root . --base-dir AIEF` → PASS；`pnpm --dir ui run e2e:quick-run` → DONE | 按终版 GUI 第 5 页补齐 4 阶段状态条、终端式 Stage Output、K/D/S/Q/E/R ScoreBar；`run.quick.start` 继续复用既有方法，仅返回运行详情供 UI 展示；native verifier 校验 `quick_run.load.ready` + run summary |
 | **Overview 页面产品化垂直切片** | **已完成** | ui/src/pages/overview/index.tsx + ui/scripts/verify_overview_native.mjs + tests/unit/gui/test_overview_page_contract.py | `python3 -m pytest tests/unit/gui/test_overview_page_contract.py tests/unit/sidecar/test_overview_handler.py -q` → 11 passed；`pnpm --dir ui build` → pass；`cargo fmt --manifest-path ui/src-tauri/Cargo.toml` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → 7 passed；`pnpm --dir ui run e2e:overview` → pass | 按终版 GUI 第 1 页补齐启动主动作、统计、最近活动、趋势图、缺口汇总；复用 `overview.get`，native verifier 校验真实 bridge + sidecar ready 事件 |
 | **Resumes 页面产品化垂直切片** | **已完成** | ui/src/pages/resumes/index.tsx + ui/scripts/verify_resumes_native.mjs + tests/unit/gui/test_resumes_page_contract.py | `python3 -m pytest tests/unit/gui/test_resumes_page_contract.py tests/unit/sidecar/test_resume_handler.py tests/unit/sidecar/test_profile_handler.py -q` → 20 passed；`pnpm --dir ui build` → pass；`cargo fmt --manifest-path ui/src-tauri/Cargo.toml -- --check` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → 7 passed；`pnpm --dir ui run e2e:resumes` → pass | 按终版 GUI 第 2 页补齐个人资料、上传简历、系统生成简历、纸张预览和 PDF 导出入口；复用既有 profile/resume RPC，不新增 sidecar 协议；native verifier 校验真实 bridge + sidecar ready 事件 |
 | **Jobs 页面产品化垂直切片** | **已完成** | ui/src/pages/jobs/index.tsx + ui/scripts/verify_jobs_native.mjs + tests/unit/gui/test_jobs_page_contract.py | `python3 -m pytest tests/unit/gui/test_jobs_page_contract.py tests/unit/sidecar/test_jobs_handler.py -q` → 16 passed；`pnpm --dir ui build` → pass；`cargo fmt --manifest-path ui/src-tauri/Cargo.toml -- --check` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → 7 passed；`pnpm --dir ui run e2e:jobs` → pass | 按终版 GUI 第 4 页补齐岗位画像统计、Profile/Lead 分段视图、画像卡片网格、详情编辑、线索表格、详情与转画像操作；复用既有 jobs RPC，不新增 sidecar 协议；native verifier 校验真实 bridge + sidecar ready 事件 |
@@ -169,7 +171,7 @@
 | SLA/SLO 证据卡 | `evidence_cards/ec-2026-018.yaml` / `019.yaml` | K-score: Backend 1.0, SRE 0.857 | SLA/SLO 盲区消除 |
 | GUI 编译验证 | `pnpm --dir ui build` | TypeScript 零错误, 1628 modules | 9 页全部可编译 |
 | GUI Agent Run 页面冒烟 | `pnpm --dir ui build` + Playwright 打开 `http://127.0.0.1:1420/agent-run` | Vite/Playwright 终端输出 | 页面渲染出 10 状态节点、门禁摘要、审批面板与事件流；纯 Vite 模式下 Tauri bridge 未连接属预期 |
-| Quick Run native verifier | `pnpm --dir ui run e2e:quick-run` | `outputs/quick_runs/qr_20260517150915671449.json` + `outputs/agent_runs/qr_20260517150915671449/summary.json` | 真实 Tauri 窗口内点击 Quick Run，DONE；多轮无残留进程或 `.env.local` |
+| Quick Run native verifier | `pnpm --dir ui run e2e:quick-run` | `outputs/quick_runs/qr_20260519163230256817.json` + `outputs/agent_runs/qr_20260519163230256817/summary.json` + `ui/test-results/quick-run-native/app-events.jsonl` | 真实 Tauri 窗口内点击 Quick Run，DONE；先校验 `quick_run.load.ready`，再校验 run summary；多轮无残留进程或 `.env.local` |
 | Overview native verifier | `pnpm --dir ui run e2e:overview` | `ui/test-results/overview-native/app-events.jsonl` | 真实 Tauri 窗口内自动导航 `/`，sidecar ready 后写出 `overview.load.ready`，当前工作区聚合到 evidence=13、matched_jobs=2、resumes=19、submissions=27、activities=6、trend=13、gaps=1 |
 | System Settings native verifier | `pnpm --dir ui run e2e:system-settings` | `ui/test-results/system-settings-native/app-events.jsonl` | 真实 Tauri 窗口内自动导航 `/system-settings`，sidecar ready 后写出 `system_settings.load.ready`，包含 `channel_ids=["liepin","email"]` |
 | Policy native verifier | `pnpm --dir ui run e2e:policy` | `ui/test-results/policy-native/app-events.jsonl` | 真实 Tauri 窗口内自动导航 `/policy`，sidecar ready 后写出 `policy.load.ready`，并验证 `delivery_mode=auto` 时 `batch_review=false` |
@@ -203,7 +205,7 @@
 | ~~P1~~ | ~~频控真实批量验证~~ | ~~频控算法已实现，但未用真实批量职位验证 safe.liepin.com 触发率~~ | **已解决** | **`batch-rate-limit-001`：2 次 success + 第 3 次 batch_cooldown** |
 | ~~P1~~ | ~~猎聘共享登录态刷新后复跑 Agent Loop~~ | ~~当前 `run-agent-liepin-chat-004` 正确阻断于 login_required~~ | **已解决** | **`run-agent-liepin-chat-005` check-mode success** |
 | ~~P2~~ | ~~LiepinChannel session 路径耦合 run_id~~ | ~~每次新 run 需手动创建 symlink~~ | **已解决** | **新增 `PPF_LIEPIN_SESSION_DIR` 显式覆盖** |
-| P3 | GUI 前端为骨架级别 | 可演示性不足 | 实现缺口 | 后端闭环稳定后再投入 |
+| ~~P3~~ | ~~GUI 前端为骨架级别~~ | ~~可演示性不足~~ | **已解决** | **9 页 GUI 已按终版设计完成产品化垂直切片；Quick Run 补齐 4 阶段状态条、Stage Output 与 ScoreBar，并通过真实 native verifier** |
 | ~~P3a~~ | ~~GUI Quick Run 尚未直接运行主链路~~ | ~~当前只展示/复制 CLI 命令，未注册 `run.quick.start` / `run.quick.cancel`~~ | **已解决** | **已注册 `run.quick.start` / `run.quick.cancel`；Quick Run 页面可直接启动本地单次 pipeline，CLI 命令作为 fallback 保留** |
 | ~~P3b~~ | ~~Markdown PDF runtime 未闭环~~ | ~~代码已接入，但当前环境缺 `weasyprint`/`markdown`，实际导出失败~~ | **已解决** | **内置基础 PDF writer 兜底；`WEASYPRINT_AVAILABLE=False` 时仍可导出非空 PDF** |
 | ~~P3c~~ | ~~普通 pipeline 无统一 Run Record~~ | ~~`tools/run_pipeline.py` 可生成产物，但不写 `outputs/agent_runs/<run_id>/run_log.json`~~ | **已解决** | **保留 legacy subprocess 串联，同时写入统一 Run Record 与 summary** |
@@ -215,6 +217,7 @@
 | ~~P7~~ | ~~Submissions 页面实现仍未完全达到终版设计的统计卡片、表格、截图缩略图/放大预览形态~~ | ~~当前实现是可用的列表 + 详情面板垂直切片，未完整复刻 DESIGN.md 第 7 页产品态~~ | **已解决** | **已补齐统计卡片、表格、详情基础信息、步骤时间线、截图缩略图/预览、失败详情与原通道/Email 降级重试按钮；Playwright mock sidecar 视觉验收通过** |
 | ~~P7a~~ | ~~Resumes 页面实现仍停留在功能表单，未完整体现终版第 2 页个人资料、上传简历、系统生成简历和预览三栏资产中心~~ | ~~简历中心是 evidence-first 输出资产入口，可演示性和导出可信度不足~~ | **已解决** | **已补齐三栏资产中心、单语 i18n、native verifier；复用既有 profile/resume RPC，不新增协议面** |
 | ~~P7b~~ | ~~Evidence 页面仍停留在基础列表/表单，未完整体现终版第 3 页 Evidence Card 表格、详情字段卡、Artifacts 导入/回看职责~~ | ~~Evidence 是项目事实源，页面不足会直接削弱 evidence-first 可演示性和长期资产维护能力~~ | **已解决** | **已补齐证据统计、筛选、表格、详情编辑、Artifacts 列表与导入/追加/替换入口；native verifier 通过真实 bridge + sidecar 验收** |
+| ~~P7c~~ | ~~Quick Run 页面仍偏命令面板，未完整体现终版第 5 页单次 pipeline 操作台~~ | ~~Quick Run 是 Demo 与本地单次 pipeline 的主入口，缺少阶段输出和评分会削弱可演示性~~ | **已解决** | **已补齐 Profile 选择、Run/Cancel、4 阶段状态、终端式输出、K/D/S/Q/E/R ScoreBar；native verifier 通过真实 bridge + sidecar 验收** |
 | P8 | BOSS/智联平台未接入 PiProofForge job-discovery / delivery | `boss-agent-cli` 已证明 BOSS/智联具备 CLI/JSON/schema/MCP 能力，但 PiProofForge 当前生产通道仍以 Liepin 为主；多平台候选来源和受控写操作尚未纳入本项目抽象 | 扩展缺口 | 先以 optional subprocess adapter 接入 `boss schema/status/search/detail` 只读发现，映射到 `Candidate`；写操作仅在 review/gate/rate-limit/safety 全部复用后再启用 |
 
 ## 6. 已废弃事项
@@ -225,7 +228,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|----------|
-| 1 | GUI / Demo 二选一 | PDF runtime、普通 pipeline Run Record、Agent REVIEW pause 已完成，下一步应只选择一个产品化方向推进 | 不并行展开；一次只进入一个最高优先级实现方向 |
+| 1 | Demo / 多平台发现二选一 | GUI 9 页产品化垂直切片已收口，下一步应在演示闭环打磨与 BOSS/智联只读发现接入之间选择一个方向 | 不并行展开；一次只进入一个最高优先级实现方向 |
 | ~~2~~ | ~~WeasyPrint 高保真 PDF 增强~~ | ~~内置 writer 已保证 runtime 不断链，但排版能力弱于 HTML/CSS 渲染~~ | **已解决**：`requirements-pdf.txt` + packaged runtime staging；保留内置兜底 |
 
 ## 8. 关键证据索引
