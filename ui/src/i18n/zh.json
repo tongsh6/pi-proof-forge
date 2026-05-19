@@ -185,14 +185,32 @@
     },
     "jobs": {
       "title": "岗位中心",
-      "subtitle": "基于本地 job profile 与 matching report 聚合出的实时岗位画像。",
-      "newProfileDisabled": "新建画像（即将支持）",
-      "profileGridTitle": "岗位画像",
+      "subtitle": "管理岗位画像、岗位线索、匹配上下文与转化操作。",
       "profileCount": "已加载 {{count}} 个岗位画像",
       "detailTitle": "画像详情",
       "tabs": {
         "profiles": "岗位画像",
-        "leads": "岗位线索（即将支持）"
+        "leads": "岗位线索"
+      },
+      "stats": {
+        "profiles": "岗位画像",
+        "active": "{{count}} 个启用",
+        "averageMatch": "平均匹配分",
+        "evidence": "{{count}} 条证据关联",
+        "leads": "岗位线索",
+        "favorite": "{{count}} 个收藏"
+      },
+      "newProfile": {
+        "titlePlaceholder": "新岗位画像标题",
+        "tagsPlaceholder": "关键词，例如 Python, Tauri, Delivery Ops"
+      },
+      "actions": {
+        "newProfile": "新建画像",
+        "creating": "创建中...",
+        "clearDraft": "清空草稿",
+        "save": "保存",
+        "saving": "保存中...",
+        "converting": "转化中..."
       },
       "filters": {
         "query": "搜索",
@@ -209,6 +227,12 @@
         "draft": "Draft",
         "archived": "Archived"
       },
+      "leadStatus": {
+        "new": "New",
+        "qualified": "Qualified",
+        "contacted": "Contacted",
+        "archived": "Archived"
+      },
       "metrics": {
         "matchScore": "匹配分",
         "evidence": "证据数",
@@ -223,6 +247,7 @@
         "subtitle": "可以先重置筛选，或在工作区中添加新的岗位画像文件。"
       },
       "fields": {
+        "title": "标题",
         "businessDomain": "业务领域",
         "updatedAt": "更新时间",
         "sourceJd": "来源 JD",
@@ -231,6 +256,26 @@
         "mustHave": "必备要求",
         "niceToHave": "加分项",
         "senioritySignal": "资深度信号"
+      },
+      "leads": {
+        "searchPlaceholder": "搜索公司或职位",
+        "allStatuses": "全部状态",
+        "favoriteOnly": "仅看收藏",
+        "company": "公司",
+        "position": "职位",
+        "source": "来源",
+        "status": "状态",
+        "updatedAt": "更新时间",
+        "action": "操作",
+        "view": "详情",
+        "detailTitle": "线索详情",
+        "followUp": "跟进记录",
+        "favoritedHint": "该线索已标记为优先目标，可转为岗位画像或进入跟进。",
+        "defaultHint": "检查线索质量，确认值得匹配后再转为岗位画像。",
+        "convert": "转为岗位画像"
+      },
+      "errors": {
+        "titleRequired": "请填写岗位画像标题。"
       }
     },
     "agentRun": {

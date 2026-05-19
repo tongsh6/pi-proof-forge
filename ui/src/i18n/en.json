@@ -185,14 +185,32 @@
     },
     "jobs": {
       "title": "Jobs",
-      "subtitle": "Live job profiles derived from local job profiles and matching reports.",
-      "newProfileDisabled": "New Profile (Soon)",
-      "profileGridTitle": "Job profiles",
+      "subtitle": "Job profiles, leads, matching context, and conversion actions.",
       "profileCount": "{{count}} profiles loaded",
       "detailTitle": "Profile detail",
       "tabs": {
         "profiles": "Job Profiles",
-        "leads": "Job Leads (Soon)"
+        "leads": "Job Leads"
+      },
+      "stats": {
+        "profiles": "Job Profiles",
+        "active": "{{count}} active",
+        "averageMatch": "Average Match",
+        "evidence": "{{count}} evidence links",
+        "leads": "Job Leads",
+        "favorite": "{{count}} favorited"
+      },
+      "newProfile": {
+        "titlePlaceholder": "New profile title",
+        "tagsPlaceholder": "Keywords, e.g. Python, Tauri, Delivery Ops"
+      },
+      "actions": {
+        "newProfile": "New Profile",
+        "creating": "Creating...",
+        "clearDraft": "Clear draft",
+        "save": "Save",
+        "saving": "Saving...",
+        "converting": "Converting..."
       },
       "filters": {
         "query": "Search",
@@ -209,6 +227,12 @@
         "draft": "Draft",
         "archived": "Archived"
       },
+      "leadStatus": {
+        "new": "New",
+        "qualified": "Qualified",
+        "contacted": "Contacted",
+        "archived": "Archived"
+      },
       "metrics": {
         "matchScore": "Match Score",
         "evidence": "Evidence",
@@ -223,6 +247,7 @@
         "subtitle": "Try resetting filters or add new job profile files to the workspace."
       },
       "fields": {
+        "title": "Title",
         "businessDomain": "Business domain",
         "updatedAt": "Updated at",
         "sourceJd": "Source JD",
@@ -231,6 +256,26 @@
         "mustHave": "Must have",
         "niceToHave": "Nice to have",
         "senioritySignal": "Seniority signal"
+      },
+      "leads": {
+        "searchPlaceholder": "Search company or position",
+        "allStatuses": "All statuses",
+        "favoriteOnly": "Favorites only",
+        "company": "Company",
+        "position": "Position",
+        "source": "Source",
+        "status": "Status",
+        "updatedAt": "Updated at",
+        "action": "Action",
+        "view": "Detail",
+        "detailTitle": "Lead detail",
+        "followUp": "Follow-up",
+        "favoritedHint": "This lead is marked as a priority target for conversion or outreach.",
+        "defaultHint": "Review the lead and convert it into a job profile when it is worth matching.",
+        "convert": "Convert to Job Profile"
+      },
+      "errors": {
+        "titleRequired": "Profile title is required."
       }
     },
     "agentRun": {
