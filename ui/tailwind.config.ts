@@ -7,6 +7,7 @@ const config: Config = {
       colors: {
         "bg-primary": "var(--bg-primary)",
         "bg-panel": "var(--bg-panel)",
+        "bg-hover": "var(--bg-hover)",
         accent: "var(--accent)",
         "accent-cyan": "var(--accent-cyan)",
         success: "var(--success)",
