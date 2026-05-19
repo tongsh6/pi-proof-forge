@@ -167,20 +167,78 @@
     },
     "evidence": {
       "title": "Evidence",
-      "subtitle": "Read-only vertical slice powered by the Python sidecar.",
+      "subtitle": "Maintain evidence cards, artifacts, and gaps as the fact source for matching and generation.",
       "listTitle": "Evidence cards",
       "listCount": "{{count}} cards loaded",
-      "detailTitle": "Card detail",
       "artifactFallback": "Artifact",
+      "actions": {
+        "new": "New Card",
+        "import": "Import",
+        "refresh": "Refresh",
+        "apply": "Apply",
+        "reset": "Reset",
+        "save": "Save",
+        "saving": "Saving...",
+        "delete": "Delete",
+        "deleting": "Deleting...",
+        "saved": "Saved.",
+        "importing": "Importing..."
+      },
+      "filters": {
+        "queryPlaceholder": "Search title, role, or time",
+        "allStatuses": "All statuses",
+        "rolePlaceholder": "Role filter",
+        "tagsPlaceholder": "Tags, comma-separated"
+      },
+      "stats": {
+        "total": "Evidence",
+        "ready": "Ready",
+        "gaps": "Gaps",
+        "artifacts": "Selected artifacts"
+      },
+      "status": {
+        "ready": "Ready",
+        "pass": "Pass",
+        "draft": "Draft",
+        "gap": "Gap",
+        "needs_review": "Review"
+      },
+      "score": "Score",
+      "sections": {
+        "detail": "Evidence Detail"
+      },
       "fields": {
+        "title": "Title",
         "timeRange": "Time range",
         "role": "Role",
+        "status": "Status",
         "context": "Context",
         "actions": "Actions",
         "results": "Results",
         "stack": "Stack",
+        "stackTags": "Stack & Tags",
         "tags": "Tags",
         "artifacts": "Artifacts"
+      },
+      "artifacts": {
+        "title": "Artifacts",
+        "empty": "No artifacts yet. Import source files into the sidecar-managed artifact directory.",
+        "sourcePlaceholder": "Absolute source path, e.g. /Users/.../postmortem.pdf",
+        "modeCreate": "Create evidence card",
+        "modeAppend": "Append to selected card",
+        "modeReplace": "Replace selected artifacts",
+        "preview": "Preview",
+        "delete": "Delete",
+        "reupload": "Re-upload",
+        "size": "{{count}} artifacts"
+      },
+      "empty": {
+        "list": "No evidence cards yet. Create a blank card or import a source file."
+      },
+      "errors": {
+        "titleRequired": "Title is required.",
+        "sourcePathRequired": "Source path is required.",
+        "selectEvidence": "Select an evidence card first."
       }
     },
     "jobs": {

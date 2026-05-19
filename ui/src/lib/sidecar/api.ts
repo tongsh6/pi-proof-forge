@@ -3,7 +3,9 @@ import { TauriRpcTransport } from "@/lib/rpc/tauri-transport";
 import type {
   EvidenceCreateResult,
   EvidenceDeleteResult,
+  EvidenceFilters,
   EvidenceGetResult,
+  EvidenceImportResult,
   EvidenceListResult,
   EvidenceUpdateResult,
   GetPendingReviewResult,
@@ -64,18 +66,30 @@ export async function pingSidecar(): Promise<PingResult> {
   return client.call<PingResult>("system.ping");
 }
 
-export async function listEvidence(): Promise<EvidenceListResult> {
+export async function listEvidence(
+  filters?: EvidenceFilters,
+  options: {
+    cursor?: string | null;
+    pageSize?: number;
+    sortField?: "updated_at" | "score";
+    sortOrder?: "asc" | "desc";
+  } = {}
+): Promise<EvidenceListResult> {
+  const effectiveFilters = filters ?? {
+    query: "",
+    status: null,
+    role: null,
+    tags: [],
+    date_range: null,
+  };
   return client.call<EvidenceListResult>("evidence.list", {
-    cursor: null,
-    page_size: 20,
-    sort: { field: "updated_at", order: "desc" },
-    filters: {
-      query: "",
-      status: null,
-      role: null,
-      tags: [],
-      date_range: null,
+    cursor: options.cursor ?? null,
+    page_size: options.pageSize ?? 20,
+    sort: {
+      field: options.sortField ?? "updated_at",
+      order: options.sortOrder ?? "desc",
     },
+    filters: effectiveFilters,
   });
 }
 
@@ -107,6 +121,7 @@ export async function updateEvidence(
     role_scope: string;
     actions: string;
     results: string;
+    artifacts: string[];
     stack: string[];
     tags: string[];
   }>
@@ -123,6 +138,14 @@ export async function deleteEvidence(
   return client.call<EvidenceDeleteResult>("evidence.delete", {
     evidence_id: evidenceId,
   });
+}
+
+export async function importEvidence(payload: {
+  source_paths: string[];
+  mode: "create" | "append" | "replace";
+  target_evidence_id?: string | null;
+}): Promise<EvidenceImportResult> {
+  return client.call<EvidenceImportResult>("evidence.import", payload);
 }
 
 export async function getSettings(): Promise<SettingsGetResult> {

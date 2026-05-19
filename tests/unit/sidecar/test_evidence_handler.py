@@ -589,6 +589,28 @@ tags:
             "first context line second context line",
         )
 
+    def test_update_can_unlink_artifact_tokens_without_deleting_files(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            evidence_dir = Path(tmp_dir)
+            (evidence_dir / "ec_001.yaml").write_text(SAMPLE_YAML, encoding="utf-8")
+            with patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", evidence_dir):
+                result = handle_evidence_update(
+                    {
+                        "meta": {"correlation_id": "corr_artifact_unlink"},
+                        "evidence_id": "ec-2026-001",
+                        "patch": {"artifacts": []},
+                    }
+                )
+                detail = handle_evidence_get(
+                    {
+                        "meta": {"correlation_id": "corr_artifact_detail"},
+                        "evidence_id": "ec-2026-001",
+                    }
+                )
+
+        self.assertEqual(result["evidence_id"], "ec-2026-001")
+        self.assertEqual(detail["evidence"]["artifacts"], [])
+
 
 class EvidenceImportTests(unittest.TestCase):
     def test_import_creates_evidence_and_artifact(self) -> None:

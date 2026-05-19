@@ -167,20 +167,78 @@
     },
     "evidence": {
       "title": "证据卡",
-      "subtitle": "由 Python sidecar 驱动的首个只读垂直切片。",
+      "subtitle": "维护 Evidence Card、附件和缺口标记，作为所有匹配与生成的事实源。",
       "listTitle": "证据列表",
       "listCount": "已加载 {{count}} 张证据卡",
-      "detailTitle": "详情面板",
       "artifactFallback": "附件",
+      "actions": {
+        "new": "新增",
+        "import": "导入",
+        "refresh": "刷新",
+        "apply": "应用",
+        "reset": "重置",
+        "save": "保存",
+        "saving": "保存中...",
+        "delete": "删除",
+        "deleting": "删除中...",
+        "saved": "已保存。",
+        "importing": "导入中..."
+      },
+      "filters": {
+        "queryPlaceholder": "搜索标题、角色或时间",
+        "allStatuses": "全部状态",
+        "rolePlaceholder": "角色筛选",
+        "tagsPlaceholder": "标签，逗号分隔"
+      },
+      "stats": {
+        "total": "证据卡",
+        "ready": "可用",
+        "gaps": "缺口",
+        "artifacts": "当前附件"
+      },
+      "status": {
+        "ready": "Ready",
+        "pass": "Pass",
+        "draft": "Draft",
+        "gap": "Gap",
+        "needs_review": "Review"
+      },
+      "score": "分数",
+      "sections": {
+        "detail": "证据详情"
+      },
       "fields": {
+        "title": "标题",
         "timeRange": "时间范围",
         "role": "角色范围",
+        "status": "状态",
         "context": "背景",
         "actions": "行动",
         "results": "成果",
         "stack": "技术栈",
+        "stackTags": "技术栈与标签",
         "tags": "标签",
         "artifacts": "附件"
+      },
+      "artifacts": {
+        "title": "附件",
+        "empty": "暂无附件。使用导入入口把源文件纳入 sidecar 管理目录。",
+        "sourcePlaceholder": "源文件绝对路径，例如 /Users/.../postmortem.pdf",
+        "modeCreate": "新建证据卡",
+        "modeAppend": "追加到当前卡",
+        "modeReplace": "替换当前卡附件",
+        "preview": "预览",
+        "delete": "删除",
+        "reupload": "重新上传",
+        "size": "{{count}} 个附件"
+      },
+      "empty": {
+        "list": "暂无证据卡。可以新增空白卡，或导入文件创建证据卡。"
+      },
+      "errors": {
+        "titleRequired": "请填写标题。",
+        "sourcePathRequired": "请填写源文件路径。",
+        "selectEvidence": "请先选择一张证据卡。"
       }
     },
     "jobs": {

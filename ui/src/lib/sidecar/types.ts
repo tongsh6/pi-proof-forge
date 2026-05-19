@@ -30,6 +30,14 @@ export interface EvidenceListItem {
   updated_at: string;
 }
 
+export interface EvidenceFilters {
+  query: string;
+  status: string | null;
+  role: string | null;
+  tags: string[];
+  date_range: { start?: string; end?: string } | null;
+}
+
 export interface ArtifactSummary {
   resource_id?: string;
   filename?: string;
@@ -75,6 +83,10 @@ export interface EvidenceUpdateResult extends EvidenceMutationResult {
 
 export interface EvidenceDeleteResult extends EvidenceMutationResult {
   deleted: boolean;
+}
+
+export interface EvidenceImportResult extends EvidenceMutationResult {
+  imported_resources: string[];
 }
 
 export interface JobProfileListItem {

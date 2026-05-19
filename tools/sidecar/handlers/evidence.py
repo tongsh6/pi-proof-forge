@@ -23,6 +23,7 @@ _UPDATABLE_FIELDS = {
     "actions",
     "results",
     "stack",
+    "artifacts",
     "tags",
 }
 _MANAGED_EVIDENCE_KEYS = {
@@ -511,7 +512,9 @@ def handle_evidence_update(params: dict[str, Any]) -> dict[str, Any]:
             str(patch.get("results", "\n".join(l.get("results", []))))
         ),
         "stack": _validate_string_list("stack", patch.get("stack", l.get("stack", []))),
-        "artifacts": l.get("artifacts", []),
+        "artifacts": _validate_string_list(
+            "artifacts", patch.get("artifacts", l.get("artifacts", []))
+        ),
         "tags": _validate_string_list("tags", patch.get("tags", l.get("tags", []))),
     }
     _write_evidence_file(path, fields, preserved_blocks=preserved_blocks)
