@@ -11,6 +11,7 @@
     "tauri": "pnpm run prepare:python-runtime && tauri",
     "smoke:app": "pnpm run tauri build --bundles app && python3 ./scripts/verify_packaged_app.py",
     "e2e:overview": "node ./scripts/verify_overview_native.mjs",
+    "e2e:evidence": "node ./scripts/verify_evidence_native.mjs",
     "e2e:quick-run": "node ./scripts/verify_quick_run_native.mjs",
     "e2e:quick-run:webdriver": "node ./scripts/verify_quick_run_webdriver.mjs",
     "e2e:resumes": "node ./scripts/verify_resumes_native.mjs",

@@ -9,6 +9,7 @@ const verifyRoutes: Record<string, string> = {
   policy: "/policy",
   resumes: "/resumes",
   jobs: "/jobs",
+  evidence: "/evidence",
 };
 
 export function NativeVerifyController() {
