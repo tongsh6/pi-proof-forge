@@ -158,6 +158,15 @@ python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output
 # 真实猎聘搜索默认关闭，避免 dry-run / 单元测试意外触发平台访问；需要搜索真实职位时显式开启：
 export PPF_ENABLE_LIEPIN_SEARCH=1
 
+# BOSS/智联只读职位发现（可选）
+# 该路径只调用外部 boss-agent-cli 的 schema/status/search/detail 读操作，不启用投递写操作。
+# 默认关闭，避免 dry-run / 单元测试意外启动外部浏览器或平台访问。
+export PPF_ENABLE_BOSS_AGENT_SEARCH=1
+export PPF_BOSS_AGENT_CLI="boss"  # 可改为外部 CLI 实际命令，例如 boss-agent
+
+# Agent Loop 无显式 candidates 时会把 Job Profile keywords 映射到只读 search，并把返回 URL 映射为 Candidate。
+python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id boss-agent-discovery-smoke --output-dir outputs/agent_runs --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml
+
 # dry-run：仅生成执行计划与日志，不打开浏览器
 python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --dry-run
 

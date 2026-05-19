@@ -1,6 +1,7 @@
-"""Load job candidates with 3-level fallback discovery.
+"""Load job candidates with fallback discovery.
 
 Level 1: job_leads/*.yaml        — explicit leads with URLs
+Level 1.5: optional platform search — real job URLs from profile keywords
 Level 2: jd_inputs/*.txt          — extract company/position/direction from JD text
 Level 3: job_profiles/*.yaml      — derive candidates from target profiles
 """
@@ -160,24 +161,29 @@ def discover_candidates(
     base_jp_dir: Path | None = None,
     *,
     enable_liepin_search: bool | None = None,
+    enable_boss_agent_search: bool | None = None,
     session_dir: str = "outputs/sessions",
     excluded_companies: tuple[str, ...] = (),
     search_keywords: list[str] | None = None,
     search_city: str = "上海",
+    boss_agent_platforms: tuple[str, ...] = ("boss", "zhilian"),
 ) -> list[Candidate]:
-    """Full 4-level discovery: job_leads → liepin_search → jd_inputs → job_profiles.
+    """Full discovery: job_leads → optional platform search → jd_inputs → job_profiles.
 
     Level 1: job_leads/*.yaml — explicit leads with real URLs
-    Level 1.5: Liepin search — auto-discover real job URLs from profile keywords
+    Level 1.5a: boss-agent-cli search — optional BOSS/智联 read-only search
+    Level 1.5b: Liepin search — optional real job URLs from profile keywords
     Level 2: jd_inputs/*.txt — extract company/position/direction from JD text
     Level 3: job_profiles/*.yaml — derive search directions
 
-    If search_keywords is provided, use them directly for a targeted Liepin search
-    instead of iterating all job_profiles.
+    If search_keywords is provided, use them directly for targeted platform search
+    instead of deriving keywords from job_profiles.
     """
     candidates: list[Candidate] = []
     if enable_liepin_search is None:
         enable_liepin_search = os.getenv("PPF_ENABLE_LIEPIN_SEARCH", "0") == "1"
+    if enable_boss_agent_search is None:
+        enable_boss_agent_search = os.getenv("PPF_ENABLE_BOSS_AGENT_SEARCH", "0") == "1"
 
     # Level 1: explicit leads override all fallbacks
     leads = load_candidates_from_job_leads(base_dir)
@@ -190,7 +196,21 @@ def discover_candidates(
     candidates.extend(jd_candidates)
     candidates.extend(jp_candidates)
 
-    # Level 1.5: Liepin search for real URLs
+    # Level 1.5a: optional BOSS/智联 read-only search via external CLI
+    if enable_boss_agent_search:
+        try:
+            boss_agent_candidates = _search_boss_agent_for_candidates(
+                keywords=search_keywords,
+                city=search_city,
+                jp_dir=base_jp_dir or JOB_PROFILES_DIR,
+                platforms=boss_agent_platforms,
+            )
+            if boss_agent_candidates:
+                return boss_agent_candidates
+        except Exception:
+            pass
+
+    # Level 1.5b: Liepin search for real URLs
     if enable_liepin_search:
         try:
             if search_keywords:
@@ -214,6 +234,66 @@ def discover_candidates(
             pass
 
     return candidates
+
+
+def _search_boss_agent_for_candidates(
+    *,
+    keywords: list[str] | None,
+    city: str,
+    jp_dir: Path,
+    platforms: tuple[str, ...],
+) -> list[Candidate]:
+    from tools.infra.discovery.boss_agent_cli import search_jobs
+
+    keyword_sets = [keywords] if keywords else _load_profile_keyword_sets(jp_dir, max_profiles=2)
+    candidates: list[Candidate] = []
+    seen_urls: set[str] = set()
+
+    for keyword_set in keyword_sets:
+        if not keyword_set:
+            continue
+        jobs = search_jobs(
+            [str(keyword) for keyword in keyword_set],
+            city=city,
+            platforms=platforms,
+            limit=5,
+        )
+        for idx, job in enumerate(jobs):
+            url = str(job.get("job_url") or job.get("url") or "")
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            platform = str(job.get("platform") or "boss_agent")
+            position = str(job.get("position") or job.get("title") or "")
+            company = str(job.get("company") or job.get("company_name") or "")
+            candidates.append(
+                Candidate(
+                    candidate_id=f"boss-agent-{platform}-{len(candidates)}",
+                    direction=_detect_direction(" ".join(keyword_set) + " " + position),
+                    company=company,
+                    job_url=url,
+                    confidence=float(job.get("confidence", 0.72)),
+                    source=f"boss_agent:{platform}",
+                    merged_sources=(f"boss_agent:{platform}",),
+                )
+            )
+    return candidates
+
+
+def _load_profile_keyword_sets(jp_dir: Path, max_profiles: int) -> list[list[str]]:
+    keyword_sets: list[list[str]] = []
+    for path in sorted(jp_dir.glob("*.yaml")):
+        if len(keyword_sets) >= max_profiles:
+            break
+        try:
+            doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        lists = doc.get("lists", {})
+        keywords = [str(k) for k in lists.get("keywords", []) if str(k).strip()]
+        if keywords:
+            keyword_sets.append(keywords)
+    return keyword_sets
 
 
 def _search_with_keywords(

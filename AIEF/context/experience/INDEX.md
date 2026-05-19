@@ -34,6 +34,7 @@
 - context/experience/lessons/2026-03-04-liepin-job-page-health-check.md
 - context/experience/lessons/2026-03-08-ci-path-filters-and-packaged-doc-copies.md
 - context/experience/lessons/2026-03-08-company-exclusion-policy-update.md
+- context/experience/lessons/2026-05-20-optional-platform-discovery-adapter.md
 
 ## 主题摘要
 - context/experience/summaries/pipeline.md

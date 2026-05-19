@@ -116,6 +116,95 @@ class DiscoveryEngineTests(unittest.TestCase):
             self.assertEqual(len(candidates), 1)
             self.assertEqual(candidates[0].source, "job_profiles:jp-test")
 
+    def test_candidate_fallback_does_not_search_boss_agent_by_default(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            leads_dir = root / "job_leads"
+            jd_dir = root / "jd_inputs"
+            jp_dir = root / "job_profiles"
+            leads_dir.mkdir()
+            jd_dir.mkdir()
+            jp_dir.mkdir()
+            (jp_dir / "jp-test.yaml").write_text(
+                "target_role: Backend Engineer\n"
+                "keywords:\n"
+                "  - Java\n"
+                "  - Redis\n",
+                encoding="utf-8",
+            )
+
+            with patch(
+                "tools.infra.discovery.boss_agent_cli.search_jobs",
+                return_value=[
+                    {
+                        "job_url": "https://www.zhipin.com/job_detail/abc.html",
+                        "company": "Boss Search Co",
+                        "position": "Backend Engineer",
+                        "platform": "boss",
+                    }
+                ],
+            ) as search:
+                candidates = discover_candidates(
+                    base_dir=leads_dir,
+                    base_jd_dir=jd_dir,
+                    base_jp_dir=jp_dir,
+                )
+
+            search.assert_not_called()
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].source, "job_profiles:jp-test")
+
+    def test_enabled_boss_agent_search_maps_results_to_candidates(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            leads_dir = root / "job_leads"
+            jd_dir = root / "jd_inputs"
+            jp_dir = root / "job_profiles"
+            leads_dir.mkdir()
+            jd_dir.mkdir()
+            jp_dir.mkdir()
+
+            with patch(
+                "tools.infra.discovery.boss_agent_cli.search_jobs",
+                return_value=[
+                    {
+                        "url": "https://www.zhipin.com/job_detail/backend.html",
+                        "company_name": "Example Boss",
+                        "title": "Java Backend Engineer",
+                        "platform": "boss",
+                        "confidence": 0.81,
+                    },
+                    {
+                        "job_url": "https://sou.zhaopin.com/job/123",
+                        "company": "Example Zhilian",
+                        "position": "后端开发",
+                        "platform": "zhilian",
+                    },
+                ],
+            ) as search:
+                candidates = discover_candidates(
+                    base_dir=leads_dir,
+                    base_jd_dir=jd_dir,
+                    base_jp_dir=jp_dir,
+                    enable_boss_agent_search=True,
+                    search_keywords=["Java", "Redis"],
+                    search_city="北京",
+                    boss_agent_platforms=("boss", "zhilian"),
+                )
+
+            search.assert_called_once_with(
+                ["Java", "Redis"],
+                city="北京",
+                platforms=("boss", "zhilian"),
+                limit=5,
+            )
+            self.assertEqual(len(candidates), 2)
+            self.assertEqual(candidates[0].company, "Example Boss")
+            self.assertEqual(candidates[0].job_url, "https://www.zhipin.com/job_detail/backend.html")
+            self.assertEqual(candidates[0].confidence, 0.81)
+            self.assertEqual(candidates[0].source, "boss_agent:boss")
+            self.assertEqual(candidates[1].source, "boss_agent:zhilian")
+
     def test_loads_structured_job_leads_with_urls(self) -> None:
         with TemporaryDirectory() as tmp:
             leads_dir = Path(tmp)
