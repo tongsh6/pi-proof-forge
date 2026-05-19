@@ -17,7 +17,10 @@ struct SidecarLaunchConfig {
 }
 
 impl SidecarLaunchConfig {
-    fn from_manifest_dir(manifest_dir: &Path, python_override: Option<String>) -> Result<Self, String> {
+    fn from_manifest_dir(
+        manifest_dir: &Path,
+        python_override: Option<String>,
+    ) -> Result<Self, String> {
         let working_dir = resolve_repo_root(manifest_dir)?;
         let script_path = working_dir.join("tools/sidecar/server.py");
 
@@ -281,9 +284,7 @@ fn build_python_path(working_dir: &Path) -> Result<std::ffi::OsString, String> {
 
 fn smoke_test_requested() -> bool {
     matches!(
-        env::var("PIPROOFFORGE_SMOKE_TEST")
-            .ok()
-            .as_deref(),
+        env::var("PIPROOFFORGE_SMOKE_TEST").ok().as_deref(),
         Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
     )
 }
@@ -351,7 +352,10 @@ fn build_smoke_test_summary(handshake: &Value, ping: &Value) -> Value {
     })
 }
 
-fn run_packaged_smoke_test(app_handle: &AppHandle, manager: &SidecarManager) -> Result<Value, String> {
+fn run_packaged_smoke_test(
+    app_handle: &AppHandle,
+    manager: &SidecarManager,
+) -> Result<Value, String> {
     let handshake_request = build_rpc_request(
         "req_handshake",
         "system.handshake",
@@ -371,11 +375,8 @@ fn run_packaged_smoke_test(app_handle: &AppHandle, manager: &SidecarManager) -> 
     );
 
     let handshake_response = manager.send(app_handle, &handshake_request)?;
-    let handshake_result = parse_rpc_success_response(
-        &handshake_response,
-        "req_handshake",
-        "system.handshake",
-    )?;
+    let handshake_result =
+        parse_rpc_success_response(&handshake_response, "req_handshake", "system.handshake")?;
 
     let ping_response = manager.send(app_handle, &ping_request)?;
     let ping_result = parse_rpc_success_response(&ping_response, "req_ping", "system.ping")?;
@@ -402,13 +403,20 @@ fn sidecar_shutdown(manager: State<'_, SidecarManager>) -> Result<(), String> {
 #[tauri::command]
 fn quick_run_verify_event(event: Value) -> Result<(), String> {
     let scenario = match env::var("QUICK_RUN_VERIFY_AUTORUN").ok() {
-        Some(value) if value == "quick-run" || value == "system-settings" || value == "policy" => value,
+        Some(value) => value,
         _ => return Ok(()),
     };
+    if !matches!(
+        scenario.as_str(),
+        "quick-run" | "overview" | "system-settings" | "policy"
+    ) {
+        return Ok(());
+    }
 
     if let Some(event_name) = event.get("event").and_then(Value::as_str) {
         let allowed_event = match scenario.as_str() {
             "quick-run" => event_name.starts_with("quick_run."),
+            "overview" => event_name.starts_with("overview."),
             "system-settings" => event_name.starts_with("system_settings."),
             "policy" => event_name.starts_with("policy."),
             _ => false,
@@ -510,11 +518,9 @@ mod tests {
         std::fs::create_dir_all(&manifest_dir).expect("manifest dir should be created");
         std::fs::write(&script_path, "print('ok')").expect("script should be written");
 
-        let config = SidecarLaunchConfig::from_manifest_dir(
-            &manifest_dir,
-            Some("python-test".to_string()),
-        )
-        .expect("launch config should be created");
+        let config =
+            SidecarLaunchConfig::from_manifest_dir(&manifest_dir, Some("python-test".to_string()))
+                .expect("launch config should be created");
 
         assert_eq!(config.python_bin, "python-test");
         assert_eq!(config.working_dir, repo_root);
@@ -525,9 +531,8 @@ mod tests {
 
     #[test]
     fn resolves_bundled_resource_root_from_script_path() {
-        let script_path = Path::new(
-            "/Applications/PiProofForge.app/Contents/Resources/tools/sidecar/server.py",
-        );
+        let script_path =
+            Path::new("/Applications/PiProofForge.app/Contents/Resources/tools/sidecar/server.py");
 
         let resource_root =
             resolve_resource_root_from_script(script_path).expect("resource root should resolve");
@@ -544,7 +549,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system time should be after epoch")
             .as_nanos();
-        let resource_root = std::env::temp_dir().join(format!("piproofforge-resource-{unique_suffix}"));
+        let resource_root =
+            std::env::temp_dir().join(format!("piproofforge-resource-{unique_suffix}"));
         let bundled_python = resource_root.join("sidecar/bin/python3");
 
         std::fs::create_dir_all(

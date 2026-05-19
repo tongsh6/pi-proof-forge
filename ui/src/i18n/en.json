@@ -35,6 +35,10 @@
     "overview": {
       "title": "Overview",
       "subtitle": "Desktop dashboard aggregated from the local sidecar.",
+      "startAgent": "Run Agent",
+      "refresh": "Refresh",
+      "gapCount": "{{count}} open",
+      "viewAllGaps": "Review evidence gaps",
       "metrics": {
         "evidence_count": {
           "label": "Evidence",
@@ -59,11 +63,19 @@
       },
       "matchTrend": {
         "title": "Match trend",
-        "subtitle": "Recent matching report scores"
+        "subtitle": "Recent matching report scores",
+        "chartLabel": "Recent matching score line chart",
+        "empty": "No matching trend points yet."
       },
       "gaps": {
         "title": "Gaps",
-        "subtitle": "Outstanding evidence or targeting gaps from the latest report"
+        "subtitle": "Outstanding evidence or targeting gaps from the latest report",
+        "none": "No open gaps in the latest report."
+      },
+      "severity": {
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low"
       },
       "activityTypes": {
         "resume_generated": "Resume",

@@ -35,6 +35,10 @@
     "overview": {
       "title": "概览",
       "subtitle": "由本地 sidecar 聚合驱动的桌面首页。",
+      "startAgent": "启动 Agent",
+      "refresh": "刷新",
+      "gapCount": "{{count}} 项待办",
+      "viewAllGaps": "查看证据缺口",
       "metrics": {
         "evidence_count": {
           "label": "证据卡",
@@ -59,11 +63,19 @@
       },
       "matchTrend": {
         "title": "匹配趋势",
-        "subtitle": "最近匹配报告分数走势"
+        "subtitle": "最近匹配报告分数走势",
+        "chartLabel": "最近匹配分数折线图",
+        "empty": "暂无匹配趋势数据。"
       },
       "gaps": {
         "title": "缺口待办",
-        "subtitle": "最新报告里仍需补齐的证据与投递缺口"
+        "subtitle": "最新报告里仍需补齐的证据与投递缺口",
+        "none": "最新报告暂无待处理缺口。"
+      },
+      "severity": {
+        "high": "高",
+        "medium": "中",
+        "low": "低"
       },
       "activityTypes": {
         "resume_generated": "简历",

@@ -13,6 +13,7 @@
 > 2026-05-18 补充：Agent Run 页面产品化垂直切片已按终版 GUI 第 6 页补齐运行启动/停止/刷新、10 状态机、N-Pass Gate 摘要、事件流与人工审批面板；实现复用既有 `run.agent.start/get/stop` 与 REVIEW RPC 合同，仅为 `getPendingReview` / `submitReview` 前端调用补上可选 `run_id` 参数，不新增 sidecar 协议。
 > 2026-05-19 补充：System Settings 页面产品化垂直切片已按终版 GUI 第 9 页补齐左侧 Channels / LLM Config 分组导航、通道状态卡、fallback 顺序、连接检查、凭证状态、LLM 配置字段与 API key 掩码状态；`settings.get` 返回 Liepin / Email 通道运行状态快照，不返回明文 secret，不新增敏感信息写入路径。该页已补上真实 Tauri native verifier：`pnpm --dir ui run e2e:system-settings` 会启动桌面壳、自动导航到 `/system-settings`，并等待真实 bridge + sidecar 写出 `system_settings.load.ready`，普通 Vite/mock bridge 不再作为最终验收口径。
 > 2026-05-19 补充：Policy 页面产品化垂直切片已按终版 GUI 第 8 页补齐左侧 Gate Policy / Exclusion List 分组导航、顶部保存主动作、门禁字段卡、delivery_mode / batch_review 交互、企业展示名与企业主体分区编辑、规则预览和 Discovery/Gate 命中说明；实现继续复用既有 `settings.get/update` 合同，不新增 sidecar 协议。`delivery_mode=auto` 时关闭 `batch_review` 的策略不变量已下沉到前端交互、sidecar settings 读写、config validator 与根 `policy.yaml`，避免真实 settings 数据形成无效人工审批状态。该页已补上真实 Tauri native verifier：`pnpm --dir ui run e2e:policy` 会启动桌面壳、自动导航到 `/policy`，并等待真实 bridge + sidecar 写出 `policy.load.ready`。
+> 2026-05-19 补充：Overview 页面产品化垂直切片已按终版 GUI 第 1 页补齐顶部 Run Agent 主动作、四项统计卡片、图标化最近活动、SVG 匹配趋势图、缺口严重度汇总和证据缺口跳转；实现继续复用既有 `overview.get` 合同，不新增 sidecar 协议。该页已补上真实 Tauri native verifier：`pnpm --dir ui run e2e:overview` 会启动桌面壳、自动导航到 `/`，并等待真实 bridge + sidecar 写出 `overview.load.ready`。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -137,13 +138,14 @@
 | **GUI Quick Run 直接执行** | **已完成** | tools/sidecar/handlers/agent.py + tools/sidecar/server.py + ui/src/pages/quick-run/index.tsx + ui/src/lib/sidecar/api.ts | `python3 -m pytest tests/unit/sidecar/test_server.py -q` → 12 passed；`pnpm --dir ui build` → pass | `run.quick.start` 同步启动本地 `tools/run_pipeline.py` 单次 pipeline 并返回 run record 路径；`run.quick.cancel` 记录取消请求；Quick Run 页面新增启动按钮、状态回显，CLI 命令保留为 fallback |
 | **Quick Run native verifier 自动化** | **已完成** | ui/scripts/verify_quick_run_native.mjs + ui/src/components/shell/NativeVerifyController.tsx + ui/src/pages/quick-run/index.tsx + ui/package.json | `pnpm --dir ui run e2e:quick-run` 连续多轮通过；`pnpm --dir ui build` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → pass；`python3 -m pytest tests/ -q` → 351 passed | 参考 ai-novel-studio 的 native verifier 方式：主入口 `pnpm --dir ui run e2e:quick-run` 用 `pnpm tauri dev` 启动真实 Tauri 窗口，以 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，并用 `outputs/quick_runs` + summary 校验结果；WebDriver 仅保留为可选补充；dev 模式固定仓库根工作目录并补 `PYTHONPATH`，避免产物写入 `target/debug/resources` |
 | **Quick Run sidecar 项目根锚定** | **已完成** | tools/sidecar/handlers/agent.py + tests/unit/sidecar/test_agent_handler.py + tests/unit/sidecar/test_server.py | `python3 -m pytest tests/ -q` → 352 passed；`python3 tools/check_v2_constraints.py --root .` → PASS；`python3 tools/check_aief_l3.py --root . --base-dir AIEF` → PASS；`pnpm --dir ui run e2e:quick-run` → DONE | `run.quick.start` 默认 raw/profile、pipeline 脚本、subprocess cwd 与 sidecar 运行目录均锚定项目根，避免 sidecar cwd 偏移导致 Quick Run 产物写到错误目录 |
+| **Overview 页面产品化垂直切片** | **已完成** | ui/src/pages/overview/index.tsx + ui/scripts/verify_overview_native.mjs + tests/unit/gui/test_overview_page_contract.py | `python3 -m pytest tests/unit/gui/test_overview_page_contract.py tests/unit/sidecar/test_overview_handler.py -q` → 11 passed；`pnpm --dir ui build` → pass；`cargo fmt --manifest-path ui/src-tauri/Cargo.toml` → pass；`cargo test --manifest-path ui/src-tauri/Cargo.toml` → 7 passed；`pnpm --dir ui run e2e:overview` → pass | 按终版 GUI 第 1 页补齐启动主动作、统计、最近活动、趋势图、缺口汇总；复用 `overview.get`，native verifier 校验真实 bridge + sidecar ready 事件 |
 | **GitHub issue 状态清理** | **已完成** | GitHub issues #21-#27 | `gh issue close/comment` + `gh issue list` | #24/#26/#27 已关闭；#21/#22/#23/#25 已评论降级或缩小范围；#15/#16 保持关闭 |
 
 ## 3. 已验证事项
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|----------|----------|------|
-| 全部 360 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 360 passed |
+| 全部 366 单元测试 | `python3 -m pytest tests/ -q` | 终端输出 | 366 passed |
 | v2 静态约束 | `python3 tools/check_v2_constraints.py --root .` | 终端输出 | PASS |
 | AIEF L3 合规 | `python3 tools/check_aief_l3.py --root . --base-dir AIEF` | 终端输出 | PASS |
 | Agent full-pipeline dry-run | `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml` | 终端输出 | DONE (10 状态全量日志) |
@@ -162,6 +164,7 @@
 | GUI 编译验证 | `pnpm --dir ui build` | TypeScript 零错误, 1628 modules | 9 页全部可编译 |
 | GUI Agent Run 页面冒烟 | `pnpm --dir ui build` + Playwright 打开 `http://127.0.0.1:1420/agent-run` | Vite/Playwright 终端输出 | 页面渲染出 10 状态节点、门禁摘要、审批面板与事件流；纯 Vite 模式下 Tauri bridge 未连接属预期 |
 | Quick Run native verifier | `pnpm --dir ui run e2e:quick-run` | `outputs/quick_runs/qr_20260517150915671449.json` + `outputs/agent_runs/qr_20260517150915671449/summary.json` | 真实 Tauri 窗口内点击 Quick Run，DONE；多轮无残留进程或 `.env.local` |
+| Overview native verifier | `pnpm --dir ui run e2e:overview` | `ui/test-results/overview-native/app-events.jsonl` | 真实 Tauri 窗口内自动导航 `/`，sidecar ready 后写出 `overview.load.ready`，当前工作区聚合到 evidence=13、matched_jobs=2、resumes=19、submissions=27、activities=6、trend=13、gaps=1 |
 | System Settings native verifier | `pnpm --dir ui run e2e:system-settings` | `ui/test-results/system-settings-native/app-events.jsonl` | 真实 Tauri 窗口内自动导航 `/system-settings`，sidecar ready 后写出 `system_settings.load.ready`，包含 `channel_ids=["liepin","email"]` |
 | Policy native verifier | `pnpm --dir ui run e2e:policy` | `ui/test-results/policy-native/app-events.jsonl` | 真实 Tauri 窗口内自动导航 `/policy`，sidecar ready 后写出 `policy.load.ready`，并验证 `delivery_mode=auto` 时 `batch_review=false` |
 | LLM Evaluator 增强 | `tools/engines/evaluation/llm_evaluator.py` | 6 维度语义评测 | semantic_coverage + fabrication_risk + gaps/strengths/improvements |

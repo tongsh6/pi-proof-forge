@@ -11,6 +11,8 @@ export function NativeVerifyController() {
     const targetPath =
       verifyScenario === "quick-run"
         ? "/quick-run"
+        : verifyScenario === "overview"
+          ? "/"
         : verifyScenario === "system-settings"
           ? "/system-settings"
           : verifyScenario === "policy"
