@@ -90,6 +90,33 @@ pnpm --dir ui run prepare:python-runtime
 python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
 ```
 
+### 本地 Demo 验收
+
+```bash
+bash scripts/acceptance/run-demo.sh
+```
+
+该命令包装现有样例 pipeline，校验 Evidence Card、Matching Report、A/B Markdown Resume、Scorecard、Run Record 与关键事件是否齐全，并写出：
+
+- `outputs/demo/<run_id>/demo-report.json`
+- `outputs/demo/<run_id>/demo-report.md`
+
+演示前推荐使用聚合检查入口：
+
+```bash
+bash scripts/acceptance/run-demo-readiness.sh
+```
+
+默认只运行本地确定性 Demo 检查。需要同时启动真实 Tauri Quick Run 验收时，显式加：
+
+```bash
+bash scripts/acceptance/run-demo-readiness.sh --include-gui
+```
+
+聚合报告写入 `outputs/demo/<run_id>/readiness-report.json` 与 `readiness-report.md`。
+
+演示顺序和排障清单见 `docs/demo-runbook.md`。
+
 ### 分阶段执行
 
 ```bash
