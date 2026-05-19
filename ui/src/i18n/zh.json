@@ -159,6 +159,16 @@
       "running": "运行中",
       "cancelRun": "取消运行",
       "runStatus": "运行 {{runId}}：{{status}}",
+      "stageOutput": "阶段输出",
+      "scores": "评分",
+      "waiting": "等待中...",
+      "elapsed": "已运行 {{seconds}} 秒",
+      "result": "结果已生成",
+      "noLogs": "运行输出会显示在这里。",
+      "scoreLabels": {
+        "total": "总分",
+        "empty": "匹配阶段完成后显示评分。"
+      },
       "selectedHint": "也可以复制命令在终端中运行；结果会出现在概览和简历页面。",
       "pipelineCommand": "管道模式（单次执行）",
       "agentCommand": "Agent 模式（多轮门禁）",

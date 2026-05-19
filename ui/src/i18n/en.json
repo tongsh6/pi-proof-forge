@@ -159,6 +159,16 @@
       "running": "Running",
       "cancelRun": "Cancel Run",
       "runStatus": "Run {{runId}}: {{status}}",
+      "stageOutput": "Stage Output",
+      "scores": "Scores",
+      "waiting": "Waiting...",
+      "elapsed": "{{seconds}}s elapsed",
+      "result": "Result ready",
+      "noLogs": "Run output will appear here.",
+      "scoreLabels": {
+        "total": "Total",
+        "empty": "Scores are available after matching completes."
+      },
       "selectedHint": "You can still copy the command as a terminal fallback. Results appear in Overview and Resumes.",
       "pipelineCommand": "Pipeline (single pass)",
       "agentCommand": "Agent (multi-round with gate)",

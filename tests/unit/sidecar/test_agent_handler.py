@@ -167,3 +167,74 @@ class TestQuickRunStart:
         command = run_mock.call_args.args[0]
         assert command[1] == str(project_root / "tools" / "run_pipeline.py")
         assert run_mock.call_args.kwargs["cwd"] == str(project_root)
+
+    def test_returns_stdout_artifacts_and_matching_scores(self):
+        with TemporaryDirectory() as project_tmp:
+            project_root = Path(project_tmp)
+            quick_dir = project_root / "outputs" / "quick_runs"
+            tools_dir = project_root / "tools"
+            profile_dir = project_root / "job_profiles"
+            matching_dir = project_root / "matching_reports"
+            summary_dir = project_root / "outputs" / "agent_runs" / "qr_test"
+            tools_dir.mkdir()
+            profile_dir.mkdir()
+            matching_dir.mkdir()
+            summary_dir.mkdir(parents=True)
+            (tools_dir / "sample_raw.txt").write_text("raw", encoding="utf-8")
+            (profile_dir / "jp-001.yaml").write_text(
+                "target_role: Backend\n", encoding="utf-8"
+            )
+            (matching_dir / "mr-qr_test.yaml").write_text(
+                "\n".join(
+                    [
+                        "score_total: 82",
+                        "score_breakdown:",
+                        '  K: { score: 18, reason: "stack match" }',
+                        '  D: { score: 14, reason: "domain match" }',
+                        '  S: { score: 15, reason: "scope match" }',
+                        '  Q: { score: 13, reason: "quality match" }',
+                        '  E: { score: 12, reason: "impact match" }',
+                        '  R: { score: 10, reason: "recency match" }',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (summary_dir / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "status": "DONE",
+                        "artifacts": {
+                            "matching": "matching_reports/mr-qr_test.yaml",
+                            "scorecard": "outputs/scorecards/scorecard_mr-qr_test_A.md",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = type(
+                "Completed",
+                (),
+                {"returncode": 0, "stdout": "[pipeline] done\n", "stderr": ""},
+            )()
+
+            with (
+                patch("tools.sidecar.handlers.agent._PROJECT_ROOT", project_root),
+                patch("tools.sidecar.handlers.agent._QUICK_RUN_DIR", quick_dir),
+                patch("tools.sidecar.handlers.agent._build_quick_run_id", return_value="qr_test"),
+                patch(
+                    "tools.sidecar.handlers.agent.subprocess.run",
+                    return_value=completed,
+                ),
+            ):
+                result = handle_quick_start(
+                    {
+                        "meta": {"correlation_id": "corr_quick_scores"},
+                        "job_profile_id": "jp-001",
+                    }
+                )
+
+        assert result["stdout"] == "[pipeline] done\n"
+        assert result["artifacts"]["matching"] == "matching_reports/mr-qr_test.yaml"
+        assert result["score_total"] == 82
+        assert result["score_breakdown"]["K"]["score"] == 18

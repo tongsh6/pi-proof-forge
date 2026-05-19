@@ -414,6 +414,13 @@ export interface QuickRunStartResult extends RpcResultBase {
   exit_code?: number | null;
   run_record?: string;
   summary?: string;
+  stdout?: string;
+  stderr?: string;
+  artifacts?: Record<string, string>;
+  failed_step?: string;
+  reason?: string;
+  score_total?: number | null;
+  score_breakdown?: Record<string, { score: number; reason?: string }>;
 }
 
 export interface QuickRunCancelResult extends RpcResultBase {

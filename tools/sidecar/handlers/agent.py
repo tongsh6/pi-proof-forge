@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -178,6 +179,64 @@ def _quick_run_paths(job_profile_id: str, options: dict[str, Any]) -> tuple[Path
     return raw_path, job_profile_path
 
 
+def _load_quick_run_summary(run_id: str) -> dict[str, Any]:
+    summary_path = _PROJECT_ROOT / "outputs" / "agent_runs" / run_id / "summary.json"
+    if not summary_path.exists():
+        return {}
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _parse_matching_scores(matching_path: Path) -> tuple[int | None, dict[str, dict[str, Any]]]:
+    if not matching_path.exists():
+        return None, {}
+    text = matching_path.read_text(encoding="utf-8")
+    total_match = re.search(r"(?m)^score_total:\s*([0-9]+(?:\.[0-9]+)?)\s*$", text)
+    score_total = int(float(total_match.group(1))) if total_match else None
+    breakdown: dict[str, dict[str, Any]] = {}
+    for key, score, reason in re.findall(
+        r'(?m)^\s+([KDSQER]):\s*\{\s*score:\s*([0-9]+(?:\.[0-9]+)?),\s*reason:\s*"([^"]*)"',
+        text,
+    ):
+        breakdown[key] = {
+            "score": int(float(score)),
+            "reason": reason,
+        }
+    return score_total, breakdown
+
+
+def _quick_run_result_details(
+    run_id: str,
+    stdout: str,
+    stderr: str,
+) -> dict[str, Any]:
+    summary_payload = _load_quick_run_summary(run_id)
+    artifacts = summary_payload.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+    failed_step = summary_payload.get("failed_step", "")
+    reason = summary_payload.get("reason", "")
+    matching_artifact = artifacts.get("matching")
+    score_total: int | None = None
+    score_breakdown: dict[str, dict[str, Any]] = {}
+    if isinstance(matching_artifact, str) and matching_artifact:
+        score_total, score_breakdown = _parse_matching_scores(
+            _resolve_project_path(matching_artifact)
+        )
+    return {
+        "stdout": stdout[-4000:],
+        "stderr": stderr[-4000:],
+        "artifacts": artifacts,
+        "failed_step": failed_step if isinstance(failed_step, str) else "",
+        "reason": reason if isinstance(reason, str) else "",
+        "score_total": score_total,
+        "score_breakdown": score_breakdown,
+    }
+
+
 def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     """Run the single-pass pipeline from the desktop Quick Run page."""
     correlation_id = params["meta"]["correlation_id"]
@@ -262,6 +321,8 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     }
     _save_quick_run(_get_quick_run_file(run_id), payload)
 
+    details = _quick_run_result_details(run_id, stdout, stderr)
+
     return {
         "meta": {"correlation_id": correlation_id},
         "run_id": run_id,
@@ -269,6 +330,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
         "exit_code": exit_code,
         "run_record": str(Path("outputs") / "agent_runs" / run_id / "run_log.json"),
         "summary": str(Path("outputs") / "agent_runs" / run_id / "summary.json"),
+        **details,
     }
 
 

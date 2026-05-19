@@ -58,6 +58,24 @@ function readQuickRun(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+function readEvents() {
+  if (!existsSync(APP_EVENTS_PATH)) return [];
+  return readFileSync(APP_EVENTS_PATH, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+function validateReadyEvent(event) {
+  if (event.event !== "quick_run.load.ready") return false;
+  return (
+    typeof event.evidence_count === "number" &&
+    event.evidence_count >= 0 &&
+    typeof event.job_profile_count === "number" &&
+    event.job_profile_count >= 0
+  );
+}
+
 function findFinishedRun(baseline) {
   const candidates = [...quickRunFiles()]
     .filter((path) => !baseline.has(path))
@@ -131,6 +149,20 @@ function enableViteAutorunEnv() {
   };
 }
 
+async function waitForReadyEvent(args, child) {
+  const deadline = Date.now() + args.timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(`Tauri dev exited before Quick Run loaded, exit code ${child.exitCode}`);
+    }
+
+    const ready = readEvents().find(validateReadyEvent);
+    if (ready) return ready;
+    await sleep(500);
+  }
+  throw new Error("Timed out waiting for Quick Run native ready event");
+}
+
 async function waitForRun(args, child, baseline) {
   const deadline = Date.now() + args.timeoutMs;
   while (Date.now() < deadline) {
@@ -198,6 +230,7 @@ async function main() {
   activeChild = child;
   activeRestoreViteEnv = restoreViteEnv;
   try {
+    const readyEvent = await waitForReadyEvent(args, child);
     const result = await waitForRun(args, child, baseline);
     const summary = join(OUTPUTS_DIR, "agent_runs", result.runId, "summary.json");
     if (["DONE", "SKIPPED"].includes(result.status) && !existsSync(summary)) {
@@ -210,6 +243,8 @@ async function main() {
         driver: "tauri-native-autorun",
         run_id: result.runId,
         status: result.status,
+        evidence_count: readyEvent.evidence_count,
+        job_profile_count: readyEvent.job_profile_count,
         quick_run_record: result.record,
         summary,
         log: logPath,
