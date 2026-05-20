@@ -8,7 +8,7 @@ interface AppShellState {
 }
 
 export const useAppShellStore = create<AppShellState>((set) => ({
-  language: "en",
+  language: "zh",
   sideNavCollapsed: false,
   setLanguage: (language) => set({ language }),
   toggleSideNav: () =>

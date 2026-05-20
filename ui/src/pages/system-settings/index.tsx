@@ -62,6 +62,10 @@ function statusTone(value: string): StatusTone {
 
 function statusLabel(value: string, t: (key: string) => string): string {
   const normalized = value.toLowerCase();
+  if (value === "已配置（掩码）") {
+    return t("pages.systemSettings.secretConfigured");
+  }
+  if (value === "未配置") return t("pages.systemSettings.secretMissing");
   if (normalized === "enabled") return t("pages.systemSettings.status.enabled");
   if (normalized === "disabled") return t("pages.systemSettings.status.disabled");
   if (normalized === "configured") return t("pages.systemSettings.status.configured");
