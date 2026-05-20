@@ -16,6 +16,9 @@ ui/src-tauri/resources/job_profiles/**
 
 # Generated artifacts
 outputs/
+uploaded_resumes/
+materials/
+app-data/
 evidence_cards/ec-demo_*.yaml
 evidence_cards/ec-qr_*.yaml
 matching_reports/mr-demo_*.yaml

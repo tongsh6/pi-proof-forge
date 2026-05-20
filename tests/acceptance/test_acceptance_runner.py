@@ -26,12 +26,24 @@ def test_acceptance_runner_defaults_to_l1(tmp_path: Path) -> None:
 
     assert report.status == "pass"
     assert report.levels == ("L1",)
-    assert [step.level for step in report.steps] == ["L1"]
-    assert run_mock.call_args.args[0] == [
+    assert [step.level for step in report.steps] == ["L1", "L1"]
+    assert [step.name for step in report.steps] == [
+        "first_launch_configure_lm_studio",
+        "setup_profile_and_material_library",
+    ]
+    assert run_mock.call_count == 2
+    assert run_mock.call_args_list[0].args[0] == [
         sys.executable,
         "-m",
         "pytest",
         "tests/acceptance/test_scenario_first_launch_configure_lm_studio.py",
+        "-q",
+    ]
+    assert run_mock.call_args_list[1].args[0] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/acceptance/test_scenario_setup_profile_and_material_library.py",
         "-q",
     ]
 
@@ -50,9 +62,14 @@ def test_acceptance_runner_all_includes_gated_unimplemented_levels(
         )
 
     assert report.status == "pass"
-    assert [step.level for step in report.steps] == ["L1", "L2", "L3"]
-    assert [step.status for step in report.steps] == ["pass", "not_started", "not_started"]
-    assert run_mock.call_count == 1
+    assert [step.level for step in report.steps] == ["L1", "L1", "L2", "L3"]
+    assert [step.status for step in report.steps] == [
+        "pass",
+        "pass",
+        "not_started",
+        "not_started",
+    ]
+    assert run_mock.call_count == 2
 
 
 def test_acceptance_runner_level_without_implementation_is_not_started(
@@ -86,7 +103,7 @@ def test_acceptance_runner_failure_returns_fail(tmp_path: Path) -> None:
     assert report.status == "fail"
     assert report.steps[0].status == "fail"
     assert "L1 scenario validation failed" in report.steps[0].message
-    assert report.steps[0].stderr_tail == "boom"
+    assert report.steps[0].stderr_tail.endswith("boom")
 
 
 def test_acceptance_runner_timeout_returns_fail(tmp_path: Path) -> None:
@@ -108,7 +125,7 @@ def test_acceptance_runner_timeout_returns_fail(tmp_path: Path) -> None:
     assert report.status == "fail"
     assert report.steps[0].status == "fail"
     assert "timed out" in report.steps[0].message
-    assert report.steps[0].stdout_tail == "partial"
+    assert report.steps[0].stdout_tail.endswith("partial")
 
 
 def test_write_acceptance_report_outputs_json_markdown_and_journey_report(
@@ -131,16 +148,23 @@ def test_write_acceptance_report_outputs_json_markdown_and_journey_report(
     assert payload["status"] == "pass"
     assert payload["summary"]["L1"] == "pass"
     assert payload["steps"][0]["name"] == "first_launch_configure_lm_studio"
+    assert payload["steps"][1]["name"] == "setup_profile_and_material_library"
 
     markdown = markdown_path.read_text(encoding="utf-8")
     assert "# PiProofForge Acceptance Runner" in markdown
-    assert "first_launch_configure_lm_studio" in markdown
+    assert "setup_profile_and_material_library" in markdown
 
     assert journey_json_path.name == "journey-report.json"
     assert journey_markdown_path.name == "journey-report.md"
     assert journey_json_path.exists()
     assert journey_markdown_path.exists()
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    material_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "profile_and_materials_persisted"
+    )
+    assert material_rule["status"] == "pass"
     visible_rule = next(
         step
         for step in journey_payload["steps"]

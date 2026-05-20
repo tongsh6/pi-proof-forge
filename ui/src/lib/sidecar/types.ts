@@ -306,6 +306,29 @@ export interface ResumeExportResult extends RpcResultBase {
   resource_id: string;
 }
 
+export interface MaterialSourceItem {
+  material_id: string;
+  resource_id: string;
+  label: string;
+  kind: string;
+  filename: string;
+  extension: string;
+  uploaded_at: string;
+  preview: string;
+  size_bytes: number;
+}
+
+export interface MaterialUploadResult extends RpcResultBase, MaterialSourceItem {}
+
+export interface MaterialListResult extends RpcResultBase {
+  items: MaterialSourceItem[];
+}
+
+export interface MaterialReadinessResult extends RpcResultBase {
+  status: "ready" | "incomplete" | string;
+  missing_items: string[];
+}
+
 export interface ProfilePayload {
   name: string;
   phone: string;

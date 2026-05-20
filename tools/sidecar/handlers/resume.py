@@ -16,7 +16,8 @@ _OUTPUTS_DIR = Path("outputs")
 _UPLOADED_DIR = Path("uploaded_resumes")
 _MATCHING_REPORT_DIR = Path("matching_reports")
 _JOB_PROFILE_DIR = Path("job_profiles")
-_ALLOWED_SUFFIXES = {".pdf", ".docx"}
+_ALLOWED_SUFFIXES = {".pdf", ".docx", ".md", ".txt"}
+_TEXT_PREVIEW_SUFFIXES = {".md", ".txt"}
 
 
 def _utcnow_iso() -> str:
@@ -176,6 +177,37 @@ def _parse_uploaded_resume(meta_path: Path) -> dict[str, Any]:
         "score": score,
         "company": "",
         "updated_at": s.get("uploaded_at", _format_updated_at(meta_path)),
+    }
+
+
+def _uploaded_resume_source_from_meta(meta_path: Path) -> Path | None:
+    doc = parse_simple_yaml(meta_path.read_text(encoding="utf-8"))
+    filename = doc["scalars"].get("filename", "")
+    if filename:
+        path = meta_path.parent / filename
+        if path.exists():
+            return path
+    resume_id = doc["scalars"].get("resume_id", meta_path.stem.removesuffix(".meta"))
+    for path in meta_path.parent.glob(f"{resume_id}.*"):
+        if path.name != f"{resume_id}.meta.yaml":
+            return path
+    return None
+
+
+def _parse_uploaded_text_preview(meta_path: Path, source: Path) -> dict[str, Any]:
+    doc = parse_simple_yaml(meta_path.read_text(encoding="utf-8"))
+    label = doc["scalars"].get("label", source.stem)
+    text = source.read_text(encoding="utf-8", errors="replace")
+    parsed = _parse_preview_markdown(text)
+    if parsed["name"]:
+        return parsed
+    summary_lines = [line.strip("#- * \t") for line in text.splitlines() if line.strip()]
+    return {
+        "name": label,
+        "contact": {"phone": "", "email": "", "city": ""},
+        "summary": " ".join(summary_lines)[:600],
+        "experience": [],
+        "skills": [],
     }
 
 
@@ -352,6 +384,7 @@ def handle_resume_upload(params: dict[str, Any]) -> dict[str, Any]:
                 f"resource_id: {_quote(resource_id)}",
                 f"uploaded_at: {_quote(uploaded_at)}",
                 f"filename: {_quote(destination.name)}",
+                f"extension: {_quote(source.suffix.lower())}",
             ]
         )
         + "\n",
@@ -382,6 +415,14 @@ def handle_resume_get_preview(params: dict[str, Any]) -> dict[str, Any]:
 
     uploaded_meta = _find_uploaded_meta(resume_id)
     if uploaded_meta is not None:
+        source = _uploaded_resume_source_from_meta(uploaded_meta)
+        if source is not None and source.suffix.lower() in _TEXT_PREVIEW_SUFFIXES:
+            return {
+                "meta": {"correlation_id": correlation_id},
+                "resume_id": resume_id,
+                "preview": _parse_uploaded_text_preview(uploaded_meta, source),
+                "preview_status": "available",
+            }
         return {
             "meta": {"correlation_id": correlation_id},
             "resume_id": resume_id,

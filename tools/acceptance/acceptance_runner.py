@@ -18,7 +18,24 @@ from tools.acceptance.journey_report import (
 
 
 VALID_LEVELS = ("L1", "L2", "L3")
-L1_SCENARIO_TEST = "tests/acceptance/test_scenario_first_launch_configure_lm_studio.py"
+L1_SCENARIO_TESTS = (
+    (
+        "first_launch_configure_lm_studio",
+        "tests/acceptance/test_scenario_first_launch_configure_lm_studio.py",
+        (
+            "LM Studio settings, structured connection check, and run-page provider "
+            "summary validation passed."
+        ),
+    ),
+    (
+        "setup_profile_and_material_library",
+        "tests/acceptance/test_scenario_setup_profile_and_material_library.py",
+        (
+            "Profile, uploaded resume, raw material library, readiness feedback, "
+            "and evidence material source validation passed."
+        ),
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -80,12 +97,7 @@ def run_acceptance(
 
     for level in normalized_levels:
         if level == "L1":
-            steps.append(
-                _run_l1_step(
-                    root=root,
-                    timeout_seconds=timeout_seconds,
-                )
-            )
+            steps.extend(_run_l1_steps(root=root, timeout_seconds=timeout_seconds))
             continue
         steps.append(_not_started_step(level))
 
@@ -178,15 +190,35 @@ def summarize_by_level(steps: tuple[AcceptanceStep, ...]) -> dict[str, str]:
     return result
 
 
-def _run_l1_step(*, root: Path, timeout_seconds: int) -> AcceptanceStep:
+def _run_l1_steps(*, root: Path, timeout_seconds: int) -> tuple[AcceptanceStep, ...]:
+    return tuple(
+        _run_l1_scenario_step(
+            root=root,
+            timeout_seconds=timeout_seconds,
+            scenario_name=scenario_name,
+            test_path=test_path,
+            pass_message=pass_message,
+        )
+        for scenario_name, test_path, pass_message in L1_SCENARIO_TESTS
+    )
+
+
+def _run_l1_scenario_step(
+    *,
+    root: Path,
+    timeout_seconds: int,
+    scenario_name: str,
+    test_path: str,
+    pass_message: str,
+) -> AcceptanceStep:
     command = (
         sys.executable,
         "-m",
         "pytest",
-        L1_SCENARIO_TEST,
+        test_path,
         "-q",
     )
-    evidence = str(root / L1_SCENARIO_TEST)
+    evidence = str(root / test_path)
     try:
         completed = subprocess.run(
             list(command),
@@ -199,7 +231,7 @@ def _run_l1_step(*, root: Path, timeout_seconds: int) -> AcceptanceStep:
     except subprocess.TimeoutExpired as exc:
         return AcceptanceStep(
             level="L1",
-            name="first_launch_configure_lm_studio",
+            name=scenario_name,
             status="fail",
             command=command,
             evidence=evidence,
@@ -211,14 +243,14 @@ def _run_l1_step(*, root: Path, timeout_seconds: int) -> AcceptanceStep:
     passed = completed.returncode == 0
     return AcceptanceStep(
         level="L1",
-        name="first_launch_configure_lm_studio",
+        name=scenario_name,
         status="pass" if passed else "fail",
         command=command,
         evidence=evidence,
         message=(
-            "L1 scenario validation passed."
+            pass_message
             if passed
-            else "L1 scenario validation failed; inspect stdout/stderr tails."
+            else f"{scenario_name} L1 scenario validation failed; inspect stdout/stderr tails."
         ),
         stdout_tail=completed.stdout[-4000:],
         stderr_tail=completed.stderr[-4000:],
@@ -237,22 +269,30 @@ def _not_started_step(level: str) -> AcceptanceStep:
 
 
 def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
-    l1_step = next((step for step in report.steps if step.level == "L1"), None)
-    if l1_step is None:
-        return {}
-    status = "pass" if l1_step.status == "pass" else "fail"
-    results = {
-        "lm_studio_config_persisted": JourneyStepResult(
+    results: dict[str, JourneyStepResult] = {}
+    lm_step = _find_step(report, "first_launch_configure_lm_studio")
+    if lm_step is not None:
+        status = "pass" if lm_step.status == "pass" else "fail"
+        results["lm_studio_config_persisted"] = JourneyStepResult(
             status=status,
-            evidence=l1_step.evidence,
-            message=l1_step.message,
-        ),
-        "lm_studio_connection_check_structured": JourneyStepResult(
+            evidence=lm_step.evidence,
+            message=lm_step.message,
+        )
+        results["lm_studio_connection_check_structured"] = JourneyStepResult(
             status=status,
-            evidence=l1_step.evidence,
-            message=l1_step.message,
-        ),
-    }
+            evidence=lm_step.evidence,
+            message=lm_step.message,
+        )
+
+    materials_step = _find_step(report, "setup_profile_and_material_library")
+    if materials_step is not None:
+        status = "pass" if materials_step.status == "pass" else "fail"
+        results["profile_and_materials_persisted"] = JourneyStepResult(
+            status=status,
+            evidence=materials_step.evidence,
+            message=materials_step.message,
+        )
+
     l2_step = next((step for step in report.steps if step.level == "L2"), None)
     if l2_step is not None and l2_step.status != "not_started":
         results["lm_studio_visible_to_run_pages"] = JourneyStepResult(
@@ -261,6 +301,10 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             message=l2_step.message,
         )
     return results
+
+
+def _find_step(report: AcceptanceReport, name: str) -> AcceptanceStep | None:
+    return next((step for step in report.steps if step.name == name), None)
 
 
 def _normalize_levels(levels: tuple[str, ...]) -> tuple[str, ...]:

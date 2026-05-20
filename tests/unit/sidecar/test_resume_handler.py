@@ -274,6 +274,25 @@ class ResumeUploadTests(unittest.TestCase):
                         }
                     )
 
+    def test_upload_accepts_markdown_resume(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "resume.md"
+            source.write_text("# Zhang San\n\nBackend engineer.", encoding="utf-8")
+            uploaded_dir = Path(tmp_dir) / "uploaded_resumes"
+            with patch("tools.sidecar.handlers.resume._UPLOADED_DIR", uploaded_dir):
+                result = handle_resume_upload(
+                    {
+                        "meta": {"correlation_id": "corr_md_resume"},
+                        "source_paths": [str(source)],
+                        "language": "en",
+                        "label": "Markdown Resume",
+                    }
+                )
+                stored_exists = (uploaded_dir / f"{result['resume_id']}.md").exists()
+
+        self.assertEqual(result["label"], "Markdown Resume")
+        self.assertTrue(stored_exists)
+
 
 class ResumePreviewTests(unittest.TestCase):
     def test_uploaded_resume_returns_pending_preview(self) -> None:
@@ -294,6 +313,37 @@ class ResumePreviewTests(unittest.TestCase):
         self.assertEqual(result["resume_id"], "rv_001")
         self.assertIsNone(result["preview"])
         self.assertEqual(result["preview_status"], "pending")
+
+    def test_uploaded_markdown_resume_returns_text_preview(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            uploaded_dir = Path(tmp_dir) / "uploaded_resumes"
+            uploaded_dir.mkdir()
+            (uploaded_dir / "rv_001.md").write_text(
+                "# Zhang San\n\n## 10-Second Summary\n- Backend engineer.",
+                encoding="utf-8",
+            )
+            (uploaded_dir / "rv_001.meta.yaml").write_text(
+                "\n".join(
+                    [
+                        'resume_id: "rv_001"',
+                        'label: "Markdown Resume"',
+                        'filename: "rv_001.md"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with patch(
+                "tools.sidecar.handlers.resume._OUTPUTS_DIR", Path(tmp_dir) / "outputs"
+            ):
+                with patch("tools.sidecar.handlers.resume._UPLOADED_DIR", uploaded_dir):
+                    result = handle_resume_get_preview(
+                        {"meta": {"correlation_id": "corr_md_preview"}, "resume_id": "rv_001"}
+                    )
+
+        self.assertEqual(result["preview_status"], "available")
+        self.assertEqual(result["preview"]["name"], "Zhang San")
+        self.assertIn("Backend engineer", result["preview"]["summary"])
 
     def test_generated_markdown_returns_structured_preview(self) -> None:
         with TemporaryDirectory() as tmp_dir:

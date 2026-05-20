@@ -18,6 +18,9 @@ import type {
   JobLeadsListResult,
   JobLeadConvertResult,
   LlmConnectionCheckResult,
+  MaterialListResult,
+  MaterialReadinessResult,
+  MaterialUploadResult,
   JobProfileCreateResult,
   JobProfileDeleteResult,
   JobProfilesFilters,
@@ -317,6 +320,25 @@ export async function exportResumePdf(payload: {
   destination: string;
 }): Promise<ResumeExportResult> {
   return client.call<ResumeExportResult>("resume.exportPdf", payload);
+}
+
+export async function uploadMaterial(payload: {
+  source_paths: string[];
+  label?: string;
+}): Promise<MaterialUploadResult> {
+  return client.call<MaterialUploadResult>("material.upload", payload);
+}
+
+export async function listMaterials(): Promise<MaterialListResult> {
+  return client.call<MaterialListResult>("material.list");
+}
+
+export async function getMaterialReadiness(): Promise<MaterialReadinessResult> {
+  return client.call<MaterialReadinessResult>("material.readiness");
+}
+
+export async function listEvidenceMaterialSources(): Promise<MaterialListResult> {
+  return client.call<MaterialListResult>("evidence.listMaterialSources");
 }
 
 export async function getProfile(): Promise<ProfileGetResult> {

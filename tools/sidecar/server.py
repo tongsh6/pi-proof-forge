@@ -51,6 +51,12 @@ from tools.sidecar.handlers.settings import (
     handle_settings_get,
     handle_settings_update,
 )
+from tools.sidecar.handlers.materials import (
+    handle_evidence_list_material_sources,
+    handle_material_list,
+    handle_material_readiness,
+    handle_material_upload,
+)
 
 
 def _create_router() -> Router:
@@ -60,6 +66,7 @@ def _create_router() -> Router:
     router.register("system.shutdown", handle_shutdown)
     router.register("evidence.list", handle_evidence_list)
     router.register("evidence.get", handle_evidence_get)
+    router.register("evidence.listMaterialSources", handle_evidence_list_material_sources)
     router.register("evidence.create", handle_evidence_create)
     router.register("evidence.update", handle_evidence_update)
     router.register("evidence.delete", handle_evidence_delete)
@@ -77,6 +84,9 @@ def _create_router() -> Router:
     router.register("resume.upload", handle_resume_upload)
     router.register("resume.getPreview", handle_resume_get_preview)
     router.register("resume.exportPdf", handle_resume_export_pdf)
+    router.register("material.upload", handle_material_upload)
+    router.register("material.list", handle_material_list)
+    router.register("material.readiness", handle_material_readiness)
     router.register("submission.detail", handle_submission_detail)
     router.register("submission.list", handle_submission_list)
     router.register("submission.retry", handle_submission_retry)
