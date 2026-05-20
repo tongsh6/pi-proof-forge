@@ -355,6 +355,7 @@
       "statusMachine": "状态机",
       "gateTitle": "多轮门禁",
       "eventStream": "事件流",
+      "eventFallback": "事件",
       "runId": "运行编号",
       "startedAt": "开始时间",
       "currentRound": "当前轮次",
@@ -372,6 +373,27 @@
       "matchScore": "匹配分",
       "evalScore": "评测分",
       "round": "轮次",
+      "states": {
+        "INIT": "初始化",
+        "DISCOVER": "发现",
+        "SCORE": "评分",
+        "GENERATE": "生成",
+        "EVALUATE": "评估",
+        "GATE": "门禁",
+        "REVIEW": "审批",
+        "DELIVER": "投递",
+        "LEARN": "学习",
+        "DONE": "完成"
+      },
+      "runStatuses": {
+        "idle": "空闲",
+        "running": "运行中",
+        "done": "已完成",
+        "dryRunComplete": "演练完成",
+        "reviewPending": "等待审批",
+        "failed": "失败",
+        "stopped": "已停止"
+      },
       "gates": {
         "matching": "匹配门禁",
         "evaluation": "评测门禁",

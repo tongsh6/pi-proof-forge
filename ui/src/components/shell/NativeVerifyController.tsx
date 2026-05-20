@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
+const verifyScenario =
+  import.meta.env.VITE_NATIVE_VERIFY === "1"
+    ? import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN
+    : "";
 const verifyRoutes: Record<string, string> = {
   "quick-run": "/quick-run",
   overview: "/",
@@ -10,6 +13,8 @@ const verifyRoutes: Record<string, string> = {
   resumes: "/resumes",
   jobs: "/jobs",
   evidence: "/evidence",
+  "agent-run": "/agent-run",
+  submissions: "/submissions",
 };
 
 export function NativeVerifyController() {

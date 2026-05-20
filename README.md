@@ -55,10 +55,11 @@ GUI 关键文档：
 - GUI 产品规范已定版，采用桌面应用路线：Tauri + React/TypeScript + Python sidecar
 - 当前 GUI 真源为 `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen`
 - 当前 GUI 信息架构为 9 页：Overview、Resumes、Evidence、Jobs、Quick Run、Agent Run、Submissions、Policy、System Settings
-- 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；GUI 仍处于垂直切片产品化阶段
+- 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；9 页 GUI 已完成产品化垂直切片，并为各页保留真实 Tauri native verifier
 - Quick Run 已接入 `run.quick.start` / `run.quick.cancel`，可从 GUI 直接启动本地单次 pipeline；CLI 命令仍保留为 fallback。Resumes 页已接入 PDF export RPC。Markdown 转 PDF 会优先使用 `weasyprint`/`markdown` 高保真渲染；依赖缺失时自动使用内置基础 PDF writer，避免 runtime 断链。高保真 PDF 依赖见 `requirements-pdf.txt`；安装后 `pnpm --dir ui run prepare:python-runtime` 会把可选 PDF runtime 带入 Tauri packaged sidecar。
 - Quick Run 自动化主入口是 native verifier：`pnpm --dir ui run e2e:quick-run` 会用 `pnpm tauri dev` 启动真实 Tauri 窗口，并通过 `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` 驱动页面点击稳定 selector，最后用 `outputs/quick_runs` 与 run summary 校验结果。`e2e:quick-run:webdriver` 仅保留为 Windows/Linux 的可选补充。
 - System Settings 桌面验收主入口是 `pnpm --dir ui run e2e:system-settings`。该命令启动真实 Tauri dev shell，自动导航到 `/system-settings`，并等待页面通过真实 Tauri bridge + sidecar `settings.get` 写出 `system_settings.load.ready` 事件；普通 Vite 浏览器页或 mock bridge 不算该页面的最终验收。
+- 其它 GUI 页面 native verifier 入口包括：`e2e:overview`、`e2e:resumes`、`e2e:evidence`、`e2e:jobs`、`e2e:agent-run`、`e2e:submissions`、`e2e:policy`。这些脚本都会启动真实 Tauri dev shell，自动导航到目标页面，并等待真实 bridge + sidecar 写出对应 `*.load.ready` 事件。
 
 ## 快速开始
 
@@ -274,9 +275,10 @@ GUI key docs:
 - The GUI product spec is finalized as a desktop application: Tauri + React/TypeScript + Python sidecar
 - The GUI source of truth is `ui/design/DESIGN.md` plus `ui/design/piproofforge.pen`
 - The GUI information architecture now contains 9 pages: Overview, Resumes, Evidence, Jobs, Quick Run, Agent Run, Submissions, Policy, and System Settings
-- The repository now includes the Tauri desktop shell, React frontend, Python sidecar, JSON-RPC bridge, and one-command app control. The GUI is still being productized from vertical slices.
+- The repository now includes the Tauri desktop shell, React frontend, Python sidecar, JSON-RPC bridge, and one-command app control. All 9 GUI pages have productized vertical slices with real Tauri native verifiers.
 - Quick Run is wired to `run.quick.start` / `run.quick.cancel` and can launch a local single-pass pipeline directly from the GUI; CLI commands remain as a fallback. The Resumes page has a PDF export RPC; Markdown-to-PDF prefers `weasyprint` and `markdown` for high-fidelity rendering, then falls back to the built-in basic PDF writer when those packages are missing. High-fidelity PDF dependencies are listed in `requirements-pdf.txt`; after installation, `pnpm --dir ui run prepare:python-runtime` stages the optional PDF runtime into the Tauri packaged sidecar.
 - The primary Quick Run automation path is a native verifier: `pnpm --dir ui run e2e:quick-run` starts the real Tauri window via `pnpm tauri dev`, uses `VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run` to click stable selectors inside the page, and verifies `outputs/quick_runs` plus the run summary. `e2e:quick-run:webdriver` remains only as an optional Windows/Linux supplement.
+- Other GUI page native verifier entrypoints are `e2e:overview`, `e2e:resumes`, `e2e:evidence`, `e2e:jobs`, `e2e:agent-run`, `e2e:submissions`, and `e2e:policy`. Each starts the real Tauri dev shell, routes to the target page, and waits for the real bridge + sidecar to emit the page-specific `*.load.ready` event.
 
 ### Quick Start
 

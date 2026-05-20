@@ -13,11 +13,10 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const UI_DIR = resolve(new URL("..", import.meta.url).pathname);
-const ROOT_DIR = resolve(UI_DIR, "..");
-const ARTIFACT_DIR = join(UI_DIR, "test-results", "system-settings-native");
+const ARTIFACT_DIR = join(UI_DIR, "test-results", "agent-run-native");
 const VITE_ENV_LOCAL = join(UI_DIR, ".env.local");
 const APP_EVENTS_PATH = join(ARTIFACT_DIR, "app-events.jsonl");
-const SCENARIO = "system-settings";
+const SCENARIO = "agent-run";
 
 let activeChild = null;
 let activeRestoreViteEnv = null;
@@ -25,9 +24,7 @@ let shuttingDown = false;
 
 function parseArgs(argv) {
   const args = {
-    timeoutMs: Number(
-      process.env.SYSTEM_SETTINGS_NATIVE_VERIFY_TIMEOUT_MS || "90000"
-    ),
+    timeoutMs: Number(process.env.AGENT_RUN_NATIVE_VERIFY_TIMEOUT_MS || "90000"),
     keepArtifacts: false,
   };
 
@@ -36,7 +33,7 @@ function parseArgs(argv) {
     if (arg === "--") continue;
     if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: node ui/scripts/verify_system_settings_native.mjs [--timeout-ms <ms>] [--keep-artifacts]"
+        "Usage: node ui/scripts/verify_agent_run_native.mjs [--timeout-ms <ms>] [--keep-artifacts]"
       );
       process.exit(0);
     }
@@ -95,12 +92,11 @@ function readEvents() {
 }
 
 function validateReadyEvent(event) {
-  if (event.event !== "system_settings.load.ready") return false;
-  if (event.channel_count < 2) return false;
-  if (!Array.isArray(event.channel_ids)) return false;
-  if (!event.channel_ids.includes("liepin")) return false;
-  if (!event.channel_ids.includes("email")) return false;
-  if (typeof event.llm_provider !== "string" || !event.llm_provider) return false;
+  if (event.event !== "agent_run.load.ready") return false;
+  if (typeof event.profile_count !== "number" || event.profile_count < 0) {
+    return false;
+  }
+  if (typeof event.selected_profile_id !== "string") return false;
   return true;
 }
 
@@ -109,7 +105,7 @@ async function waitForReadyEvent(args, child) {
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(
-        `Tauri dev exited before System Settings loaded, exit code ${child.exitCode}`
+        `Tauri dev exited before Agent Run loaded, exit code ${child.exitCode}`
       );
     }
 
@@ -117,7 +113,7 @@ async function waitForReadyEvent(args, child) {
     if (ready) return ready;
     await sleep(500);
   }
-  throw new Error("Timed out waiting for System Settings native ready event");
+  throw new Error("Timed out waiting for Agent Run native ready event");
 }
 
 async function stopProcess(child) {
@@ -182,9 +178,8 @@ async function main() {
         ok: true,
         driver: "tauri-native-autorun",
         scenario: SCENARIO,
-        channel_count: event.channel_count,
-        channel_ids: event.channel_ids,
-        llm_provider: event.llm_provider,
+        profile_count: event.profile_count,
+        selected_profile_id: event.selected_profile_id,
         log: logPath,
         app_events: APP_EVENTS_PATH,
       })

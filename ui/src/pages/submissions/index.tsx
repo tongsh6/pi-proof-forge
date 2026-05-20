@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -24,12 +24,27 @@ import type { SubmissionDetail, SubmissionListItem } from "@/lib/sidecar/types";
 type LoadState = "loading" | "ready" | "error";
 type RetryStrategy = "same_channel" | "fallback_email";
 
+const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
+
 type StatItem = {
   key: "total" | "delivered" | "failed" | "fallback";
   value: number;
   icon: typeof Send;
   className: string;
 };
+
+function recordVerifyEvent(
+  event: string,
+  details: Record<string, unknown> = {}
+) {
+  if (verifyScenario !== "submissions") return;
+  void invoke("quick_run_verify_event", {
+    event: {
+      event,
+      ...details,
+    },
+  }).catch(() => undefined);
+}
 
 function formatDate(value: string, locale: string): string {
   if (!value.trim()) return "--";
@@ -162,9 +177,20 @@ export function SubmissionsPage() {
         setDetail(null);
       }
       setLoadState("ready");
+      recordVerifyEvent("submissions.load.ready", {
+        submission_count: result.items.length,
+        delivered_count: result.items.filter((item) => isDelivered(item.status))
+          .length,
+        failed_count: result.items.filter((item) => isFailed(item.status)).length,
+        fallback_count: result.items.filter(isFallback).length,
+      });
     } catch (nextError) {
-      setError(getErrorMessage(nextError));
+      const message = getErrorMessage(nextError);
+      setError(message);
       setLoadState("error");
+      recordVerifyEvent("submissions.load.error", {
+        error: message,
+      });
     }
   }, [selectedId]);
 

@@ -16,6 +16,8 @@
     "e2e:quick-run:webdriver": "node ./scripts/verify_quick_run_webdriver.mjs",
     "e2e:resumes": "node ./scripts/verify_resumes_native.mjs",
     "e2e:jobs": "node ./scripts/verify_jobs_native.mjs",
+    "e2e:agent-run": "node ./scripts/verify_agent_run_native.mjs",
+    "e2e:submissions": "node ./scripts/verify_submissions_native.mjs",
     "e2e:system-settings": "node ./scripts/verify_system_settings_native.mjs",
     "e2e:policy": "node ./scripts/verify_policy_native.mjs"
   },

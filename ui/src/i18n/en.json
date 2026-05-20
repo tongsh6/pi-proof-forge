@@ -355,6 +355,7 @@
       "statusMachine": "State Machine",
       "gateTitle": "N-Pass Gate",
       "eventStream": "Event Stream",
+      "eventFallback": "Event",
       "runId": "Run ID",
       "startedAt": "Started at",
       "currentRound": "Current round",
@@ -372,6 +373,27 @@
       "matchScore": "Match",
       "evalScore": "Eval",
       "round": "Round",
+      "states": {
+        "INIT": "Init",
+        "DISCOVER": "Discover",
+        "SCORE": "Score",
+        "GENERATE": "Generate",
+        "EVALUATE": "Evaluate",
+        "GATE": "Gate",
+        "REVIEW": "Review",
+        "DELIVER": "Deliver",
+        "LEARN": "Learn",
+        "DONE": "Done"
+      },
+      "runStatuses": {
+        "idle": "Idle",
+        "running": "Running",
+        "done": "Done",
+        "dryRunComplete": "Dry run complete",
+        "reviewPending": "Review pending",
+        "failed": "Failed",
+        "stopped": "Stopped"
+      },
       "gates": {
         "matching": "Matching Gate",
         "evaluation": "Evaluation Gate",

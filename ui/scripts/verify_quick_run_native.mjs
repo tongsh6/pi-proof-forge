@@ -117,6 +117,7 @@ function startTauriDev() {
       ...process.env,
       QUICK_RUN_VERIFY_AUTORUN: "quick-run",
       VITE_QUICK_RUN_VERIFY_AUTORUN: "quick-run",
+      VITE_NATIVE_VERIFY: "1",
     },
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
@@ -135,18 +136,7 @@ function startTauriDev() {
 }
 
 function enableViteAutorunEnv() {
-  const previous = existsSync(VITE_ENV_LOCAL)
-    ? readFileSync(VITE_ENV_LOCAL, "utf8")
-    : null;
-  const next = `${previous ?? ""}${previous?.endsWith("\n") || !previous ? "" : "\n"}VITE_QUICK_RUN_VERIFY_AUTORUN=quick-run\n`;
-  writeFileSync(VITE_ENV_LOCAL, next);
-  return () => {
-    if (previous === null) {
-      if (existsSync(VITE_ENV_LOCAL)) unlinkSync(VITE_ENV_LOCAL);
-      return;
-    }
-    writeFileSync(VITE_ENV_LOCAL, previous);
-  };
+  return () => undefined;
 }
 
 async function waitForReadyEvent(args, child) {

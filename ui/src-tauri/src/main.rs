@@ -408,7 +408,15 @@ fn quick_run_verify_event(event: Value) -> Result<(), String> {
     };
     if !matches!(
         scenario.as_str(),
-        "quick-run" | "overview" | "system-settings" | "policy" | "resumes" | "jobs" | "evidence"
+        "quick-run"
+            | "overview"
+            | "system-settings"
+            | "policy"
+            | "resumes"
+            | "jobs"
+            | "evidence"
+            | "agent-run"
+            | "submissions"
     ) {
         return Ok(());
     }
@@ -422,6 +430,8 @@ fn quick_run_verify_event(event: Value) -> Result<(), String> {
             "resumes" => event_name.starts_with("resumes."),
             "jobs" => event_name.starts_with("jobs."),
             "evidence" => event_name.starts_with("evidence."),
+            "agent-run" => event_name.starts_with("agent_run."),
+            "submissions" => event_name.starts_with("submissions."),
             _ => false,
         };
         if !allowed_event {

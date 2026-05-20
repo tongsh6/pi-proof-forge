@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   CheckCircle2,
   Circle,
@@ -35,6 +36,7 @@ type AgentRunEvent = Record<string, unknown> & {
 };
 type GateRowStatus = "pass" | "fail" | "running" | "waiting";
 
+const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
 const STATE_SEQUENCE = [
   "INIT",
   "DISCOVER",
@@ -56,6 +58,19 @@ const FINAL_STATUSES = new Set([
   "FAILED",
   "stopped",
 ]);
+
+function recordVerifyEvent(
+  event: string,
+  details: Record<string, unknown> = {}
+) {
+  if (verifyScenario !== "agent-run") return;
+  void invoke("quick_run_verify_event", {
+    event: {
+      event,
+      ...details,
+    },
+  }).catch(() => undefined);
+}
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -94,6 +109,27 @@ function eventSummary(event: AgentRunEvent): string {
     .slice(0, 3)
     .map(([key, value]) => `${key}=${String(value)}`)
     .join("  ");
+}
+
+function agentStateLabel(state: AgentState, t: (key: string) => string): string {
+  return t(`pages.agentRun.states.${state}`);
+}
+
+function runStatusLabel(status: string | undefined, t: (key: string) => string): string {
+  if (!status) return t("pages.agentRun.runStatuses.idle");
+  const normalized = status.toLowerCase();
+  if (normalized === "dry_run_complete") {
+    return t("pages.agentRun.runStatuses.dryRunComplete");
+  }
+  if (normalized === "review_pending") {
+    return t("pages.agentRun.runStatuses.reviewPending");
+  }
+  if (normalized === "done") return t("pages.agentRun.runStatuses.done");
+  if (normalized === "failed") return t("pages.agentRun.runStatuses.failed");
+  if (normalized === "stopped") return t("pages.agentRun.runStatuses.stopped");
+  if (normalized === "running") return t("pages.agentRun.runStatuses.running");
+  if (normalized === "idle") return t("pages.agentRun.runStatuses.idle");
+  return status;
 }
 
 function latestStateIndex(events: AgentRunEvent[], status: string): number {
@@ -146,9 +182,18 @@ export function AgentRunPage() {
         setSelectedProfileId(result.items[0].job_profile_id);
       }
       setLoadState("ready");
+      recordVerifyEvent("agent_run.load.ready", {
+        profile_count: result.items.length,
+        selected_profile_id:
+          selectedProfileId || result.items[0]?.job_profile_id || "",
+      });
     } catch (nextError) {
-      setError(getErrorMessage(nextError));
+      const message = getErrorMessage(nextError);
+      setError(message);
       setLoadState("error");
+      recordVerifyEvent("agent_run.load.error", {
+        error: message,
+      });
     }
   }, [selectedProfileId]);
 
@@ -211,6 +256,10 @@ export function AgentRunPage() {
     const matchingTotal = asNumber(scorePayload.matching_total);
     const evaluationTotal = asNumber(evaluatePayload.evaluation_total);
     const gateResult = asString(gatePayload.result);
+    const gateResultLabel =
+      gateResult === "pass" || gateResult === "fail"
+        ? t(`pages.agentRun.gateStatus.${gateResult}`)
+        : gateResult;
     const hasGate = eventByState.has("GATE");
 
     return [
@@ -241,7 +290,7 @@ export function AgentRunPage() {
         key: "exclusion",
         status: gateResult === "fail" ? "fail" : hasGate ? "pass" : "waiting",
         detail: gateResult
-          ? `${t("pages.agentRun.gates.result")} ${gateResult}`
+          ? `${t("pages.agentRun.gates.result")} ${gateResultLabel}`
           : t("pages.agentRun.gates.notRecorded"),
       },
     ] satisfies Array<{
@@ -419,7 +468,7 @@ export function AgentRunPage() {
             {t("pages.agentRun.statusMachine")}
           </h2>
           <span className="rounded-chip border border-border bg-bg-primary px-3 py-1 text-xs font-medium text-text-secondary">
-            {run?.status ?? "idle"}
+            {runStatusLabel(run?.status, t)}
           </span>
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5 xl:grid-cols-10">
@@ -438,7 +487,9 @@ export function AgentRunPage() {
                   className={`h-4 w-4 ${isActive ? "animate-spin" : ""}`}
                   aria-hidden="true"
                 />
-                <p className="mt-3 truncate text-xs font-semibold">{state}</p>
+                <p className="mt-3 truncate text-xs font-semibold">
+                  {agentStateLabel(state, t)}
+                </p>
               </div>
             );
           })}
@@ -607,7 +658,10 @@ export function AgentRunPage() {
                           </span>
                         </p>
                         <p className="mt-2 font-medium text-text-primary">
-                          {state ?? (asString(event.event_type) || "event")}
+                          {state
+                            ? agentStateLabel(state, t)
+                            : asString(event.event_type) ||
+                              t("pages.agentRun.eventFallback")}
                         </p>
                         {eventSummary(event) ? (
                           <p className="mt-1 break-words font-mono text-xs text-text-secondary">
