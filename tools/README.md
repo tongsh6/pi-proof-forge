@@ -164,6 +164,9 @@ export PPF_ENABLE_LIEPIN_SEARCH=1
 export PPF_ENABLE_BOSS_AGENT_SEARCH=1
 export PPF_BOSS_AGENT_CLI="boss"  # 可改为外部 CLI 实际命令，例如 boss-agent
 
+# 外部 CLI live smoke：只读校验 schema/status/search/detail JSON envelope 与 mapper 兼容性
+python3 tools/check_boss_agent_cli.py --cli "$PPF_BOSS_AGENT_CLI" --keyword "Java Redis" --city 上海 --platforms boss,zhilian --limit 3
+
 # Agent Loop 无显式 candidates 时会把 Job Profile keywords 映射到只读 search，并把返回 URL 映射为 Candidate。
 python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id boss-agent-discovery-smoke --output-dir outputs/agent_runs --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml
 

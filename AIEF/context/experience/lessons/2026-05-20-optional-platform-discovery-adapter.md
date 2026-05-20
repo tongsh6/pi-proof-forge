@@ -14,6 +14,7 @@
 - `tools/engines/discovery/job_leads_loader.py` 只在 `PPF_ENABLE_BOSS_AGENT_SEARCH=1` 或显式参数 `enable_boss_agent_search=True` 时调用 adapter。
 - 默认路径仍是 `job_leads` / `jd_inputs` / `job_profiles` fallback，不访问外部平台。
 - 只读结果映射为 `Candidate(source="boss_agent:<platform>")`；投递或沟通写操作保持未启用。
+- 新增 `tools/check_boss_agent_cli.py` 作为外部 CLI live smoke 入口。该脚本只调用 adapter 的 `read_schema/read_status/search_jobs/read_detail`，输出 `outputs/discovery/boss-agent-live-smoke.json`，用于在本机安装并配置外部工具后确认 JSON envelope 与 mapper 兼容。
 
 ## 复现/验证
 
@@ -25,6 +26,13 @@ python3 tools/check_v2_constraints.py --root .
 外部 CLI live smoke 需要本机安装并配置：
 
 ```bash
+python3 tools/check_boss_agent_cli.py \
+  --cli "<cmd>" \
+  --keyword "Java Redis" \
+  --city 上海 \
+  --platforms boss,zhilian \
+  --limit 3
+
 PPF_ENABLE_BOSS_AGENT_SEARCH=1 PPF_BOSS_AGENT_CLI="<cmd>" \
 python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id boss-agent-discovery-smoke --output-dir outputs/agent_runs --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml
 ```

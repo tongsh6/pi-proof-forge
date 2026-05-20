@@ -29,6 +29,7 @@
 > 2026-05-20 补充：修复左侧菜单切换失效问题。根因是 native verifier 中断/并行运行后可能残留 `ui/.env.local` 的 `VITE_QUICK_RUN_VERIFY_AUTORUN`，使 `NativeVerifyController` 在普通开发模式下持续把路由拉回验收目标页。现已删除残留 `.env.local`，并改为只有 `VITE_NATIVE_VERIFY=1` 时才启用自动导航；native verifier 脚本不再写 `.env.local`，只通过子进程环境变量传递验收场景。新增合同测试防止脚本重新写入 `VITE_ENV_LOCAL`。验证：`python3 -m pytest tests/unit/gui -q` → 36 passed；`pnpm --dir ui build` → pass；`pnpm --dir ui run e2e:agent-run` → pass，且未生成 `ui/.env.local`。
 > 2026-05-20 补充：GUI i18n 实现审计完成。当前使用 `i18next + react-i18next`，入口 `ui/src/main.tsx` 加载 `ui/src/i18n/index.ts`，中英文资源 `en.json` / `zh.json` 均为 449 个叶子 key 且 key 集完全一致；静态 `t("...")` key 均可在两套资源中找到。修复了 `useAppShellStore` 默认语言仍为 `en`、与 i18n 默认 `zh` 不一致导致语言按钮初始态错误的问题；修复 System Settings 对历史中文状态值 `已配置（掩码）` / `未配置` 在英文界面下可能原样显示中文的问题。新增全局 i18n catalog 合同测试，锁定中英文 key parity 与静态 key 覆盖。验证：`python3 -m pytest tests/unit/gui -q` → 38 passed；`pnpm --dir ui build` → pass。
 > 2026-05-20 补充：Agent Run 页面 i18n 补齐。状态机节点和事件流不再直接展示内部枚举 `INIT / DISCOVER / SCORE / ...`，运行状态 chip 不再直接显示 `idle` / `DONE` / `REVIEW_PENDING` 等内部值；展示层改为 `pages.agentRun.states.*` 与 `pages.agentRun.runStatuses.*`。中英文资源更新为 467 个叶子 key 且仍保持一致。验证：`python3 -m pytest tests/unit/gui -q` → 38 passed；`python3 -m pytest tests/ -q` → 403 passed；`pnpm --dir ui build` → pass。
+> 2026-05-20 补充：BOSS/智联外部 CLI live smoke 已补上只读验收入口。新增 `tools/check_boss_agent_cli.py`，按 `schema/status/search/detail --json` 顺序调用既有 infra adapter，校验 JSON envelope、搜索非空和 detail URL 可读，并写出 `outputs/discovery/boss-agent-live-smoke.json`；`--allow-empty-search` 可用于只验证 schema/status 的环境预检。当前会话环境未配置 `PPF_BOSS_AGENT_CLI` 且找不到默认命令，真实平台 smoke 仍需在安装外部 CLI 后执行。验证：`python3 -m pytest tests/unit/infra/test_boss_agent_live_smoke.py tests/unit/infra/test_boss_agent_cli.py -q` → 6 passed；`python3 -m pytest tests/ -q` → 407 passed；`python3 tools/check_v2_constraints.py --root .` → PASS。
 
 - 六边形领域核心（domain/）→ 已完成
 - 策略注册表 + 四大引擎（engines/）→ 已完成
@@ -238,7 +239,7 @@
 | ~~P7a~~ | ~~Resumes 页面实现仍停留在功能表单，未完整体现终版第 2 页个人资料、上传简历、系统生成简历和预览三栏资产中心~~ | ~~简历中心是 evidence-first 输出资产入口，可演示性和导出可信度不足~~ | **已解决** | **已补齐三栏资产中心、单语 i18n、native verifier；复用既有 profile/resume RPC，不新增协议面** |
 | ~~P7b~~ | ~~Evidence 页面仍停留在基础列表/表单，未完整体现终版第 3 页 Evidence Card 表格、详情字段卡、Artifacts 导入/回看职责~~ | ~~Evidence 是项目事实源，页面不足会直接削弱 evidence-first 可演示性和长期资产维护能力~~ | **已解决** | **已补齐证据统计、筛选、表格、详情编辑、Artifacts 列表与导入/追加/替换入口；native verifier 通过真实 bridge + sidecar 验收** |
 | ~~P7c~~ | ~~Quick Run 页面仍偏命令面板，未完整体现终版第 5 页单次 pipeline 操作台~~ | ~~Quick Run 是 Demo 与本地单次 pipeline 的主入口，缺少阶段输出和评分会削弱可演示性~~ | **已解决** | **已补齐 Profile 选择、Run/Cancel、4 阶段状态、终端式输出、K/D/S/Q/E/R ScoreBar；native verifier 通过真实 bridge + sidecar 验收** |
-| P8 | BOSS/智联平台尚未完成真实联调和 delivery 接入 | 只读 discovery adapter 已接入并有 mock 合同测试，但尚未在已安装的外部 `boss-agent-cli` 上做真实 schema/status/search/detail smoke；投递/沟通写操作仍未纳入安全门禁 | 扩展缺口 | 先完成外部 CLI live smoke；写操作仅在 review/gate/rate-limit/safety 全部复用后再启用 |
+| P8 | BOSS/智联平台尚未完成真实联调和 delivery 接入 | 只读 discovery adapter 与 live-smoke 入口已接入，但当前环境尚未安装/配置外部 `boss-agent-cli`，因此真实 schema/status/search/detail smoke 尚未执行；投递/沟通写操作仍未纳入安全门禁 | 扩展缺口 | 安装并配置 `PPF_BOSS_AGENT_CLI` 后运行 `python3 tools/check_boss_agent_cli.py ...`；写操作仅在 review/gate/rate-limit/safety 全部复用后再启用 |
 
 ## 6. 已废弃事项
 
@@ -250,7 +251,7 @@
 |--------|------|------|----------|
 | ~~1~~ | ~~发布前构建检查~~ | ~~默认本地 readiness 与桌面 GUI readiness 均已通过；下一步应跑前端生产构建和必要静态约束，确认演示代码可打包~~ | **已完成**：`pnpm --dir ui build`、`python3 -m pytest tests/ -q` → 395 passed、v2、AIEF 均通过 |
 | ~~2~~ | ~~BOSS/智联只读发现 adapter~~ | ~~多平台发现仍是 P8 扩展缺口；应等 Demo GUI/发布检查稳定后再接入 optional subprocess adapter~~ | **已完成第一阶段**：只读 search adapter + Candidate 映射 + 默认关闭；真实外部 CLI smoke 未做 |
-| 3 | BOSS/智联外部 CLI live smoke | 只读 adapter 已有 mock 合同，但还需要在本机安装/配置外部工具后确认 `schema/status/search/detail --json` 真实输出 envelope 与 mapper 兼容 | `PPF_ENABLE_BOSS_AGENT_SEARCH=1 PPF_BOSS_AGENT_CLI=<cmd>` 下 dry-run Agent Loop 可发现 BOSS/智联 URL，且不触发写操作 |
+| 3 | BOSS/智联外部 CLI live smoke | 只读 adapter 与 `tools/check_boss_agent_cli.py` 验收入口已就绪；还需要在本机安装/配置外部工具后确认 `schema/status/search/detail --json` 真实输出 envelope 与 mapper 兼容 | `python3 tools/check_boss_agent_cli.py --cli <cmd> ...` 通过，随后 `PPF_ENABLE_BOSS_AGENT_SEARCH=1 PPF_BOSS_AGENT_CLI=<cmd>` 下 dry-run Agent Loop 可发现 BOSS/智联 URL，且不触发写操作 |
 | ~~3~~ | ~~WeasyPrint 高保真 PDF 增强~~ | ~~内置 writer 已保证 runtime 不断链，但排版能力弱于 HTML/CSS 渲染~~ | **已解决**：`requirements-pdf.txt` + packaged runtime staging；保留内置兜底 |
 
 ## 8. 关键证据索引
