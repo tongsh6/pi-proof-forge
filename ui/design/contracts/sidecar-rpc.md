@@ -767,10 +767,11 @@
 
 规则：
 
-- `section`: `gate_policy | exclusion_list | excluded_legal_entities`
+- `section`: `gate_policy | exclusion_list | excluded_legal_entities | llm_config`
 - `gate_policy` payload 当前支持更新字段：`delivery_mode`、`batch_review`；为部分更新，未传字段保持原值
 - `delivery_mode` 枚举：`auto | manual`；`batch_review` 为布尔值，仅 `delivery_mode=manual` 时生效
-- `channels` 与 `llm_config` 当前为 `settings.get` 只读返回字段，不支持 `settings.update`
+- `llm_config` payload 当前支持更新字段：`provider`、`model`、`base_url`、`api_key`、`timeout`、`temperature`；为部分更新，未传字段保持原值
+- `channels` 当前为 `settings.get` 只读返回字段，不支持 `settings.update`
 - `settings.get` 永不返回 secret 明文
 
 `result`
@@ -783,7 +784,45 @@
 }
 ```
 
-### 6.22 evidence.create
+### 6.22 settings.checkLlmConnection
+
+用途：只读检查 OpenAI-compatible 本地模型端点，用于 System Settings / 用户旅程验收。该方法只返回结构化成功或 blocked 状态，不写入配置。
+
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "payload": {
+    "base_url": "http://127.0.0.1:1234/v1",
+    "api_key": "lm-studio",
+    "timeout": 1
+  }
+}
+```
+
+`result`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "status": "blocked",
+  "code": "BLOCKED_LOCAL_PROVIDER",
+  "message": "LM Studio models endpoint is unavailable at http://127.0.0.1:1234/v1/models: connection refused",
+  "base_url": "http://127.0.0.1:1234/v1",
+  "model_count": 0,
+  "models": []
+}
+```
+
+规则：
+
+- `status`: `pass | blocked`
+- 成功时 `code=OK` 且 `models` 返回最多 20 个模型 id
+- 本地端点不可达、返回空模型列表或未配置 base_url 时，返回 `code=BLOCKED_LOCAL_PROVIDER`
+- 返回值不得包含 API key 明文
+
+### 6.23 evidence.create
 
 用途：创建一张空白证据卡，对应 Evidence 页面 "New Card / 新增" 按钮。创建成功后 UI 可立即跳转到详情编辑态。
 
@@ -820,7 +859,7 @@
 }
 ```
 
-### 6.23 evidence.update
+### 6.24 evidence.update
 
 用途：更新证据卡的文本字段，对应 Evidence 详情面板编辑功能（编辑图标触发）。
 
@@ -860,7 +899,7 @@
 }
 ```
 
-### 6.24 evidence.delete
+### 6.25 evidence.delete
 
 用途：删除指定证据卡及其所有附件，对应 Evidence 详情面板删除图标触发。
 
@@ -889,7 +928,7 @@
 }
 ```
 
-### 6.25 overview.get
+### 6.26 overview.get
 
 用途：拉取 Overview 页面全部聚合数据，包含 4 个统计指标、最近活动流、匹配趋势折线数据与缺口列表。无分页，一次性返回。
 
@@ -949,7 +988,7 @@
 - `gaps[].severity` 枚举：`high | medium | low`
 - 任一聚合子请求失败时，整体返回 `INTERNAL_ERROR`，不做部分成功
 
-### 6.26 resume.upload
+### 6.27 resume.upload
 
 用途：上传用户本地简历文件，对应 Resumes 页面 "Upload Resume / 上传简历" 按钮。模式固定为 `create`，每次调用创建新的已上传简历记录。
 
@@ -985,7 +1024,7 @@
 }
 ```
 
-### 6.27 resume.getPreview
+### 6.28 resume.getPreview
 
 用途：获取指定简历版本的结构化预览数据，供 Resumes 页面 Preview 面板渲染白色纸张预览区。
 
@@ -1034,7 +1073,7 @@
 - `preview` 为渲染所需的结构化字段，不含原始 Markdown 或 HTML
 - 若简历尚未生成可渲染预览（如刚上传的原始文件），返回 `preview: null` 并附 `preview_status: "pending"`
 
-### 6.28 profile.get
+### 6.29 profile.get
 
 用途：读取当前用户的个人资料，对应 Resumes 页面 Personal Profile 区域的展示数据。
 
@@ -1070,7 +1109,7 @@
 - `missing_fields` 为字段名数组，枚举值为 `name | phone | email | city | current_position`
 - 首次使用时 profile 可能全为空，此时 `completeness` 为 0，`missing_fields` 包含全部 5 个字段
 
-### 6.29 profile.update
+### 6.30 profile.update
 
 用途：保存用户个人资料编辑结果，对应 Resumes 页面 "Edit Info / 编辑资料" 操作提交。
 
@@ -1106,7 +1145,7 @@
 }
 ```
 
-### 6.30 jobs.createProfile
+### 6.31 jobs.createProfile
 
 用途：创建新的 Job Profile，对应 Jobs 页面 "New Profile / 新建" 主按钮。
 
@@ -1140,7 +1179,7 @@
 }
 ```
 
-### 6.31 jobs.updateProfile
+### 6.32 jobs.updateProfile
 
 用途：更新 Job Profile 字段，对应 Jobs 页面卡片编辑操作。
 
@@ -1176,7 +1215,7 @@
 }
 ```
 
-### 6.32 jobs.deleteProfile
+### 6.33 jobs.deleteProfile
 
 用途：删除指定 Job Profile，对应 Jobs 页面卡片删除操作。
 
@@ -1221,7 +1260,7 @@
   - `ui/design/DESIGN.md` 中的协议摘要
   - 相关实现代码与测试
 
-### 6.33 run.agent.getPendingReview
+### 6.34 run.agent.getPendingReview
 
 `params`
 
@@ -1252,7 +1291,7 @@
 }
 ```
 
-### 6.34 run.agent.submitReview
+### 6.35 run.agent.submitReview
 
 `params`
 
@@ -1281,7 +1320,7 @@
 }
 ```
 
-### 6.35 run.agent.createReviewCandidates
+### 6.36 run.agent.createReviewCandidates
 
 Internal API for run_agent to populate review queue.
 

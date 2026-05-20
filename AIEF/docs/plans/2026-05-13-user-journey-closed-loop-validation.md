@@ -107,9 +107,9 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 | `acceptance/journey_contract.yaml` | `done` | Machine-readable execution contract derived from selected approved scenario cases |
 | `tools/acceptance/__init__.py` | `done` | Package marker for acceptance helpers |
 | `tools/acceptance/journey_contract.py` | `done` | Load and validate the journey contract |
-| `tools/acceptance/journey_report.py` | `not_started` | Build JSON/Markdown acceptance reports from test results |
-| `tests/acceptance/fixtures/scenarios/` | `not_started` | Stable fixture data grouped by `case_id` |
-| `tests/acceptance/test_scenario_first_launch_configure_lm_studio.py` | `not_started` | Case 1 L1/L2 acceptance tests for LM Studio configuration |
+| `tools/acceptance/journey_report.py` | `done` | Build JSON/Markdown acceptance reports from test results |
+| `tests/acceptance/fixtures/scenarios/` | `in_progress` | Stable fixture data grouped by `case_id` |
+| `tests/acceptance/test_scenario_first_launch_configure_lm_studio.py` | `in_progress` | Case 1 L1/L2 acceptance tests for LM Studio configuration |
 | `tests/acceptance/test_gui_journey_smoke.py` | `not_started` | L2 smoke test for page-level journey continuity |
 | `tests/acceptance/test_liepin_check_mode_journey.py` | `not_started` | L3 check-mode channel acceptance test |
 | `scripts/acceptance/run-acceptance.sh` | `not_started` | One-command runner for L1/L2/L3 validation |
@@ -122,8 +122,8 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 |-------|--------|------|---------------|
 | M-1 | `done` | Define user-perspective scenario cases before writing automated checks | `acceptance/scenario_cases.yaml` contains approved cases with statuses |
 | M0 | `done` | Define the journey contract and report schema from approved cases | `acceptance/journey_contract.yaml` validates against selected `case_id` |
-| M1 | `not_started` | Implement L1 selected-scenario validation | `python3 -m pytest tests/acceptance/test_scenario_first_launch_configure_lm_studio.py -q` passes for Case 1 |
-| M2 | `not_started` | Generate structured acceptance reports | JSON and Markdown reports are produced under `outputs/acceptance/` |
+| M1 | `in_progress` | Implement L1 selected-scenario validation | Case 1 L1 settings persistence and structured blocked check pass; run-page summary wiring remains |
+| M2 | `done` | Generate structured acceptance reports | JSON and Markdown reports are produced under `outputs/acceptance/` |
 | M3 | `not_started` | Implement L2 GUI journey smoke validation | GUI smoke test passes with mock sidecar data |
 | M4 | `not_started` | Implement L3 external check-mode validation | Liepin check-mode acceptance passes without final submit |
 | M5 | `not_started` | Wire all levels into a single acceptance runner | `bash scripts/acceptance/run-acceptance.sh` exits 0 and writes reports |
@@ -158,26 +158,26 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 
 ### M1: Selected Scenario Validation
 
-**Phase Status:** `not_started`
+**Phase Status:** `in_progress`
 
 | Step | Status | Action | Output | Verification |
 |------|--------|--------|--------|--------------|
-| M1.1 | `not_started` | Create fixture directory `tests/acceptance/fixtures/scenarios/first_launch_configure_lm_studio/` | Stable local provider fixture values | Test can load the selected `case_id` without network |
-| M1.2 | `not_started` | Implement L1 settings persistence check for Case 1 | LM Studio provider/base_url/api_key/model config can be saved and read | Test confirms sidecar/settings contract returns saved config |
-| M1.3 | `not_started` | Implement structured connection result check for Case 1 | Success or `BLOCKED_LOCAL_PROVIDER` result | Test confirms unavailable LM Studio is structured, not a generic crash |
+| M1.1 | `done` | Create fixture directory `tests/acceptance/fixtures/scenarios/first_launch_configure_lm_studio/` | Stable local provider fixture values | `test_scenario_first_launch_configure_lm_studio.py` loads fixture without network |
+| M1.2 | `done` | Implement L1 settings persistence check for Case 1 | LM Studio provider/base_url/api_key/model config can be saved and read | Test confirms `settings.update` / `settings.get` returns saved masked config |
+| M1.3 | `done` | Implement structured connection result check for Case 1 | Success or `BLOCKED_LOCAL_PROVIDER` result | Test confirms unavailable LM Studio is structured, not a generic crash |
 | M1.4 | `not_started` | Implement saved config summary checks for Quick Run and Agent Run | Both pages/API summaries can read active provider metadata | Test confirms summaries contain provider/base_url/model without exposing raw secret |
 | M1.5 | `not_started` | Implement Case 1 L3-local optional check | Real request to `http://127.0.0.1:1234/v1/models` when enabled | Test reports PASS or BLOCKED_LOCAL_PROVIDER |
 
 ### M2: Acceptance Report
 
-**Phase Status:** `not_started`
+**Phase Status:** `done`
 
 | Step | Status | Action | Output | Verification |
 |------|--------|--------|--------|--------------|
-| M2.1 | `not_started` | Create `tools/acceptance/journey_report.py` | Report model for levels, phases, steps, and evidence paths | Unit test serializes JSON deterministically |
-| M2.2 | `not_started` | Add Markdown report rendering | `journey-report.md` with PASS/FAIL/BLOCKED rows | Unit test snapshots key headings |
-| M2.3 | `not_started` | Include stage-level failure messages | Failures identify stage and missing artifact | Test verifies a missing scorecard names `evaluation` stage |
-| M2.4 | `not_started` | Write reports under timestamped output directory | `outputs/acceptance/<timestamp>/` | Runner test confirms files exist |
+| M2.1 | `done` | Create `tools/acceptance/journey_report.py` | Report model for levels, phases, steps, and evidence paths | `test_journey_report_serializes_json_deterministically` |
+| M2.2 | `done` | Add Markdown report rendering | `journey-report.md` with PASS/FAIL/BLOCKED rows | `test_journey_report_markdown_contains_status_rows` |
+| M2.3 | `done` | Include stage-level failure messages | Failures identify stage and missing artifact | `test_artifact_check_failure_names_phase_and_missing_artifact` |
+| M2.4 | `done` | Write reports under timestamped output directory | `outputs/acceptance/<timestamp>/` | `test_write_journey_report_outputs_json_and_markdown` |
 
 ### M3: GUI Journey Smoke
 
@@ -232,8 +232,8 @@ For Case 1, L3 means a real local request to LM Studio's OpenAI-compatible model
 |-----------|--------|---------------|
 | M-1 Done | `done` | Scenario case catalog contains all first-batch cases with `ready_for_implementation` status |
 | M0 Done | `done` | Contract exists, validates, and is derived from an approved `case_id` |
-| M1 Done | `not_started` | Selected scenario L1 test passes locally and reports structured blocked state for missing local dependencies |
-| M2 Done | `not_started` | Reports include level, phase, step, status, evidence, and failure message |
+| M1 Done | `in_progress` | Selected scenario L1 settings and connection checks pass locally; run-page summary checks remain |
+| M2 Done | `done` | Reports include level, phase, step, status, evidence, and failure message |
 | M3 Done | `not_started` | GUI smoke verifies all 9 pages and Submissions detail with mock sidecar data |
 | M4 Done | `not_started` | Check-mode channel run proves external path without final submit |
 | M5 Done | `not_started` | One command runs the selected levels and writes acceptance reports |
@@ -279,7 +279,7 @@ Overall: PASS | FAIL | BLOCKED
 |----------|--------|--------|-------|
 | P0 | `done` | Define next feedback iteration case after submission check-mode | Completed 2026-05-17 |
 | P0 | `done` | Implement M0 case-aware journey contract after approved scenario cases | Completed 2026-05-17 |
-| P0 | `not_started` | Implement M1 selected-case acceptance test | Unassigned |
-| P1 | `not_started` | Implement M2 report generator | Unassigned |
+| P0 | `in_progress` | Implement M1 selected-case acceptance test | Case 1 settings persistence + structured connection check completed 2026-05-20 |
+| P1 | `done` | Implement M2 report generator | Completed 2026-05-20 |
 | P1 | `not_started` | Wire L1 into acceptance runner | Unassigned |
 | P2 | `not_started` | Implement GUI smoke and external check-mode | Unassigned |

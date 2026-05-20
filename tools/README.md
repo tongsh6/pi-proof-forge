@@ -40,6 +40,25 @@ python3 tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evid
 
 ## Workflow 脚本
 
+## 用户旅程验收报告
+
+从 `acceptance/journey_contract.yaml` 生成 baseline JSON/Markdown 验收报告：
+
+```bash
+python3 -m tools.acceptance.journey_report --run-id journey-report-local
+```
+
+输出：
+
+- `outputs/acceptance/<run_id>/journey-report.json`
+- `outputs/acceptance/<run_id>/journey-report.md`
+
+运行 Case 1（首次配置 LM Studio）的 L1 headless 验收：
+
+```bash
+python3 -m pytest tests/acceptance/test_scenario_first_launch_configure_lm_studio.py -q
+```
+
 ## v2 CLI 薄入口（新增）
 
 统一入口：
