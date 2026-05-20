@@ -212,10 +212,20 @@ export type SettingsUpdateSection =
   | "gate_policy"
   | "exclusion_list"
   | "excluded_legal_entities"
+  | "llm_config";
 
 export interface SettingsUpdateResult extends RpcResultBase {
   section: SettingsUpdateSection;
   saved: boolean;
+}
+
+export interface LlmConnectionCheckResult extends RpcResultBase {
+  status: "pass" | "blocked" | string;
+  code: "OK" | "BLOCKED_LOCAL_PROVIDER" | string;
+  message: string;
+  base_url: string | null;
+  model_count: number;
+  models: string[];
 }
 
 export interface OverviewMetrics {

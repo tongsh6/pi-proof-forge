@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from tools.sidecar.handlers.settings import handle_settings_get, handle_settings_update
+from tools.sidecar.handlers.settings import (
+    handle_settings_check_llm_connection,
+    handle_settings_get,
+    handle_settings_update,
+)
 
 
 class SettingsGetTests(unittest.TestCase):
@@ -256,6 +260,90 @@ class SettingsUpdateTests(unittest.TestCase):
         }
         with self.assertRaises(ValueError):
             _ = handle_settings_update(params)
+
+    def test_update_llm_config_persists_masked_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path = Path(tmp_dir) / "policy.yaml"
+            params = {
+                "meta": {"correlation_id": "corr_llm"},
+                "section": "llm_config",
+                "payload": {
+                    "provider": "lm_studio",
+                    "base_url": "http://127.0.0.1:1234/v1",
+                    "api_key": "lm-studio",
+                    "model": "local-model",
+                    "timeout": 3,
+                    "temperature": 0.1,
+                },
+            }
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}, clear=True):
+                result = handle_settings_update(params)
+                stored = handle_settings_get({"meta": {"correlation_id": "corr_llm2"}})
+
+        self.assertTrue(result["saved"])
+        llm = stored["llm_config"]
+        self.assertEqual(llm["provider"], "lm_studio")
+        self.assertEqual(llm["base_url"], "http://127.0.0.1:1234/v1")
+        self.assertEqual(llm["model"], "local-model")
+        self.assertEqual(llm["timeout"], 3)
+        self.assertEqual(llm["temperature"], 0.1)
+        self.assertTrue(llm["api_key"]["configured"])
+        self.assertTrue(llm["api_key"]["masked"])
+        self.assertNotIn("value", llm["api_key"])
+        self.assertNotIn("secret", llm["api_key"])
+        self.assertNotIn("lm-studio", str(stored))
+
+    def test_update_llm_config_rejects_unsupported_fields(self) -> None:
+        params = {
+            "meta": {"correlation_id": "corr_llm_bad"},
+            "section": "llm_config",
+            "payload": {"provider": "lm_studio", "extra": "x"},
+        }
+        with self.assertRaises(ValueError):
+            _ = handle_settings_update(params)
+
+
+class SettingsCheckLlmConnectionTests(unittest.TestCase):
+    def test_check_llm_connection_returns_pass_with_models(self) -> None:
+        with patch(
+            "tools.sidecar.handlers.settings.LLMClient.list_models",
+            return_value=["local-model"],
+        ):
+            result = handle_settings_check_llm_connection(
+                {
+                    "meta": {"correlation_id": "corr_check"},
+                    "payload": {
+                        "base_url": "http://127.0.0.1:1234/v1",
+                        "api_key": "lm-studio",
+                        "timeout": 1,
+                    },
+                }
+            )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["code"], "OK")
+        self.assertEqual(result["model_count"], 1)
+        self.assertEqual(result["models"], ["local-model"])
+
+    def test_check_llm_connection_returns_structured_blocked_on_unavailable(self) -> None:
+        with patch(
+            "tools.sidecar.handlers.settings.LLMClient.list_models",
+            side_effect=OSError("connection refused"),
+        ):
+            result = handle_settings_check_llm_connection(
+                {
+                    "meta": {"correlation_id": "corr_blocked"},
+                    "payload": {
+                        "base_url": "http://127.0.0.1:1234/v1",
+                        "api_key": "lm-studio",
+                        "timeout": 1,
+                    },
+                }
+            )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BLOCKED_LOCAL_PROVIDER")
+        self.assertIn("http://127.0.0.1:1234/v1/models", result["message"])
 
 
 if __name__ == "__main__":

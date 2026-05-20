@@ -151,6 +151,30 @@ class ProcessRequestTests(unittest.TestCase):
         self.assertIn("result", response)
         self.assertEqual(response["result"]["submission"]["submission_id"], "run-001")
 
+    def test_settings_check_llm_connection_method_returns_structured_result(self) -> None:
+        request = {
+            "jsonrpc": "2.0",
+            "id": "req_llm_check",
+            "method": "settings.checkLlmConnection",
+            "params": {
+                "meta": {"correlation_id": "corr_llm_check"},
+                "payload": {
+                    "base_url": "http://127.0.0.1:1234/v1",
+                    "api_key": "lm-studio",
+                    "timeout": 1,
+                },
+            },
+        }
+        with patch(
+            "tools.sidecar.handlers.settings.LLMClient.list_models",
+            side_effect=OSError("connection refused"),
+        ):
+            response = process_request(request)
+
+        self.assertIn("result", response)
+        self.assertEqual(response["result"]["status"], "blocked")
+        self.assertEqual(response["result"]["code"], "BLOCKED_LOCAL_PROVIDER")
+
     def test_run_agent_start_get_stop_methods_return_persisted_state(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             runs_dir = Path(tmp_dir) / "agent_runs"

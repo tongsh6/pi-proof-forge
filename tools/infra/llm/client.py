@@ -16,6 +16,10 @@ class LLMClient:
     def chat_completions_url(self) -> str:
         return f"{self._base_url}/chat/completions"
 
+    @property
+    def models_url(self) -> str:
+        return f"{self._base_url}/models"
+
     def build_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._api_key}",
@@ -50,3 +54,26 @@ class LLMClient:
         if isinstance(parsed, dict):
             return cast(dict[str, Any], parsed)
         return {}
+
+    def list_models(self) -> list[str]:
+        req = request.Request(
+            self.models_url,
+            headers=self.build_headers(),
+            method="GET",
+        )
+        resp = cast(HTTPResponse, request.urlopen(req, timeout=self._timeout))
+        try:
+            body = resp.read().decode("utf-8")
+        finally:
+            resp.close()
+        parsed = json.loads(body or "{}")
+        if not isinstance(parsed, dict):
+            return []
+        data = parsed.get("data")
+        if not isinstance(data, list):
+            return []
+        models: list[str] = []
+        for item in data:
+            if isinstance(item, dict) and isinstance(item.get("id"), str):
+                models.append(item["id"])
+        return models

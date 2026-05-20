@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import Mock, patch
 
 from tools.infra.llm.client import LLMClient
 
@@ -48,6 +49,10 @@ class URLConstructionTests(unittest.TestCase):
         client = LLMClient(base_url="https://api.example.com/v1", api_key="test-key")
         self.assertEqual(client.chat_completions_url, "https://api.example.com/v1/chat/completions")
 
+    def test_constructs_models_url(self) -> None:
+        client = LLMClient(base_url="https://api.example.com/v1/", api_key="test-key")
+        self.assertEqual(client.models_url, "https://api.example.com/v1/models")
+
 
 class AuthHeaderTests(unittest.TestCase):
     def test_headers_contain_authorization(self) -> None:
@@ -59,6 +64,31 @@ class AuthHeaderTests(unittest.TestCase):
         client = LLMClient(base_url="https://api.example.com", api_key="sk-abc123")
         headers = client.build_headers()
         self.assertEqual(headers["Content-Type"], "application/json")
+
+
+class ListModelsTests(unittest.TestCase):
+    def test_list_models_extracts_model_ids(self) -> None:
+        response = Mock()
+        response.read.return_value = b'{"data":[{"id":"model-a"},{"id":"model-b"}]}'
+        response.close.return_value = None
+        client = LLMClient(base_url="https://api.example.com/v1", api_key="sk-abc123")
+
+        with patch("tools.infra.llm.client.request.urlopen", return_value=response) as urlopen:
+            models = client.list_models()
+
+        self.assertEqual(models, ["model-a", "model-b"])
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 120)
+
+    def test_list_models_returns_empty_for_unexpected_payload(self) -> None:
+        response = Mock()
+        response.read.return_value = b'{"object":"list"}'
+        response.close.return_value = None
+        client = LLMClient(base_url="https://api.example.com/v1", api_key="sk-abc123")
+
+        with patch("tools.infra.llm.client.request.urlopen", return_value=response):
+            models = client.list_models()
+
+        self.assertEqual(models, [])
 
 
 if __name__ == "__main__":

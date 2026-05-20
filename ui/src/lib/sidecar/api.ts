@@ -17,6 +17,7 @@ import type {
   JobLeadsFilters,
   JobLeadsListResult,
   JobLeadConvertResult,
+  LlmConnectionCheckResult,
   JobProfileCreateResult,
   JobProfileDeleteResult,
   JobProfilesFilters,
@@ -177,6 +178,32 @@ export async function updateDeliverySettings(
   return client.call<SettingsUpdateResult>("settings.update", {
     section: "gate_policy",
     payload: { delivery_mode, batch_review },
+  });
+}
+
+export async function updateLlmConfig(payload: {
+  provider?: string;
+  model?: string;
+  base_url?: string;
+  api_key?: string;
+  timeout?: number;
+  temperature?: number;
+}): Promise<SettingsUpdateResult> {
+  return client.call<SettingsUpdateResult>("settings.update", {
+    section: "llm_config",
+    payload,
+  });
+}
+
+export async function checkLlmConnection(payload: {
+  provider?: string;
+  model?: string;
+  base_url?: string;
+  api_key?: string;
+  timeout?: number;
+} = {}): Promise<LlmConnectionCheckResult> {
+  return client.call<LlmConnectionCheckResult>("settings.checkLlmConnection", {
+    payload,
   });
 }
 
