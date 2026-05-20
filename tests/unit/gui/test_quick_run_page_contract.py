@@ -19,15 +19,21 @@ def test_quick_run_page_renders_product_pipeline_contract():
         "stageStatusClass",
         "scoreBars",
         "terminalLines",
+        "getSettings",
+        "LlmConfig",
+        "providerSummary",
         "quick_run.load.ready",
         "quick_run.start.result",
         'data-automation-id="quick-run-start"',
         "pages.quickRun.stageOutput",
         "pages.quickRun.scores",
+        "pages.quickRun.providerSummary",
     ):
         assert marker in source
 
     assert "Agent (multi-round with gate)" not in source
+    assert "api_key.value" not in source
+    assert "api_key.secret" not in source
 
 
 def test_quick_run_native_verifier_is_registered():
@@ -50,6 +56,11 @@ def test_quick_run_i18n_contract_is_complete():
         "elapsed",
         "result",
         "noLogs",
+        "providerSummary",
+        "provider",
+        "model",
+        "baseUrl",
+        "secretStatus",
     }
     required_score_keys = {"total", "empty"}
 

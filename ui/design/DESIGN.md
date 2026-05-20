@@ -166,6 +166,7 @@ Dashboard + Chat 混合模式（方案 B+C）：
 
 **布局**:
 - 顶部: 页面标题 + "Run / 执行" 主按钮
+- 模型配置摘要: 读取 `settings.get.llm_config`，展示 Provider / Model / Base URL / API key configured 状态；不得展示 secret 明文
 - 阶段指示条 (4 步, 箭头连接):
   - 已完成: 绿色边框 + circle-check 图标 + 耗时/结果
   - 进行中: cyan 边框 + loader 图标 + elapsed 计时
@@ -180,6 +181,7 @@ Dashboard + Chat 混合模式（方案 B+C）：
 
 **布局**:
 - 顶部: 页面标题（含 Run ID / 开始时间 / 轮次） + Running 状态标签 + "Stop / 停止" 按钮
+- 模型配置摘要: 读取 `settings.get.llm_config`，展示 Provider / Model / Base URL / API key configured 状态；不得展示 secret 明文
 - 状态机条 (10 节点, 水平排列, space_between):
   - 已完成: 绿色背景 + circle-check 图标 (INIT, DISCOVER, SCORE, GENERATE)
   - 进行中: accent-bg 背景 + cyan 边框 + loader 图标 (EVALUATE)
@@ -474,8 +476,8 @@ PiProofForge
 | Resumes | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | 已拆分为个人资料、已上传简历、系统生成简历与预览区 |
 | Evidence | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | 详情字段卡与 Artifacts 卡片已显式拆分 |
 | Jobs | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | Leads 已拆出筛选、列表，详情区已显式拆成 Summary / Related Profile / Follow-up Actions |
-| Quick Run | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | 日志条目与总评分块已显式拆分 |
-| Agent Run | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | Gate Items 与 Event Items 已显式拆分 |
+| Quick Run | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | 模型配置摘要、日志条目与总评分块已显式拆分 |
+| Agent Run | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | 模型配置摘要、Gate Items 与 Event Items 已显式拆分 |
 | Submissions | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | 详情侧板已拆出时间线、截图、Failure Detail、重试策略 |
 | Policy | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | Gate Policy、Exclusion List 已显式拆成独立分组与字段卡 |
 | System Settings | 已覆盖 | 已覆盖 | 已覆盖 | 已覆盖 | 已达标 | Channels、LLM Config 已显式拆成独立分组与字段卡 |
@@ -862,8 +864,8 @@ StatusChip 4 个变体建议在代码中合并为参数化组件:
 - Evidence: `list` 返回 `{ items[], next_cursor }`，支持 `query/status/role/tags/date_range` 筛选，支持 `updated_at/score` 排序；`detail` 返回完整 `EvidenceCard + artifacts[]`
 - Jobs/Profiles: 返回 `{ items[], next_cursor }`，支持 `status/query/tags` 筛选，支持 `match_score/updated_at` 排序
 - Jobs/Leads: 返回 `{ items[], next_cursor }`，支持 `source/status/favorited/query` 筛选，支持 `updated_at/created_at` 排序
-- Quick Run: 输入契约至少包含 `evidence_id`, `job_profile_id`, `options`；结果契约至少包含 `stage_results[]`, `scores`, `logs[]`
-- Agent Run: 返回 { run, gate_checks[], events[], next_event_cursor, review_candidates[], review_decisions[] }；事件流分页必须支持 cursor + limit；review_candidates 仅在 delivery_mode=manual 且状态为 REVIEW 时有值
+- Quick Run: 输入契约至少包含 `evidence_id`, `job_profile_id`, `options`；结果契约至少包含 `stage_results[]`, `scores`, `logs[]`；页面通过 `settings.get.llm_config` 展示 provider summary，不从 run result 读取 secret
+- Agent Run: 返回 { run, gate_checks[], events[], next_event_cursor, review_candidates[], review_decisions[] }；事件流分页必须支持 cursor + limit；review_candidates 仅在 delivery_mode=manual 且状态为 REVIEW 时有值；页面通过 `settings.get.llm_config` 展示 provider summary，不从 run result 读取 secret
 - Resumes: 页面至少需要 `personal_profile`、`uploaded_resumes[]`、`generated_resumes[]` 与当前选中版本的 `preview` 载荷；首版 bridge 可通过聚合现有 profile 源与 resume list 完成，不强制在本轮冻结为单一 RPC 方法
 - Submissions: 返回 `{ items[], next_cursor }`，支持 `company/channel/status/date_range` 筛选，支持 `submitted_at/status` 排序；详情需返回 `steps[]`, `screenshots[]`, `failure_detail`
 - Policy: 返回 `{ gate_policy, exclusion_list }`；无分页；两个子模块需支持独立保存结果与错误反馈

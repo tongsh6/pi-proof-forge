@@ -21,10 +21,16 @@ def test_agent_run_page_uses_run_control_rpc_contract():
 
     assert "startAgentRun" in source
     assert "getAgentRun" in source
+    assert "getSettings" in source
+    assert "LlmConfig" in source
+    assert "providerSummary" in source
     assert "stopAgentRun" in source
     assert "agent_run.load.ready" in source
     assert "agentStateLabel" in source
     assert "runStatusLabel" in source
+    assert "pages.agentRun.providerSummary" in source
+    assert "api_key.value" not in source
+    assert "api_key.secret" not in source
 
 
 def test_agent_run_page_renders_full_state_machine_contract():
@@ -78,6 +84,11 @@ def test_agent_run_i18n_contract_is_complete():
         "jobProfile",
         "noRun",
         "noEvents",
+        "providerSummary",
+        "provider",
+        "model",
+        "baseUrl",
+        "secretStatus",
     }
     required_state_keys = {
         "INIT",

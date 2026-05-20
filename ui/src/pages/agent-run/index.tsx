@@ -15,6 +15,7 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   getAgentRun,
   getPendingReview,
+  getSettings,
   listJobProfiles,
   startAgentRun,
   stopAgentRun,
@@ -23,6 +24,7 @@ import {
 import type {
   AgentRunSummary,
   JobProfileListItem,
+  LlmConfig,
   ReviewCandidateItem,
 } from "@/lib/sidecar/types";
 
@@ -95,6 +97,10 @@ function formatDate(value: string | undefined, locale: string): string {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString(locale);
 }
 
+function formatConfigValue(value: string | null | undefined): string {
+  return value && value.trim() ? value : "--";
+}
+
 function payloadOf(event: AgentRunEvent | undefined): Record<string, unknown> {
   return event && typeof event.payload === "object" && event.payload !== null
     ? (event.payload as Record<string, unknown>)
@@ -161,6 +167,7 @@ function gateStatusClassName(status: GateRowStatus): string {
 export function AgentRunPage() {
   const { t, i18n } = useTranslation();
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
+  const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [run, setRun] = useState<AgentRunSummary | null>(null);
@@ -176,8 +183,12 @@ export function AgentRunPage() {
     setLoadState("loading");
     setError(null);
     try {
-      const result = await listJobProfiles();
+      const [result, settings] = await Promise.all([
+        listJobProfiles(),
+        getSettings(),
+      ]);
       setJobProfiles(result.items);
+      setLlmConfig(settings.llm_config);
       if (!selectedProfileId && result.items.length > 0) {
         setSelectedProfileId(result.items[0].job_profile_id);
       }
@@ -186,6 +197,8 @@ export function AgentRunPage() {
         profile_count: result.items.length,
         selected_profile_id:
           selectedProfileId || result.items[0]?.job_profile_id || "",
+        llm_provider: settings.llm_config.provider,
+        api_key_configured: settings.llm_config.api_key.configured,
       });
     } catch (nextError) {
       const message = getErrorMessage(nextError);
@@ -234,6 +247,26 @@ export function AgentRunPage() {
   const selectedProfile = jobProfiles.find(
     (profile) => profile.job_profile_id === selectedProfileId
   );
+  const providerSummary = [
+    {
+      label: t("pages.agentRun.provider"),
+      value: formatConfigValue(llmConfig?.provider),
+    },
+    {
+      label: t("pages.agentRun.model"),
+      value: formatConfigValue(llmConfig?.model),
+    },
+    {
+      label: t("pages.agentRun.baseUrl"),
+      value: formatConfigValue(llmConfig?.base_url),
+    },
+    {
+      label: t("pages.agentRun.secretStatus"),
+      value: llmConfig?.api_key.configured
+        ? t("pages.systemSettings.secretConfigured")
+        : t("pages.systemSettings.secretMissing"),
+    },
+  ];
   const activeIndex = latestStateIndex(events, run?.status ?? "");
   const activeState = STATE_SEQUENCE[activeIndex];
   const isRunBusy =
@@ -424,6 +457,27 @@ export function AgentRunPage() {
         <p className="text-sm text-text-secondary">{t("common.loading")}</p>
       ) : null}
       {error ? <p className="text-sm text-error">{error}</p> : null}
+
+      <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+        <h2 className="text-lg font-semibold text-text-primary">
+          {t("pages.agentRun.providerSummary")}
+        </h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {providerSummary.map((item) => (
+            <div
+              className="rounded-card border border-border bg-bg-primary/50 p-4"
+              key={item.label}
+            >
+              <p className="text-xs uppercase tracking-[0.08em] text-text-muted">
+                {item.label}
+              </p>
+              <p className="mt-2 truncate text-sm font-medium text-text-primary">
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

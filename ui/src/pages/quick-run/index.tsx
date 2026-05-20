@@ -14,11 +14,16 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import {
   cancelQuickRun,
+  getSettings,
   listEvidence,
   listJobProfiles,
   startQuickRun,
 } from "@/lib/sidecar/api";
-import type { JobProfileListItem, QuickRunStartResult } from "@/lib/sidecar/types";
+import type {
+  JobProfileListItem,
+  LlmConfig,
+  QuickRunStartResult,
+} from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
 type RunState = "idle" | "ready_to_run" | "running" | "done" | "error";
@@ -110,6 +115,10 @@ function formatTerminalLines(result: QuickRunStartResult | null, runError: strin
   return lines.slice(-80);
 }
 
+function formatConfigValue(value: string | null | undefined): string {
+  return value && value.trim() ? value : "--";
+}
+
 export function QuickRunPage() {
   const { t } = useTranslation();
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -117,6 +126,7 @@ export function QuickRunPage() {
   const [runState, setRunState] = useState<RunState>("idle");
   const [evidenceCount, setEvidenceCount] = useState(0);
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
+  const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const [quickRunId, setQuickRunId] = useState<string | null>(null);
   const [quickRunStatus, setQuickRunStatus] = useState<string | null>(null);
@@ -131,12 +141,14 @@ export function QuickRunPage() {
     setLoadState("loading");
     setError(null);
     try {
-      const [evidence, jobs] = await Promise.all([
+      const [evidence, jobs, settings] = await Promise.all([
         listEvidence(),
         listJobProfiles(),
+        getSettings(),
       ]);
       setEvidenceCount(evidence.items.filter((item) => item.status !== "draft").length);
       setJobProfiles(jobs.items);
+      setLlmConfig(settings.llm_config);
       if (jobs.items.length > 0 && !selectedProfileId) {
         setSelectedProfileId(jobs.items[0].job_profile_id);
       }
@@ -145,6 +157,8 @@ export function QuickRunPage() {
         job_profile_count: jobs.items.length,
         selected_profile_id:
           selectedProfileId || jobs.items[0]?.job_profile_id || null,
+        llm_provider: settings.llm_config.provider,
+        api_key_configured: settings.llm_config.api_key.configured,
       });
       setLoadState("ready");
     } catch (e) {
@@ -171,6 +185,26 @@ export function QuickRunPage() {
   const selectedProfile = jobProfiles.find(
     (jp) => jp.job_profile_id === selectedProfileId,
   );
+  const providerSummary = [
+    {
+      label: t("pages.quickRun.provider"),
+      value: formatConfigValue(llmConfig?.provider),
+    },
+    {
+      label: t("pages.quickRun.model"),
+      value: formatConfigValue(llmConfig?.model),
+    },
+    {
+      label: t("pages.quickRun.baseUrl"),
+      value: formatConfigValue(llmConfig?.base_url),
+    },
+    {
+      label: t("pages.quickRun.secretStatus"),
+      value: llmConfig?.api_key.configured
+        ? t("pages.systemSettings.secretConfigured")
+        : t("pages.systemSettings.secretMissing"),
+    },
+  ];
   const canStartRun = selectedProfileId !== "" && runState !== "running";
   const canCancelRun =
     quickRunId !== null &&
@@ -375,6 +409,25 @@ export function QuickRunPage() {
 
       {loadState === "ready" ? (
         <>
+          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <h2 className="text-lg font-semibold text-text-primary">
+              {t("pages.quickRun.providerSummary")}
+            </h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {providerSummary.map((item) => (
+                <div
+                  className="rounded-card border border-border bg-bg-primary/50 p-4"
+                  key={item.label}
+                >
+                  <p className="text-xs uppercase text-text-muted">{item.label}</p>
+                  <p className="mt-2 truncate text-sm font-medium text-text-primary">
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
             <div className="grid gap-3 xl:grid-cols-4">
               {PIPELINE_STEPS.map((step, index) => {
