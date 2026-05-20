@@ -605,6 +605,7 @@
         "missing": "Missing",
         "unknown": "Unknown",
         "ready": "Ready",
+        "blocked": "Blocked",
         "failed": "Failed",
         "error": "Error",
         "notConfigured": "Not configured",
@@ -621,7 +622,7 @@
       },
       "llm": {
         "title": "LLM config",
-        "subtitle": "Masked model configuration as returned by settings.get",
+        "subtitle": "Save local or compatible model settings; secrets are only read back as masked status",
         "provider": "Provider",
         "model": "Model",
         "baseUrl": "Base URL",
@@ -630,7 +631,13 @@
         "temperature": "Temperature",
         "defaultModel": "Default model",
         "connectionTest": "Endpoint and credential status",
-        "defaultEndpoint": "OpenAI-compatible default endpoint"
+        "defaultEndpoint": "OpenAI-compatible default endpoint",
+        "modelPlaceholder": "For example local-model",
+        "keepExistingSecret": "Leave blank to keep existing key",
+        "testConnection": "Check connection",
+        "checking": "Checking...",
+        "saving": "Saving...",
+        "saved": "Model configuration saved"
       },
       "secretStatus": {
         "title": "Secret Status",

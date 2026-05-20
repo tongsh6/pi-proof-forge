@@ -104,6 +104,17 @@ function validateReadyEvent(event) {
   return true;
 }
 
+function validateLlmFormReadyEvent(event) {
+  if (event.event !== "system_settings.llm.form.ready") return false;
+  if (event.has_provider !== true) return false;
+  if (event.has_model !== true) return false;
+  if (event.has_base_url_field !== true) return false;
+  if (event.has_timeout !== true) return false;
+  if (event.has_temperature !== true) return false;
+  if (typeof event.api_key_configured !== "boolean") return false;
+  return true;
+}
+
 async function waitForReadyEvent(args, child) {
   const deadline = Date.now() + args.timeoutMs;
   while (Date.now() < deadline) {
@@ -118,6 +129,22 @@ async function waitForReadyEvent(args, child) {
     await sleep(500);
   }
   throw new Error("Timed out waiting for System Settings native ready event");
+}
+
+async function waitForLlmFormReadyEvent(args, child) {
+  const deadline = Date.now() + args.timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `Tauri dev exited before System Settings LLM form loaded, exit code ${child.exitCode}`
+      );
+    }
+
+    const ready = readEvents().find(validateLlmFormReadyEvent);
+    if (ready) return ready;
+    await sleep(500);
+  }
+  throw new Error("Timed out waiting for System Settings LLM form ready event");
 }
 
 async function stopProcess(child) {
@@ -177,6 +204,7 @@ async function main() {
 
   try {
     const event = await waitForReadyEvent(args, child);
+    const llmFormEvent = await waitForLlmFormReadyEvent(args, child);
     console.log(
       JSON.stringify({
         ok: true,
@@ -185,6 +213,8 @@ async function main() {
         channel_count: event.channel_count,
         channel_ids: event.channel_ids,
         llm_provider: event.llm_provider,
+        llm_form_ready: true,
+        api_key_configured: llmFormEvent.api_key_configured,
         log: logPath,
         app_events: APP_EVENTS_PATH,
       })

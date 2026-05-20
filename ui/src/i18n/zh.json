@@ -605,6 +605,7 @@
         "missing": "缺失",
         "unknown": "未知",
         "ready": "就绪",
+        "blocked": "受阻",
         "failed": "失败",
         "error": "错误",
         "notConfigured": "未配置",
@@ -621,7 +622,7 @@
       },
       "llm": {
         "title": "模型配置",
-        "subtitle": "来自设置读取的掩码模型配置",
+        "subtitle": "保存本地或兼容接口模型配置，密钥只回读掩码状态",
         "provider": "提供方",
         "model": "模型",
         "baseUrl": "基础地址",
@@ -630,7 +631,13 @@
         "temperature": "温度",
         "defaultModel": "默认模型",
         "connectionTest": "端点与凭证状态",
-        "defaultEndpoint": "OpenAI 兼容默认端点"
+        "defaultEndpoint": "OpenAI 兼容默认端点",
+        "modelPlaceholder": "例如 local-model",
+        "keepExistingSecret": "留空则保留已有密钥",
+        "testConnection": "检查连接",
+        "checking": "检查中...",
+        "saving": "保存中...",
+        "saved": "模型配置已保存"
       },
       "secretStatus": {
         "title": "凭证状态",

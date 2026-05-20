@@ -20,6 +20,12 @@ def test_system_settings_page_renders_design_sections():
         "connectionSummary",
         "secretStatus",
         "settings.llm_config.api_key.configured",
+        "llmForm",
+        "updateLlmConfig",
+        "checkLlmConnection",
+        "handleSaveLlmConfig",
+        "handleCheckLlmConnection",
+        "system_settings.llm.form.ready",
     ):
         assert marker in source
 
@@ -28,6 +34,15 @@ def test_system_settings_page_does_not_degrade_to_channel_count_only():
     source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
 
     assert "{settings.channels.length}" not in source
+
+
+def test_system_settings_llm_config_is_not_read_only():
+    source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
+
+    assert "pages.systemSettings.readOnly" not in source
+    assert 'type="password"' in source
+    assert "api_key.value" not in source
+    assert "api_key.secret" not in source
 
 
 def test_system_settings_i18n_contract_is_complete():
@@ -67,6 +82,12 @@ def test_system_settings_i18n_contract_is_complete():
         "defaultModel",
         "connectionTest",
         "defaultEndpoint",
+        "modelPlaceholder",
+        "keepExistingSecret",
+        "testConnection",
+        "checking",
+        "saving",
+        "saved",
     }
 
     for i18n_file in I18N_FILES:
