@@ -13,6 +13,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const UI_DIR = resolve(new URL("..", import.meta.url).pathname);
+const ROOT_DIR = resolve(UI_DIR, "..");
 const ARTIFACT_DIR = join(UI_DIR, "test-results", "resumes-native");
 const VITE_ENV_LOCAL = join(UI_DIR, ".env.local");
 const APP_EVENTS_PATH = join(ARTIFACT_DIR, "app-events.jsonl");
@@ -21,6 +22,13 @@ const SCENARIO = "resumes";
 let activeChild = null;
 let activeRestoreViteEnv = null;
 let shuttingDown = false;
+const SEEDED_MATERIAL_ID = "mat_native_resumes_verify";
+const SEEDED_MATERIAL_FILE = join(ROOT_DIR, "materials", `${SEEDED_MATERIAL_ID}.md`);
+const SEEDED_MATERIAL_META = join(
+  ROOT_DIR,
+  "materials",
+  `${SEEDED_MATERIAL_ID}.meta.yaml`
+);
 
 function parseArgs(argv) {
   const args = {
@@ -79,6 +87,35 @@ function startTauriDev() {
   return { child, logPath, logs: () => logs };
 }
 
+function seedMaterialSource() {
+  mkdirSync(join(ROOT_DIR, "materials"), { recursive: true });
+  writeFileSync(
+    SEEDED_MATERIAL_FILE,
+    "# Native verifier material\n\nReduced checkout failure rate by 43%.\n",
+    "utf8"
+  );
+  writeFileSync(
+    SEEDED_MATERIAL_META,
+    [
+      `material_id: "${SEEDED_MATERIAL_ID}"`,
+      'resource_id: "res_native_resumes_verify"',
+      'label: "Native verifier material"',
+      'kind: "raw_work_material"',
+      `filename: "${SEEDED_MATERIAL_ID}.md"`,
+      'extension: ".md"',
+      'uploaded_at: "2026-05-21T00:00:00Z"',
+      'preview: "Reduced checkout failure rate by 43%."',
+      "",
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+function cleanupMaterialSource() {
+  if (existsSync(SEEDED_MATERIAL_FILE)) unlinkSync(SEEDED_MATERIAL_FILE);
+  if (existsSync(SEEDED_MATERIAL_META)) unlinkSync(SEEDED_MATERIAL_META);
+}
+
 function enableViteAutorunEnv() {
   return () => undefined;
 }
@@ -98,6 +135,8 @@ function validateReadyEvent(event) {
     "resume_count",
     "uploaded_count",
     "generated_count",
+    "material_count",
+    "material_missing_count",
   ]) {
     if (typeof event[key] !== "number") return false;
     if (event[key] < 0) return false;
@@ -106,6 +145,8 @@ function validateReadyEvent(event) {
   if (event.uploaded_count + event.generated_count !== event.resume_count) {
     return false;
   }
+  if (event.material_count < 1) return false;
+  if (!["ready", "incomplete"].includes(event.material_readiness)) return false;
   return typeof event.has_preview === "boolean";
 }
 
@@ -159,6 +200,7 @@ async function shutdownFromSignal(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   if (activeChild) await stopProcess(activeChild);
+  cleanupMaterialSource();
   if (activeRestoreViteEnv) activeRestoreViteEnv();
   process.exit(signal === "SIGINT" ? 130 : 143);
 }
@@ -175,6 +217,7 @@ async function main() {
   if (!args.keepArtifacts && existsSync(ARTIFACT_DIR)) {
     rmSync(ARTIFACT_DIR, { recursive: true, force: true });
   }
+  seedMaterialSource();
   const restoreViteEnv = enableViteAutorunEnv();
   const { child, logPath, logs } = startTauriDev();
   activeChild = child;
@@ -191,6 +234,9 @@ async function main() {
         resume_count: event.resume_count,
         uploaded_count: event.uploaded_count,
         generated_count: event.generated_count,
+        material_count: event.material_count,
+        material_readiness: event.material_readiness,
+        material_missing_count: event.material_missing_count,
         has_preview: event.has_preview,
         log: logPath,
         app_events: APP_EVENTS_PATH,
@@ -207,6 +253,7 @@ async function main() {
     process.exitCode = 1;
   } finally {
     await stopProcess(child);
+    cleanupMaterialSource();
     restoreViteEnv();
     activeChild = null;
     activeRestoreViteEnv = null;

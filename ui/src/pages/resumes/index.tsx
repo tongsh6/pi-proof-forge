@@ -16,13 +16,22 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import {
   exportResumePdf,
+  getMaterialReadiness,
   getProfile,
   getResumePreview,
+  listMaterials,
   listResumes,
   updateProfile,
+  uploadMaterial,
   uploadResume,
 } from "@/lib/sidecar/api";
-import type { ProfilePayload, ResumeListItem, ResumePreview } from "@/lib/sidecar/types";
+import type {
+  MaterialReadinessResult,
+  MaterialSourceItem,
+  ProfilePayload,
+  ResumeListItem,
+  ResumePreview,
+} from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -37,6 +46,11 @@ type ProfileForm = {
 type UploadForm = {
   sourcePath: string;
   language: string;
+  label: string;
+};
+
+type MaterialUploadForm = {
+  sourcePath: string;
   label: string;
 };
 
@@ -87,6 +101,9 @@ export function ResumesPage() {
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
   const [profileForm, setProfileForm] = useState<ProfileForm>(() => toProfileForm(null));
   const [items, setItems] = useState<ResumeListItem[]>([]);
+  const [materials, setMaterials] = useState<MaterialSourceItem[]>([]);
+  const [materialReadiness, setMaterialReadiness] =
+    useState<MaterialReadinessResult | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [preview, setPreview] = useState<ResumePreview | null>(null);
   const [previewStatus, setPreviewStatus] = useState<string | null>(null);
@@ -95,12 +112,19 @@ export function ResumesPage() {
     language: "zh",
     label: "",
   });
+  const [materialUploadForm, setMaterialUploadForm] =
+    useState<MaterialUploadForm>({
+      sourcePath: "",
+      label: "",
+    });
   const [showUploadForm, setShowUploadForm] = useState(false);
+  const [showMaterialUploadForm, setShowMaterialUploadForm] = useState(false);
   const [exportPath, setExportPath] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
   const [exporting, setExporting] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
 
@@ -147,10 +171,18 @@ export function ResumesPage() {
     setLoadState("loading");
     setError(null);
     try {
-      const [profileResult, resumesResult] = await Promise.all([getProfile(), listResumes()]);
+      const [profileResult, resumesResult, materialsResult, readinessResult] =
+        await Promise.all([
+          getProfile(),
+          listResumes(),
+          listMaterials(),
+          getMaterialReadiness(),
+        ]);
       setProfile(profileResult.profile);
       setProfileForm(toProfileForm(profileResult.profile));
       setItems(resumesResult.items);
+      setMaterials(materialsResult.items);
+      setMaterialReadiness(readinessResult);
       const preferredResume =
         resumesResult.items.find((item) => item.resume_id === selectedIdRef.current) ??
         resumesResult.items.find((item) => item.status !== "uploaded") ??
@@ -168,6 +200,9 @@ export function ResumesPage() {
         resume_count: resumesResult.items.length,
         uploaded_count: resumesResult.items.filter((item) => item.status === "uploaded").length,
         generated_count: resumesResult.items.filter((item) => item.status !== "uploaded").length,
+        material_count: materialsResult.items.length,
+        material_readiness: readinessResult.status,
+        material_missing_count: readinessResult.missing_items.length,
         has_preview: Boolean(preferredResume),
       });
     } catch (nextError) {
@@ -218,6 +253,28 @@ export function ResumesPage() {
       setUploading(false);
     }
   }, [loadData, t, uploadForm]);
+
+  const handleMaterialUpload = useCallback(async () => {
+    if (!materialUploadForm.sourcePath.trim()) {
+      setError(t("pages.resumes.errors.materialSourcePathRequired"));
+      return;
+    }
+    setUploadingMaterial(true);
+    setError(null);
+    try {
+      await uploadMaterial({
+        source_paths: [materialUploadForm.sourcePath.trim()],
+        label: materialUploadForm.label.trim() || undefined,
+      });
+      setMaterialUploadForm({ sourcePath: "", label: "" });
+      setShowMaterialUploadForm(false);
+      await loadData();
+    } catch (nextError) {
+      setError(getErrorMessage(nextError));
+    } finally {
+      setUploadingMaterial(false);
+    }
+  }, [loadData, materialUploadForm, t]);
 
   const handleExport = useCallback(async () => {
     if (!selectedId) {
@@ -461,6 +518,126 @@ export function ResumesPage() {
                   {t("pages.resumes.uploaded.empty")}
                 </div>
               ) : null}
+            </div>
+
+            <div className="border-t border-border pt-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-text-primary">
+                    {t("pages.resumes.materials.title")}
+                  </h2>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {t("pages.resumes.materials.count", {
+                      count: materials.length,
+                    })}
+                  </p>
+                </div>
+                <button
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-card border border-border text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+                  onClick={() =>
+                    setShowMaterialUploadForm((current) => !current)
+                  }
+                  title={t("pages.resumes.materials.upload")}
+                  type="button"
+                >
+                  <Upload size={15} />
+                </button>
+              </div>
+
+              <div className="mt-3 rounded-card border border-border bg-bg-primary/40 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-text-primary">
+                    {t("pages.resumes.materials.readiness")}
+                  </span>
+                  <span
+                    className={`rounded-chip border px-2.5 py-1 text-xs ${
+                      materialReadiness?.status === "ready"
+                        ? "border-success/40 bg-success/10 text-success"
+                        : "border-warning/40 bg-warning/10 text-warning"
+                    }`}
+                  >
+                    {materialReadiness?.status === "ready"
+                      ? t("pages.resumes.materials.ready")
+                      : t("pages.resumes.materials.incomplete")}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-text-secondary">
+                  {materialReadiness?.missing_items.length
+                    ? materialReadiness.missing_items
+                        .map((item) =>
+                          t(`pages.resumes.materials.missing.${item}`)
+                        )
+                        .join(", ")
+                    : t("pages.resumes.materials.noMissing")}
+                </p>
+              </div>
+
+              {showMaterialUploadForm ? (
+                <div className="mt-3 space-y-3 rounded-card border border-accent/30 bg-accent/5 p-4">
+                  <input
+                    className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                    onChange={(event) =>
+                      setMaterialUploadForm((current) => ({
+                        ...current,
+                        sourcePath: event.target.value,
+                      }))
+                    }
+                    placeholder={t("pages.resumes.materials.sourcePlaceholder")}
+                    value={materialUploadForm.sourcePath}
+                  />
+                  <input
+                    className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                    onChange={(event) =>
+                      setMaterialUploadForm((current) => ({
+                        ...current,
+                        label: event.target.value,
+                      }))
+                    }
+                    placeholder={t("pages.resumes.materials.labelPlaceholder")}
+                    value={materialUploadForm.label}
+                  />
+                  <button
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    disabled={uploadingMaterial}
+                    onClick={() => void handleMaterialUpload()}
+                    type="button"
+                  >
+                    <Upload size={16} />
+                    {uploadingMaterial
+                      ? t("pages.resumes.materials.uploading")
+                      : t("pages.resumes.materials.submit")}
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="mt-3 space-y-3">
+                {materials.map((item) => (
+                  <article
+                    key={item.material_id}
+                    className="rounded-card border border-border bg-bg-primary/30 px-4 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-text-primary">
+                          {item.label || item.filename}
+                        </p>
+                        <p className="mt-1 truncate font-mono text-xs text-text-muted">
+                          {item.material_id} · {item.extension}
+                        </p>
+                      </div>
+                      <FileText size={16} className="shrink-0 text-accent" />
+                    </div>
+                    <p className="mt-3 max-h-[60px] overflow-hidden text-xs leading-5 text-text-secondary">
+                      {item.preview || t("pages.resumes.materials.noPreview")}
+                    </p>
+                  </article>
+                ))}
+                {materials.length === 0 ? (
+                  <div className="rounded-card border border-border bg-bg-primary/30 p-5 text-sm text-text-secondary">
+                    {t("pages.resumes.materials.empty")}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </section>
 

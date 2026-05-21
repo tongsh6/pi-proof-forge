@@ -32,10 +32,15 @@ def test_evidence_page_matches_product_card_contract():
         "pages.evidence.sections.detail",
         "pages.evidence.actions.import",
         "pages.evidence.status.ready",
+        "listEvidenceMaterialSources",
+        "materialSources",
+        "material_source_count",
+        "pages.evidence.materialSources.title",
     ):
         assert marker in source
 
     assert "evidence.import" in api_source
+    assert "evidence.listMaterialSources" in api_source
     assert "filters?: EvidenceFilters" in api_source
 
 
@@ -51,6 +56,7 @@ def test_evidence_native_verifier_is_registered():
     assert "validateReadyEvent" in script
     assert "card_count" in script
     assert "artifact_count" in script
+    assert "material_source_count" in script
     assert '"evidence"' in tauri_main
     assert 'event_name.starts_with("evidence.")' in tauri_main
 
@@ -70,6 +76,7 @@ def test_evidence_i18n_contract_is_complete():
         "sections",
         "fields",
         "artifacts",
+        "materialSources",
         "empty",
         "errors",
     }
@@ -98,6 +105,13 @@ def test_evidence_i18n_contract_is_complete():
         "reupload",
         "size",
     }
+    required_material_source_keys = {
+        "title",
+        "count",
+        "source",
+        "empty",
+        "noPreview",
+    }
 
     for i18n_file in I18N_FILES:
         messages = json.loads(i18n_file.read_text(encoding="utf-8"))
@@ -115,4 +129,10 @@ def test_evidence_i18n_contract_is_complete():
         )
         assert not missing_artifacts, (
             f"{i18n_file.name} missing artifact keys: {sorted(missing_artifacts)}"
+        )
+        missing_material_sources = required_material_source_keys.difference(
+            evidence_messages["materialSources"]
+        )
+        assert not missing_material_sources, (
+            f"{i18n_file.name} missing material source keys: {sorted(missing_material_sources)}"
         )

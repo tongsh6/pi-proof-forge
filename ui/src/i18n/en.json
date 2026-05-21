@@ -116,6 +116,26 @@
         "submit": "Upload file",
         "uploading": "Uploading..."
       },
+      "materials": {
+        "title": "Work Material Library",
+        "count": "{{count}} text materials",
+        "empty": "No work materials yet. Upload Markdown or text materials so Evidence can read them as sources.",
+        "upload": "Upload material",
+        "sourcePlaceholder": "Absolute source path, e.g. /Users/.../project-review.md",
+        "labelPlaceholder": "Optional material label",
+        "submit": "Upload material",
+        "uploading": "Uploading...",
+        "readiness": "Library readiness",
+        "ready": "Ready",
+        "incomplete": "Incomplete",
+        "noMissing": "Profile, uploaded resume, and work material are complete.",
+        "noPreview": "No preview available.",
+        "missing": {
+          "missing_personal_profile": "Missing personal profile",
+          "missing_uploaded_resume": "Missing uploaded resume",
+          "missing_raw_work_material": "Missing work material"
+        }
+      },
       "generated": {
         "title": "Generated Resumes",
         "count": "{{count}} generated versions",
@@ -133,6 +153,7 @@
       },
       "errors": {
         "sourcePathRequired": "Source path is required.",
+        "materialSourcePathRequired": "Work material source path is required.",
         "selectResume": "Select a resume first.",
         "destinationRequired": "Destination path is required."
       }
@@ -246,6 +267,13 @@
         "delete": "Delete",
         "reupload": "Re-upload",
         "size": "{{count}} artifacts"
+      },
+      "materialSources": {
+        "title": "Material Sources",
+        "count": "{{count}} materials available for evidence extraction",
+        "source": "From Resumes",
+        "empty": "No material sources yet. Upload Markdown or text work materials from Resumes first.",
+        "noPreview": "No preview available."
       },
       "empty": {
         "list": "No evidence cards yet. Create a blank card or import a source file."

@@ -17,6 +17,7 @@ import {
   deleteEvidence,
   getEvidence,
   importEvidence,
+  listEvidenceMaterialSources,
   listEvidence,
   updateEvidence,
 } from "@/lib/sidecar/api";
@@ -25,6 +26,7 @@ import type {
   EvidenceDetail,
   EvidenceFilters,
   EvidenceListItem,
+  MaterialSourceItem,
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -115,6 +117,7 @@ function selectedArtifactCount(detail: EvidenceDetail | null): number {
 export function EvidencePage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<EvidenceListItem[]>([]);
+  const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EvidenceDetail | null>(null);
   const [form, setForm] = useState<EvidenceForm>(() => toForm(null));
@@ -190,8 +193,12 @@ export function EvidencePage() {
       setLoadState("loading");
       setError(null);
       try {
-        const result = await listEvidence(evidenceFilters);
+        const [result, materialResult] = await Promise.all([
+          listEvidence(evidenceFilters),
+          listEvidenceMaterialSources(),
+        ]);
         setItems(result.items);
+        setMaterialSources(materialResult.items);
         const preferredItem =
           result.items.find(
             (item) =>
@@ -214,6 +221,7 @@ export function EvidencePage() {
           card_count: result.items.length,
           selected_id: preferredItem?.evidence_id ?? null,
           artifact_count: selectedArtifactCount(loadedDetail),
+          material_source_count: materialResult.items.length,
         });
       } catch (nextError) {
         setItems([]);
@@ -569,6 +577,54 @@ export function EvidencePage() {
                 {t("pages.evidence.actions.reset")}
               </button>
             </div>
+          </section>
+
+          <section className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-text-primary">
+                  {t("pages.evidence.materialSources.title")}
+                </h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  {t("pages.evidence.materialSources.count", {
+                    count: materialSources.length,
+                  })}
+                </p>
+              </div>
+              <span className="rounded-chip border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs text-accent">
+                {t("pages.evidence.materialSources.source")}
+              </span>
+            </div>
+            {materialSources.length > 0 ? (
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                {materialSources.slice(0, 3).map((source) => (
+                  <article
+                    key={source.material_id}
+                    className="rounded-card border border-border bg-bg-primary/50 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-text-primary">
+                          {source.label || source.filename}
+                        </p>
+                        <p className="mt-1 truncate font-mono text-xs text-text-muted">
+                          {source.material_id} · {source.extension}
+                        </p>
+                      </div>
+                      <FileUp size={15} className="shrink-0 text-accent" />
+                    </div>
+                    <p className="mt-3 max-h-[48px] overflow-hidden text-xs leading-4 text-text-secondary">
+                      {source.preview ||
+                        t("pages.evidence.materialSources.noPreview")}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-card border border-border bg-bg-primary/30 p-4 text-sm text-text-secondary">
+                {t("pages.evidence.materialSources.empty")}
+              </p>
+            )}
           </section>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">

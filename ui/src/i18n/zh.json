@@ -116,6 +116,26 @@
         "submit": "上传文件",
         "uploading": "上传中..."
       },
+      "materials": {
+        "title": "工作材料库",
+        "count": "{{count}} 份文本材料",
+        "empty": "暂无工作材料。上传 Markdown 或文本材料后，证据页可读取为来源。",
+        "upload": "上传材料",
+        "sourcePlaceholder": "绝对路径，例如 /Users/.../项目复盘.md",
+        "labelPlaceholder": "可选材料标签",
+        "submit": "上传材料",
+        "uploading": "上传中...",
+        "readiness": "资料库状态",
+        "ready": "已就绪",
+        "incomplete": "未完整",
+        "noMissing": "个人资料、上传简历和工作材料已完整。",
+        "noPreview": "暂无预览。",
+        "missing": {
+          "missing_personal_profile": "缺少个人资料",
+          "missing_uploaded_resume": "缺少上传简历",
+          "missing_raw_work_material": "缺少工作材料"
+        }
+      },
       "generated": {
         "title": "系统生成简历",
         "count": "{{count}} 个生成版本",
@@ -133,6 +153,7 @@
       },
       "errors": {
         "sourcePathRequired": "请填写源文件路径。",
+        "materialSourcePathRequired": "请填写工作材料源文件路径。",
         "selectResume": "请先选择一份简历。",
         "destinationRequired": "请填写导出目标路径。"
       }
@@ -246,6 +267,13 @@
         "delete": "删除",
         "reupload": "重新上传",
         "size": "{{count}} 个附件"
+      },
+      "materialSources": {
+        "title": "材料来源",
+        "count": "{{count}} 份可用于提炼证据的材料",
+        "source": "来自简历中心",
+        "empty": "暂无材料来源。请先在简历中心上传 Markdown 或文本工作材料。",
+        "noPreview": "暂无预览。"
       },
       "empty": {
         "list": "暂无证据卡。可以新增空白卡，或导入文件创建证据卡。"

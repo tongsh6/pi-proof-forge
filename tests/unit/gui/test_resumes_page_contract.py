@@ -32,6 +32,12 @@ def test_resumes_page_renders_final_design_contract():
         "exportResumePdf",
         "uploadResume",
         "getResumePreview",
+        "uploadMaterial",
+        "listMaterials",
+        "getMaterialReadiness",
+        "material_count",
+        "material_readiness",
+        "pages.resumes.materials.title",
     ):
         assert marker in source
 
@@ -48,6 +54,8 @@ def test_resumes_native_verifier_is_registered():
     assert package["scripts"]["e2e:resumes"] == "node ./scripts/verify_resumes_native.mjs"
     assert "resumes.load.ready" in script
     assert "validateReadyEvent" in script
+    assert "material_count" in script
+    assert "material_readiness" in script
 
 
 def test_resumes_i18n_contract_is_complete():
@@ -79,11 +87,37 @@ def test_resumes_i18n_contract_is_complete():
             "submit",
             "uploading",
         },
+        "materials": {
+            "title",
+            "count",
+            "empty",
+            "upload",
+            "sourcePlaceholder",
+            "labelPlaceholder",
+            "submit",
+            "uploading",
+            "readiness",
+            "ready",
+            "incomplete",
+            "noMissing",
+            "noPreview",
+            "missing",
+        },
         "generated": {"title", "count", "empty", "destinationPlaceholder", "score"},
         "preview": {"label", "summary", "experience", "skills", "pending", "empty"},
-        "errors": {"sourcePathRequired", "selectResume", "destinationRequired"},
+        "errors": {
+            "sourcePathRequired",
+            "materialSourcePathRequired",
+            "selectResume",
+            "destinationRequired",
+        },
     }
     profile_fields = {"name", "phone", "email", "city", "current_position"}
+    material_missing_keys = {
+        "missing_personal_profile",
+        "missing_uploaded_resume",
+        "missing_raw_work_material",
+    }
 
     for i18n_file in I18N_FILES:
         messages = json.loads(i18n_file.read_text(encoding="utf-8"))
@@ -102,4 +136,10 @@ def test_resumes_i18n_contract_is_complete():
         )
         assert not missing_fields, (
             f"{i18n_file.name} missing profile fields: {sorted(missing_fields)}"
+        )
+        missing_materials = material_missing_keys.difference(
+            resumes_messages["materials"]["missing"]
+        )
+        assert not missing_materials, (
+            f"{i18n_file.name} missing material readiness keys: {sorted(missing_materials)}"
         )
