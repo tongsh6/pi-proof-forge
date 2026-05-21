@@ -2,7 +2,7 @@ version: "2026-05-21"
 mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
-current_focus: "quick_run_llm_consumption"
+current_focus: "quick_run_material_consumption"
 
 vision_alignment:
   source: "PLAN.md"
@@ -121,7 +121,7 @@ steps:
 
   - id: "quick_run_llm_consumption"
     order: 4
-    status: "next"
+    status: "deep_verified"
     journey_stage: "quick_run"
     owner_surface: "ui/src/pages/quick-run/index.tsx"
     user_goal: "Quick Run consumes the persisted LLM configuration summary."
@@ -133,22 +133,24 @@ steps:
       - "system_settings_llm"
     acceptance:
       script: "pnpm --dir ui run e2e:quick-run"
-      depth: "deep_required"
-      evidence: []
+      depth: "deep"
+      evidence:
+        - "ui/test-results/quick-run-native/app-events.jsonl"
+        - "ui/test-results/quick-run-native/policy.yaml"
+        - "outputs/quick_runs/qr_*.json"
+        - "outputs/agent_runs/qr_*/summary.json"
       covers:
         - "temp_policy_llm_config"
         - "provider_summary_visible"
         - "model_summary_visible"
         - "masked_secret"
         - "run_context_uses_persisted_config"
-    gaps:
-      - "Current Quick Run native verifier proves run readiness and summary visibility, but does not yet deep-verify handoff from System Settings persisted config."
     unlocks:
       - "agent_run_llm_consumption"
 
   - id: "agent_run_llm_consumption"
     order: 5
-    status: "blocked"
+    status: "deep_verified"
     journey_stage: "agent_run"
     owner_surface: "ui/src/pages/agent-run/index.tsx"
     user_goal: "Agent Run consumes the same persisted LLM configuration summary."
@@ -159,11 +161,13 @@ steps:
     depends_on:
       - "system_settings_llm"
       - "quick_run_llm_consumption"
-    blocker: "Wait for quick_run_llm_consumption to define the shared deep handoff contract."
     acceptance:
       script: "pnpm --dir ui run e2e:agent-run"
-      depth: "deep_required"
-      evidence: []
+      depth: "deep"
+      evidence:
+        - "ui/test-results/agent-run-native/app-events.jsonl"
+        - "ui/test-results/agent-run-native/policy.yaml"
+        - "outputs/agent_runs/ar_*.json"
       covers:
         - "provider_summary_visible"
         - "model_summary_visible"
@@ -172,7 +176,7 @@ steps:
 
   - id: "quick_run_material_consumption"
     order: 6
-    status: "not_started"
+    status: "next"
     journey_stage: "quick_run"
     owner_surface: "ui/src/pages/quick-run/index.tsx"
     user_goal: "Quick Run consumes material-derived evidence and job target inputs."

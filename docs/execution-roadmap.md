@@ -41,7 +41,7 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 ## Current Focus
 
-`quick_run_llm_consumption`
+`quick_run_material_consumption`
 
 下一次“继续推进项目”默认只处理 `acceptance/journey_implementation_matrix.yaml` 中第一个 `status: next` 的任务。
 
@@ -91,7 +91,7 @@ Evidence:
 
 ### P0-002 Quick Run Consumes Persisted LLM Config
 
-Status: `next`
+Status: `deep_verified`
 
 Journey step: `quick_run_llm_consumption`
 
@@ -111,10 +111,14 @@ DoD:
 Expected evidence:
 
 - `pnpm --dir ui run e2e:quick-run`
+- `ui/test-results/quick-run-native/policy.yaml`
+- `ui/test-results/quick-run-native/app-events.jsonl`
+- `outputs/quick_runs/qr_*.json`
+- `outputs/agent_runs/qr_*/summary.json`
 
 ### P0-003 Agent Run Consumes Persisted LLM Config
 
-Status: `blocked`
+Status: `deep_verified`
 
 Journey step: `agent_run_llm_consumption`
 
@@ -123,13 +127,33 @@ Depends on:
 - `system_settings_llm`
 - `quick_run_llm_consumption`
 
-Blocker:
-
-- 先完成 Quick Run 的 LLM 配置消费深度验收，避免两个运行页面各自定义不一致的 provider summary 口径。
-
 Expected evidence:
 
 - `pnpm --dir ui run e2e:agent-run`
+- `ui/test-results/agent-run-native/policy.yaml`
+- `ui/test-results/agent-run-native/app-events.jsonl`
+- `outputs/agent_runs/ar_*.json`
+
+### P0-006 Quick Run Consumes Material-Derived Inputs
+
+Status: `next`
+
+Journey step: `quick_run_material_consumption`
+
+Depends on:
+
+- `evidence_material_sources`
+
+DoD:
+
+- Quick Run 真实 Tauri 页面能证明材料库来源已进入运行前上下文。
+- Quick Run 启动结果或 run context 能证明使用的是材料派生 Evidence 与选中 Job Profile。
+- 生成 Matching Report、Resume、Scorecard 时保留 Evidence Card 可追溯路径。
+- 不把“页面能看到材料来源”误当成 pipeline 消费验收。
+
+Expected evidence:
+
+- `pnpm --dir ui run e2e:quick-run`
 
 ### P0-004 Resumes Material Library Native Acceptance
 
@@ -164,7 +188,7 @@ Evidence:
 
 - `pnpm --dir ui run e2e:evidence`
 
-### P0-006 Evidence Card Extraction And Review
+### P0-007 Evidence Card Extraction And Review
 
 Status: `not_started`
 
