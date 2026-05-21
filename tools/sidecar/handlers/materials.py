@@ -37,6 +37,34 @@ def _normalize_preview(text: str, limit: int = 600) -> str:
     return preview[: limit - 1].rstrip() + "..."
 
 
+def _material_files_from_source(source: Path) -> list[Path]:
+    if source.is_file():
+        return [source]
+    if not source.is_dir():
+        return []
+    return sorted(
+        path
+        for path in source.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in _ALLOWED_MATERIAL_SUFFIXES
+        and not any(part.startswith(".") for part in path.relative_to(source).parts)
+    )
+
+
+def _read_material_source(source: Path, files: list[Path]) -> str:
+    if len(files) == 1 and files[0] == source:
+        return source.read_text(encoding="utf-8", errors="replace")
+
+    sections: list[str] = []
+    for file_path in files:
+        relative = file_path.relative_to(source)
+        text = file_path.read_text(encoding="utf-8", errors="replace").strip()
+        if not text:
+            continue
+        sections.append(f"# Source: {relative}\n\n{text}")
+    return "\n\n".join(sections).strip() + "\n"
+
+
 def _load_meta(path: Path) -> dict[str, str]:
     doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
     return dict(doc["scalars"])
@@ -84,11 +112,19 @@ def handle_material_upload(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("source_paths must contain exactly one file")
 
     source = Path(str(source_paths[0]))
-    if not source.exists() or not source.is_file():
+    if not source.exists():
         raise FileNotFoundError(f"material source not found: {source}")
-    suffix = source.suffix.lower()
-    if suffix not in _ALLOWED_MATERIAL_SUFFIXES:
-        raise ValueError("unsupported material file type")
+    if not source.is_file() and not source.is_dir():
+        raise ValueError(f"material source must be a file or directory: {source}")
+    files = _material_files_from_source(source)
+    if not files:
+        raise ValueError("unsupported material file type; expected .md or .txt")
+    if source.is_file() and source.suffix.lower() not in _ALLOWED_MATERIAL_SUFFIXES:
+        raise ValueError("unsupported material file type; expected .md or .txt")
+
+    is_directory = source.is_dir()
+    suffix = ".txt" if is_directory else source.suffix.lower()
+    raw_text = _read_material_source(source, files)
 
     label = str(params.get("label", source.stem) or source.stem).strip()
     if len(label) > 100:
@@ -97,22 +133,27 @@ def handle_material_upload(params: dict[str, Any]) -> dict[str, Any]:
     material_id = f"mat_{uuid4().hex[:8]}"
     resource_id = f"res_{uuid4().hex[:8]}"
     uploaded_at = _utcnow_iso()
-    preview = _normalize_preview(source.read_text(encoding="utf-8", errors="replace"))
+    preview = _normalize_preview(raw_text)
 
     _MATERIALS_DIR.mkdir(parents=True, exist_ok=True)
     destination = _MATERIALS_DIR / f"{material_id}{suffix}"
-    shutil.copy2(source, destination)
+    if is_directory:
+        destination.write_text(raw_text, encoding="utf-8")
+    else:
+        shutil.copy2(source, destination)
     _write_material_meta(
         _MATERIALS_DIR / f"{material_id}.meta.yaml",
         {
             "material_id": material_id,
             "resource_id": resource_id,
             "label": label,
-            "kind": "raw_work_material",
+            "kind": "raw_work_material_directory" if is_directory else "raw_work_material",
             "filename": destination.name,
             "extension": suffix,
             "uploaded_at": uploaded_at,
             "preview": preview,
+            "source_path": str(source),
+            "source_file_count": str(len(files)),
         },
     )
     return {
@@ -120,7 +161,7 @@ def handle_material_upload(params: dict[str, Any]) -> dict[str, Any]:
         "material_id": material_id,
         "resource_id": resource_id,
         "label": label,
-        "kind": "raw_work_material",
+        "kind": "raw_work_material_directory" if is_directory else "raw_work_material",
         "filename": destination.name,
         "extension": suffix,
         "uploaded_at": uploaded_at,

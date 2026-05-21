@@ -54,6 +54,34 @@ class MaterialHandlerTests(unittest.TestCase):
                         }
                     )
 
+    def test_upload_directory_combines_supported_material_files(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source = root / "project-folder"
+            source.mkdir()
+            (source / "a.md").write_text("# A\n\nResult: 1", encoding="utf-8")
+            nested = source / "nested"
+            nested.mkdir()
+            (nested / "b.txt").write_text("Artifact: b.png", encoding="utf-8")
+            (source / "ignore.png").write_bytes(b"png")
+            materials_dir = root / "materials"
+            with patch("tools.sidecar.handlers.materials._MATERIALS_DIR", root / "materials"):
+                uploaded = handle_material_upload(
+                    {
+                        "meta": {"correlation_id": "corr_mat_dir"},
+                        "source_paths": [str(source)],
+                    }
+                )
+                stored = (materials_dir / f"{uploaded['material_id']}.txt").read_text(
+                    encoding="utf-8"
+                )
+        self.assertEqual(uploaded["kind"], "raw_work_material_directory")
+        self.assertEqual(uploaded["extension"], ".txt")
+        self.assertIn("Source: a.md", stored)
+        self.assertIn("Source: nested/b.txt", stored)
+        self.assertIn("Result: 1", stored)
+        self.assertIn("Artifact: b.png", stored)
+
     def test_readiness_reports_missing_and_ready_states(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
