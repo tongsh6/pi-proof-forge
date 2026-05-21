@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -150,18 +153,23 @@ def _execute_local_dry_run(run_id: str, options: dict[str, Any]) -> dict[str, An
         excluded_legal_entities=(),
         max_deliveries=0,
     )
-    result = AgentLoop(
-        policy=policy,
-        run_id=run_id,
-        dry_run=True,
-        run_store=store,
-    ).run()
+    stdout_buffer = StringIO()
+    stderr_buffer = StringIO()
+    with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+        result = AgentLoop(
+            policy=policy,
+            run_id=run_id,
+            dry_run=True,
+            run_store=store,
+        ).run()
     events = [_event_to_payload(event) for event in store.load_events(run_id)]
 
     return {
         "status": result.status,
         "round": result.rounds_completed,
         "events": events,
+        "stdout": stdout_buffer.getvalue()[-4000:],
+        "stderr": stderr_buffer.getvalue()[-4000:],
     }
 
 
@@ -237,6 +245,39 @@ def _quick_run_result_details(
     }
 
 
+def _persisted_llm_runtime_context() -> tuple[dict[str, Any], dict[str, str]]:
+    from tools.sidecar.handlers.settings import _load_llm_config
+
+    config = _load_llm_config()
+
+    def clean_str(value: Any) -> str:
+        return value.strip() if isinstance(value, str) else ""
+
+    summary = {
+        "provider": clean_str(config.get("provider")),
+        "model": clean_str(config.get("model")),
+        "base_url": clean_str(config.get("base_url")),
+        "api_key": {
+            "configured": bool(config.get("api_key_configured")),
+            "masked": True,
+            "updated_at": clean_str(config.get("api_key_updated_at")),
+        },
+        "timeout": int(config.get("timeout") or 60),
+        "temperature": float(config.get("temperature") or 0.2),
+    }
+    env: dict[str, str] = {}
+    if summary["provider"]:
+        env["LLM_PROVIDER"] = str(summary["provider"])
+    if summary["model"]:
+        env["LLM_MODEL"] = str(summary["model"])
+    if summary["base_url"]:
+        env["LLM_BASE_URL"] = str(summary["base_url"])
+    api_key_for_request = clean_str(config.get("api_key_for_request"))
+    if api_key_for_request:
+        env["LLM_API_KEY"] = api_key_for_request
+    return summary, env
+
+
 def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     """Run the single-pass pipeline from the desktop Quick Run page."""
     correlation_id = params["meta"]["correlation_id"]
@@ -251,6 +292,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("options must be an object")
 
     raw_path, job_profile_path = _quick_run_paths(job_profile_id, options)
+    llm_config_summary, llm_env = _persisted_llm_runtime_context()
     run_id = _build_quick_run_id()
     started_at = _utcnow_iso()
     pipeline_script = _PROJECT_ROOT / "tools" / "run_pipeline.py"
@@ -284,6 +326,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
             text=True,
             timeout=timeout_seconds,
             cwd=str(_PROJECT_ROOT),
+            env={**os.environ, **llm_env},
         )
         exit_code = completed.returncode
         stdout = completed.stdout
@@ -315,6 +358,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
             "command": command,
             "exit_code": exit_code,
             "options": options,
+            "llm_config_summary": llm_config_summary,
         },
         "stdout": stdout[-4000:],
         "stderr": stderr[-4000:],
@@ -330,6 +374,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
         "exit_code": exit_code,
         "run_record": str(Path("outputs") / "agent_runs" / run_id / "run_log.json"),
         "summary": str(Path("outputs") / "agent_runs" / run_id / "summary.json"),
+        "llm_config_summary": llm_config_summary,
         **details,
     }
 
@@ -390,6 +435,7 @@ def handle_agent_start(params: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(options, dict):
         raise ValueError("options must be an object")
 
+    llm_config_summary, _llm_env = _persisted_llm_runtime_context()
     run_id = _build_agent_run_id()
     started_at = _utcnow_iso()
     run_payload = {
@@ -400,6 +446,7 @@ def handle_agent_start(params: dict[str, Any]) -> dict[str, Any]:
             "started_at": started_at,
             "job_profile_id": job_profile_id,
             "options": options,
+            "llm_config_summary": llm_config_summary,
         },
         "gate_checks": [],
         "events": [],
@@ -412,6 +459,8 @@ def handle_agent_start(params: dict[str, Any]) -> dict[str, Any]:
         run_payload["run"]["round"] = execution["round"]
         run_payload["run"]["completed_at"] = _utcnow_iso()
         run_payload["events"] = execution["events"]
+        run_payload["stdout"] = execution.get("stdout", "")
+        run_payload["stderr"] = execution.get("stderr", "")
 
     _save_agent_run(_get_agent_run_file(run_id), run_payload)
 
@@ -419,6 +468,7 @@ def handle_agent_start(params: dict[str, Any]) -> dict[str, Any]:
         "meta": {"correlation_id": correlation_id},
         "run_id": run_id,
         "status": run_payload["run"]["status"],
+        "llm_config_summary": llm_config_summary,
     }
 
 

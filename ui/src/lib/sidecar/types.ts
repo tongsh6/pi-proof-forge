@@ -186,6 +186,8 @@ export interface LlmConfig {
   temperature: number;
 }
 
+export type LlmConfigSummary = LlmConfig;
+
 export interface ChannelConfig {
   id: string;
   label: string;
@@ -454,6 +456,7 @@ export interface QuickRunStartResult extends RpcResultBase {
   reason?: string;
   score_total?: number | null;
   score_breakdown?: Record<string, { score: number; reason?: string }>;
+  llm_config_summary?: LlmConfigSummary;
 }
 
 export interface QuickRunCancelResult extends RpcResultBase {
@@ -469,6 +472,7 @@ export interface AgentRunStartOptions {
 export interface AgentRunStartResult extends RpcResultBase {
   run_id: string;
   status: "queued" | string;
+  llm_config_summary?: LlmConfigSummary;
 }
 
 export interface AgentRunSummary {
@@ -478,6 +482,7 @@ export interface AgentRunSummary {
   started_at: string;
   job_profile_id: string;
   options: AgentRunStartOptions;
+  llm_config_summary?: LlmConfigSummary;
   stopped_at?: string;
 }
 

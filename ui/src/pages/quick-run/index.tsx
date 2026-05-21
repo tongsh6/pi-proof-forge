@@ -158,7 +158,10 @@ export function QuickRunPage() {
         selected_profile_id:
           selectedProfileId || jobs.items[0]?.job_profile_id || null,
         llm_provider: settings.llm_config.provider,
+        llm_model: settings.llm_config.model,
+        llm_base_url: settings.llm_config.base_url,
         api_key_configured: settings.llm_config.api_key.configured,
+        api_key_masked: settings.llm_config.api_key.masked,
       });
       setLoadState("ready");
     } catch (e) {
@@ -265,6 +268,12 @@ export function QuickRunPage() {
         status: result.status,
         run_record: result.run_record ?? null,
         score_total: result.score_total ?? null,
+        llm_provider: result.llm_config_summary?.provider ?? null,
+        llm_model: result.llm_config_summary?.model ?? null,
+        llm_base_url: result.llm_config_summary?.base_url ?? null,
+        api_key_configured:
+          result.llm_config_summary?.api_key.configured ?? null,
+        api_key_masked: result.llm_config_summary?.api_key.masked ?? null,
       });
     } catch (e) {
       setRunState("error");

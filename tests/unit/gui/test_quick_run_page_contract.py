@@ -24,6 +24,8 @@ def test_quick_run_page_renders_product_pipeline_contract():
         "providerSummary",
         "quick_run.load.ready",
         "quick_run.start.result",
+        "llm_config_summary",
+        "api_key_masked",
         'data-automation-id="quick-run-start"',
         "pages.quickRun.stageOutput",
         "pages.quickRun.scores",
@@ -42,6 +44,9 @@ def test_quick_run_native_verifier_is_registered():
 
     assert package["scripts"]["e2e:quick-run"] == "node ./scripts/verify_quick_run_native.mjs"
     assert "quick_run.load.ready" in script
+    assert "quick_run_verify_provider" in script
+    assert "PPF_POLICY_PATH" in script
+    assert "llm_config_summary" in script
     assert "app_events" in script
 
 

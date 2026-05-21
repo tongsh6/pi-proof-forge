@@ -7,6 +7,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from tools.sidecar.handlers.agent import (
+    handle_agent_get,
+    handle_agent_start,
     handle_create_review_candidates,
     handle_get_pending_review,
     handle_quick_start,
@@ -238,3 +240,136 @@ class TestQuickRunStart:
         assert result["artifacts"]["matching"] == "matching_reports/mr-qr_test.yaml"
         assert result["score_total"] == 82
         assert result["score_breakdown"]["K"]["score"] == 18
+
+    def test_quick_run_records_masked_persisted_llm_config_summary(self):
+        with TemporaryDirectory() as project_tmp:
+            project_root = Path(project_tmp)
+            quick_dir = project_root / "outputs" / "quick_runs"
+            tools_dir = project_root / "tools"
+            profile_dir = project_root / "job_profiles"
+            policy_path = project_root / "policy.yaml"
+            tools_dir.mkdir()
+            profile_dir.mkdir()
+            (tools_dir / "sample_raw.txt").write_text("raw", encoding="utf-8")
+            (profile_dir / "jp-001.yaml").write_text(
+                "target_role: Backend\n", encoding="utf-8"
+            )
+            policy_path.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "lm_studio"',
+                        'llm_model: "local-model"',
+                        'llm_base_url: "http://127.0.0.1:1234/v1"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_updated_at: "2026-05-21T00:00:00Z"',
+                        'llm_api_key_placeholder: "configured"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            completed = type(
+                "Completed",
+                (),
+                {"returncode": 0, "stdout": "[pipeline] done\n", "stderr": ""},
+            )()
+
+            with (
+                patch("tools.sidecar.handlers.agent._PROJECT_ROOT", project_root),
+                patch("tools.sidecar.handlers.agent._QUICK_RUN_DIR", quick_dir),
+                patch(
+                    "tools.sidecar.handlers.agent._build_quick_run_id",
+                    return_value="qr_llm",
+                ),
+                patch.dict(
+                    os.environ,
+                    {"PPF_POLICY_PATH": str(policy_path)},
+                    clear=True,
+                ),
+                patch(
+                    "tools.sidecar.handlers.agent.subprocess.run",
+                    return_value=completed,
+                ) as run_mock,
+            ):
+                result = handle_quick_start(
+                    {
+                        "meta": {"correlation_id": "corr_quick_llm"},
+                        "job_profile_id": "jp-001",
+                    }
+                )
+                run_payload = json.loads(
+                    (quick_dir / "qr_llm.json").read_text(encoding="utf-8")
+                )
+
+            summary = result["llm_config_summary"]
+            assert summary["provider"] == "lm_studio"
+            assert summary["model"] == "local-model"
+            assert summary["base_url"] == "http://127.0.0.1:1234/v1"
+            assert summary["api_key"]["configured"] is True
+            assert summary["api_key"]["masked"] is True
+            assert "value" not in summary["api_key"]
+            assert "secret" not in summary["api_key"]
+            env = run_mock.call_args.kwargs["env"]
+            assert env["LLM_PROVIDER"] == "lm_studio"
+            assert env["LLM_MODEL"] == "local-model"
+            assert env["LLM_BASE_URL"] == "http://127.0.0.1:1234/v1"
+            assert run_payload["run"]["llm_config_summary"] == summary
+
+
+class TestAgentRunStart:
+    def test_agent_run_records_masked_persisted_llm_config_summary(self):
+        with TemporaryDirectory() as project_tmp:
+            project_root = Path(project_tmp)
+            runs_dir = project_root / "outputs" / "agent_runs"
+            policy_path = project_root / "policy.yaml"
+            policy_path.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "lm_studio"',
+                        'llm_model: "agent-local-model"',
+                        'llm_base_url: "http://127.0.0.1:1234/v1"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_updated_at: "2026-05-21T00:00:00Z"',
+                        'llm_api_key_placeholder: "configured"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("tools.sidecar.handlers.agent._AGENT_RUN_DIR", runs_dir),
+                patch(
+                    "tools.sidecar.handlers.agent._build_agent_run_id",
+                    return_value="ar_llm",
+                ),
+                patch.dict(
+                    os.environ,
+                    {"PPF_POLICY_PATH": str(policy_path)},
+                    clear=True,
+                ),
+            ):
+                start = handle_agent_start(
+                    {
+                        "meta": {"correlation_id": "corr_agent_llm"},
+                        "job_profile_id": "jp-001",
+                        "options": {"max_rounds": 1},
+                    }
+                )
+                fetched = handle_agent_get(
+                    {
+                        "meta": {"correlation_id": "corr_agent_llm_get"},
+                        "run_id": "ar_llm",
+                    }
+                )
+
+            summary = start["llm_config_summary"]
+            assert summary["provider"] == "lm_studio"
+            assert summary["model"] == "agent-local-model"
+            assert summary["base_url"] == "http://127.0.0.1:1234/v1"
+            assert summary["api_key"]["configured"] is True
+            assert summary["api_key"]["masked"] is True
+            assert "value" not in summary["api_key"]
+            assert "secret" not in summary["api_key"]
+            assert fetched["run"]["llm_config_summary"] == summary

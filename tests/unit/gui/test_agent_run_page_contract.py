@@ -24,6 +24,10 @@ def test_agent_run_page_uses_run_control_rpc_contract():
     assert "getSettings" in source
     assert "LlmConfig" in source
     assert "providerSummary" in source
+    assert "llm_config_summary" in source
+    assert "agent_run.start.result" in source
+    assert "api_key_masked" in source
+    assert 'data-automation-id="agent-run-start"' in source
     assert "stopAgentRun" in source
     assert "agent_run.load.ready" in source
     assert "agentStateLabel" in source
@@ -63,6 +67,10 @@ def test_agent_run_native_verifier_is_registered():
         == "node ./scripts/verify_agent_run_native.mjs"
     )
     assert "agent_run.load.ready" in script
+    assert "agent_run.start.result" in script
+    assert "agent_run_verify_provider" in script
+    assert "PPF_POLICY_PATH" in script
+    assert "llm_config_summary" in script
     assert "validateReadyEvent" in script
     assert "profile_count" in script
     assert '"agent-run"' in tauri_main

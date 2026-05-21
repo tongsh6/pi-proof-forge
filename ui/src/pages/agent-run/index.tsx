@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   CheckCircle2,
@@ -178,6 +178,8 @@ export function AgentRunPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const agentRunInFlightRef = useRef(false);
+  const verifyStartedRef = useRef(false);
 
   const loadProfiles = useCallback(async () => {
     setLoadState("loading");
@@ -198,7 +200,10 @@ export function AgentRunPage() {
         selected_profile_id:
           selectedProfileId || result.items[0]?.job_profile_id || "",
         llm_provider: settings.llm_config.provider,
+        llm_model: settings.llm_config.model,
+        llm_base_url: settings.llm_config.base_url,
         api_key_configured: settings.llm_config.api_key.configured,
+        api_key_masked: settings.llm_config.api_key.masked,
       });
     } catch (nextError) {
       const message = getErrorMessage(nextError);
@@ -334,7 +339,8 @@ export function AgentRunPage() {
   }, [eventByState, t]);
 
   const handleStart = useCallback(async () => {
-    if (!selectedProfileId) return;
+    if (!selectedProfileId || agentRunInFlightRef.current) return;
+    agentRunInFlightRef.current = true;
     setRunState("loading");
     setError(null);
     setSubmitError(null);
@@ -345,11 +351,64 @@ export function AgentRunPage() {
       });
       setCurrentRunId(result.run_id);
       await loadRun(result.run_id);
+      recordVerifyEvent("agent_run.start.result", {
+        run_id: result.run_id,
+        status: result.status,
+        llm_provider: result.llm_config_summary?.provider ?? null,
+        llm_model: result.llm_config_summary?.model ?? null,
+        llm_base_url: result.llm_config_summary?.base_url ?? null,
+        api_key_configured:
+          result.llm_config_summary?.api_key.configured ?? null,
+        api_key_masked: result.llm_config_summary?.api_key.masked ?? null,
+      });
     } catch (nextError) {
       setRunState("error");
       setError(getErrorMessage(nextError));
+      recordVerifyEvent("agent_run.start.error", {
+        error: getErrorMessage(nextError),
+      });
+    } finally {
+      agentRunInFlightRef.current = false;
     }
   }, [loadRun, selectedProfileId]);
+
+  useEffect(() => {
+    if (
+      verifyScenario !== "agent-run" ||
+      verifyStartedRef.current ||
+      loadState !== "ready" ||
+      runState === "loading"
+    ) {
+      return;
+    }
+
+    if (!selectedProfileId) {
+      recordVerifyEvent("agent_run.autorun.blocked", {
+        reason: "missing_profile",
+        profile_count: jobProfiles.length,
+      });
+      return;
+    }
+
+    verifyStartedRef.current = true;
+    window.setTimeout(() => {
+      const button = document.querySelector<HTMLButtonElement>(
+        '[data-automation-id="agent-run-start"]'
+      );
+      recordVerifyEvent("agent_run.autorun.click", {
+        selected_profile_id: selectedProfileId,
+        has_button: Boolean(button),
+        button_disabled: button?.disabled ?? null,
+      });
+      button?.click();
+      if (!agentRunInFlightRef.current) {
+        recordVerifyEvent("agent_run.autorun.direct_fallback", {
+          selected_profile_id: selectedProfileId,
+        });
+        void handleStart();
+      }
+    }, 250);
+  }, [handleStart, jobProfiles.length, loadState, runState, selectedProfileId]);
 
   const handleRefreshRun = useCallback(async () => {
     if (currentRunId) {
@@ -425,6 +484,7 @@ export function AgentRunPage() {
           </select>
           <button
             className="inline-flex h-10 items-center gap-2 rounded-card border border-accent/50 bg-accent/10 px-4 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
+            data-automation-id="agent-run-start"
             disabled={!selectedProfileId || isRunBusy}
             onClick={() => void handleStart()}
             type="button"

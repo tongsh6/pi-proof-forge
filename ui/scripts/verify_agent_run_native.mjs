@@ -13,10 +13,17 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const UI_DIR = resolve(new URL("..", import.meta.url).pathname);
+const ROOT_DIR = resolve(UI_DIR, "..");
 const ARTIFACT_DIR = join(UI_DIR, "test-results", "agent-run-native");
 const VITE_ENV_LOCAL = join(UI_DIR, ".env.local");
 const APP_EVENTS_PATH = join(ARTIFACT_DIR, "app-events.jsonl");
+const TEMP_POLICY_PATH = join(ARTIFACT_DIR, "policy.yaml");
 const SCENARIO = "agent-run";
+const EXPECTED_LLM = {
+  provider: "agent_run_verify_provider",
+  model: "agent-run-verify-model",
+  baseUrl: "http://127.0.0.1:65534/v1",
+};
 
 let activeChild = null;
 let activeRestoreViteEnv = null;
@@ -54,11 +61,27 @@ function parseArgs(argv) {
 function startTauriDev() {
   mkdirSync(ARTIFACT_DIR, { recursive: true });
   if (existsSync(APP_EVENTS_PATH)) unlinkSync(APP_EVENTS_PATH);
+  writeFileSync(
+    TEMP_POLICY_PATH,
+    [
+      `llm_provider: "${EXPECTED_LLM.provider}"`,
+      `llm_model: "${EXPECTED_LLM.model}"`,
+      `llm_base_url: "${EXPECTED_LLM.baseUrl}"`,
+      `llm_api_key_configured: "true"`,
+      `llm_api_key_updated_at: "2026-05-21T00:00:00Z"`,
+      `llm_api_key_placeholder: "configured"`,
+      `llm_timeout: "30"`,
+      `llm_temperature: "0.2"`,
+      "",
+    ].join("\n"),
+    "utf8"
+  );
   const logPath = join(ARTIFACT_DIR, "tauri.log");
   const child = spawn("pnpm", ["tauri", "dev"], {
     cwd: UI_DIR,
     env: {
       ...process.env,
+      PPF_POLICY_PATH: TEMP_POLICY_PATH,
       QUICK_RUN_VERIFY_AUTORUN: SCENARIO,
       VITE_QUICK_RUN_VERIFY_AUTORUN: SCENARIO,
       VITE_NATIVE_VERIFY: "1",
@@ -97,7 +120,26 @@ function validateReadyEvent(event) {
     return false;
   }
   if (typeof event.selected_profile_id !== "string") return false;
-  return true;
+  return (
+    event.llm_provider === EXPECTED_LLM.provider &&
+    event.llm_model === EXPECTED_LLM.model &&
+    event.llm_base_url === EXPECTED_LLM.baseUrl &&
+    event.api_key_configured === true &&
+    event.api_key_masked === true
+  );
+}
+
+function validateStartResultEvent(event) {
+  return (
+    event.event === "agent_run.start.result" &&
+    typeof event.run_id === "string" &&
+    event.run_id.startsWith("ar_") &&
+    event.llm_provider === EXPECTED_LLM.provider &&
+    event.llm_model === EXPECTED_LLM.model &&
+    event.llm_base_url === EXPECTED_LLM.baseUrl &&
+    event.api_key_configured === true &&
+    event.api_key_masked === true
+  );
 }
 
 async function waitForReadyEvent(args, child) {
@@ -114,6 +156,30 @@ async function waitForReadyEvent(args, child) {
     await sleep(500);
   }
   throw new Error("Timed out waiting for Agent Run native ready event");
+}
+
+async function waitForStartResultEvent(args, child) {
+  const deadline = Date.now() + args.timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `Tauri dev exited before Agent Run started, exit code ${child.exitCode}`
+      );
+    }
+
+    const event = readEvents().find(validateStartResultEvent);
+    if (event) return event;
+    await sleep(500);
+  }
+  throw new Error("Timed out waiting for Agent Run start result event");
+}
+
+function readAgentRun(runId) {
+  const path = join(ROOT_DIR, "outputs", "agent_runs", `${runId}.json`);
+  return {
+    path,
+    payload: JSON.parse(readFileSync(path, "utf8")),
+  };
 }
 
 async function stopProcess(child) {
@@ -172,14 +238,37 @@ async function main() {
   activeRestoreViteEnv = restoreViteEnv;
 
   try {
-    const event = await waitForReadyEvent(args, child);
+    const readyEvent = await waitForReadyEvent(args, child);
+    const startEvent = await waitForStartResultEvent(args, child);
+    const runRecord = readAgentRun(startEvent.run_id);
+    const llmSummary = runRecord.payload.run?.llm_config_summary ?? {};
+    if (
+      llmSummary.provider !== EXPECTED_LLM.provider ||
+      llmSummary.model !== EXPECTED_LLM.model ||
+      llmSummary.base_url !== EXPECTED_LLM.baseUrl ||
+      llmSummary.api_key?.configured !== true ||
+      llmSummary.api_key?.masked !== true
+    ) {
+      throw new Error(
+        `Agent Run record did not preserve persisted LLM summary: ${JSON.stringify(llmSummary)}`
+      );
+    }
+    if (JSON.stringify(runRecord.payload).includes("llm_api_key_placeholder")) {
+      throw new Error("Agent Run record leaked policy secret storage fields");
+    }
     console.log(
       JSON.stringify({
         ok: true,
         driver: "tauri-native-autorun",
         scenario: SCENARIO,
-        profile_count: event.profile_count,
-        selected_profile_id: event.selected_profile_id,
+        run_id: startEvent.run_id,
+        status: startEvent.status,
+        profile_count: readyEvent.profile_count,
+        selected_profile_id: readyEvent.selected_profile_id,
+        agent_run_record: runRecord.path,
+        policy: TEMP_POLICY_PATH,
+        llm_provider: EXPECTED_LLM.provider,
+        llm_model: EXPECTED_LLM.model,
         log: logPath,
         app_events: APP_EVENTS_PATH,
       })

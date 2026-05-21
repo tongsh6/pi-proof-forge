@@ -12,6 +12,12 @@ const QUICK_RUNS_DIR = join(OUTPUTS_DIR, "quick_runs");
 const ARTIFACT_DIR = join(UI_DIR, "test-results", "quick-run-native");
 const VITE_ENV_LOCAL = join(UI_DIR, ".env.local");
 const APP_EVENTS_PATH = join(ARTIFACT_DIR, "app-events.jsonl");
+const TEMP_POLICY_PATH = join(ARTIFACT_DIR, "policy.yaml");
+const EXPECTED_LLM = {
+  provider: "quick_run_verify_provider",
+  model: "quick-run-verify-model",
+  baseUrl: "http://127.0.0.1:65535/v1",
+};
 let activeChild = null;
 let activeRestoreViteEnv = null;
 let shuttingDown = false;
@@ -72,7 +78,24 @@ function validateReadyEvent(event) {
     typeof event.evidence_count === "number" &&
     event.evidence_count >= 0 &&
     typeof event.job_profile_count === "number" &&
-    event.job_profile_count >= 0
+    event.job_profile_count >= 0 &&
+    event.llm_provider === EXPECTED_LLM.provider &&
+    event.llm_model === EXPECTED_LLM.model &&
+    event.llm_base_url === EXPECTED_LLM.baseUrl &&
+    event.api_key_configured === true &&
+    event.api_key_masked === true
+  );
+}
+
+function validateStartResultEvent(event, runId) {
+  return (
+    event.event === "quick_run.start.result" &&
+    event.run_id === runId &&
+    event.llm_provider === EXPECTED_LLM.provider &&
+    event.llm_model === EXPECTED_LLM.model &&
+    event.llm_base_url === EXPECTED_LLM.baseUrl &&
+    event.api_key_configured === true &&
+    event.api_key_masked === true
   );
 }
 
@@ -110,11 +133,27 @@ function cleanupGeneratedArtifacts(runId) {
 function startTauriDev() {
   mkdirSync(ARTIFACT_DIR, { recursive: true });
   if (existsSync(APP_EVENTS_PATH)) unlinkSync(APP_EVENTS_PATH);
+  writeFileSync(
+    TEMP_POLICY_PATH,
+    [
+      `llm_provider: "${EXPECTED_LLM.provider}"`,
+      `llm_model: "${EXPECTED_LLM.model}"`,
+      `llm_base_url: "${EXPECTED_LLM.baseUrl}"`,
+      `llm_api_key_configured: "true"`,
+      `llm_api_key_updated_at: "2026-05-21T00:00:00Z"`,
+      `llm_api_key_placeholder: "configured"`,
+      `llm_timeout: "30"`,
+      `llm_temperature: "0.2"`,
+      "",
+    ].join("\n"),
+    "utf8"
+  );
   const logPath = join(ARTIFACT_DIR, "tauri.log");
   const child = spawn("pnpm", ["tauri", "dev"], {
     cwd: UI_DIR,
     env: {
       ...process.env,
+      PPF_POLICY_PATH: TEMP_POLICY_PATH,
       QUICK_RUN_VERIFY_AUTORUN: "quick-run",
       VITE_QUICK_RUN_VERIFY_AUTORUN: "quick-run",
       VITE_NATIVE_VERIFY: "1",
@@ -226,6 +265,28 @@ async function main() {
     if (["DONE", "SKIPPED"].includes(result.status) && !existsSync(summary)) {
       throw new Error(`Quick Run finished but summary was not found: ${summary}`);
     }
+    const runPayload = readQuickRun(result.record);
+    const llmSummary = runPayload.run?.llm_config_summary ?? {};
+    if (
+      llmSummary.provider !== EXPECTED_LLM.provider ||
+      llmSummary.model !== EXPECTED_LLM.model ||
+      llmSummary.base_url !== EXPECTED_LLM.baseUrl ||
+      llmSummary.api_key?.configured !== true ||
+    llmSummary.api_key?.masked !== true
+  ) {
+      throw new Error(
+        `Quick Run record did not preserve persisted LLM summary: ${JSON.stringify(llmSummary)}`
+      );
+    }
+    if (JSON.stringify(runPayload).includes("llm_api_key_placeholder")) {
+      throw new Error("Quick Run record leaked policy secret storage fields");
+    }
+    const startEvent = readEvents().find((event) =>
+      validateStartResultEvent(event, result.runId)
+    );
+    if (!startEvent) {
+      throw new Error("Quick Run verifier did not observe persisted LLM summary in start result event");
+    }
     if (!args.keepArtifacts) cleanupGeneratedArtifacts(result.runId);
     console.log(
       JSON.stringify({
@@ -237,6 +298,9 @@ async function main() {
         job_profile_count: readyEvent.job_profile_count,
         quick_run_record: result.record,
         summary,
+        policy: TEMP_POLICY_PATH,
+        llm_provider: EXPECTED_LLM.provider,
+        llm_model: EXPECTED_LLM.model,
         log: logPath,
         app_events: APP_EVENTS_PATH,
       })
