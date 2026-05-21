@@ -9,6 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -17,9 +18,13 @@ const ROOT_DIR = resolve(UI_DIR, "..");
 const ARTIFACT_DIR = join(UI_DIR, "test-results", "system-settings-native");
 const VITE_ENV_LOCAL = join(UI_DIR, ".env.local");
 const APP_EVENTS_PATH = join(ARTIFACT_DIR, "app-events.jsonl");
+const POLICY_PATH = join(ARTIFACT_DIR, "policy.yaml");
+const ROOT_POLICY_PATH = join(ROOT_DIR, "policy.yaml");
 const SCENARIO = "system-settings";
+const STUB_MODELS = ["ppf-acceptance-a", "ppf-acceptance-b"];
 
 let activeChild = null;
+let activeStubServer = null;
 let activeRestoreViteEnv = null;
 let shuttingDown = false;
 
@@ -54,7 +59,54 @@ function parseArgs(argv) {
   return args;
 }
 
-function startTauriDev() {
+async function startLlmStubServer() {
+  const requests = [];
+  const server = createServer((request, response) => {
+    requests.push({
+      method: request.method,
+      url: request.url,
+      authorization: request.headers.authorization ?? "",
+    });
+    if (request.method === "GET" && request.url === "/v1/models") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          object: "list",
+          data: STUB_MODELS.map((id) => ({ id, object: "model" })),
+        })
+      );
+      return;
+    }
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "not found" }));
+  });
+
+  await new Promise((resolvePromise, rejectPromise) => {
+    server.once("error", rejectPromise);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", rejectPromise);
+      resolvePromise();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to start LLM stub server");
+  }
+  return {
+    server,
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    requests,
+  };
+}
+
+async function stopLlmStubServer(server) {
+  if (!server) return;
+  await new Promise((resolvePromise) => {
+    server.close(() => resolvePromise());
+  });
+}
+
+function startTauriDev(stubBaseUrl) {
   mkdirSync(ARTIFACT_DIR, { recursive: true });
   if (existsSync(APP_EVENTS_PATH)) unlinkSync(APP_EVENTS_PATH);
   const logPath = join(ARTIFACT_DIR, "tauri.log");
@@ -65,6 +117,13 @@ function startTauriDev() {
       QUICK_RUN_VERIFY_AUTORUN: SCENARIO,
       VITE_QUICK_RUN_VERIFY_AUTORUN: SCENARIO,
       VITE_NATIVE_VERIFY: "1",
+      VITE_SYSTEM_SETTINGS_DEEP_VERIFY: "1",
+      VITE_SYSTEM_SETTINGS_LLM_STUB_BASE_URL: stubBaseUrl,
+      PPF_POLICY_PATH: POLICY_PATH,
+      LLM_PROVIDER: "openai",
+      LLM_MODEL: "gpt-4",
+      LLM_BASE_URL: "",
+      LLM_API_KEY: "",
     },
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
@@ -112,6 +171,32 @@ function validateLlmFormReadyEvent(event) {
   if (event.has_timeout !== true) return false;
   if (event.has_temperature !== true) return false;
   if (typeof event.api_key_configured !== "boolean") return false;
+  if (event.supports_provider_defaults !== true) return false;
+  if (event.supports_detected_model_select !== true) return false;
+  return true;
+}
+
+function validateDeepVerifyEvent(event, stubBaseUrl) {
+  if (event.event !== "system_settings.llm.deep_verify.result") return false;
+  if (event.ok !== true) return false;
+  if (event.provider_default_ok !== true) return false;
+  if (event.connection_status !== "pass") return false;
+  if (event.connection_code !== "OK") return false;
+  if (event.detected_model_count !== STUB_MODELS.length) return false;
+  if (!Array.isArray(event.detected_models)) return false;
+  for (const model of STUB_MODELS) {
+    if (!event.detected_models.includes(model)) return false;
+  }
+  if (event.selected_model !== STUB_MODELS[1]) return false;
+  if (event.persisted_provider !== "lm_studio") return false;
+  if (event.persisted_model !== STUB_MODELS[1]) return false;
+  if (event.persisted_base_url !== stubBaseUrl) return false;
+  if (event.api_key_configured !== true) return false;
+  if (event.api_key_masked !== true) return false;
+  if (event.plaintext_secret_exposed !== false) return false;
+  if (event.blocked_status !== "blocked") return false;
+  if (event.blocked_code !== "BLOCKED_LOCAL_PROVIDER") return false;
+  if (event.blocked_model_count !== 0) return false;
   return true;
 }
 
@@ -145,6 +230,30 @@ async function waitForLlmFormReadyEvent(args, child) {
     await sleep(500);
   }
   throw new Error("Timed out waiting for System Settings LLM form ready event");
+}
+
+async function waitForDeepVerifyEvent(args, child, stubBaseUrl) {
+  const deadline = Date.now() + args.timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `Tauri dev exited before System Settings LLM deep verify completed, exit code ${child.exitCode}`
+      );
+    }
+
+    const ready = readEvents().find((event) =>
+      validateDeepVerifyEvent(event, stubBaseUrl)
+    );
+    if (ready) return ready;
+    const error = readEvents().find(
+      (event) => event.event === "system_settings.llm.deep_verify.error"
+    );
+    if (error) {
+      throw new Error(`System Settings LLM deep verify failed: ${error.error}`);
+    }
+    await sleep(500);
+  }
+  throw new Error("Timed out waiting for System Settings LLM deep verify event");
 }
 
 async function stopProcess(child) {
@@ -181,6 +290,7 @@ async function shutdownFromSignal(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   if (activeChild) await stopProcess(activeChild);
+  if (activeStubServer) await stopLlmStubServer(activeStubServer);
   if (activeRestoreViteEnv) activeRestoreViteEnv();
   process.exit(signal === "SIGINT" ? 130 : 143);
 }
@@ -194,17 +304,47 @@ process.once("SIGTERM", () => {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const rootPolicyBefore = existsSync(ROOT_POLICY_PATH)
+    ? readFileSync(ROOT_POLICY_PATH, "utf8")
+    : null;
   if (!args.keepArtifacts && existsSync(ARTIFACT_DIR)) {
     rmSync(ARTIFACT_DIR, { recursive: true, force: true });
   }
+  mkdirSync(ARTIFACT_DIR, { recursive: true });
+  const llmStub = await startLlmStubServer();
   const restoreViteEnv = enableViteAutorunEnv();
-  const { child, logPath, logs } = startTauriDev();
+  const { child, logPath, logs } = startTauriDev(llmStub.baseUrl);
   activeChild = child;
+  activeStubServer = llmStub.server;
   activeRestoreViteEnv = restoreViteEnv;
 
   try {
     const event = await waitForReadyEvent(args, child);
     const llmFormEvent = await waitForLlmFormReadyEvent(args, child);
+    const deepVerifyEvent = await waitForDeepVerifyEvent(
+      args,
+      child,
+      llmStub.baseUrl
+    );
+    const modelsRequests = llmStub.requests.filter(
+      (request) => request.method === "GET" && request.url === "/v1/models"
+    );
+    if (modelsRequests.length < 1) {
+      throw new Error("LLM stub server did not receive a /v1/models request");
+    }
+    if (
+      !modelsRequests.some(
+        (request) => request.authorization === "Bearer lm-studio"
+      )
+    ) {
+      throw new Error("LLM stub server did not receive the expected dummy key");
+    }
+    const rootPolicyAfter = existsSync(ROOT_POLICY_PATH)
+      ? readFileSync(ROOT_POLICY_PATH, "utf8")
+      : null;
+    if (rootPolicyAfter !== rootPolicyBefore) {
+      throw new Error("System Settings LLM deep verify modified root policy.yaml");
+    }
     console.log(
       JSON.stringify({
         ok: true,
@@ -215,6 +355,16 @@ async function main() {
         llm_provider: event.llm_provider,
         llm_form_ready: true,
         api_key_configured: llmFormEvent.api_key_configured,
+        supports_provider_defaults: true,
+        supports_detected_model_select: true,
+        deep_verify: true,
+        llm_stub_base_url: llmStub.baseUrl,
+        detected_model_count: deepVerifyEvent.detected_model_count,
+        selected_model: deepVerifyEvent.selected_model,
+        persisted_model: deepVerifyEvent.persisted_model,
+        blocked_code: deepVerifyEvent.blocked_code,
+        model_requests: modelsRequests.length,
+        policy: POLICY_PATH,
         log: logPath,
         app_events: APP_EVENTS_PATH,
       })
@@ -230,8 +380,10 @@ async function main() {
     process.exitCode = 1;
   } finally {
     await stopProcess(child);
+    await stopLlmStubServer(llmStub.server);
     restoreViteEnv();
     activeChild = null;
+    activeStubServer = null;
     activeRestoreViteEnv = null;
   }
 }

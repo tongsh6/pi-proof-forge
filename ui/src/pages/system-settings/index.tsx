@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
@@ -39,49 +39,118 @@ type LlmForm = {
 
 type StatusTone = "success" | "warning" | "muted" | "error";
 const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
+const deepVerifyStubBaseUrl =
+  import.meta.env.VITE_SYSTEM_SETTINGS_LLM_STUB_BASE_URL ?? "";
+const deepVerifyEnabled =
+  verifyScenario === "system-settings" &&
+  import.meta.env.VITE_SYSTEM_SETTINGS_DEEP_VERIFY === "1" &&
+  Boolean(deepVerifyStubBaseUrl);
+const LLM_PROVIDER_DEFAULTS: Record<
+  string,
+  Pick<LlmForm, "model" | "base_url" | "api_key">
+> = {
+  lm_studio: {
+    model: "local-model",
+    base_url: "http://127.0.0.1:1234/v1",
+    api_key: "lm-studio",
+  },
+  openai: {
+    model: "gpt-4",
+    base_url: "https://api.openai.com/v1",
+    api_key: "",
+  },
+  openai_compatible: {
+    model: "",
+    base_url: "",
+    api_key: "",
+  },
+};
 
 function formatNullable(value: string | null | undefined): string {
   return value && value.trim() ? value : "--";
 }
 
 function toLlmForm(config: LlmConfig | null): LlmForm {
+  const provider = config?.provider ?? "lm_studio";
+  const defaults = LLM_PROVIDER_DEFAULTS[provider] ?? LLM_PROVIDER_DEFAULTS.lm_studio;
   return {
-    provider: config?.provider ?? "lm_studio",
-    model: config?.model ?? "",
-    base_url: config?.base_url ?? "",
+    provider,
+    model: config?.model ?? defaults.model,
+    base_url: config?.base_url ?? defaults.base_url,
     api_key: "",
     timeout: String(config?.timeout ?? 60),
     temperature: String(config?.temperature ?? 0.2),
   };
 }
 
+function applyProviderDefaults(
+  current: LlmForm,
+  nextProvider: string,
+  apiKeyConfigured: boolean
+): LlmForm {
+  const previousDefaults =
+    LLM_PROVIDER_DEFAULTS[current.provider] ?? LLM_PROVIDER_DEFAULTS.lm_studio;
+  const nextDefaults =
+    LLM_PROVIDER_DEFAULTS[nextProvider] ?? LLM_PROVIDER_DEFAULTS.openai_compatible;
+  const currentModel = current.model.trim();
+  const currentBaseUrl = current.base_url.trim();
+  const currentApiKey = current.api_key.trim();
+  const shouldReplaceModel =
+    !currentModel || currentModel === previousDefaults.model;
+  const shouldReplaceBaseUrl =
+    !currentBaseUrl || currentBaseUrl === previousDefaults.base_url;
+  const nextApiKeyIsSafeLocalDefault = nextDefaults.api_key === "lm-studio";
+  const shouldReplaceApiKey =
+    (nextApiKeyIsSafeLocalDefault || !apiKeyConfigured) &&
+    (!currentApiKey || currentApiKey === previousDefaults.api_key);
+
+  return {
+    ...current,
+    provider: nextProvider,
+    model: shouldReplaceModel ? nextDefaults.model : current.model,
+    base_url: shouldReplaceBaseUrl ? nextDefaults.base_url : current.base_url,
+    api_key: shouldReplaceApiKey ? nextDefaults.api_key : current.api_key,
+  };
+}
+
 function llmPayloadFromForm(form: LlmForm): {
   provider: string;
-  model: string;
-  base_url: string;
+  model?: string;
+  base_url?: string;
   api_key?: string;
   timeout: number;
   temperature: number;
 } {
   const payload: {
     provider: string;
-    model: string;
-    base_url: string;
+    model?: string;
+    base_url?: string;
     api_key?: string;
     timeout: number;
     temperature: number;
   } = {
     provider: form.provider.trim(),
-    model: form.model.trim(),
-    base_url: form.base_url.trim(),
     timeout: Number(form.timeout),
     temperature: Number(form.temperature),
   };
+  const model = form.model.trim();
+  if (model) {
+    payload.model = model;
+  }
+  const baseUrl = form.base_url.trim();
+  if (baseUrl) {
+    payload.base_url = baseUrl;
+  }
   const apiKey = form.api_key.trim();
   if (apiKey) {
     payload.api_key = apiKey;
   }
   return payload;
+}
+
+function exposesPlaintextApiKey(config: LlmConfig): boolean {
+  const apiKey = config.api_key as unknown as Record<string, unknown>;
+  return ["value", "secret", "api_key", "raw"].some((field) => field in apiKey);
 }
 
 function statusTone(value: string): StatusTone {
@@ -283,6 +352,7 @@ export function SystemSettingsPage() {
   const [llmConnection, setLlmConnection] =
     useState<LlmConnectionCheckResult | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
+  const deepVerifyStartedRef = useRef(false);
 
   const loadSettings = useCallback(async () => {
     setLoadState("loading");
@@ -325,6 +395,8 @@ export function SystemSettingsPage() {
       has_timeout: Boolean(llmForm.timeout),
       has_temperature: Boolean(llmForm.temperature),
       api_key_configured: settings.llm_config.api_key.configured,
+      supports_provider_defaults: true,
+      supports_detected_model_select: true,
     });
   }, [llmForm, loadState, settings]);
 
@@ -356,6 +428,10 @@ export function SystemSettingsPage() {
       : "ready";
   }, [settings, t]);
 
+  const detectedModels = useMemo(() => {
+    return llmConnection?.models ?? [];
+  }, [llmConnection]);
+
   const handleSaveLlmConfig = useCallback(async () => {
     setLlmSaveState("saving");
     setLlmError(null);
@@ -384,11 +460,18 @@ export function SystemSettingsPage() {
     try {
       const result = await checkLlmConnection(llmPayloadFromForm(llmForm));
       setLlmConnection(result);
+      if (result.models.length > 0 && !llmForm.model.trim()) {
+        setLlmForm((current) => ({
+          ...current,
+          model: result.models[0],
+        }));
+      }
       setLlmCheckState("checked");
       recordVerifyEvent("system_settings.llm.check.result", {
         status: result.status,
         code: result.code,
         model_count: result.model_count,
+        detected_models: result.models,
       });
     } catch (nextError) {
       setLlmCheckState("idle");
@@ -398,6 +481,110 @@ export function SystemSettingsPage() {
       });
     }
   }, [llmForm]);
+
+  const runDeepLlmVerify = useCallback(async () => {
+    if (!settings) return;
+    const baseForm = toLlmForm(settings.llm_config);
+    const providerDefaultForm = applyProviderDefaults(
+      baseForm,
+      "lm_studio",
+      settings.llm_config.api_key.configured
+    );
+    const providerDefaultOk =
+      providerDefaultForm.provider === "lm_studio" &&
+      providerDefaultForm.model === LLM_PROVIDER_DEFAULTS.lm_studio.model &&
+      providerDefaultForm.base_url === LLM_PROVIDER_DEFAULTS.lm_studio.base_url &&
+      providerDefaultForm.api_key === LLM_PROVIDER_DEFAULTS.lm_studio.api_key;
+    const checkForm: LlmForm = {
+      ...providerDefaultForm,
+      base_url: deepVerifyStubBaseUrl,
+      model: "",
+      timeout: "3",
+      temperature: "0.2",
+    };
+
+    setActiveSection("llm");
+    setLlmForm(checkForm);
+    const connection = await checkLlmConnection(llmPayloadFromForm(checkForm));
+    setLlmConnection(connection);
+
+    const selectedModel = connection.models[1] ?? connection.models[0] ?? "";
+    const selectedForm: LlmForm = {
+      ...checkForm,
+      model: selectedModel,
+    };
+    setLlmForm(selectedForm);
+    await updateLlmConfig(llmPayloadFromForm(selectedForm));
+    const persistedSettings = await getSettings();
+    setSettings(persistedSettings);
+    setLlmForm(toLlmForm(persistedSettings.llm_config));
+    setLlmSaveState("saved");
+
+    const blocked = await checkLlmConnection({
+      provider: "lm_studio",
+      base_url: "",
+      api_key: "lm-studio",
+      timeout: 1,
+    });
+    const plaintextSecretExposed = exposesPlaintextApiKey(
+      persistedSettings.llm_config
+    );
+    const persistedOk =
+      persistedSettings.llm_config.provider === "lm_studio" &&
+      persistedSettings.llm_config.model === selectedModel &&
+      persistedSettings.llm_config.base_url === deepVerifyStubBaseUrl &&
+      persistedSettings.llm_config.api_key.configured === true &&
+      persistedSettings.llm_config.api_key.masked === true &&
+      !plaintextSecretExposed;
+    const ok =
+      providerDefaultOk &&
+      connection.status === "pass" &&
+      connection.code === "OK" &&
+      connection.models.length >= 2 &&
+      selectedModel === connection.models[1] &&
+      persistedOk &&
+      blocked.status === "blocked" &&
+      blocked.code === "BLOCKED_LOCAL_PROVIDER" &&
+      blocked.models.length === 0;
+
+    recordVerifyEvent("system_settings.llm.deep_verify.result", {
+      ok,
+      provider_default_ok: providerDefaultOk,
+      connection_status: connection.status,
+      connection_code: connection.code,
+      detected_model_count: connection.models.length,
+      detected_models: connection.models,
+      selected_model: selectedModel,
+      persisted_provider: persistedSettings.llm_config.provider,
+      persisted_model: persistedSettings.llm_config.model,
+      persisted_base_url: persistedSettings.llm_config.base_url,
+      api_key_configured: persistedSettings.llm_config.api_key.configured,
+      api_key_masked: persistedSettings.llm_config.api_key.masked,
+      plaintext_secret_exposed: plaintextSecretExposed,
+      blocked_status: blocked.status,
+      blocked_code: blocked.code,
+      blocked_model_count: blocked.models.length,
+    });
+  }, [settings]);
+
+  useEffect(() => {
+    if (
+      !deepVerifyEnabled ||
+      loadState !== "ready" ||
+      !settings ||
+      deepVerifyStartedRef.current
+    ) {
+      return;
+    }
+    deepVerifyStartedRef.current = true;
+    void runDeepLlmVerify().catch((nextError) => {
+      const message = getErrorMessage(nextError);
+      setLlmError(message);
+      recordVerifyEvent("system_settings.llm.deep_verify.error", {
+        error: message,
+      });
+    });
+  }, [loadState, runDeepLlmVerify, settings]);
 
   return (
     <div className="space-y-6">
@@ -580,10 +767,13 @@ export function SystemSettingsPage() {
                     <select
                       className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
                       onChange={(event) =>
-                        setLlmForm((current) => ({
-                          ...current,
-                          provider: event.target.value,
-                        }))
+                        setLlmForm((current) =>
+                          applyProviderDefaults(
+                            current,
+                            event.target.value,
+                            settings.llm_config.api_key.configured
+                          )
+                        )
                       }
                       value={llmForm.provider}
                     >
@@ -608,6 +798,39 @@ export function SystemSettingsPage() {
                       type="text"
                       value={llmForm.model}
                     />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-medium text-text-secondary">
+                      {t("pages.systemSettings.llm.detectedModels")}
+                    </span>
+                    <select
+                      className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={detectedModels.length === 0}
+                      onChange={(event) => {
+                        const model = event.target.value;
+                        if (!model) return;
+                        setLlmForm((current) => ({
+                          ...current,
+                          model,
+                        }));
+                      }}
+                      value={
+                        detectedModels.includes(llmForm.model.trim())
+                          ? llmForm.model.trim()
+                          : ""
+                      }
+                    >
+                      <option value="">
+                        {detectedModels.length > 0
+                          ? t("pages.systemSettings.llm.chooseDetectedModel")
+                          : t("pages.systemSettings.llm.noDetectedModels")}
+                      </option>
+                      {detectedModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="space-y-1.5">
                     <span className="text-xs font-medium text-text-secondary">
@@ -641,7 +864,9 @@ export function SystemSettingsPage() {
                       placeholder={
                         settings.llm_config.api_key.configured
                           ? t("pages.systemSettings.llm.keepExistingSecret")
-                          : "lm-studio"
+                          : llmForm.provider === "lm_studio"
+                            ? "lm-studio"
+                            : ""
                       }
                       type="password"
                       value={llmForm.api_key}
@@ -756,8 +981,23 @@ export function SystemSettingsPage() {
                       <div className="mt-3 space-y-2 text-sm text-text-secondary">
                         <p className="break-words">{llmConnection.message}</p>
                         <p className="font-mono text-xs text-text-muted">
-                          {llmConnection.code} · {llmConnection.model_count}
+                          {llmConnection.code} ·{" "}
+                          {t("pages.systemSettings.llm.modelCount", {
+                            count: llmConnection.model_count,
+                          })}
                         </p>
+                        {detectedModels.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {detectedModels.map((model) => (
+                              <span
+                                className="rounded-chip border border-border bg-bg-hover px-2 py-1 font-mono text-xs text-text-primary"
+                                key={model}
+                              >
+                                {model}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
