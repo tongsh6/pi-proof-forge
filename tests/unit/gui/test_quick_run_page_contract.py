@@ -22,6 +22,10 @@ def test_quick_run_page_renders_product_pipeline_contract():
         "getSettings",
         "LlmConfig",
         "providerSummary",
+        "inputSummary",
+        "listEvidenceMaterialSources",
+        "material_source_count",
+        "trace_resume_traceable",
         "quick_run.load.ready",
         "quick_run.start.result",
         "llm_config_summary",
@@ -30,6 +34,7 @@ def test_quick_run_page_renders_product_pipeline_contract():
         "pages.quickRun.stageOutput",
         "pages.quickRun.scores",
         "pages.quickRun.providerSummary",
+        "pages.quickRun.inputSummary",
     ):
         assert marker in source
 
@@ -47,6 +52,8 @@ def test_quick_run_native_verifier_is_registered():
     assert "quick_run_verify_provider" in script
     assert "PPF_POLICY_PATH" in script
     assert "llm_config_summary" in script
+    assert "mat_quick_run_verify" in script
+    assert "trace_resume_traceable" in script
     assert "app_events" in script
 
 
@@ -62,6 +69,10 @@ def test_quick_run_i18n_contract_is_complete():
         "result",
         "noLogs",
         "providerSummary",
+        "inputSummary",
+        "materialSource",
+        "selectedProfile",
+        "traceableEvidence",
         "provider",
         "model",
         "baseUrl",

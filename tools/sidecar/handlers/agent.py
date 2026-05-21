@@ -13,6 +13,8 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
+from tools.infra.persistence.yaml_io import parse_simple_yaml
+
 
 def _find_project_root(start: Path) -> Path:
     for parent in start.parents:
@@ -173,10 +175,58 @@ def _execute_local_dry_run(run_id: str, options: dict[str, Any]) -> dict[str, An
     }
 
 
-def _quick_run_paths(job_profile_id: str, options: dict[str, Any]) -> tuple[Path, Path]:
-    raw_path = _resolve_project_path(
-        str(options.get("raw_path") or "tools/sample_raw.txt")
-    )
+def _quick_run_material_sources() -> list[dict[str, Any]]:
+    materials_dir = _PROJECT_ROOT / "materials"
+    if not materials_dir.exists():
+        return []
+    items: list[dict[str, Any]] = []
+    for meta_path in sorted(materials_dir.glob("*.meta.yaml")):
+        try:
+            values = dict(parse_simple_yaml(meta_path.read_text(encoding="utf-8"))["scalars"])
+        except OSError:
+            continue
+        filename = values.get("filename", "")
+        file_path = meta_path.parent / filename if filename else Path("")
+        items.append(
+            {
+                "material_id": values.get("material_id", meta_path.stem.removesuffix(".meta")),
+                "resource_id": values.get("resource_id", ""),
+                "label": values.get("label", ""),
+                "kind": values.get("kind", "raw_work_material"),
+                "filename": filename,
+                "extension": values.get("extension", Path(filename).suffix.lower()),
+                "uploaded_at": values.get("uploaded_at", ""),
+                "preview": values.get("preview", ""),
+                "path": str(file_path),
+            }
+        )
+    return sorted(items, key=lambda item: str(item.get("uploaded_at", "")), reverse=True)
+
+
+def _select_quick_run_material(options: dict[str, Any]) -> dict[str, Any] | None:
+    requested_id = str(options.get("material_id") or "").strip()
+    sources = _quick_run_material_sources()
+    if requested_id:
+        for source in sources:
+            if source.get("material_id") == requested_id:
+                return source
+        raise ValueError(f"material_id does not exist: {requested_id}")
+    return sources[0] if sources else None
+
+
+def _quick_run_paths(
+    job_profile_id: str, options: dict[str, Any]
+) -> tuple[Path, Path, dict[str, Any] | None]:
+    material_context = None
+    if options.get("raw_path"):
+        raw_path = _resolve_project_path(str(options.get("raw_path")))
+    else:
+        material_context = _select_quick_run_material(options)
+        raw_path = (
+            Path(str(material_context["path"]))
+            if material_context is not None
+            else _resolve_project_path("tools/sample_raw.txt")
+        )
     job_profile_path = _resolve_project_path(
         str(options.get("job_profile_path") or f"job_profiles/{job_profile_id}.yaml")
     )
@@ -184,7 +234,7 @@ def _quick_run_paths(job_profile_id: str, options: dict[str, Any]) -> tuple[Path
         raise ValueError(f"raw_path does not exist: {raw_path}")
     if not job_profile_path.exists():
         raise ValueError(f"job_profile_path does not exist: {job_profile_path}")
-    return raw_path, job_profile_path
+    return raw_path, job_profile_path, material_context
 
 
 def _load_quick_run_summary(run_id: str) -> dict[str, Any]:
@@ -216,6 +266,31 @@ def _parse_matching_scores(matching_path: Path) -> tuple[int | None, dict[str, d
     return score_total, breakdown
 
 
+def _parse_matching_evidence_ids(matching_path: Path) -> list[str]:
+    if not matching_path.exists():
+        return []
+    try:
+        doc = parse_simple_yaml(matching_path.read_text(encoding="utf-8"))
+    except OSError:
+        return []
+    return [str(item) for item in doc["lists"].get("evidence_card_ids", [])]
+
+
+def _load_evidence_trace(evidence_path: Path) -> dict[str, Any]:
+    if not evidence_path.exists():
+        return {}
+    try:
+        doc = parse_simple_yaml(evidence_path.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+    return {
+        "evidence_id": doc["scalars"].get("id", evidence_path.stem),
+        "raw_source": doc["scalars"].get("raw_source", ""),
+        "artifacts": [str(item) for item in doc["lists"].get("artifacts", [])],
+        "results_count": len(doc["lists"].get("results", [])),
+    }
+
+
 def _quick_run_result_details(
     run_id: str,
     stdout: str,
@@ -228,11 +303,31 @@ def _quick_run_result_details(
     failed_step = summary_payload.get("failed_step", "")
     reason = summary_payload.get("reason", "")
     matching_artifact = artifacts.get("matching")
+    evidence_artifact = artifacts.get("evidence")
+    resume_dir_artifact = artifacts.get("resume_dir")
+    scorecard_artifact = artifacts.get("scorecard")
     score_total: int | None = None
     score_breakdown: dict[str, dict[str, Any]] = {}
+    evidence_card_ids: list[str] = []
     if isinstance(matching_artifact, str) and matching_artifact:
-        score_total, score_breakdown = _parse_matching_scores(
-            _resolve_project_path(matching_artifact)
+        matching_path = _resolve_project_path(matching_artifact)
+        score_total, score_breakdown = _parse_matching_scores(matching_path)
+        evidence_card_ids = _parse_matching_evidence_ids(matching_path)
+    evidence_trace = (
+        _load_evidence_trace(_resolve_project_path(evidence_artifact))
+        if isinstance(evidence_artifact, str) and evidence_artifact
+        else {}
+    )
+    resume_a: Path | None = (
+        _resolve_project_path(resume_dir_artifact) / f"resume_mr-{run_id}_A.md"
+        if isinstance(resume_dir_artifact, str) and resume_dir_artifact
+        else None
+    )
+    resume_traceable = False
+    if resume_a is not None and resume_a.exists():
+        resume_text = resume_a.read_text(encoding="utf-8")
+        resume_traceable = all(
+            evidence_id in resume_text for evidence_id in evidence_card_ids
         )
     return {
         "stdout": stdout[-4000:],
@@ -242,6 +337,13 @@ def _quick_run_result_details(
         "reason": reason if isinstance(reason, str) else "",
         "score_total": score_total,
         "score_breakdown": score_breakdown,
+        "traceability": {
+            "evidence_card_ids": evidence_card_ids,
+            "evidence": evidence_trace,
+            "resume_a": str(resume_a) if resume_a is not None else "",
+            "resume_traceable": resume_traceable,
+            "scorecard": scorecard_artifact if isinstance(scorecard_artifact, str) else "",
+        },
     }
 
 
@@ -291,9 +393,10 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(options, dict):
         raise ValueError("options must be an object")
 
-    raw_path, job_profile_path = _quick_run_paths(job_profile_id, options)
+    raw_path, job_profile_path, material_context = _quick_run_paths(job_profile_id, options)
     llm_config_summary, llm_env = _persisted_llm_runtime_context()
     run_id = _build_quick_run_id()
+    evidence_dir = Path("outputs") / "quick_runs" / run_id / "evidence_cards"
     started_at = _utcnow_iso()
     pipeline_script = _PROJECT_ROOT / "tools" / "run_pipeline.py"
     command = [
@@ -303,6 +406,8 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
         str(raw_path),
         "--job-profile",
         str(job_profile_path),
+        "--evidence-dir",
+        str(evidence_dir),
         "--run-id",
         run_id,
     ]
@@ -355,6 +460,8 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
             "evidence_id": evidence_id or "",
             "raw_path": str(raw_path),
             "job_profile_path": str(job_profile_path),
+            "material_source": material_context,
+            "evidence_dir": str(evidence_dir),
             "command": command,
             "exit_code": exit_code,
             "options": options,
@@ -363,9 +470,9 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
         "stdout": stdout[-4000:],
         "stderr": stderr[-4000:],
     }
-    _save_quick_run(_get_quick_run_file(run_id), payload)
-
     details = _quick_run_result_details(run_id, stdout, stderr)
+    payload.update(details)
+    _save_quick_run(_get_quick_run_file(run_id), payload)
 
     return {
         "meta": {"correlation_id": correlation_id},
@@ -375,6 +482,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
         "run_record": str(Path("outputs") / "agent_runs" / run_id / "run_log.json"),
         "summary": str(Path("outputs") / "agent_runs" / run_id / "summary.json"),
         "llm_config_summary": llm_config_summary,
+        "material_source": material_context,
         **details,
     }
 

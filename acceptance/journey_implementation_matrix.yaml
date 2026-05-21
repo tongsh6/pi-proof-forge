@@ -2,7 +2,7 @@ version: "2026-05-21"
 mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
-current_focus: "quick_run_material_consumption"
+current_focus: "evidence_card_extraction_review"
 
 vision_alignment:
   source: "PLAN.md"
@@ -176,7 +176,7 @@ steps:
 
   - id: "quick_run_material_consumption"
     order: 6
-    status: "next"
+    status: "deep_verified"
     journey_stage: "quick_run"
     owner_surface: "ui/src/pages/quick-run/index.tsx"
     user_goal: "Quick Run consumes material-derived evidence and job target inputs."
@@ -189,8 +189,12 @@ steps:
       - "evidence_material_sources"
     acceptance:
       script: "pnpm --dir ui run e2e:quick-run"
-      depth: "deep_required"
-      evidence: []
+      depth: "deep"
+      evidence:
+        - "ui/test-results/quick-run-native/app-events.jsonl"
+        - "ui/test-results/quick-run-native/policy.yaml"
+        - "outputs/quick_runs/qr_*.json"
+        - "outputs/agent_runs/qr_*/summary.json"
       covers:
         - "evidence_count_from_material_sources"
         - "selected_job_profile"
@@ -198,7 +202,7 @@ steps:
 
   - id: "evidence_card_extraction_review"
     order: 7
-    status: "not_started"
+    status: "next"
     journey_stage: "evidence"
     owner_surface: "ui/src/pages/evidence/index.tsx"
     user_goal: "Turn raw material sources into reviewed Evidence Cards."

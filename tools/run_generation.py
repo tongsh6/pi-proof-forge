@@ -26,6 +26,7 @@ class ParsedDoc(TypedDict):
 class CardView(TypedDict):
     id: str
     title: str
+    raw_source: str
     time_range: str
     context: str
     role_scope: str
@@ -81,6 +82,7 @@ def load_cards(evidence_dir: Path, card_ids: list[str]) -> list[CardView]:
         card_map[card_id] = {
             "id": card_id,
             "title": doc["scalars"].get("title", card_id),
+            "raw_source": doc["scalars"].get("raw_source", ""),
             "time_range": doc["scalars"].get("time_range", ""),
             "context": doc["scalars"].get("context", ""),
             "role_scope": doc["scalars"].get("role_scope", ""),
@@ -169,6 +171,10 @@ def build_template_resume(
             lines.append(f"- 技术栈：{', '.join(card['stack'][:6])}")
         if card["artifacts"]:
             lines.append(f"- 证据：{', '.join(card['artifacts'][:2])}")
+        trace_parts = [f"id={card['id']}"]
+        if card["raw_source"]:
+            trace_parts.append(f"raw_source={card['raw_source']}")
+        lines.append(f"- Evidence trace: {'; '.join(trace_parts)}")
         lines.append("")
 
     lines.append("## Projects")
@@ -199,6 +205,9 @@ def _legacy_main() -> int:
         "--prompt", default="tools/prompts/generation.md", help="Prompt template path"
     )
     _ = parser.add_argument(
+        "--evidence-dir", default="evidence_cards", help="Evidence cards directory"
+    )
+    _ = parser.add_argument(
         "--model", default=os.getenv("LLM_MODEL", ""), help="Model name"
     )
     _ = parser.add_argument(
@@ -214,6 +223,7 @@ def _legacy_main() -> int:
     report_path = cast(str, args.matching_report)
     output_dir_arg = cast(str, args.output_dir)
     prompt_path = cast(str, args.prompt)
+    evidence_dir_arg = cast(str, args.evidence_dir)
     model = cast(str, args.model)
     base_url = cast(str, args.base_url)
     api_key = cast(str, args.api_key)
@@ -232,12 +242,13 @@ def _legacy_main() -> int:
     report_text = read_text(report_path)
     score_total = extract_score_total(report_text)
     top_card_ids = extract_top_card_ids(report_text)
-    cards = load_cards(Path("evidence_cards"), top_card_ids)
+    evidence_dir = Path(evidence_dir_arg)
+    cards = load_cards(evidence_dir, top_card_ids)
     evidence_text = "\n\n".join(
         [
-            read_text(str(Path("evidence_cards") / f"{card['id']}.yaml"))
+            read_text(str(evidence_dir / f"{card['id']}.yaml"))
             for card in cards
-            if (Path("evidence_cards") / f"{card['id']}.yaml").exists()
+            if (evidence_dir / f"{card['id']}.yaml").exists()
         ]
     )
 

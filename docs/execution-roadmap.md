@@ -41,7 +41,7 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 ## Current Focus
 
-`quick_run_material_consumption`
+`evidence_card_extraction_review`
 
 下一次“继续推进项目”默认只处理 `acceptance/journey_implementation_matrix.yaml` 中第一个 `status: next` 的任务。
 
@@ -136,7 +136,7 @@ Expected evidence:
 
 ### P0-006 Quick Run Consumes Material-Derived Inputs
 
-Status: `next`
+Status: `deep_verified`
 
 Journey step: `quick_run_material_consumption`
 
@@ -154,6 +154,9 @@ DoD:
 Expected evidence:
 
 - `pnpm --dir ui run e2e:quick-run`
+- `ui/test-results/quick-run-native/app-events.jsonl`
+- `outputs/quick_runs/qr_*.json`
+- `outputs/agent_runs/qr_*/summary.json`
 
 ### P0-004 Resumes Material Library Native Acceptance
 
@@ -190,7 +193,7 @@ Evidence:
 
 ### P0-007 Evidence Card Extraction And Review
 
-Status: `not_started`
+Status: `next`
 
 Journey step: `evidence_card_extraction_review`
 

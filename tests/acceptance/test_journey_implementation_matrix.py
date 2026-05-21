@@ -18,8 +18,8 @@ def test_journey_implementation_matrix_selects_one_next_step() -> None:
     steps = matrix["steps"]
     next_steps = [step for step in steps if step["status"] == "next"]
 
-    assert matrix["current_focus"] == "quick_run_material_consumption"
-    assert [step["id"] for step in next_steps] == ["quick_run_material_consumption"]
+    assert matrix["current_focus"] == "evidence_card_extraction_review"
+    assert [step["id"] for step in next_steps] == ["evidence_card_extraction_review"]
     assert next_steps[0]["acceptance"]["depth"] == "deep_required"
 
 

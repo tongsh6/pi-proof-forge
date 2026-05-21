@@ -134,6 +134,11 @@ def _legacy_main() -> int:
     _ = parser.add_argument(
         "--job-profile", required=True, help="Job profile yaml path"
     )
+    _ = parser.add_argument(
+        "--evidence-dir",
+        default="evidence_cards",
+        help="Evidence cards directory for this run",
+    )
     _ = parser.add_argument("--run-id", help="Run id, default timestamp")
     _ = parser.add_argument(
         "--use-llm",
@@ -147,6 +152,7 @@ def _legacy_main() -> int:
 
     raw_path = cast(str, args.raw)
     job_profile = cast(str, args.job_profile)
+    evidence_dir_arg = cast(str, args.evidence_dir)
     run_id = cast(str | None, args.run_id) or datetime.datetime.now().strftime(
         "%Y%m%d%H%M%S"
     )
@@ -271,7 +277,8 @@ def _legacy_main() -> int:
             reason=gate_result.error.reason,
         )
 
-    evidence_output = Path("evidence_cards") / f"ec-{run_id}.yaml"
+    evidence_dir = Path(evidence_dir_arg)
+    evidence_output = evidence_dir / f"ec-{run_id}.yaml"
     matching_output = Path("matching_reports") / f"mr-{run_id}.yaml"
     resume_dir = Path("outputs") / run_id
     scorecard_output = Path("outputs/scorecards") / f"scorecard_mr-{run_id}_A.md"
@@ -385,7 +392,7 @@ def _legacy_main() -> int:
         "--job-profile",
         job_profile,
         "--evidence-dir",
-        "evidence_cards",
+        str(evidence_dir),
         "--output",
         str(matching_output),
     ]
@@ -411,6 +418,8 @@ def _legacy_main() -> int:
         str(matching_output),
         "--output-dir",
         str(resume_dir),
+        "--evidence-dir",
+        str(evidence_dir),
     ]
     if use_llm:
         gen_cmd.append("--use-llm")

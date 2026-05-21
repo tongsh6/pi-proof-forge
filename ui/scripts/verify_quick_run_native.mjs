@@ -9,6 +9,7 @@ const UI_DIR = resolve(new URL("..", import.meta.url).pathname);
 const ROOT_DIR = resolve(UI_DIR, "..");
 const OUTPUTS_DIR = join(ROOT_DIR, "outputs");
 const QUICK_RUNS_DIR = join(OUTPUTS_DIR, "quick_runs");
+const MATERIALS_DIR = join(ROOT_DIR, "materials");
 const ARTIFACT_DIR = join(UI_DIR, "test-results", "quick-run-native");
 const VITE_ENV_LOCAL = join(UI_DIR, ".env.local");
 const APP_EVENTS_PATH = join(ARTIFACT_DIR, "app-events.jsonl");
@@ -17,6 +18,11 @@ const EXPECTED_LLM = {
   provider: "quick_run_verify_provider",
   model: "quick-run-verify-model",
   baseUrl: "http://127.0.0.1:65535/v1",
+};
+const EXPECTED_MATERIAL = {
+  materialId: "mat_quick_run_verify",
+  resourceId: "res_quick_run_verify",
+  label: "Quick Run verifier material",
 };
 let activeChild = null;
 let activeRestoreViteEnv = null;
@@ -77,6 +83,9 @@ function validateReadyEvent(event) {
   return (
     typeof event.evidence_count === "number" &&
     event.evidence_count >= 0 &&
+    typeof event.material_source_count === "number" &&
+    event.material_source_count >= 1 &&
+    event.material_source_id === EXPECTED_MATERIAL.materialId &&
     typeof event.job_profile_count === "number" &&
     event.job_profile_count >= 0 &&
     event.llm_provider === EXPECTED_LLM.provider &&
@@ -91,6 +100,14 @@ function validateStartResultEvent(event, runId) {
   return (
     event.event === "quick_run.start.result" &&
     event.run_id === runId &&
+    event.material_source_id === EXPECTED_MATERIAL.materialId &&
+    Array.isArray(event.trace_evidence_card_ids) &&
+    event.trace_evidence_card_ids.includes(`ec-${runId}`) &&
+    typeof event.trace_raw_source === "string" &&
+    event.trace_raw_source.includes(EXPECTED_MATERIAL.materialId) &&
+    event.trace_resume_traceable === true &&
+    typeof event.trace_scorecard === "string" &&
+    event.trace_scorecard.includes(`scorecard_mr-${runId}_A.md`) &&
     event.llm_provider === EXPECTED_LLM.provider &&
     event.llm_model === EXPECTED_LLM.model &&
     event.llm_base_url === EXPECTED_LLM.baseUrl &&
@@ -122,11 +139,67 @@ function findFinishedRun(baseline) {
 
 function cleanupGeneratedArtifacts(runId) {
   const paths = [
-    join(ROOT_DIR, "evidence_cards", `ec-${runId}.yaml`),
     join(ROOT_DIR, "matching_reports", `mr-${runId}.yaml`),
+    join(QUICK_RUNS_DIR, runId),
   ];
   for (const path of paths) {
-    if (existsSync(path)) rmSync(path);
+    if (existsSync(path)) rmSync(path, { recursive: true, force: true });
+  }
+}
+
+function seedMaterialSource() {
+  mkdirSync(MATERIALS_DIR, { recursive: true });
+  const materialPath = join(MATERIALS_DIR, `${EXPECTED_MATERIAL.materialId}.md`);
+  const metaPath = join(MATERIALS_DIR, `${EXPECTED_MATERIAL.materialId}.meta.yaml`);
+  writeFileSync(
+    materialPath,
+    [
+      "# Quick Run verifier inventory platform",
+      "时间：2025-06 ~ 2025-09",
+      "",
+      "背景：大促期间库存一致性要求 2 秒内，峰值 3k QPS。",
+      "动作：",
+      "- 重构 Java + Kafka 库存同步链路，削峰填谷",
+      "- 引入 Redis 幂等键、补偿任务和 SLO 告警",
+      "- 跨团队推进灰度、回滚和压测复盘",
+      "",
+      "结果：",
+      "- 同步延迟 P95 从 6s 降至 1.8s，SLA 达到 99.95%",
+      "- 大促库存异常工单下降 42%",
+      "",
+      "证据：",
+      "- quick-run-verifier-design.md",
+      "- quick-run-verifier-latency.png",
+      "",
+      "技术栈：Java, Redis, Kafka, MySQL, Prometheus",
+      "",
+    ].join("\n"),
+    "utf8"
+  );
+  writeFileSync(
+    metaPath,
+    [
+      `material_id: "${EXPECTED_MATERIAL.materialId}"`,
+      `resource_id: "${EXPECTED_MATERIAL.resourceId}"`,
+      `label: "${EXPECTED_MATERIAL.label}"`,
+      `kind: "raw_work_material"`,
+      `filename: "${EXPECTED_MATERIAL.materialId}.md"`,
+      `extension: ".md"`,
+      `uploaded_at: "2026-05-21T00:00:00Z"`,
+      `preview: "Quick Run verifier inventory platform material"`,
+      "",
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+function cleanupSeededMaterial() {
+  const paths = [
+    join(MATERIALS_DIR, `${EXPECTED_MATERIAL.materialId}.md`),
+    join(MATERIALS_DIR, `${EXPECTED_MATERIAL.materialId}.meta.yaml`),
+  ];
+  for (const path of paths) {
+    if (existsSync(path)) rmSync(path, { force: true });
   }
 }
 
@@ -254,6 +327,7 @@ process.once("SIGTERM", () => {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const baseline = quickRunFiles();
+  seedMaterialSource();
   const restoreViteEnv = enableViteAutorunEnv();
   const { child, logPath, logs } = startTauriDev();
   activeChild = child;
@@ -267,6 +341,12 @@ async function main() {
     }
     const runPayload = readQuickRun(result.record);
     const llmSummary = runPayload.run?.llm_config_summary ?? {};
+    const materialSource = runPayload.run?.material_source ?? {};
+    if (materialSource.material_id !== EXPECTED_MATERIAL.materialId) {
+      throw new Error(
+        `Quick Run record did not preserve selected material source: ${JSON.stringify(materialSource)}`
+      );
+    }
     if (
       llmSummary.provider !== EXPECTED_LLM.provider ||
       llmSummary.model !== EXPECTED_LLM.model ||
@@ -280,6 +360,17 @@ async function main() {
     }
     if (JSON.stringify(runPayload).includes("llm_api_key_placeholder")) {
       throw new Error("Quick Run record leaked policy secret storage fields");
+    }
+    const traceability = runPayload.traceability ?? {};
+    if (
+      !Array.isArray(traceability.evidence_card_ids) ||
+      !traceability.evidence_card_ids.includes(`ec-${result.runId}`) ||
+      traceability.evidence?.raw_source !== runPayload.run?.raw_path ||
+      traceability.resume_traceable !== true
+    ) {
+      throw new Error(
+        `Quick Run record did not preserve material/evidence/resume traceability: ${JSON.stringify(traceability)}`
+      );
     }
     const startEvent = readEvents().find((event) =>
       validateStartResultEvent(event, result.runId)
@@ -295,6 +386,8 @@ async function main() {
         run_id: result.runId,
         status: result.status,
         evidence_count: readyEvent.evidence_count,
+        material_source_count: readyEvent.material_source_count,
+        material_source_id: EXPECTED_MATERIAL.materialId,
         job_profile_count: readyEvent.job_profile_count,
         quick_run_record: result.record,
         summary,
@@ -318,6 +411,7 @@ async function main() {
   } finally {
     await stopProcess(child);
     restoreViteEnv();
+    if (!args.keepArtifacts) cleanupSeededMaterial();
     activeChild = null;
     activeRestoreViteEnv = null;
   }

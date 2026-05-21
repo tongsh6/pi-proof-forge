@@ -16,12 +16,14 @@ import {
   cancelQuickRun,
   getSettings,
   listEvidence,
+  listEvidenceMaterialSources,
   listJobProfiles,
   startQuickRun,
 } from "@/lib/sidecar/api";
 import type {
   JobProfileListItem,
   LlmConfig,
+  MaterialSourceItem,
   QuickRunStartResult,
 } from "@/lib/sidecar/types";
 
@@ -125,6 +127,7 @@ export function QuickRunPage() {
   const [error, setError] = useState<string | null>(null);
   const [runState, setRunState] = useState<RunState>("idle");
   const [evidenceCount, setEvidenceCount] = useState(0);
+  const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
@@ -141,12 +144,14 @@ export function QuickRunPage() {
     setLoadState("loading");
     setError(null);
     try {
-      const [evidence, jobs, settings] = await Promise.all([
+      const [evidence, materials, jobs, settings] = await Promise.all([
         listEvidence(),
+        listEvidenceMaterialSources(),
         listJobProfiles(),
         getSettings(),
       ]);
       setEvidenceCount(evidence.items.filter((item) => item.status !== "draft").length);
+      setMaterialSources(materials.items);
       setJobProfiles(jobs.items);
       setLlmConfig(settings.llm_config);
       if (jobs.items.length > 0 && !selectedProfileId) {
@@ -154,6 +159,9 @@ export function QuickRunPage() {
       }
       recordVerifyEvent("quick_run.load.ready", {
         evidence_count: evidence.items.length,
+        material_source_count: materials.items.length,
+        material_source_id: materials.items[0]?.material_id ?? null,
+        material_source_label: materials.items[0]?.label ?? null,
         job_profile_count: jobs.items.length,
         selected_profile_id:
           selectedProfileId || jobs.items[0]?.job_profile_id || null,
@@ -268,6 +276,13 @@ export function QuickRunPage() {
         status: result.status,
         run_record: result.run_record ?? null,
         score_total: result.score_total ?? null,
+        material_source_id: result.material_source?.material_id ?? null,
+        material_source_label: result.material_source?.label ?? null,
+        trace_evidence_card_ids: result.traceability?.evidence_card_ids ?? [],
+        trace_raw_source: result.traceability?.evidence.raw_source ?? null,
+        trace_resume_a: result.traceability?.resume_a ?? null,
+        trace_resume_traceable: result.traceability?.resume_traceable ?? null,
+        trace_scorecard: result.traceability?.scorecard ?? null,
         llm_provider: result.llm_config_summary?.provider ?? null,
         llm_model: result.llm_config_summary?.model ?? null,
         llm_base_url: result.llm_config_summary?.base_url ?? null,
@@ -434,6 +449,40 @@ export function QuickRunPage() {
                   </p>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <h2 className="text-lg font-semibold text-text-primary">
+              {t("pages.quickRun.inputSummary")}
+            </h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-card border border-border bg-bg-primary/50 p-4">
+                <p className="text-xs uppercase text-text-muted">
+                  {t("pages.quickRun.materialSource")}
+                </p>
+                <p className="mt-2 truncate text-sm font-medium text-text-primary">
+                  {materialSources[0]?.label || materialSources[0]?.material_id || "--"}
+                </p>
+              </div>
+              <div className="rounded-card border border-border bg-bg-primary/50 p-4">
+                <p className="text-xs uppercase text-text-muted">
+                  {t("pages.quickRun.selectedProfile")}
+                </p>
+                <p className="mt-2 truncate text-sm font-medium text-text-primary">
+                  {selectedProfile?.title ?? "--"}
+                </p>
+              </div>
+              <div className="rounded-card border border-border bg-bg-primary/50 p-4">
+                <p className="text-xs uppercase text-text-muted">
+                  {t("pages.quickRun.traceableEvidence")}
+                </p>
+                <p className="mt-2 truncate text-sm font-medium text-text-primary">
+                  {quickRunResult?.traceability?.evidence_card_ids.length
+                    ? quickRunResult.traceability.evidence_card_ids.join(", ")
+                    : `${evidenceCount} ${t("pages.quickRun.evidenceCards")}`}
+                </p>
+              </div>
             </div>
           </section>
 

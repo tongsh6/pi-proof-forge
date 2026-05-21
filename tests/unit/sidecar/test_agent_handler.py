@@ -316,6 +316,141 @@ class TestQuickRunStart:
             assert env["LLM_BASE_URL"] == "http://127.0.0.1:1234/v1"
             assert run_payload["run"]["llm_config_summary"] == summary
 
+    def test_quick_run_uses_latest_material_source_and_isolated_evidence_dir(self):
+        with TemporaryDirectory() as project_tmp:
+            project_root = Path(project_tmp)
+            quick_dir = project_root / "outputs" / "quick_runs"
+            tools_dir = project_root / "tools"
+            profile_dir = project_root / "job_profiles"
+            materials_dir = project_root / "materials"
+            summary_dir = project_root / "outputs" / "agent_runs" / "qr_material"
+            tools_dir.mkdir()
+            profile_dir.mkdir()
+            materials_dir.mkdir()
+            summary_dir.mkdir(parents=True)
+            (tools_dir / "sample_raw.txt").write_text("fallback", encoding="utf-8")
+            (profile_dir / "jp-001.yaml").write_text(
+                "target_role: Backend\n", encoding="utf-8"
+            )
+            (materials_dir / "mat_001.md").write_text("material raw", encoding="utf-8")
+            (materials_dir / "mat_001.meta.yaml").write_text(
+                "\n".join(
+                    [
+                        'material_id: "mat_001"',
+                        'resource_id: "res_001"',
+                        'label: "Material One"',
+                        'kind: "raw_work_material"',
+                        'filename: "mat_001.md"',
+                        'extension: ".md"',
+                        'uploaded_at: "2026-05-21T00:00:00Z"',
+                        'preview: "material raw"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            evidence_path = (
+                project_root
+                / "outputs"
+                / "quick_runs"
+                / "qr_material"
+                / "evidence_cards"
+                / "ec-qr_material.yaml"
+            )
+            evidence_path.parent.mkdir(parents=True)
+            evidence_path.write_text(
+                "\n".join(
+                    [
+                        'id: "ec-qr_material"',
+                        'title: "Material One"',
+                        f'raw_source: "{materials_dir / "mat_001.md"}"',
+                        "results:",
+                        '  - "P95 从 6s 降至 1.8s"',
+                        "artifacts:",
+                        '  - "latency.png"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            matching_dir = project_root / "matching_reports"
+            matching_dir.mkdir()
+            (matching_dir / "mr-qr_material.yaml").write_text(
+                "\n".join(
+                    [
+                        'job_profile_id: "jp-001"',
+                        "evidence_card_ids:",
+                        '  - "ec-qr_material"',
+                        "score_total: 20",
+                        "score_breakdown:",
+                        '  K: { score: 10, reason: "material match" }',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            resume_dir = project_root / "outputs" / "qr_material"
+            resume_dir.mkdir(parents=True)
+            (resume_dir / "resume_mr-qr_material_A.md").write_text(
+                "Evidence trace: id=ec-qr_material\n", encoding="utf-8"
+            )
+            (summary_dir / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "status": "DONE",
+                        "artifacts": {
+                            "evidence": "outputs/quick_runs/qr_material/evidence_cards/ec-qr_material.yaml",
+                            "matching": "matching_reports/mr-qr_material.yaml",
+                            "resume_dir": "outputs/qr_material",
+                            "scorecard": "outputs/scorecards/scorecard_mr-qr_material_A.md",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = type(
+                "Completed",
+                (),
+                {"returncode": 0, "stdout": "[pipeline] done\n", "stderr": ""},
+            )()
+
+            with (
+                patch("tools.sidecar.handlers.agent._PROJECT_ROOT", project_root),
+                patch("tools.sidecar.handlers.agent._QUICK_RUN_DIR", quick_dir),
+                patch(
+                    "tools.sidecar.handlers.agent._build_quick_run_id",
+                    return_value="qr_material",
+                ),
+                patch(
+                    "tools.sidecar.handlers.agent.subprocess.run",
+                    return_value=completed,
+                ) as run_mock,
+            ):
+                result = handle_quick_start(
+                    {
+                        "meta": {"correlation_id": "corr_quick_material"},
+                        "job_profile_id": "jp-001",
+                    }
+                )
+                run_payload = json.loads(
+                    (quick_dir / "qr_material.json").read_text(encoding="utf-8")
+                )
+
+        command = run_mock.call_args.args[0]
+        assert command[command.index("--raw") + 1] == str(materials_dir / "mat_001.md")
+        assert command[command.index("--evidence-dir") + 1] == str(
+            Path("outputs") / "quick_runs" / "qr_material" / "evidence_cards"
+        )
+        assert result["material_source"]["material_id"] == "mat_001"
+        assert result["traceability"]["evidence_card_ids"] == ["ec-qr_material"]
+        assert result["traceability"]["evidence"]["raw_source"] == str(
+            materials_dir / "mat_001.md"
+        )
+        assert result["traceability"]["resume_traceable"] is True
+        assert run_payload["run"]["material_source"]["material_id"] == "mat_001"
+        assert run_payload["traceability"]["resume_traceable"] is True
+
 
 class TestAgentRunStart:
     def test_agent_run_records_masked_persisted_llm_config_summary(self):

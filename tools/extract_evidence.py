@@ -74,6 +74,7 @@ class SectionData(TypedDict):
 class EvidenceCard(TypedDict):
     id: str
     title: str
+    raw_source: str
     time_range: str
     context: str
     role_scope: str
@@ -252,24 +253,24 @@ def dump_yaml(evidence_card: EvidenceCard, gaps: list[str]) -> str:
         return "\n".join([f"{prefix}- \"{item}\"" for item in items])
 
     lines = [
-        "evidence_card:",
-        f"  id: \"{evidence_card['id']}\"",
-        f"  title: \"{evidence_card['title']}\"",
-        f"  time_range: \"{evidence_card['time_range']}\"",
-        f"  context: \"{evidence_card['context']}\"",
-        f"  role_scope: \"{evidence_card['role_scope']}\"",
-        "  actions:",
-        dump_list(evidence_card["actions"], indent=4),
-        "  results:",
-        dump_list(evidence_card["results"], indent=4),
-        "  stack:",
-        dump_list(evidence_card["stack"], indent=4),
-        "  artifacts:",
-        dump_list(evidence_card["artifacts"], indent=4),
-        "  tags:",
-        dump_list(evidence_card["tags"], indent=4),
-        "  interview_hooks:",
-        dump_list(evidence_card["interview_hooks"], indent=4),
+        f"id: \"{evidence_card['id']}\"",
+        f"title: \"{evidence_card['title']}\"",
+        f"raw_source: \"{evidence_card['raw_source']}\"",
+        f"time_range: \"{evidence_card['time_range']}\"",
+        f"context: \"{evidence_card['context']}\"",
+        f"role_scope: \"{evidence_card['role_scope']}\"",
+        "actions:",
+        dump_list(evidence_card["actions"], indent=2),
+        "results:",
+        dump_list(evidence_card["results"], indent=2),
+        "stack:",
+        dump_list(evidence_card["stack"], indent=2),
+        "artifacts:",
+        dump_list(evidence_card["artifacts"], indent=2),
+        "tags:",
+        dump_list(evidence_card["tags"], indent=2),
+        "interview_hooks:",
+        dump_list(evidence_card["interview_hooks"], indent=2),
         "gaps:",
         dump_list(gaps, indent=2),
     ]
@@ -297,6 +298,7 @@ def main() -> int:
     card: EvidenceCard = {
         "id": evidence_id,
         "title": title,
+        "raw_source": input_path,
         "time_range": extract_time_range(text),
         "context": extract_context(lines),
         "role_scope": extract_role_scope(text),

@@ -292,8 +292,10 @@
 | 用户旅程合同 | acceptance/journey_contract.yaml + tools/acceptance/journey_contract.py | M0 case-aware contract；selected cases、stage 顺序、required outputs、acceptance rules 可由 loader 验证 |
 | 用户旅程闭环自动化验证计划 | AIEF/docs/plans/2026-05-13-user-journey-closed-loop-validation.md | M-1 到 M5 专项推进计划，所有阶段/步骤均含状态字段 |
 | 自动化深度验收规范 | docs/acceptance-depth.md | 定义真实用户目标、动作链、系统边界、持久化/消费、失败路径和 secret 安全的验收口径；System Settings LLM 已按该规范升级 |
-| 推进路线图 | docs/execution-roadmap.md + acceptance/journey_implementation_matrix.yaml + tools/check_execution_roadmap.py | 人读路线图 + 机器矩阵 + 检查器；当前唯一 next 为 `quick_run_material_consumption` |
-| 测试 | tests/ | 351 tests |
+| 推进路线图 | docs/execution-roadmap.md + acceptance/journey_implementation_matrix.yaml + tools/check_execution_roadmap.py | 人读路线图 + 机器矩阵 + 检查器；当前唯一 next 为 `evidence_card_extraction_review` |
+| Quick Run 材料消费深度验收 | ui/test-results/quick-run-native/app-events.jsonl + outputs/quick_runs/qr_*.json | 真实 Tauri + sidecar 验证材料库来源进入 Quick Run 上下文，pipeline 消费材料派生 Evidence，并在 Matching/Resume/Scorecard 中保留追溯 |
+| 工作材料目录导入 | tools/sidecar/handlers/materials.py + tests/unit/sidecar/test_materials_handler.py | `material.upload` 支持目录输入，递归合并 `.md` / `.txt` 为单个 `raw_work_material_directory`，供 Evidence/Quick Run 消费 |
+| 测试 | tests/ | 449 tests |
 | v2 约束 | tools/check_v2_constraints.py | 静态约束校验脚本 |
 | **反反爬基础设施** | **tools/submission/_browser.py** | **stealth + human pacing + 安全护栏** |
 | **端到端投递 PoC** | **tools/poc_e2e_send.py** | **6 步 dry-run/real-send 脚本** |

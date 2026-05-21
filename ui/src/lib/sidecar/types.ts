@@ -436,6 +436,7 @@ export interface SubmitReviewResult extends RpcResultBase {
 export interface QuickRunStartOptions {
   generate_resume?: boolean;
   raw_path?: string;
+  material_id?: string;
   job_profile_path?: string;
   timeout_seconds?: number;
   use_llm?: boolean;
@@ -457,6 +458,19 @@ export interface QuickRunStartResult extends RpcResultBase {
   score_total?: number | null;
   score_breakdown?: Record<string, { score: number; reason?: string }>;
   llm_config_summary?: LlmConfigSummary;
+  material_source?: MaterialSourceItem | null;
+  traceability?: {
+    evidence_card_ids: string[];
+    evidence: {
+      evidence_id?: string;
+      raw_source?: string;
+      artifacts?: string[];
+      results_count?: number;
+    };
+    resume_a: string;
+    resume_traceable: boolean;
+    scorecard: string;
+  };
 }
 
 export interface QuickRunCancelResult extends RpcResultBase {
