@@ -1,0 +1,216 @@
+version: "2026-05-21"
+mainline: "user_journey_closed_loop"
+roadmap: "docs/execution-roadmap.md"
+depth_standard: "docs/acceptance-depth.md"
+current_focus: "quick_run_llm_consumption"
+
+vision_alignment:
+  source: "PLAN.md"
+  product_claim: "Evidence-first job-search engine"
+  closed_loop:
+    - "raw_materials"
+    - "evidence_cards"
+    - "explainable_matching"
+    - "fact_preserving_resume_generation"
+    - "scorecard_gap_feedback"
+    - "submission_feedback_iteration"
+
+system_design_alignment:
+  constitution: "constitution.md"
+  core_spec: "openspec/specs/pi-proof-forge-core.md"
+  agent_design: "openspec/changes/autonomous-agent-delivery-loop/design.md"
+  gui_design: "ui/design/DESIGN.md"
+  gui_pages:
+    - "overview"
+    - "resumes"
+    - "evidence"
+    - "jobs"
+    - "quick_run"
+    - "agent_run"
+    - "submissions"
+    - "policy"
+    - "system_settings"
+
+status_legend:
+  - "not_started"
+  - "implemented_shallow"
+  - "verified_contract"
+  - "verified_native"
+  - "deep_verified"
+  - "blocked"
+  - "next"
+
+selection_policy:
+  rule: "Pick the first step with status next after all dependencies are deep_verified or verified_native as required."
+  wip_limit: 1
+  tie_breaker: "journey_order"
+
+steps:
+  - id: "system_settings_llm"
+    order: 1
+    status: "deep_verified"
+    journey_stage: "system_settings"
+    owner_surface: "ui/src/pages/system-settings/index.tsx"
+    user_goal: "Configure local or OpenAI-compatible LLM settings for downstream runs."
+    vision_link: "Runtime prerequisite for evidence extraction, matching, generation, and evaluation; not a substitute for the evidence-first pipeline."
+    design_refs:
+      - "ui/design/DESIGN.md#system-settings"
+      - "openspec/changes/autonomous-agent-delivery-loop/design.md#3.2-gui-configuration-entry-points"
+    acceptance:
+      script: "pnpm --dir ui run e2e:system-settings"
+      depth: "deep"
+      evidence:
+        - "ui/test-results/system-settings-native/app-events.jsonl"
+        - "ui/test-results/system-settings-native/policy.yaml"
+      covers:
+        - "provider_defaults"
+        - "model_discovery"
+        - "detected_model_selection"
+        - "save_reload"
+        - "masked_secret"
+        - "blocked_failure_path"
+        - "root_policy_not_modified"
+    unlocks:
+      - "quick_run_llm_consumption"
+      - "agent_run_llm_consumption"
+
+  - id: "resumes_material_library"
+    order: 2
+    status: "verified_native"
+    journey_stage: "resumes"
+    owner_surface: "ui/src/pages/resumes/index.tsx"
+    user_goal: "Create visible profile and work material sources for evidence extraction."
+    vision_link: "Creates raw material inputs for the evidence-first asset layer."
+    design_refs:
+      - "PLAN.md#5-data-model"
+      - "ui/design/DESIGN.md#resumes"
+    acceptance:
+      script: "pnpm --dir ui run e2e:resumes"
+      depth: "native"
+      evidence:
+        - "ui/test-results/resumes-native/app-events.jsonl"
+      covers:
+        - "material_upload_entry"
+        - "material_list_visible"
+        - "material_readiness"
+    unlocks:
+      - "evidence_material_sources"
+
+  - id: "evidence_material_sources"
+    order: 3
+    status: "verified_native"
+    journey_stage: "evidence"
+    owner_surface: "ui/src/pages/evidence/index.tsx"
+    user_goal: "Read material library sources from the Evidence page."
+    vision_link: "Connects raw materials to Evidence, but still requires extraction/review before materials become trusted Evidence Cards."
+    design_refs:
+      - "PLAN.md#4-product-scope"
+      - "ui/design/DESIGN.md#evidence"
+    depends_on:
+      - "resumes_material_library"
+    acceptance:
+      script: "pnpm --dir ui run e2e:evidence"
+      depth: "native"
+      evidence:
+        - "ui/test-results/evidence-native/app-events.jsonl"
+      covers:
+        - "material_source_count"
+        - "material_source_preview"
+    unlocks:
+      - "quick_run_material_consumption"
+
+  - id: "quick_run_llm_consumption"
+    order: 4
+    status: "next"
+    journey_stage: "quick_run"
+    owner_surface: "ui/src/pages/quick-run/index.tsx"
+    user_goal: "Quick Run consumes the persisted LLM configuration summary."
+    vision_link: "Keeps the single-run pipeline connected to configured LLM while preserving the core Evidence -> Matching -> Generation -> Evaluation outputs."
+    design_refs:
+      - "ui/design/DESIGN.md#quick-run"
+      - "openspec/specs/pi-proof-forge-core.md#pipeline-stage-spec"
+    depends_on:
+      - "system_settings_llm"
+    acceptance:
+      script: "pnpm --dir ui run e2e:quick-run"
+      depth: "deep_required"
+      evidence: []
+      covers:
+        - "temp_policy_llm_config"
+        - "provider_summary_visible"
+        - "model_summary_visible"
+        - "masked_secret"
+        - "run_context_uses_persisted_config"
+    gaps:
+      - "Current Quick Run native verifier proves run readiness and summary visibility, but does not yet deep-verify handoff from System Settings persisted config."
+    unlocks:
+      - "agent_run_llm_consumption"
+
+  - id: "agent_run_llm_consumption"
+    order: 5
+    status: "blocked"
+    journey_stage: "agent_run"
+    owner_surface: "ui/src/pages/agent-run/index.tsx"
+    user_goal: "Agent Run consumes the same persisted LLM configuration summary."
+    vision_link: "Aligns autonomous 10-state loop runtime configuration with System Settings before delivery/review automation."
+    design_refs:
+      - "ui/design/DESIGN.md#agent-run"
+      - "openspec/changes/autonomous-agent-delivery-loop/design.md#2-state-machine"
+    depends_on:
+      - "system_settings_llm"
+      - "quick_run_llm_consumption"
+    blocker: "Wait for quick_run_llm_consumption to define the shared deep handoff contract."
+    acceptance:
+      script: "pnpm --dir ui run e2e:agent-run"
+      depth: "deep_required"
+      evidence: []
+      covers:
+        - "provider_summary_visible"
+        - "model_summary_visible"
+        - "masked_secret"
+        - "agent_run_context_uses_persisted_config"
+
+  - id: "quick_run_material_consumption"
+    order: 6
+    status: "not_started"
+    journey_stage: "quick_run"
+    owner_surface: "ui/src/pages/quick-run/index.tsx"
+    user_goal: "Quick Run consumes material-derived evidence and job target inputs."
+    vision_link: "Proves the core evidence-first pipeline can consume trusted evidence and job targets to generate traceable resume outputs."
+    design_refs:
+      - "PLAN.md#6-matching-scoring"
+      - "PLAN.md#7-resume-generation"
+      - "ui/design/DESIGN.md#quick-run"
+    depends_on:
+      - "evidence_material_sources"
+    acceptance:
+      script: "pnpm --dir ui run e2e:quick-run"
+      depth: "deep_required"
+      evidence: []
+      covers:
+        - "evidence_count_from_material_sources"
+        - "selected_job_profile"
+        - "traceable_resume_output"
+
+  - id: "evidence_card_extraction_review"
+    order: 7
+    status: "not_started"
+    journey_stage: "evidence"
+    owner_surface: "ui/src/pages/evidence/index.tsx"
+    user_goal: "Turn raw material sources into reviewed Evidence Cards."
+    vision_link: "Directly implements the project moat: raw materials -> structured, reviewable, fact-preserving Evidence Cards with results/artifacts gates."
+    design_refs:
+      - "PLAN.md#5-data-model-core-assets"
+      - "openspec/specs/pi-proof-forge-core.md#evidence-card"
+      - "ui/design/DESIGN.md#evidence"
+    depends_on:
+      - "evidence_material_sources"
+    acceptance:
+      script: "pnpm --dir ui run e2e:evidence"
+      depth: "deep_required"
+      evidence: []
+      covers:
+        - "raw_source_traceability"
+        - "review_required_before_save"
+        - "results_artifacts_gate"
+        - "no_fabrication_guard"
