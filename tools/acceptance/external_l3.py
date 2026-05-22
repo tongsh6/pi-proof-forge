@@ -50,6 +50,12 @@ def build_external_l3_validation(
         request=request,
         blocker_reason=blocker_reason,
     )
+    base["submit_safety_decision"] = _submit_safety_decision(
+        request=request,
+        readiness=base["live_run_readiness"],
+        pre_submit_blocker_reason=blocker_reason,
+        external_submission_attempted=False,
+    )
     base["operator_handoff"] = _operator_handoff(
         request=request,
         blocker_reason=blocker_reason,
@@ -130,6 +136,14 @@ def build_external_l3_validation(
             ),
         }
     )
+    base["submit_safety_decision"] = _submit_safety_decision(
+        request=request,
+        readiness=base["live_run_readiness"],
+        pre_submit_blocker_reason="",
+        external_submission_attempted=True,
+        command_returncode=completed.returncode,
+        post_run_blocker_reason=blocker_after_run,
+    )
     if not external_validated:
         base["live_blocker"] = {
             "reason": blocker_after_run,
@@ -180,6 +194,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     blocker = validation.get("live_blocker") or {}
     coverage = validation.get("coverage") or {}
     readiness = validation.get("live_run_readiness") or {}
+    submit_decision = validation.get("submit_safety_decision") or {}
     submission_traceability = validation.get("submission_traceability") or {}
     feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
     handoff = validation.get("operator_handoff") or {}
@@ -236,6 +251,27 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 )
                 + " |"
             )
+    if submit_decision:
+        lines.extend(
+            [
+                "",
+                "## 最终提交安全决策",
+                "",
+                f"- 决策: `{submit_decision.get('decision', '')}`",
+                f"- 是否允许 submit 命令: `{submit_decision.get('submit_command_allowed', False)}`",
+                f"- 是否已经执行外部提交命令: `{submit_decision.get('external_submission_attempted', False)}`",
+                f"- 授权已确认: `{submit_decision.get('authorization_confirmed', False)}`",
+                f"- 最终提交已确认: `{submit_decision.get('final_submit_confirmed', False)}`",
+                f"- 真实输入已齐备: `{submit_decision.get('live_inputs_ready', False)}`",
+                f"- 阻断原因: `{submit_decision.get('blocking_reason', '')}`",
+                f"- 执行后阻断原因: `{submit_decision.get('post_run_blocker_reason', '')}`",
+            ]
+        )
+        missing_gates = submit_decision.get("missing_gates") or []
+        if missing_gates:
+            lines.extend(["", "### 缺失 Gate", ""])
+            for gate in missing_gates:
+                lines.append(f"- `{gate}`")
     if submission_traceability:
         lines.extend(
             [
@@ -674,6 +710,58 @@ def _live_run_readiness(
         "gates": gates,
         "missing_gates": [
             gate["id"] for gate in gates if gate["status"] != "pass"
+        ],
+    }
+
+
+def _submit_safety_decision(
+    *,
+    request: dict[str, Any],
+    readiness: dict[str, Any],
+    pre_submit_blocker_reason: str,
+    external_submission_attempted: bool,
+    command_returncode: int | None = None,
+    post_run_blocker_reason: str = "",
+) -> dict[str, Any]:
+    live_inputs_ready = all(
+        bool(request[field])
+        for field in (
+            "job_url",
+            "resume_pdf_path",
+            "profile_path",
+            "confirm_submit_job_id",
+            "confirm_submit_recruiter",
+        )
+    )
+    submit_command_allowed = bool(readiness.get("submit_command_allowed"))
+    if external_submission_attempted:
+        decision = "allowed_and_executed"
+    elif submit_command_allowed:
+        decision = "allowed_pending_execution"
+    else:
+        decision = "blocked_before_command"
+    blocking_reason = pre_submit_blocker_reason
+    return {
+        "decision": decision,
+        "submit_command_allowed": submit_command_allowed,
+        "external_submission_attempted": external_submission_attempted,
+        "authorization_confirmed": bool(request["authorized"]),
+        "final_submit_confirmed": bool(request["final_submit_confirmed"]),
+        "supported_channel_confirmed": request["channel"] == "liepin",
+        "live_inputs_ready": live_inputs_ready,
+        "missing_gates": list(readiness.get("missing_gates") or []),
+        "blocking_reason": blocking_reason,
+        "post_run_blocker_reason": post_run_blocker_reason,
+        "command_returncode": command_returncode,
+        "requires_explicit_user_authorization": True,
+        "requires_separate_final_submit_confirmation": True,
+        "credentials_or_challenge_inputs_accepted": False,
+        "confirmation_scope": [
+            "用户显式授权接触真实外部渠道",
+            "用户单独确认允许最终提交路径进入真实渠道命令",
+            "确认岗位 ID 与页面目标一致",
+            "确认招聘方与页面目标一致",
+            "resume PDF 与 profile YAML 已审核",
         ],
     }
 

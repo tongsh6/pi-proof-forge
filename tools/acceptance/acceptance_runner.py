@@ -819,6 +819,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             evidence=external_l3_step.evidence,
             message=external_l3_step.message,
         )
+        results["external_l3_submit_safety_decision_recorded"] = (
+            _external_l3_submit_safety_result(external_l3_step)
+        )
         results["external_l3_post_submit_feedback_traceable"] = (
             _external_l3_feedback_trace_result(external_l3_step)
         )
@@ -831,6 +834,43 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             message=l2_step.message,
         )
     return results
+
+
+def _external_l3_submit_safety_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 最终提交安全决策证据不可读取: {exc}",
+        )
+    decision = payload.get("submit_safety_decision") or {}
+    required_flags = (
+        decision.get("requires_explicit_user_authorization") is True
+        and decision.get("requires_separate_final_submit_confirmation") is True
+        and decision.get("credentials_or_challenge_inputs_accepted") is False
+    )
+    if decision.get("decision") and required_flags:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message=(
+                "External L3 最终提交安全决策已记录: "
+                f"{decision.get('decision', 'unknown')}。"
+            ),
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 最终提交安全决策缺失或安全约束不完整。",
+    )
 
 
 def _external_l3_feedback_trace_result(step: AcceptanceStep) -> JourneyStepResult:
