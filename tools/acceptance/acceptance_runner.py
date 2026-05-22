@@ -825,6 +825,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_live_input_artifacts_fingerprinted"] = (
             _external_l3_live_input_artifacts_result(external_l3_step)
         )
+        results["external_l3_live_command_redacted"] = (
+            _external_l3_live_command_redaction_result(external_l3_step)
+        )
         results["external_l3_post_submit_feedback_traceable"] = (
             _external_l3_feedback_trace_result(external_l3_step)
         )
@@ -837,6 +840,55 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             message=l2_step.message,
         )
     return results
+
+
+def _external_l3_live_command_redaction_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 命令脱敏证据不可读取: {exc}",
+        )
+    if payload.get("external_submission_attempted") is not True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未执行真实渠道命令，因此没有持久化 live command 原文。",
+        )
+    redaction = payload.get("command_redaction") or {}
+    command = payload.get("command") or []
+    redacted_args = set(redaction.get("redacted_arguments") or [])
+    required_args = {
+        "--job-url",
+        "--resume",
+        "--profile",
+        "--confirm-submit-job-id",
+        "--confirm-submit-recruiter",
+    }
+    if (
+        redaction.get("raw_live_inputs_persisted") is False
+        and required_args.issubset(redacted_args)
+        and isinstance(command, list)
+        and command.count("<redacted>") >= len(required_args)
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 持久化命令已脱敏，真实 live 输入未写入 command 证据。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 持久化命令缺少脱敏证据或脱敏参数不完整。",
+    )
 
 
 def _external_l3_live_input_artifacts_result(step: AcceptanceStep) -> JourneyStepResult:

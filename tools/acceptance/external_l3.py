@@ -122,7 +122,17 @@ def build_external_l3_validation(
                 "external_validated" if external_validated else "live_blocker_recorded"
             ),
             "external_submission_attempted": True,
-            "command": list(command),
+            "command": _redacted_submission_command(command),
+            "command_redaction": {
+                "raw_live_inputs_persisted": False,
+                "redacted_arguments": [
+                    "--job-url",
+                    "--resume",
+                    "--profile",
+                    "--confirm-submit-job-id",
+                    "--confirm-submit-recruiter",
+                ],
+            },
             "returncode": completed.returncode,
             "stdout_tail": completed.stdout[-4000:],
             "stderr_tail": completed.stderr[-4000:],
@@ -1011,6 +1021,27 @@ def _submission_command(request: dict[str, Any]) -> tuple[str, ...]:
     ]
     command.append("--headless" if request["headless"] else "--no-headless")
     return tuple(command)
+
+
+def _redacted_submission_command(command: tuple[str, ...]) -> list[str]:
+    redacted_flags = {
+        "--job-url",
+        "--resume",
+        "--profile",
+        "--confirm-submit-job-id",
+        "--confirm-submit-recruiter",
+    }
+    redacted: list[str] = []
+    redact_next = False
+    for token in command:
+        if redact_next:
+            redacted.append("<redacted>")
+            redact_next = False
+            continue
+        redacted.append(token)
+        if token in redacted_flags:
+            redact_next = True
+    return redacted
 
 
 def _coverage(

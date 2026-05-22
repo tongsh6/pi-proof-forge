@@ -310,6 +310,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert input_rule["stage"] == "submissions"
     assert input_rule["status"] == "pass"
     assert "真实输入产物审计" in input_rule["message"]
+    command_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_live_command_redacted"
+    )
+    assert command_rule["level"] == "L3"
+    assert command_rule["stage"] == "submissions"
+    assert command_rule["status"] == "pass"
+    assert "命令" in command_rule["message"]
     feedback_rule = next(
         step
         for step in journey_payload["steps"]
@@ -505,6 +514,14 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert report.status == "pass"
     assert payload["status"] == "external_validated"
     assert payload["external_submission_attempted"] is True
+    assert payload["command_redaction"]["raw_live_inputs_persisted"] is False
+    assert "--job-url" in payload["command"]
+    assert "https://www.liepin.com/job/123.shtml" not in payload["command"]
+    assert str(resume) not in payload["command"]
+    assert str(profile) not in payload["command"]
+    assert "123" not in payload["command"]
+    assert "Verifier" not in payload["command"]
+    assert payload["command"].count("<redacted>") == 5
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
     assert payload["submission_traceability"]["linked_to_validation"] is True
     assert payload["submission_traceability"]["log_links_back_to_validation"] is True
