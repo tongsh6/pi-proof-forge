@@ -159,6 +159,7 @@
 - 真实渠道命令返回成功也不等于 L3 成功；必须解析并确认 `submission_log.yaml` 与同目录 `submission_log.json` 均存在，且 submission log 必须写回 `external_l3_validation_run_id`、`external_l3_validation_path` 和匹配本次 validation 的 `input_artifacts`，共同写入 `submission_traceability.linked_to_validation=true`。
 - 如果 submission log 存在但没有反向指向本次 L3 validation record，必须记录为 `submission_log_not_linked` blocker，不得把单向日志路径解析视为真实验收通过。
 - `submission_traceability` 必须记录逐项 `checks` 与 `failed_checks`，区分缺少 log hint、YAML/JSON 不存在、JSON 不可解析、run id/path 不匹配和输入产物指纹不匹配。
+- 真实渠道命令执行后产生 live blocker 时，`live_blocker` 必须直接包含 `failed_checks` 和 `diagnostics`，包括 returncode、submission log 路径和逐项 traceability checks，避免用户为理解 blocker 再反查深层字段。
 - 无论真实渠道成功还是记录 live blocker，L3 证据都必须包含 `post_submit_feedback_traceability`：成功时以 submission log 作为反馈来源，blocker 时以 `external-l3-validation.json` 作为反馈来源，并明确下一步反馈/阻断处理路径。
 - 真实渠道命令返回非零时不得伪装成功；必须保留 stdout/stderr tail 和 log hint，作为 exact live blocker。
 - runner 不接受 credentials、captcha 或 SMS 输入，也不得保存 secret。
