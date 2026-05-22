@@ -4,12 +4,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 AGENT_RUN_PAGE = ROOT / "ui" / "src" / "pages" / "agent-run" / "index.tsx"
-NATIVE_VERIFY_CONTROLLER = (
-    ROOT / "ui" / "src" / "components" / "shell" / "NativeVerifyController.tsx"
-)
-PACKAGE_JSON = ROOT / "ui" / "package.json"
-VERIFY_SCRIPT = ROOT / "ui" / "scripts" / "verify_agent_run_native.mjs"
-TAURI_MAIN = ROOT / "ui" / "src-tauri" / "src" / "main.rs"
 I18N_FILES = [
     ROOT / "ui" / "src" / "i18n" / "en.json",
     ROOT / "ui" / "src" / "i18n" / "zh.json",
@@ -24,12 +18,10 @@ def test_agent_run_page_uses_run_control_rpc_contract():
     assert "getSettings" in source
     assert "LlmConfig" in source
     assert "providerSummary" in source
-    assert "llm_config_summary" in source
-    assert "agent_run.start.result" in source
-    assert "api_key_masked" in source
+    assert "execute_guided_batch" in source
+    assert "confirmed_no_real_submit" in source
     assert 'data-automation-id="agent-run-start"' in source
     assert "stopAgentRun" in source
-    assert "agent_run.load.ready" in source
     assert "agentStateLabel" in source
     assert "runStatusLabel" in source
     assert "pages.agentRun.providerSummary" in source
@@ -53,28 +45,6 @@ def test_agent_run_page_renders_full_state_machine_contract():
         "DONE",
     ):
         assert state in source
-
-
-def test_agent_run_native_verifier_is_registered():
-    controller = NATIVE_VERIFY_CONTROLLER.read_text(encoding="utf-8")
-    package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
-    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
-    tauri_main = TAURI_MAIN.read_text(encoding="utf-8")
-
-    assert '"agent-run": "/agent-run"' in controller
-    assert (
-        package["scripts"]["e2e:agent-run"]
-        == "node ./scripts/verify_agent_run_native.mjs"
-    )
-    assert "agent_run.load.ready" in script
-    assert "agent_run.start.result" in script
-    assert "agent_run_verify_provider" in script
-    assert "PPF_POLICY_PATH" in script
-    assert "llm_config_summary" in script
-    assert "validateReadyEvent" in script
-    assert "profile_count" in script
-    assert '"agent-run"' in tauri_main
-    assert 'event_name.starts_with("agent_run.")' in tauri_main
 
 
 def test_agent_run_i18n_contract_is_complete():

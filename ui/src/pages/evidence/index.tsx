@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import {
   FileUp,
@@ -8,6 +7,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -15,14 +15,17 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   createEvidence,
   deleteEvidence,
+  generateEvidenceDraft,
   getEvidence,
   importEvidence,
   listEvidenceMaterialSources,
   listEvidence,
+  saveEvidenceDraft,
   updateEvidence,
 } from "@/lib/sidecar/api";
 import type {
   ArtifactSummary,
+  EvidenceDraftPayload,
   EvidenceDetail,
   EvidenceFilters,
   EvidenceListItem,
@@ -44,7 +47,6 @@ type EvidenceForm = {
   tagsText: string;
 };
 
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
 const DEFAULT_FILTERS: EvidenceFilters = {
   query: "",
   status: null,
@@ -52,19 +54,6 @@ const DEFAULT_FILTERS: EvidenceFilters = {
   tags: [],
   date_range: null,
 };
-
-function recordVerifyEvent(
-  event: string,
-  details: Record<string, unknown> = {}
-) {
-  if (verifyScenario !== "evidence") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
-}
 
 function parseCommaList(value: string): string[] {
   return value
@@ -101,11 +90,18 @@ function statusTone(status: string): string {
   if (status === "ready" || status === "pass") {
     return "border-success/40 bg-success/10 text-success";
   }
-  if (status === "gap" || status === "needs_review") {
+  if (
+    status === "gap" ||
+    status === "needs_review" ||
+    status === "saved_incomplete"
+  ) {
     return "border-warning/40 bg-warning/10 text-warning";
   }
-  if (status === "draft") {
+  if (status === "draft" || status === "draft_incomplete") {
     return "border-border bg-bg-hover text-text-secondary";
+  }
+  if (status === "saved_eligible" || status === "draft_ready_for_review") {
+    return "border-success/40 bg-success/10 text-success";
   }
   return "border-accent/40 bg-accent/10 text-accent";
 }
@@ -125,6 +121,7 @@ export function EvidencePage() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [detailState, setDetailState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [draftState, setDraftState] = useState<"idle" | "generating">("idle");
   const [deleteState, setDeleteState] = useState<"idle" | "deleting">("idle");
   const [importState, setImportState] = useState<"idle" | "importing">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +134,9 @@ export function EvidencePage() {
   const [tagInput, setTagInput] = useState("");
   const [importPath, setImportPath] = useState("");
   const [importMode, setImportMode] = useState<EvidenceImportMode>("append");
+  const [selectedMaterialId, setSelectedMaterialId] = useState("");
+  const [generatedDraft, setGeneratedDraft] =
+    useState<EvidenceDraftPayload | null>(null);
   const [previewArtifact, setPreviewArtifact] = useState<ArtifactSummary | null>(null);
   const selectedIdRef = useRef<string | null>(null);
 
@@ -152,13 +152,14 @@ export function EvidencePage() {
       gaps: items.filter(
         (item) => item.status === "gap" || item.status === "needs_review"
       ).length,
-      artifacts: selectedArtifactCount(detail),
+      artifacts: generatedDraft?.artifacts.length ?? selectedArtifactCount(detail),
     }),
-    [detail, items]
+    [detail, generatedDraft, items]
   );
 
   const isBusy =
     saveState === "saving" ||
+    draftState === "generating" ||
     deleteState === "deleting" ||
     importState === "importing";
 
@@ -175,6 +176,7 @@ export function EvidencePage() {
       setPreviewArtifact(result.evidence.artifacts[0] ?? null);
       setForm(toForm(result.evidence));
       setIsDraft(false);
+      setGeneratedDraft(null);
       setDetailState("ready");
       return result.evidence;
     } catch (nextError) {
@@ -199,30 +201,37 @@ export function EvidencePage() {
         ]);
         setItems(result.items);
         setMaterialSources(materialResult.items);
+        setSelectedMaterialId((current) => {
+          if (
+            current &&
+            materialResult.items.some((item) => item.material_id === current)
+          ) {
+            return current;
+          }
+          return (
+            materialResult.items.find((item) => item.extension === ".md")
+              ?.material_id ?? ""
+          );
+        });
         const preferredItem =
           result.items.find(
             (item) =>
               item.evidence_id === (preferredEvidenceId ?? selectedIdRef.current)
           ) ?? result.items[0];
 
-        const loadedDetail = preferredItem
-          ? await loadDetail(preferredItem.evidence_id)
-          : null;
+        if (preferredItem) {
+          await loadDetail(preferredItem.evidence_id);
+        }
         if (!preferredItem) {
           setSelectedId(null);
           setDetail(null);
           setPreviewArtifact(null);
           setForm(toForm(null));
           setIsDraft(true);
+          setGeneratedDraft(null);
           setDetailState("ready");
         }
         setLoadState("ready");
-        recordVerifyEvent("evidence.load.ready", {
-          card_count: result.items.length,
-          selected_id: preferredItem?.evidence_id ?? null,
-          artifact_count: selectedArtifactCount(loadedDetail),
-          material_source_count: materialResult.items.length,
-        });
       } catch (nextError) {
         setItems([]);
         setSelectedId(null);
@@ -230,9 +239,6 @@ export function EvidencePage() {
         setPreviewArtifact(null);
         setError(getErrorMessage(nextError));
         setLoadState("error");
-        recordVerifyEvent("evidence.load.error", {
-          error: getErrorMessage(nextError),
-        });
       }
     },
     [evidenceFilters, loadDetail]
@@ -268,9 +274,92 @@ export function EvidencePage() {
     setDetailError(null);
     setDetailState("ready");
     setIsDraft(true);
+    setGeneratedDraft(null);
     setSaveState("idle");
     setImportMode("create");
   }, []);
+
+  const updateFormFromDraft = useCallback((draft: EvidenceDraftPayload) => {
+    setForm({
+      title: draft.title,
+      time_range: draft.time_range ?? "",
+      context: draft.context,
+      role_scope: draft.role_scope ?? "",
+      actions: draft.actions,
+      results: draft.results,
+      stackText: draft.stack.join(", "),
+      tagsText: draft.tags.join(", "),
+    });
+  }, []);
+
+  const draftFromForm = useCallback(
+    (draft: EvidenceDraftPayload): EvidenceDraftPayload => ({
+      ...draft,
+      title: form.title.trim(),
+      time_range: form.time_range,
+      context: form.context,
+      role_scope: form.role_scope,
+      actions: form.actions,
+      results: form.results,
+      stack: parseCommaList(form.stackText),
+      tags: parseCommaList(form.tagsText),
+    }),
+    [form]
+  );
+
+  const handleGenerateDraft = useCallback(async () => {
+    const materialId =
+      selectedMaterialId ||
+      materialSources.find((source) => source.extension === ".md")?.material_id ||
+      "";
+    if (!materialId) {
+      setDetailError(t("pages.evidence.errors.selectMaterial"));
+      return;
+    }
+    setDraftState("generating");
+    setDetailError(null);
+    try {
+      const result = await generateEvidenceDraft([materialId]);
+      if (!result.draft) {
+        setDetailError(result.message);
+        setDraftState("idle");
+        return;
+      }
+      setGeneratedDraft(result.draft);
+      updateFormFromDraft(result.draft);
+      setSelectedId(null);
+      setDetail(null);
+      setPreviewArtifact(null);
+      setIsDraft(true);
+      setDetailState("ready");
+      setDraftState("idle");
+    } catch (nextError) {
+      setDraftState("idle");
+      setDetailError(getErrorMessage(nextError));
+    }
+  }, [materialSources, selectedMaterialId, t, updateFormFromDraft]);
+
+  const handleSaveReviewedDraft = useCallback(
+    async (saveMode: "incomplete" | "eligible") => {
+      if (!generatedDraft) return;
+      setSaveState("saving");
+      setDetailError(null);
+      try {
+        const result = await saveEvidenceDraft({
+          draft: draftFromForm(generatedDraft),
+          save_mode: saveMode,
+          review: { decision: "approved", reviewed_at: new Date().toISOString() },
+        });
+        setGeneratedDraft(null);
+        await loadEvidence(result.evidence_id);
+        setSaveState("saved");
+      } catch (nextError) {
+        setSaveState("idle");
+        setDetailError(getErrorMessage(nextError));
+      }
+    },
+    [draftFromForm, generatedDraft, loadEvidence]
+  );
 
   const handleSave = useCallback(async () => {
     if (!form.title.trim()) {
@@ -595,12 +684,48 @@ export function EvidencePage() {
                 {t("pages.evidence.materialSources.source")}
               </span>
             </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <select
+                className="min-w-[220px] rounded-card border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                disabled={isBusy || materialSources.length === 0}
+                onChange={(event) => setSelectedMaterialId(event.target.value)}
+                value={selectedMaterialId}
+              >
+                <option value="">
+                  {t("pages.evidence.materialSources.selectPlaceholder")}
+                </option>
+                {materialSources.map((source) => (
+                  <option
+                    key={source.material_id}
+                    disabled={source.extension !== ".md"}
+                    value={source.material_id}
+                  >
+                    {source.label || source.filename}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isBusy || !selectedMaterialId}
+                onClick={() => void handleGenerateDraft()}
+                type="button"
+              >
+                <Sparkles size={16} />
+                {draftState === "generating"
+                  ? t("pages.evidence.actions.generatingDraft")
+                  : t("pages.evidence.actions.generateDraft")}
+              </button>
+            </div>
             {materialSources.length > 0 ? (
               <div className="mt-4 grid gap-3 lg:grid-cols-3">
                 {materialSources.slice(0, 3).map((source) => (
                   <article
                     key={source.material_id}
-                    className="rounded-card border border-border bg-bg-primary/50 p-3"
+                    className={`rounded-card border p-3 ${
+                      selectedMaterialId === source.material_id
+                        ? "border-accent bg-accent/10"
+                        : "border-border bg-bg-primary/50"
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -611,7 +736,15 @@ export function EvidencePage() {
                           {source.material_id} · {source.extension}
                         </p>
                       </div>
-                      <FileUp size={15} className="shrink-0 text-accent" />
+                      <button
+                        className="shrink-0 rounded-card border border-border p-2 text-accent transition-colors hover:bg-bg-hover disabled:opacity-50"
+                        disabled={source.extension !== ".md" || isBusy}
+                        onClick={() => setSelectedMaterialId(source.material_id)}
+                        title={t("pages.evidence.materialSources.select")}
+                        type="button"
+                      >
+                        <FileUp size={15} />
+                      </button>
                     </div>
                     <p className="mt-3 max-h-[48px] overflow-hidden text-xs leading-4 text-text-secondary">
                       {source.preview ||
@@ -718,7 +851,11 @@ export function EvidencePage() {
                   <button
                     className="rounded-card border border-border p-2 text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isBusy}
-                    onClick={() => void handleSave()}
+                    onClick={() =>
+                      generatedDraft
+                        ? void handleSaveReviewedDraft("eligible")
+                        : void handleSave()
+                    }
                     title={t("pages.evidence.actions.save")}
                     type="button"
                   >
@@ -753,6 +890,57 @@ export function EvidencePage() {
 
               {detailState === "ready" && (detail || isDraft) ? (
                 <div className="space-y-4 pt-4">
+                  {generatedDraft ? (
+                    <section className="rounded-card border border-success/40 bg-success/10 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-text-primary">
+                            {t("pages.evidence.review.title")}
+                          </p>
+                          <p className="mt-1 text-xs text-text-secondary">
+                            {t("pages.evidence.review.source", {
+                              count: generatedDraft.source_material_ids.length,
+                            })}
+                          </p>
+                        </div>
+                        {renderStatus(
+                          generatedDraft.missing_items?.length
+                            ? "draft_incomplete"
+                            : "draft_ready_for_review"
+                        )}
+                      </div>
+                      {generatedDraft.missing_items?.length ? (
+                        <p className="mt-3 text-xs text-warning">
+                          {t("pages.evidence.review.missing", {
+                            items: generatedDraft.missing_items.join(", "),
+                          })}
+                        </p>
+                      ) : (
+                        <p className="mt-3 text-xs text-success">
+                          {t("pages.evidence.review.eligible")}
+                        </p>
+                      )}
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <button
+                          className="rounded-card border border-border px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isBusy}
+                          onClick={() => void handleSaveReviewedDraft("incomplete")}
+                          type="button"
+                        >
+                          {t("pages.evidence.actions.saveIncomplete")}
+                        </button>
+                        <button
+                          className="rounded-card border border-success bg-success px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isBusy}
+                          onClick={() => void handleSaveReviewedDraft("eligible")}
+                          type="button"
+                        >
+                          {t("pages.evidence.actions.saveEligible")}
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
+
                   <label className="block rounded-card border border-border bg-bg-hover/50 p-3">
                     <span className="text-xs uppercase tracking-[0.16em] text-text-muted">
                       {t("pages.evidence.fields.title")}
@@ -874,13 +1062,30 @@ export function EvidencePage() {
                         </h3>
                         <p className="mt-1 text-xs text-text-secondary">
                           {t("pages.evidence.artifacts.size", {
-                            count: detail?.artifacts.length ?? 0,
+                            count:
+                              generatedDraft?.artifacts.length ??
+                              detail?.artifacts.length ??
+                              0,
                           })}
                         </p>
                       </div>
                     </div>
                     <div className="mt-3 grid gap-2">
-                      {detail?.artifacts.length ? (
+                      {generatedDraft?.artifacts.length ? (
+                        generatedDraft.artifacts.map((artifact) => (
+                          <div
+                            key={`${artifact.type}-${artifact.ref}`}
+                            className="rounded-card border border-border bg-bg-panel/60 p-3"
+                          >
+                            <p className="truncate text-sm font-medium text-text-primary">
+                              {artifact.label}
+                            </p>
+                            <p className="mt-1 font-mono text-xs text-text-muted">
+                              {artifact.type} · {artifact.ref}
+                            </p>
+                          </div>
+                        ))
+                      ) : detail?.artifacts.length ? (
                         detail.artifacts.map(renderArtifact)
                       ) : (
                         <p className="rounded-card border border-dashed border-border p-3 text-sm text-text-secondary">

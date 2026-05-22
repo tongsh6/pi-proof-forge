@@ -16,6 +16,80 @@ from tools.sidecar.handlers.agent import (
 )
 
 
+def _write_active_profile(profile_dir: Path, profile_id: str = "jp-001") -> None:
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    (profile_dir / f"{profile_id}.yaml").write_text(
+        "\n".join(
+            [
+                "target_role: Backend",
+                "status: active",
+                "keywords:",
+                '  - "Kafka"',
+                "must_have:",
+                '  - "Java"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_eligible_evidence(
+    project_root: Path, evidence_id: str = "ec_saved", raw_source: str = "materials/mat.md"
+) -> None:
+    evidence_dir = project_root / "evidence_cards"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / f"{evidence_id}.yaml").write_text(
+        "\n".join(
+            [
+                f'id: "{evidence_id}"',
+                'title: "Saved eligible card"',
+                'time_range: "2025-06 ~ 2025-09"',
+                'context: "Inventory reliability"',
+                'role_scope: "Tech Lead"',
+                'status: "saved_eligible"',
+                'candidate_pool_eligible: "true"',
+                "actions:",
+                '  - "Built Java Kafka inventory sync"',
+                "results:",
+                '  - "P95 latency dropped to 1.8s"',
+                "stack:",
+                '  - "Java"',
+                '  - "Kafka"',
+                "artifacts:",
+                '  - "latency.md"',
+                "tags:",
+                '  - "reliability"',
+                f'raw_source: "{raw_source}"',
+                "source_material_ids:",
+                '  - "mat_001"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_job_lead(project_root: Path, lead_id: str, company: str = "Acme") -> None:
+    lead_dir = project_root / "job_leads"
+    lead_dir.mkdir(parents=True, exist_ok=True)
+    (lead_dir / f"{lead_id}.yaml").write_text(
+        "\n".join(
+            [
+                f'id: "{lead_id}"',
+                f'company: "{company}"',
+                'position: "Backend Tech Lead"',
+                'source: "fixture"',
+                f'url: "https://jobs.example.com/{lead_id}"',
+                'status: "new"',
+                'confidence: "0.90"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 class TestCreateReviewCandidates:
     def test_creates_candidates_successfully(self):
         with TemporaryDirectory() as tmp:
@@ -133,11 +207,9 @@ class TestQuickRunStart:
             tools_dir = project_root / "tools"
             profile_dir = project_root / "job_profiles"
             tools_dir.mkdir()
-            profile_dir.mkdir()
             (tools_dir / "sample_raw.txt").write_text("raw", encoding="utf-8")
-            (profile_dir / "jp-001.yaml").write_text(
-                "target_role: Backend\n", encoding="utf-8"
-            )
+            _write_active_profile(profile_dir)
+            _write_eligible_evidence(project_root)
 
             completed = type(
                 "Completed",
@@ -179,13 +251,11 @@ class TestQuickRunStart:
             matching_dir = project_root / "matching_reports"
             summary_dir = project_root / "outputs" / "agent_runs" / "qr_test"
             tools_dir.mkdir()
-            profile_dir.mkdir()
             matching_dir.mkdir()
             summary_dir.mkdir(parents=True)
             (tools_dir / "sample_raw.txt").write_text("raw", encoding="utf-8")
-            (profile_dir / "jp-001.yaml").write_text(
-                "target_role: Backend\n", encoding="utf-8"
-            )
+            _write_active_profile(profile_dir)
+            _write_eligible_evidence(project_root, evidence_id="ec_test")
             (matching_dir / "mr-qr_test.yaml").write_text(
                 "\n".join(
                     [
@@ -249,11 +319,9 @@ class TestQuickRunStart:
             profile_dir = project_root / "job_profiles"
             policy_path = project_root / "policy.yaml"
             tools_dir.mkdir()
-            profile_dir.mkdir()
             (tools_dir / "sample_raw.txt").write_text("raw", encoding="utf-8")
-            (profile_dir / "jp-001.yaml").write_text(
-                "target_role: Backend\n", encoding="utf-8"
-            )
+            _write_active_profile(profile_dir)
+            _write_eligible_evidence(project_root)
             policy_path.write_text(
                 "\n".join(
                     [
@@ -325,12 +393,14 @@ class TestQuickRunStart:
             materials_dir = project_root / "materials"
             summary_dir = project_root / "outputs" / "agent_runs" / "qr_material"
             tools_dir.mkdir()
-            profile_dir.mkdir()
+            _write_active_profile(profile_dir)
             materials_dir.mkdir()
             summary_dir.mkdir(parents=True)
             (tools_dir / "sample_raw.txt").write_text("fallback", encoding="utf-8")
-            (profile_dir / "jp-001.yaml").write_text(
-                "target_role: Backend\n", encoding="utf-8"
+            _write_eligible_evidence(
+                project_root,
+                evidence_id="ec-qr_material",
+                raw_source=str(materials_dir / "mat_001.md"),
             )
             (materials_dir / "mat_001.md").write_text("material raw", encoding="utf-8")
             (materials_dir / "mat_001.meta.yaml").write_text(
@@ -453,6 +523,148 @@ class TestQuickRunStart:
 
 
 class TestAgentRunStart:
+    def test_guided_batch_records_gate_review_queue_and_blocks_delivery(self):
+        with TemporaryDirectory() as project_tmp:
+            project_root = Path(project_tmp)
+            runs_dir = project_root / "outputs" / "agent_runs"
+            policy_path = project_root / "policy.yaml"
+            (project_root / "tools").mkdir()
+            _write_active_profile(project_root / "job_profiles", "jp-guided")
+            _write_eligible_evidence(project_root, evidence_id="ec_guided")
+            _write_job_lead(project_root, "jl-guided-1")
+            _write_job_lead(project_root, "jl-guided-2", company="Beta")
+            policy_path.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "lm_studio"',
+                        'llm_model: "local-model"',
+                        'llm_base_url: "http://127.0.0.1:1234/v1"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_placeholder: "configured"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("tools.sidecar.handlers.agent._PROJECT_ROOT", project_root),
+                patch("tools.sidecar.handlers.agent._AGENT_RUN_DIR", runs_dir),
+                patch(
+                    "tools.sidecar.handlers.agent._REVIEW_QUEUE_DIR",
+                    project_root / "outputs" / "review_queue",
+                ),
+                patch(
+                    "tools.sidecar.handlers.agent._build_agent_run_id",
+                    return_value="ar_guided",
+                ),
+                patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}, clear=True),
+            ):
+                result = handle_agent_start(
+                    {
+                        "meta": {"correlation_id": "corr_agent_guided"},
+                        "job_profile_id": "jp-guided",
+                        "options": {
+                            "execute_guided_batch": True,
+                            "preflight_confirmed": True,
+                            "confirmed_no_real_submit": True,
+                            "max_rounds": 2,
+                            "max_candidates": 2,
+                            "candidate_ids": ["jl-guided-1", "jl-guided-2"],
+                            "evidence_ids": ["ec_guided"],
+                        },
+                    }
+                )
+                fetched = handle_agent_get(
+                    {
+                        "meta": {"correlation_id": "corr_agent_guided_get"},
+                        "run_id": "ar_guided",
+                    }
+                )
+                pending = handle_get_pending_review(
+                    {
+                        "meta": {"correlation_id": "corr_agent_guided_pending"},
+                        "run_id": "ar_guided",
+                    }
+                )
+
+        assert result["status"] == "REVIEW_PENDING"
+        assert result["guided_batch"] is True
+        assert fetched["run"]["guided_batch"] is True
+        assert fetched["run"]["selected_candidate_ids"] == [
+            "jl-guided-1",
+            "jl-guided-2",
+        ]
+        assert fetched["run"]["policy_limits"]["submit_enabled"] is False
+        assert fetched["run"]["preflight_confirmation"]["confirmed_no_real_submit"] is True
+        assert fetched["run"]["delivery_plan"]["external_submission_attempted"] is False
+        assert fetched["run"]["delivery_plan"]["delivery_events"] == 0
+        assert fetched["run"]["review_queue"]["pending_count"] == 2
+        event_types = [event["event_type"] for event in fetched["events"]]
+        assert "GATE" in event_types
+        assert "REVIEW" in event_types
+        assert "DELIVER" not in event_types
+        assert len(fetched["gate_checks"]) >= 1
+        assert len(pending["candidates"]) == 2
+
+    def test_guided_batch_requires_preflight_and_submit_disabled(self):
+        with TemporaryDirectory() as project_tmp:
+            project_root = Path(project_tmp)
+            runs_dir = project_root / "outputs" / "agent_runs"
+            policy_path = project_root / "policy.yaml"
+            _write_active_profile(project_root / "job_profiles", "jp-guided")
+            _write_eligible_evidence(project_root, evidence_id="ec_guided")
+            _write_job_lead(project_root, "jl-guided-1")
+            policy_path.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "lm_studio"',
+                        'llm_model: "local-model"',
+                        'llm_base_url: "http://127.0.0.1:1234/v1"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_placeholder: "configured"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("tools.sidecar.handlers.agent._PROJECT_ROOT", project_root),
+                patch("tools.sidecar.handlers.agent._AGENT_RUN_DIR", runs_dir),
+                patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy_path)}, clear=True),
+            ):
+                try:
+                    handle_agent_start(
+                        {
+                            "meta": {"correlation_id": "corr_agent_no_confirm"},
+                            "job_profile_id": "jp-guided",
+                            "options": {"execute_guided_batch": True},
+                        }
+                    )
+                    no_confirm_rejected = False
+                except ValueError as exc:
+                    no_confirm_rejected = "preflight_confirmation_required" in str(exc)
+                try:
+                    handle_agent_start(
+                        {
+                            "meta": {"correlation_id": "corr_agent_submit"},
+                            "job_profile_id": "jp-guided",
+                            "options": {
+                                "execute_guided_batch": True,
+                                "preflight_confirmed": True,
+                                "confirmed_no_real_submit": True,
+                                "submit_enabled": True,
+                            },
+                        }
+                    )
+                    submit_rejected = False
+                except ValueError as exc:
+                    submit_rejected = "submit_enable_blocked_for_case" in str(exc)
+
+        assert no_confirm_rejected is True
+        assert submit_rejected is True
+
     def test_agent_run_records_masked_persisted_llm_config_summary(self):
         with TemporaryDirectory() as project_tmp:
             project_root = Path(project_tmp)

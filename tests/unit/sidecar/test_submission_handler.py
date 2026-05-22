@@ -6,6 +6,13 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from tools.sidecar.handlers.submission import (
+    handle_channel_session_check,
+    handle_channel_session_clear,
+    handle_channel_session_get,
+    handle_channel_session_start,
+    handle_feedback_create_iteration,
+    handle_feedback_list,
+    handle_submission_check_mode,
     handle_submission_detail,
     handle_submission_list,
     handle_submission_retry,
@@ -518,6 +525,566 @@ class SubmissionRetryTests(unittest.TestCase):
                             "strategy": "same_channel",
                         }
                     )
+
+
+class ChannelSessionTests(unittest.TestCase):
+    def test_channel_session_requires_and_validates_channel(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            sessions_dir = Path(tmp_dir) / "channel_sessions"
+            with patch(
+                "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                sessions_dir,
+            ):
+                with self.assertRaises(ValueError) as missing:
+                    handle_channel_session_get({"meta": {"correlation_id": "corr"}})
+                with self.assertRaises(ValueError) as unsupported:
+                    handle_channel_session_get(
+                        {
+                            "meta": {"correlation_id": "corr"},
+                            "channel": "boss",
+                        }
+                    )
+
+        self.assertIn("channel_required", str(missing.exception))
+        self.assertIn("unsupported_submission_channel", str(unsupported.exception))
+
+    def test_channel_session_rejects_credentials_and_challenge_inputs(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            sessions_dir = Path(tmp_dir) / "channel_sessions"
+            with patch(
+                "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                sessions_dir,
+            ):
+                with self.assertRaises(ValueError) as password_error:
+                    handle_channel_session_start(
+                        {
+                            "meta": {"correlation_id": "corr_password"},
+                            "channel": "liepin",
+                            "credentials": {"password": "secret"},
+                        }
+                    )
+                with self.assertRaises(ValueError) as captcha_error:
+                    handle_channel_session_check(
+                        {
+                            "meta": {"correlation_id": "corr_captcha"},
+                            "channel": "liepin",
+                            "captcha_code": "1234",
+                        }
+                    )
+
+        self.assertIn(
+            "credentials_or_challenge_input_forbidden", str(password_error.exception)
+        )
+        self.assertIn(
+            "credentials_or_challenge_input_forbidden", str(captcha_error.exception)
+        )
+
+    def test_channel_session_start_records_manual_login_boundary(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            sessions_dir = Path(tmp_dir) / "channel_sessions"
+            with patch(
+                "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                sessions_dir,
+            ):
+                result = handle_channel_session_start(
+                    {
+                        "meta": {"correlation_id": "corr_start"},
+                        "channel": "liepin",
+                    }
+                )
+                session_artifact_exists = Path(
+                    result["artifact_paths"]["channel_session"]
+                ).exists()
+                log_artifact_exists = Path(
+                    result["artifact_paths"]["session_check_log"]
+                ).exists()
+
+        self.assertEqual(result["meta"]["correlation_id"], "corr_start")
+        self.assertEqual(result["session"]["channel"], "liepin")
+        self.assertEqual(result["session"]["login_status"], "waiting_for_manual_login")
+        self.assertTrue(result["manual_login_required"])
+        self.assertFalse(result["browser_automation"]["entered_credentials"])
+        self.assertFalse(result["browser_automation"]["entered_captcha_or_sms"])
+        self.assertIn("liepin", result["session"]["adapter"])
+        step_names = [step["name"] for step in result["steps"]]
+        self.assertIn("manual_login_required", step_names)
+        self.assertTrue(session_artifact_exists)
+        self.assertTrue(log_artifact_exists)
+
+    def test_channel_session_check_requires_positive_login_signal(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            sessions_dir = Path(tmp_dir) / "channel_sessions"
+            with patch(
+                "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                sessions_dir,
+            ):
+                unknown = handle_channel_session_check(
+                    {
+                        "meta": {"correlation_id": "corr_unknown"},
+                        "channel": "liepin",
+                        "login_signals": {"login_modal_absent": True},
+                    }
+                )
+                login_required = handle_channel_session_check(
+                    {
+                        "meta": {"correlation_id": "corr_login_required"},
+                        "channel": "liepin",
+                        "login_signals": {"login_required": True},
+                    }
+                )
+                valid = handle_channel_session_check(
+                    {
+                        "meta": {"correlation_id": "corr_valid"},
+                        "channel": "liepin",
+                        "login_signals": {
+                            "logged_in_user_ui_or_equivalent_authenticated_signal": True
+                        },
+                        "account_identity": {
+                            "display_name_or_nickname": "Verifier",
+                            "masked_phone_or_email_suffix": "13800123456",
+                            "avatar_presence": True,
+                        },
+                    }
+                )
+                log_payload = json.loads(
+                    Path(valid["artifact_paths"]["session_check_log"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
+
+        self.assertEqual(unknown["session"]["login_status"], "session_unknown")
+        self.assertFalse(unknown["session"]["clear_available"])
+        self.assertEqual(login_required["session"]["login_status"], "login_required")
+        self.assertEqual(valid["session"]["login_status"], "session_valid")
+        self.assertTrue(valid["session"]["clear_available"])
+        self.assertEqual(
+            valid["session"]["account_identity"]["display_name_or_nickname"],
+            "Verifier",
+        )
+        self.assertEqual(
+            valid["session"]["account_identity"]["masked_phone_or_email_suffix"],
+            "***3456",
+        )
+        self.assertIn("liepin", valid["session"]["adapter"])
+        self.assertEqual(log_payload["terminal_status"], "session_valid")
+        self.assertFalse(log_payload["adapter"]["liepin"]["credential_entry_attempted"])
+
+    def test_channel_session_clear_removes_only_selected_channel_profile(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            sessions_dir = Path(tmp_dir) / "channel_sessions"
+            with patch(
+                "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                sessions_dir,
+            ):
+                valid = handle_channel_session_check(
+                    {
+                        "meta": {"correlation_id": "corr_valid"},
+                        "channel": "liepin",
+                        "login_signals": {
+                            "logged_in_user_ui_or_equivalent_authenticated_signal": True
+                        },
+                    }
+                )
+                valid_profile_exists = Path(valid["session"]["session_path"]).exists()
+                other_channel_profile = sessions_dir / "future_channel" / "browser_profile"
+                other_channel_profile.mkdir(parents=True)
+                cleared = handle_channel_session_clear(
+                    {
+                        "meta": {"correlation_id": "corr_clear"},
+                        "channel": "liepin",
+                    }
+                )
+                cleared_profile_exists = Path(
+                    cleared["session"]["session_path"]
+                ).exists()
+                other_profile_exists = other_channel_profile.exists()
+                fetched = handle_channel_session_get(
+                    {
+                        "meta": {"correlation_id": "corr_get"},
+                        "channel": "liepin",
+                    }
+                )
+
+        self.assertTrue(valid_profile_exists)
+        self.assertEqual(cleared["session"]["login_status"], "session_cleared")
+        self.assertFalse(cleared_profile_exists)
+        self.assertTrue(other_profile_exists)
+        self.assertEqual(fetched["session"]["login_status"], "session_cleared")
+        self.assertFalse(fetched["session"]["clear_available"])
+
+
+def _write_check_mode_inputs(root: Path) -> tuple[Path, Path, Path]:
+    leads_dir = root / "job_leads"
+    leads_dir.mkdir(parents=True)
+    lead_path = leads_dir / "jl_submission_check.yaml"
+    lead_path.write_text(
+        "\n".join(
+            [
+                'id: "jl_submission_check"',
+                'channel: "liepin"',
+                'company: "Check Corp"',
+                'position: "Backend Engineer"',
+                'job_url: "https://www.liepin.com/job/123.shtml"',
+                'job_id: "123"',
+                'recruiter: "Recruiter A"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    resume_path = root / "outputs" / "quick_runs" / "check" / "exports" / "resume.pdf"
+    resume_path.parent.mkdir(parents=True)
+    resume_path.write_bytes(b"%PDF-1.4\nfixture\n")
+    return leads_dir, resume_path, root / "outputs" / "submissions"
+
+
+def _check_mode_confirmation_items() -> list[str]:
+    return [
+        "check_mode_no_real_submit",
+        "selected_submission_channel",
+        "selected_channel_job_lead",
+        "selected_resume_pdf",
+        "selected_channel_session_metadata",
+        "may_use_channel_shared_session",
+        "final_confirm_disabled_and_forbidden",
+        "must_stop_before_final_confirm",
+    ]
+
+
+class SubmissionCheckModeTests(unittest.TestCase):
+    def test_check_mode_requires_preflight_channel_lead_resume_and_valid_session(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            leads_dir, resume_path, submissions_dir = _write_check_mode_inputs(root)
+            sessions_dir = root / "outputs" / "channel_sessions"
+            with (
+                patch("tools.sidecar.handlers.submission._JOB_LEAD_DIR", leads_dir),
+                patch("tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir),
+                patch(
+                    "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                    sessions_dir,
+                ),
+            ):
+                with self.assertRaises(ValueError) as preflight_error:
+                    handle_submission_check_mode(
+                        {
+                            "meta": {"correlation_id": "corr_missing_preflight"},
+                            "channel": "liepin",
+                            "job_lead_id": "jl_submission_check",
+                            "resume_version_id": "rv_check",
+                            "resume_pdf_path": str(resume_path),
+                        }
+                    )
+
+                login_required = handle_submission_check_mode(
+                    {
+                        "meta": {"correlation_id": "corr_no_session"},
+                        "channel": "liepin",
+                        "job_lead_id": "jl_submission_check",
+                        "resume_version_id": "rv_check",
+                        "resume_pdf_path": str(resume_path),
+                        "preflight_confirmed": True,
+                        "confirmed_no_real_submit": True,
+                        "options": {
+                            "confirmation_items": _check_mode_confirmation_items(),
+                        },
+                    }
+                )
+
+        self.assertIn("preflight_confirmation_required", str(preflight_error.exception))
+        self.assertEqual(login_required["status"], "login_required")
+        self.assertEqual(login_required["next_action"], "go_to_channel_session_setup")
+
+    def test_check_mode_writes_submit_skipped_log_for_valid_session(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            leads_dir, resume_path, submissions_dir = _write_check_mode_inputs(root)
+            sessions_dir = root / "outputs" / "channel_sessions"
+            with (
+                patch("tools.sidecar.handlers.submission._JOB_LEAD_DIR", leads_dir),
+                patch("tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir),
+                patch(
+                    "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                    sessions_dir,
+                ),
+                patch(
+                    "tools.sidecar.handlers.submission._build_submission_check_id",
+                    return_value="sc_submission_check",
+                ),
+            ):
+                handle_channel_session_check(
+                    {
+                        "meta": {"correlation_id": "corr_session"},
+                        "channel": "liepin",
+                        "login_signals": {
+                            "logged_in_user_ui_or_equivalent_authenticated_signal": True
+                        },
+                    }
+                )
+                result = handle_submission_check_mode(
+                    {
+                        "meta": {"correlation_id": "corr_check"},
+                        "channel": "liepin",
+                        "job_lead_id": "jl_submission_check",
+                        "resume_version_id": "rv_check",
+                        "resume_pdf_path": str(resume_path),
+                        "preflight_confirmed": True,
+                        "confirmed_no_real_submit": True,
+                        "options": {
+                            "confirmation_items": _check_mode_confirmation_items(),
+                            "target_recovery_limit": 2,
+                            "session_identity_accepted": True,
+                        },
+                    }
+                )
+                detail = handle_submission_detail(
+                    {
+                        "meta": {"correlation_id": "corr_detail"},
+                        "submission_id": "sc_submission_check",
+                    }
+                )
+                payload = json.loads(
+                    Path(result["log_json_path"]).read_text(encoding="utf-8")
+                )
+
+        self.assertEqual(result["status"], "check_mode_success_submit_skipped")
+        self.assertFalse(result["final_submit_attempted"])
+        self.assertFalse(result["external_submission_attempted"])
+        self.assertEqual(result["session_metadata"]["login_status"], "session_valid")
+        self.assertIn("liepin", result["adapter_capabilities"]["adapter"])
+        step_names = [step["name"] for step in result["steps"]]
+        self.assertEqual(
+            step_names,
+            [
+                "rate_limit",
+                "open_target",
+                "login_check",
+                "target_verify",
+                "send_resume_path_check",
+                "attachment_check",
+                "submit_skipped",
+            ],
+        )
+        self.assertEqual(payload["mode"], "check")
+        self.assertEqual(payload["terminal_status"], "check_mode_success_submit_skipped")
+        self.assertFalse(payload["final_submit_attempted"])
+        self.assertEqual(payload["original_job_lead"]["job_lead_id"], "jl_submission_check")
+        self.assertEqual(payload["final_verified_target"]["job_url"], "https://www.liepin.com/job/123.shtml")
+        self.assertEqual(detail["submission"]["terminal_status"], "check_mode_success_submit_skipped")
+        self.assertEqual(detail["submission"]["original_job_lead"]["job_lead_id"], "jl_submission_check")
+
+    def test_check_mode_blocks_identity_rejection_and_rate_limit(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            leads_dir, resume_path, submissions_dir = _write_check_mode_inputs(root)
+            sessions_dir = root / "outputs" / "channel_sessions"
+            with (
+                patch("tools.sidecar.handlers.submission._JOB_LEAD_DIR", leads_dir),
+                patch("tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir),
+                patch(
+                    "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                    sessions_dir,
+                ),
+            ):
+                handle_channel_session_check(
+                    {
+                        "meta": {"correlation_id": "corr_session"},
+                        "channel": "liepin",
+                        "login_signals": {
+                            "logged_in_user_ui_or_equivalent_authenticated_signal": True
+                        },
+                    }
+                )
+                identity = handle_submission_check_mode(
+                    {
+                        "meta": {"correlation_id": "corr_identity"},
+                        "channel": "liepin",
+                        "job_lead_id": "jl_submission_check",
+                        "resume_version_id": "rv_check",
+                        "resume_pdf_path": str(resume_path),
+                        "preflight_confirmed": True,
+                        "confirmed_no_real_submit": True,
+                        "options": {
+                            "confirmation_items": _check_mode_confirmation_items(),
+                            "session_identity_accepted": False,
+                        },
+                    }
+                )
+                rate_limited = handle_submission_check_mode(
+                    {
+                        "meta": {"correlation_id": "corr_rate"},
+                        "channel": "liepin",
+                        "job_lead_id": "jl_submission_check",
+                        "resume_version_id": "rv_check",
+                        "resume_pdf_path": str(resume_path),
+                        "preflight_confirmed": True,
+                        "confirmed_no_real_submit": True,
+                        "options": {
+                            "confirmation_items": _check_mode_confirmation_items(),
+                            "simulate_rate_limited": True,
+                        },
+                    }
+                )
+
+        self.assertEqual(identity["status"], "account_identity_mismatch")
+        self.assertEqual(
+            identity["next_action"],
+            "go_to_channel_session_setup_to_clear_or_refresh",
+        )
+        self.assertEqual(rate_limited["status"], "rate_limited")
+        self.assertEqual(rate_limited["steps"][0]["name"], "rate_limit")
+        self.assertEqual(rate_limited["steps"][0]["status"], "blocked")
+
+
+class FeedbackIterationTests(unittest.TestCase):
+    def test_feedback_iteration_lists_items_requires_action_and_preserves_artifacts(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            leads_dir, resume_path, submissions_dir = _write_check_mode_inputs(root)
+            sessions_dir = root / "outputs" / "channel_sessions"
+            iterations_dir = root / "outputs" / "feedback_iterations"
+            original_resume_bytes = resume_path.read_bytes()
+            with (
+                patch("tools.sidecar.handlers.submission._JOB_LEAD_DIR", leads_dir),
+                patch("tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir),
+                patch(
+                    "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
+                    sessions_dir,
+                ),
+                patch(
+                    "tools.sidecar.handlers.submission._FEEDBACK_ITERATIONS_DIR",
+                    iterations_dir,
+                ),
+                patch(
+                    "tools.sidecar.handlers.submission._build_submission_check_id",
+                    return_value="sc_feedback_source",
+                ),
+                patch(
+                    "tools.sidecar.handlers.submission._build_feedback_iteration_id",
+                    return_value="fi_feedback_iteration",
+                ),
+            ):
+                handle_channel_session_check(
+                    {
+                        "meta": {"correlation_id": "corr_session"},
+                        "channel": "liepin",
+                        "login_signals": {
+                            "logged_in_user_ui_or_equivalent_authenticated_signal": True
+                        },
+                    }
+                )
+                check_mode = handle_submission_check_mode(
+                    {
+                        "meta": {"correlation_id": "corr_check"},
+                        "channel": "liepin",
+                        "job_lead_id": "jl_submission_check",
+                        "resume_version_id": "rv_check",
+                        "resume_pdf_path": str(resume_path),
+                        "preflight_confirmed": True,
+                        "confirmed_no_real_submit": True,
+                        "options": {
+                            "confirmation_items": _check_mode_confirmation_items(),
+                            "session_identity_accepted": True,
+                        },
+                    }
+                )
+                feedback = handle_feedback_list(
+                    {
+                        "meta": {"correlation_id": "corr_feedback"},
+                        "source_run_id": "sc_feedback_source",
+                    }
+                )
+                with self.assertRaises(ValueError) as missing_action:
+                    handle_feedback_create_iteration(
+                        {
+                            "meta": {"correlation_id": "corr_missing_action"},
+                            "source_run_id": "sc_feedback_source",
+                            "source_feedback_items": feedback["items"],
+                            "selected_actions": [],
+                        }
+                    )
+                with self.assertRaises(ValueError) as unsupported_source:
+                    handle_feedback_create_iteration(
+                        {
+                            "meta": {"correlation_id": "corr_bad_source"},
+                            "source_run_id": "sc_feedback_source",
+                            "source_feedback_items": [
+                                {
+                                    "source_type": "unsupported",
+                                    "source_run_id": "sc_feedback_source",
+                                    "source_artifact_path_or_id": "x",
+                                    "summary": "x",
+                                    "severity_or_priority": "high",
+                                    "recommended_next_action": "x",
+                                }
+                            ],
+                            "selected_actions": ["acknowledge_and_skip"],
+                            "user_notes": "skip",
+                        }
+                    )
+                with self.assertRaises(ValueError) as evidence_required:
+                    handle_feedback_create_iteration(
+                        {
+                            "meta": {"correlation_id": "corr_claim"},
+                            "source_run_id": "sc_feedback_source",
+                            "source_feedback_items": feedback["items"],
+                            "selected_actions": [
+                                "regenerate_resume_from_existing_evidence"
+                            ],
+                            "new_or_updated_claims": ["new claim"],
+                        }
+                    )
+                iteration = handle_feedback_create_iteration(
+                    {
+                        "meta": {"correlation_id": "corr_iteration"},
+                        "source_run_id": "sc_feedback_source",
+                        "source_feedback_items": feedback["items"],
+                        "selected_actions": [
+                            "regenerate_resume_from_existing_evidence",
+                            "prepare_next_check_mode",
+                        ],
+                        "user_notes": "Regenerate from existing evidence.",
+                        "evidence_card_ids_added_or_updated": ["ec_feedback"],
+                        "new_or_updated_claims": ["Claim linked to evidence"],
+                        "remaining_gap_tasks": ["Confirm messaging fit"],
+                    }
+                )
+                record_payload = json.loads(
+                    Path(iteration["record_path"]).read_text(encoding="utf-8")
+                )
+                source_snapshot_exists = Path(
+                    iteration["iteration"]["source_snapshot_path"]
+                ).exists()
+                new_resume_exists = Path(
+                    iteration["iteration"]["affected_artifacts"]["new_resume_path"]
+                ).exists()
+                original_resume_preserved = resume_path.read_bytes()
+
+        self.assertEqual(check_mode["status"], "check_mode_success_submit_skipped")
+        self.assertGreaterEqual(len(feedback["items"]), 1)
+        self.assertIn("feedback_action_required", str(missing_action.exception))
+        self.assertIn("unsupported_feedback_source", str(unsupported_source.exception))
+        self.assertIn("new_claims_require_evidence_links", str(evidence_required.exception))
+        self.assertEqual(iteration["status"], "iteration_recorded")
+        self.assertEqual(iteration["iteration"]["source_run_id"], "sc_feedback_source")
+        self.assertEqual(iteration["iteration"]["previous_resume_version_id"], "rv_check")
+        self.assertTrue(iteration["iteration"]["new_resume_version_id_or_none"])
+        self.assertTrue(source_snapshot_exists)
+        self.assertTrue(new_resume_exists)
+        self.assertEqual(original_resume_preserved, original_resume_bytes)
+        self.assertTrue(iteration["iteration"]["previous_artifacts_preserved"])
+        self.assertTrue(iteration["iteration"]["immutable_source_snapshot"])
+        self.assertTrue(iteration["iteration"]["real_submit_disabled"])
+        self.assertEqual(
+            iteration["next_check_mode_candidate"]["resume_version_id"],
+            iteration["iteration"]["new_resume_version_id_or_none"],
+        )
+        self.assertTrue(iteration["next_check_mode_candidate"]["real_submit_disabled"])
+        self.assertEqual(record_payload["comparison_summary"]["evidence_ids_used"], ["ec_feedback"])
+        self.assertEqual(
+            record_payload["comparison_summary"]["new_or_updated_claims"][0]["evidence_ids"],
+            ["ec_feedback"],
+        )
 
 
 if __name__ == "__main__":

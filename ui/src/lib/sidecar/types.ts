@@ -57,6 +57,12 @@ export interface EvidenceDetail {
   stack: string[];
   tags: string[];
   artifacts: ArtifactSummary[];
+  raw_source?: string;
+  source_material_ids?: string[];
+  review_decision?: string;
+  reviewed_at?: string;
+  candidate_pool_eligible?: boolean;
+  missing_items?: string[];
 }
 
 export interface EvidenceListResult extends RpcResultBase {
@@ -87,6 +93,43 @@ export interface EvidenceDeleteResult extends EvidenceMutationResult {
 
 export interface EvidenceImportResult extends EvidenceMutationResult {
   imported_resources: string[];
+}
+
+export interface EvidenceDraftArtifact {
+  type: "markdown_document" | string;
+  ref: string;
+  label: string;
+}
+
+export interface EvidenceDraftPayload {
+  title: string;
+  time_range?: string;
+  context: string;
+  role_scope?: string;
+  actions: string;
+  results: string;
+  artifacts: EvidenceDraftArtifact[];
+  stack: string[];
+  tags: string[];
+  source_material_ids: string[];
+  status?: string;
+  missing_items?: string[];
+  candidate_pool_eligible?: boolean;
+}
+
+export interface EvidenceGenerateDraftResult extends RpcResultBase {
+  status: "draft_ready_for_review" | "draft_incomplete" | "blocked" | "llm_output_invalid" | string;
+  code: "OK" | "BLOCKED_LOCAL_PROVIDER" | "llm_output_invalid" | string;
+  message: string;
+  draft: EvidenceDraftPayload | null;
+  candidate_pool_eligible: boolean;
+}
+
+export interface EvidenceSaveDraftResult extends EvidenceMutationResult {
+  status: "saved_incomplete" | "saved_eligible" | string;
+  missing_items: string[];
+  candidate_pool_eligible: boolean;
+  updated_at: string;
 }
 
 export interface JobProfileListItem {
@@ -147,6 +190,41 @@ export interface JobProfileMutationResult extends RpcResultBase {
 export interface JobProfileCreateResult extends JobProfileMutationResult {
   status: string;
   created_at: string;
+}
+
+export interface JobProfileDraftPayload {
+  target_role: string;
+  company?: string;
+  source_jd: string;
+  jd_summary: string;
+  source_url?: string;
+  business_domain?: string;
+  tone?: string;
+  description?: string;
+  keywords: string[];
+  must_have: string[];
+  nice_to_have: string[];
+  seniority_signal: string[];
+  missing_items?: string[];
+  status?: string;
+  active_target_eligible?: boolean;
+}
+
+export interface JobProfileGenerateDraftResult extends RpcResultBase {
+  status: "draft_ready_for_review" | "draft_incomplete" | "parse_blocked_local_provider" | "parse_invalid_json" | string;
+  code: "OK" | "BLOCKED_LOCAL_PROVIDER" | "parse_invalid_json" | string;
+  message: string;
+  draft: JobProfileDraftPayload | null;
+  active_target_eligible: boolean;
+}
+
+export interface JobProfileSaveDraftResult extends JobProfileMutationResult {
+  status: "saved_incomplete" | "saved_complete" | string;
+  active_target_eligible: boolean;
+  missing_items: string[];
+  job_lead_id: string;
+  source_url_check: Record<string, unknown>;
+  updated_at: string;
 }
 
 export interface JobProfileUpdateResult extends JobProfileMutationResult {
@@ -388,9 +466,21 @@ export interface SubmissionDetail extends SubmissionListItem {
   started_at: string;
   ended_at: string;
   resume_path: string;
+  resume_version_id: string;
   profile_path: string;
   headless: boolean;
   browser_channel: string;
+  terminal_status: string;
+  adapter_capabilities: Record<string, unknown>;
+  original_job_lead: Record<string, unknown>;
+  final_verified_target: Record<string, unknown>;
+  session_metadata: Record<string, unknown>;
+  target_recovery_attempts: Array<Record<string, unknown>>;
+  recovered_target_confirmation: Record<string, unknown>;
+  resume_target_mismatch_warning: Record<string, unknown>;
+  next_action: string;
+  final_submit_attempted: boolean;
+  external_submission_attempted: boolean;
   steps: SubmissionDetailStep[];
   log_json_path: string;
   log_yaml_path: string;
@@ -403,6 +493,142 @@ export interface SubmissionDetailResult extends RpcResultBase {
 export interface SubmissionRetryResult extends RpcResultBase {
   submission_id: string;
   status: string;
+}
+
+export interface SubmissionCheckModeOptions {
+  preflight_confirmed?: boolean;
+  confirmed_no_real_submit?: boolean;
+  check_mode_no_real_submit?: boolean;
+  submit_enabled?: boolean;
+  confirmation_items?: string[];
+  target_recovery_limit?: number;
+  session_identity_accepted?: boolean;
+  simulate_rate_limited?: boolean;
+  simulate_target_mismatch?: boolean;
+  recovered_target_confirmed?: boolean;
+  resume_target_mismatch_warning_acknowledged?: boolean;
+  abort_to_regenerate_resume?: boolean;
+  [key: string]: unknown;
+}
+
+export interface SubmissionCheckModeResult extends RpcResultBase {
+  submission_id: string;
+  status: string;
+  terminal_status: string;
+  channel: string;
+  mode: string;
+  resume_version_id: string;
+  steps: SubmissionDetailStep[];
+  adapter_capabilities: Record<string, unknown>;
+  original_job_lead: Record<string, unknown>;
+  final_verified_target: Record<string, unknown>;
+  session_metadata: Record<string, unknown>;
+  target_recovery_attempts: Array<Record<string, unknown>>;
+  recovered_target_confirmation: Record<string, unknown>;
+  resume_target_mismatch_warning: Record<string, unknown>;
+  next_action: string;
+  submit_enabled: boolean;
+  final_submit_attempted: boolean;
+  external_submission_attempted: boolean;
+  log_json_path: string;
+  log_yaml_path: string;
+}
+
+export interface FeedbackItem {
+  source_type: string;
+  source_run_id: string;
+  source_artifact_path_or_id: string;
+  summary: string;
+  severity_or_priority: string;
+  recommended_next_action: string;
+}
+
+export interface FeedbackListResult extends RpcResultBase {
+  source_run_id: string;
+  source_artifact_path: string;
+  items: FeedbackItem[];
+  supported_actions: string[];
+}
+
+export interface FeedbackIterationRecord {
+  iteration_id: string;
+  status: string;
+  created_at: string;
+  source_run_id: string;
+  source_feedback_items: FeedbackItem[];
+  selected_actions: string[];
+  user_notes: string;
+  affected_artifacts: Record<string, unknown>;
+  previous_resume_version_id: string;
+  new_resume_version_id_or_none: string;
+  evidence_card_ids_added_or_updated: string[];
+  job_target_id_or_none: string;
+  comparison_summary: Record<string, unknown>;
+  remaining_gap_tasks: string[];
+  next_recommended_step: string;
+  next_check_mode_candidate: Record<string, unknown>;
+  source_snapshot_path: string;
+  record_path: string;
+  immutable_source_snapshot: boolean;
+  previous_artifacts_preserved: boolean;
+  real_submit_disabled: boolean;
+}
+
+export interface FeedbackIterationResult extends RpcResultBase {
+  iteration: FeedbackIterationRecord;
+  iteration_id: string;
+  status: string;
+  record_path: string;
+  next_check_mode_candidate: Record<string, unknown>;
+}
+
+export interface SubmissionChannel {
+  channel: string;
+  label: string;
+  login_url: string;
+}
+
+export interface ChannelSessionAccountIdentity {
+  status: "available" | "account_identity_unknown" | string;
+  display_name_or_nickname: string;
+  avatar_presence: boolean | null;
+  masked_phone_or_email_suffix: string;
+}
+
+export interface ChannelSessionPayload {
+  channel: string;
+  session_id: string;
+  session_path: string;
+  login_status: string;
+  account_identity: ChannelSessionAccountIdentity;
+  checked_at: string;
+  expires_or_unknown: string;
+  clear_available: boolean;
+  log_path: string;
+  adapter: Record<string, Record<string, unknown>>;
+}
+
+export interface ChannelSessionStep {
+  name: string;
+  status: string;
+  detail: string;
+}
+
+export interface ChannelSessionResult extends RpcResultBase {
+  supported_channels: SubmissionChannel[];
+  session: ChannelSessionPayload;
+  steps: ChannelSessionStep[];
+  manual_login_required: boolean;
+  browser_automation: {
+    opened_login_page: boolean;
+    entered_credentials: boolean;
+    entered_captcha_or_sms: boolean;
+    captcha_sms_bypass_attempted: boolean;
+  };
+  artifact_paths: {
+    channel_session: string;
+    session_check_log: string;
+  };
 }
 
 /** One candidate in REVIEW state (design: ReviewCandidate). */
@@ -437,6 +663,9 @@ export interface QuickRunStartOptions {
   generate_resume?: boolean;
   raw_path?: string;
   material_id?: string;
+  evidence_ids?: string[];
+  resume_positioning?: string;
+  custom_positioning?: string;
   job_profile_path?: string;
   timeout_seconds?: number;
   use_llm?: boolean;
@@ -459,17 +688,39 @@ export interface QuickRunStartResult extends RpcResultBase {
   score_breakdown?: Record<string, { score: number; reason?: string }>;
   llm_config_summary?: LlmConfigSummary;
   material_source?: MaterialSourceItem | null;
+  job_profile?: {
+    job_profile_id: string;
+    status: string;
+    active_target_eligible: boolean;
+    title?: string;
+    company?: string;
+  };
+  selected_evidence_card_ids?: string[];
+  gaps?: string[];
+  gap_tasks?: string[];
+  resume_positioning?: Record<string, string>;
+  resume_pdf?: string;
   traceability?: {
     evidence_card_ids: string[];
+    selected_evidence_card_ids?: string[];
     evidence: {
       evidence_id?: string;
       raw_source?: string;
       artifacts?: string[];
       results_count?: number;
     };
+    evidence_cards?: Array<{
+      evidence_id?: string;
+      raw_source?: string;
+      artifacts?: string[];
+      results_count?: number;
+    }>;
     resume_a: string;
+    resume_pdf?: string;
     resume_traceable: boolean;
     scorecard: string;
+    matching_uses_selected_evidence?: boolean;
+    fact_preserving_traceability?: boolean;
   };
 }
 
@@ -480,6 +731,15 @@ export interface QuickRunCancelResult extends RpcResultBase {
 export interface AgentRunStartOptions {
   max_rounds?: number;
   execute_dry_run?: boolean;
+  execute_guided_batch?: boolean;
+  preflight_confirmed?: boolean;
+  confirmed_no_real_submit?: boolean;
+  submit_enabled?: boolean;
+  max_candidates?: number;
+  max_passed_candidates?: number;
+  max_generated_resumes?: number;
+  candidate_ids?: string[];
+  evidence_ids?: string[];
   [key: string]: unknown;
 }
 
@@ -487,6 +747,9 @@ export interface AgentRunStartResult extends RpcResultBase {
   run_id: string;
   status: "queued" | string;
   llm_config_summary?: LlmConfigSummary;
+  guided_batch?: boolean;
+  review_queue?: Record<string, unknown>;
+  delivery_plan?: Record<string, unknown>;
 }
 
 export interface AgentRunSummary {
@@ -497,6 +760,13 @@ export interface AgentRunSummary {
   job_profile_id: string;
   options: AgentRunStartOptions;
   llm_config_summary?: LlmConfigSummary;
+  guided_batch?: boolean;
+  selected_candidate_ids?: string[];
+  policy_limits?: Record<string, unknown>;
+  preflight_confirmation?: Record<string, unknown>;
+  delivery_plan?: Record<string, unknown>;
+  review_queue?: Record<string, unknown>;
+  run_log?: string;
   stopped_at?: string;
 }
 

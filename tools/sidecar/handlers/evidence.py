@@ -9,7 +9,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from tools.infra.llm.client import LLMClient
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.sidecar.handlers import materials as materials_handler
+from tools.sidecar.handlers import settings as settings_handler
 
 _EVIDENCE_DIR = Path("evidence_cards")
 _MATCHING_REPORT_DIR = Path("matching_reports")
@@ -39,6 +42,22 @@ _MANAGED_EVIDENCE_KEYS = {
     "results",
     "stack",
     "artifacts",
+    "tags",
+    "raw_source",
+    "source_material_ids",
+    "review_decision",
+    "reviewed_at",
+    "candidate_pool_eligible",
+    "missing_items",
+}
+_DRAFT_REQUIRED_FIELDS = {
+    "source_material_ids",
+    "title",
+    "context",
+    "actions",
+    "results",
+    "artifacts",
+    "stack",
     "tags",
 }
 
@@ -225,6 +244,20 @@ def _write_evidence_file(
     _write_list(lines, "stack", fields["stack"])
     _write_list(lines, "artifacts", fields.get("artifacts", []))
     _write_list(lines, "tags", fields["tags"])
+    if "raw_source" in fields:
+        lines.append(f"raw_source: {_quote(str(fields.get('raw_source', '')))}")
+    if "source_material_ids" in fields:
+        _write_list(lines, "source_material_ids", fields.get("source_material_ids", []))
+    if "review_decision" in fields:
+        lines.append(f"review_decision: {_quote(str(fields.get('review_decision', '')))}")
+    if "reviewed_at" in fields:
+        lines.append(f"reviewed_at: {_quote(str(fields.get('reviewed_at', '')))}")
+    if "candidate_pool_eligible" in fields:
+        lines.append(
+            f"candidate_pool_eligible: {_quote(str(bool(fields.get('candidate_pool_eligible'))).lower())}"
+        )
+    if "missing_items" in fields:
+        _write_list(lines, "missing_items", fields.get("missing_items", []))
     if preserved_blocks:
         for block in preserved_blocks:
             lines.extend(block)
@@ -330,6 +363,326 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
         "stack": l.get("stack", []),
         "tags": l.get("tags", []),
         "artifacts": artifacts,
+        "raw_source": s.get("raw_source", ""),
+        "source_material_ids": l.get("source_material_ids", []),
+        "review_decision": s.get("review_decision", ""),
+        "reviewed_at": s.get("reviewed_at", ""),
+        "candidate_pool_eligible": s.get("candidate_pool_eligible", "false") == "true",
+        "missing_items": l.get("missing_items", []),
+    }
+
+
+def _material_record_by_id(material_id: str) -> dict[str, Any]:
+    for item in materials_handler.list_material_source_items():
+        if item.get("material_id") == material_id:
+            file_path = materials_handler._MATERIALS_DIR / str(item.get("filename", ""))
+            record = dict(item)
+            record["path"] = file_path
+            return record
+    raise KeyError(f"NOT_FOUND: material {material_id}")
+
+
+def _selected_markdown_materials(material_ids: object) -> list[dict[str, Any]]:
+    if not isinstance(material_ids, list) or not material_ids:
+        raise ValueError("material_ids must be a non-empty list")
+    records = []
+    for raw_id in material_ids:
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise ValueError("material_ids must be a non-empty list of strings")
+        record = _material_record_by_id(raw_id.strip())
+        if record.get("extension") != ".md":
+            raise ValueError("unsupported material type; expected uploaded .md material")
+        path = record["path"]
+        if not isinstance(path, Path) or not path.exists() or not path.is_file():
+            raise ValueError(f"material source file not found: {raw_id}")
+        records.append(record)
+    return records
+
+
+def _material_text(records: list[dict[str, Any]]) -> str:
+    sections: list[str] = []
+    for record in records:
+        path = record["path"]
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+        sections.append(f"# Material {record['material_id']}\n\n{text}")
+    return "\n\n".join(sections)
+
+
+def _as_string_list(value: object, field: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be a list of strings")
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"{field} must be a list of strings")
+        if item.strip():
+            items.append(item.strip())
+    return items
+
+
+def _normalize_artifacts(value: object) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        raise ValueError("artifacts must be a list of objects")
+    artifacts: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("artifacts must be a list of objects")
+        artifact_type = str(item.get("type", "")).strip()
+        ref = str(item.get("ref", "")).strip()
+        label = str(item.get("label", "")).strip()
+        if not artifact_type or not ref or not label:
+            raise ValueError("artifact type, ref, and label are required")
+        artifacts.append({"type": artifact_type, "ref": ref, "label": label})
+    return artifacts
+
+
+def _validate_source_material_ids(
+    source_material_ids: list[str],
+    selected_material_ids: set[str],
+) -> None:
+    if not source_material_ids:
+        raise ValueError("source_material_ids are required")
+    unknown = set(source_material_ids) - selected_material_ids
+    if unknown:
+        raise ValueError(
+            "source_material_ids must be a subset of selected materials: "
+            + ", ".join(sorted(unknown))
+        )
+
+
+def _validate_markdown_artifacts(
+    artifacts: list[dict[str, str]],
+    selected_records: list[dict[str, Any]],
+) -> None:
+    selected_ids = {str(record["material_id"]) for record in selected_records}
+    selected_paths = {str(record["path"]) for record in selected_records}
+    if not artifacts:
+        return
+    for artifact in artifacts:
+        if artifact["type"] != "markdown_document":
+            raise ValueError("unsupported artifact type; expected markdown_document")
+        ref = artifact["ref"]
+        if ref not in selected_ids and ref not in selected_paths:
+            raise ValueError("artifact refs must point to uploaded markdown materials")
+
+
+def _validate_results_trace_materials(
+    results: list[str],
+    selected_records: list[dict[str, Any]],
+) -> None:
+    source_text = _material_text(selected_records).casefold()
+    for result in results:
+        if result.casefold() not in source_text:
+            raise ValueError("no_fabrication_guard: result is not traceable to selected materials")
+
+
+def _missing_items_for_draft(draft: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    if not draft.get("source_material_ids"):
+        missing.append("missing_source_material_ids")
+    if not str(draft.get("title", "")).strip():
+        missing.append("missing_title")
+    if not _split_multiline_text(str(draft.get("results", ""))):
+        missing.append("missing_results")
+    if not draft.get("artifacts"):
+        missing.append("missing_artifacts")
+    return missing
+
+
+def _build_evidence_draft(parsed: dict[str, Any], selected_records: list[dict[str, Any]]) -> dict[str, Any]:
+    missing_schema_fields = sorted(_DRAFT_REQUIRED_FIELDS - set(parsed))
+    if missing_schema_fields:
+        raise ValueError(
+            "llm draft missing required fields: " + ", ".join(missing_schema_fields)
+        )
+
+    selected_ids = {str(record["material_id"]) for record in selected_records}
+    source_material_ids = _as_string_list(
+        parsed.get("source_material_ids"), "source_material_ids"
+    )
+    _validate_source_material_ids(source_material_ids, selected_ids)
+
+    artifacts = _normalize_artifacts(parsed.get("artifacts"))
+    _validate_markdown_artifacts(artifacts, selected_records)
+
+    results = _as_string_list(parsed.get("results"), "results")
+    draft = {
+        "title": str(parsed.get("title", "")).strip(),
+        "time_range": str(parsed.get("time_range", "")).strip(),
+        "context": str(parsed.get("context", "")).strip(),
+        "role_scope": str(parsed.get("role_scope", "")).strip(),
+        "actions": "\n".join(_as_string_list(parsed.get("actions"), "actions")),
+        "results": "\n".join(results),
+        "artifacts": artifacts,
+        "stack": _as_string_list(parsed.get("stack"), "stack"),
+        "tags": _as_string_list(parsed.get("tags"), "tags"),
+        "source_material_ids": source_material_ids,
+    }
+    draft["missing_items"] = _missing_items_for_draft(draft)
+    draft["status"] = (
+        "draft_incomplete" if draft["missing_items"] else "draft_ready_for_review"
+    )
+    draft["candidate_pool_eligible"] = False
+    return draft
+
+
+def _llm_draft_prompt(material_text: str) -> str:
+    return (
+        "Extract one Evidence Card draft from the uploaded Markdown materials. "
+        "Return strict JSON only, with keys: source_material_ids, title, context, "
+        "actions, results, artifacts, stack, tags, and optional time_range, role_scope. "
+        "Each artifact must be an object with type=markdown_document, ref, label, "
+        "where ref is one selected material_id. Do not invent facts not present in "
+        "the materials.\n\n"
+        f"{material_text}"
+    )
+
+
+def handle_evidence_generate_draft(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    selected_records = _selected_markdown_materials(params.get("material_ids"))
+    material_text = _material_text(selected_records)
+    llm_config = settings_handler._load_llm_config()
+    base_url = str(llm_config.get("base_url") or "").strip()
+    if not base_url:
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "status": "blocked",
+            "code": "BLOCKED_LOCAL_PROVIDER",
+            "message": "LLM base_url is not configured.",
+            "draft": None,
+            "candidate_pool_eligible": False,
+        }
+
+    payload = {
+        "model": str(llm_config["model"]),
+        "messages": [{"role": "user", "content": _llm_draft_prompt(material_text)}],
+        "temperature": float(llm_config["temperature"]),
+        "response_format": {"type": "json_object"},
+    }
+    try:
+        client = LLMClient(
+            base_url=base_url,
+            api_key=str(llm_config["api_key_for_request"]),
+            timeout=int(llm_config["timeout"]),
+        )
+        response = client.post_json(client.chat_completions_url, payload)
+        content = LLMClient.extract_content(response).strip()
+    except Exception as exc:
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "status": "blocked",
+            "code": "BLOCKED_LOCAL_PROVIDER",
+            "message": f"LLM draft generation is unavailable: {exc}",
+            "draft": None,
+            "candidate_pool_eligible": False,
+        }
+
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "status": "llm_output_invalid",
+            "code": "llm_output_invalid",
+            "message": "LLM output is not strict JSON.",
+            "draft": None,
+            "candidate_pool_eligible": False,
+        }
+    if not isinstance(parsed, dict):
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "status": "llm_output_invalid",
+            "code": "llm_output_invalid",
+            "message": "LLM output JSON must be an object.",
+            "draft": None,
+            "candidate_pool_eligible": False,
+        }
+
+    draft = _build_evidence_draft(parsed, selected_records)
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "status": draft["status"],
+        "code": "OK",
+        "message": "Draft generated for user review.",
+        "draft": draft,
+        "candidate_pool_eligible": False,
+    }
+
+
+def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    draft = params.get("draft")
+    if not isinstance(draft, dict):
+        raise ValueError("draft must be an object")
+    review = params.get("review")
+    if not isinstance(review, dict) or str(review.get("decision", "")) != "approved":
+        raise ValueError("review_required_before_save")
+
+    source_material_ids = _as_string_list(
+        draft.get("source_material_ids"), "source_material_ids"
+    )
+    selected_records = _selected_markdown_materials(source_material_ids)
+    selected_ids = {str(record["material_id"]) for record in selected_records}
+    _validate_source_material_ids(source_material_ids, selected_ids)
+    artifacts = _normalize_artifacts(draft.get("artifacts", []))
+    _validate_markdown_artifacts(artifacts, selected_records)
+
+    normalized_draft = {
+        "title": str(draft.get("title", "")).strip(),
+        "time_range": str(draft.get("time_range", "")).strip(),
+        "context": str(draft.get("context", "")).strip(),
+        "role_scope": str(draft.get("role_scope", "")).strip(),
+        "actions": str(draft.get("actions", "")),
+        "results": str(draft.get("results", "")),
+        "artifacts": artifacts,
+        "stack": _validate_string_list("stack", draft.get("stack", [])),
+        "tags": _validate_string_list("tags", draft.get("tags", [])),
+        "source_material_ids": source_material_ids,
+    }
+    missing_items = _missing_items_for_draft(normalized_draft)
+    save_mode = str(params.get("save_mode") or "incomplete")
+    if save_mode not in {"incomplete", "eligible"}:
+        raise ValueError(f"unsupported save_mode: {save_mode}")
+    if save_mode == "eligible" and missing_items:
+        raise ValueError("eligible evidence card requires results and artifacts")
+    if save_mode == "eligible":
+        _validate_results_trace_materials(
+            _split_multiline_text(normalized_draft["results"]),
+            selected_records,
+        )
+
+    evidence_id = str(params.get("evidence_id") or f"ec_{uuid4().hex[:8]}")
+    now = _utcnow_iso()
+    fields = {
+        "id": evidence_id,
+        "title": normalized_draft["title"] or "Untitled evidence draft",
+        "time_range": normalized_draft["time_range"],
+        "context": normalized_draft["context"],
+        "role_scope": normalized_draft["role_scope"],
+        "status": "saved_eligible" if save_mode == "eligible" else "saved_incomplete",
+        "created_at": now,
+        "updated_at": now,
+        "actions": _split_multiline_text(normalized_draft["actions"]),
+        "results": _split_multiline_text(normalized_draft["results"]),
+        "stack": normalized_draft["stack"],
+        "artifacts": [artifact["ref"] for artifact in artifacts],
+        "tags": normalized_draft["tags"],
+        "raw_source": "materials:" + ",".join(source_material_ids),
+        "source_material_ids": source_material_ids,
+        "review_decision": "approved",
+        "reviewed_at": str(review.get("reviewed_at") or now),
+        "candidate_pool_eligible": save_mode == "eligible",
+        "missing_items": missing_items,
+    }
+    _write_evidence_file(_EVIDENCE_DIR / f"{evidence_id}.yaml", fields)
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "evidence_id": evidence_id,
+        "status": fields["status"],
+        "missing_items": missing_items,
+        "candidate_pool_eligible": save_mode == "eligible",
+        "updated_at": now,
     }
 
 

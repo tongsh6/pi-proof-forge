@@ -185,6 +185,11 @@
       "materialSource": "Material source",
       "selectedProfile": "Selected profile",
       "traceableEvidence": "Traceable evidence",
+      "resumePositioning": "Resume positioning",
+      "positioningOptions": {
+        "technicalDepth": "Technical depth",
+        "deliveryOwner": "Delivery owner"
+      },
       "provider": "Provider",
       "model": "Model",
       "baseUrl": "Base URL",
@@ -222,7 +227,11 @@
         "delete": "Delete",
         "deleting": "Deleting...",
         "saved": "Saved.",
-        "importing": "Importing..."
+        "importing": "Importing...",
+        "generateDraft": "Generate Draft",
+        "generatingDraft": "Generating...",
+        "saveIncomplete": "Save Incomplete",
+        "saveEligible": "Save Eligible"
       },
       "filters": {
         "queryPlaceholder": "Search title, role, or time",
@@ -241,7 +250,11 @@
         "pass": "Pass",
         "draft": "Draft",
         "gap": "Gap",
-        "needs_review": "Review"
+        "needs_review": "Review",
+        "draft_incomplete": "Draft incomplete",
+        "draft_ready_for_review": "Ready for review",
+        "saved_incomplete": "Saved incomplete",
+        "saved_eligible": "Eligible"
       },
       "score": "Score",
       "sections": {
@@ -277,7 +290,15 @@
         "count": "{{count}} materials available for evidence extraction",
         "source": "From Resumes",
         "empty": "No material sources yet. Upload Markdown or text work materials from Resumes first.",
-        "noPreview": "No preview available."
+        "noPreview": "No preview available.",
+        "selectPlaceholder": "Select Markdown material",
+        "select": "Select material"
+      },
+      "review": {
+        "title": "Review required before save",
+        "source": "{{count}} source materials linked",
+        "missing": "Missing: {{items}}",
+        "eligible": "Results and Markdown artifact references are complete."
       },
       "empty": {
         "list": "No evidence cards yet. Create a blank card or import a source file."
@@ -285,7 +306,8 @@
       "errors": {
         "titleRequired": "Title is required.",
         "sourcePathRequired": "Source path is required.",
-        "selectEvidence": "Select an evidence card first."
+        "selectEvidence": "Select an evidence card first.",
+        "selectMaterial": "Select an uploaded Markdown material first."
       }
     },
     "jobs": {
@@ -315,7 +337,21 @@
         "clearDraft": "Clear draft",
         "save": "Save",
         "saving": "Saving...",
-        "converting": "Converting..."
+        "converting": "Converting...",
+        "generateDraft": "Parse JD",
+        "generatingDraft": "Parsing...",
+        "saveIncomplete": "Save Incomplete",
+        "saveComplete": "Save Complete"
+      },
+      "jdDraft": {
+        "title": "JD to Job Profile",
+        "subtitle": "Paste a target JD, generate a reviewed draft, then save it as an active target.",
+        "jdPlaceholder": "Paste job description text",
+        "sourceUrlPlaceholder": "Optional HTTPS source URL",
+        "ready": "Ready for review",
+        "incomplete": "Incomplete",
+        "missing": "Missing",
+        "none": "None"
       },
       "filters": {
         "query": "Search",
@@ -380,7 +416,8 @@
         "convert": "Convert to Job Profile"
       },
       "errors": {
-        "titleRequired": "Profile title is required."
+        "titleRequired": "Profile title is required.",
+        "jdRequired": "Paste JD text first."
       }
     },
     "agentRun": {
@@ -500,6 +537,64 @@
       "retryStrategy": {
         "sameChannel": "Queue same-channel retry",
         "fallbackEmail": "Queue Email fallback"
+      },
+      "session": {
+        "title": "Channel Session",
+        "manualBoundary": "Manual login boundary active. Credentials, captcha, SMS, and final submit stay outside automation.",
+        "channel": "Submission channel",
+        "start": "Start setup",
+        "starting": "Starting...",
+        "check": "Check",
+        "clear": "Clear session",
+        "statusLabel": "Status",
+        "checkedAt": "Checked",
+        "identity": "Account",
+        "identityUnknown": "account_identity_unknown",
+        "storage": "Storage",
+        "path": "Path",
+        "log": "Log",
+        "status": {
+          "ready_to_setup": "Ready",
+          "waiting_for_manual_login": "Manual login",
+          "session_valid": "Session valid",
+          "login_required": "Login required",
+          "session_unknown": "Session unknown",
+          "session_expired": "Expired",
+          "session_cleared": "Cleared",
+          "channel_unavailable": "Unavailable",
+          "failed": "Failed",
+          "unknown": "Unknown"
+        }
+      },
+      "checkMode": {
+        "title": "Check Mode",
+        "boundary": "Channel target, session, resume path, rate limit, attachment check, and final-submit skip are recorded.",
+        "start": "Run check",
+        "running": "Running...",
+        "status": "Terminal status",
+        "jobLead": "Job Lead",
+        "jobLeadPlaceholder": "Saved channel job lead id",
+        "resumeVersion": "Resume version",
+        "resumeVersionPlaceholder": "Resume version id",
+        "resume": "Resume PDF",
+        "resumePathPlaceholder": "Relative or absolute PDF path",
+        "submit": "Final submit",
+        "attempted": "attempted",
+        "skipped": "skipped",
+        "json": "JSON",
+        "steps": "Steps"
+      },
+      "feedback": {
+        "title": "Feedback Iteration",
+        "boundary": "Feedback items, selected actions, preserved artifacts, version comparison, and next check-mode candidate are recorded.",
+        "create": "Record iteration",
+        "recording": "Recording...",
+        "items": "Feedback items",
+        "action": "Action",
+        "version": "New version",
+        "next": "Next step",
+        "record": "Record",
+        "snapshot": "Source snapshot"
       },
       "status": {
         "success": "Success",

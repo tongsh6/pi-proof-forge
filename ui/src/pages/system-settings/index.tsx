@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -38,13 +37,6 @@ type LlmForm = {
 };
 
 type StatusTone = "success" | "warning" | "muted" | "error";
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
-const deepVerifyStubBaseUrl =
-  import.meta.env.VITE_SYSTEM_SETTINGS_LLM_STUB_BASE_URL ?? "";
-const deepVerifyEnabled =
-  verifyScenario === "system-settings" &&
-  import.meta.env.VITE_SYSTEM_SETTINGS_DEEP_VERIFY === "1" &&
-  Boolean(deepVerifyStubBaseUrl);
 const LLM_PROVIDER_DEFAULTS: Record<
   string,
   Pick<LlmForm, "model" | "base_url" | "api_key">
@@ -148,11 +140,6 @@ function llmPayloadFromForm(form: LlmForm): {
   return payload;
 }
 
-function exposesPlaintextApiKey(config: LlmConfig): boolean {
-  const apiKey = config.api_key as unknown as Record<string, unknown>;
-  return ["value", "secret", "api_key", "raw"].some((field) => field in apiKey);
-}
-
 function statusTone(value: string): StatusTone {
   const normalized = value.toLowerCase();
   if (
@@ -235,19 +222,6 @@ function StatusChip({ value }: { value: string }) {
       {statusLabel(value, t)}
     </span>
   );
-}
-
-function recordVerifyEvent(
-  event: string,
-  details: Record<string, unknown> = {}
-) {
-  if (verifyScenario !== "system-settings") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
 }
 
 function FieldCard({
@@ -352,7 +326,6 @@ export function SystemSettingsPage() {
   const [llmConnection, setLlmConnection] =
     useState<LlmConnectionCheckResult | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
-  const deepVerifyStartedRef = useRef(false);
 
   const loadSettings = useCallback(async () => {
     setLoadState("loading");
@@ -363,42 +336,16 @@ export function SystemSettingsPage() {
       setSettings(result);
       setLlmForm(toLlmForm(result.llm_config));
       setLoadState("ready");
-      recordVerifyEvent("system_settings.load.ready", {
-        channel_count: result.channels.length,
-        channel_ids: result.channels.map((channel) => channel.id),
-        llm_provider: result.llm_config.provider,
-        api_key_configured: result.llm_config.api_key.configured,
-      });
     } catch (nextError) {
       setSettings(null);
       setLoadState("error");
       setError(getErrorMessage(nextError));
-      recordVerifyEvent("system_settings.load.error", {
-        error: getErrorMessage(nextError),
-      });
     }
   }, []);
 
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
-
-  useEffect(() => {
-    if (verifyScenario !== "system-settings" || loadState !== "ready" || !settings) {
-      return;
-    }
-    setActiveSection("llm");
-    recordVerifyEvent("system_settings.llm.form.ready", {
-      has_provider: Boolean(llmForm.provider),
-      has_model: Boolean(llmForm.model),
-      has_base_url_field: true,
-      has_timeout: Boolean(llmForm.timeout),
-      has_temperature: Boolean(llmForm.temperature),
-      api_key_configured: settings.llm_config.api_key.configured,
-      supports_provider_defaults: true,
-      supports_detected_model_select: true,
-    });
-  }, [llmForm, loadState, settings]);
 
   const fallbackOrder = useMemo(() => {
     if (!settings || settings.channels.length === 0) {
@@ -441,16 +388,9 @@ export function SystemSettingsPage() {
       setSettings(nextSettings);
       setLlmForm(toLlmForm(nextSettings.llm_config));
       setLlmSaveState("saved");
-      recordVerifyEvent("system_settings.llm.save.result", {
-        provider: nextSettings.llm_config.provider,
-        api_key_configured: nextSettings.llm_config.api_key.configured,
-      });
     } catch (nextError) {
       setLlmSaveState("idle");
       setLlmError(getErrorMessage(nextError));
-      recordVerifyEvent("system_settings.llm.save.error", {
-        error: getErrorMessage(nextError),
-      });
     }
   }, [llmForm]);
 
@@ -467,124 +407,11 @@ export function SystemSettingsPage() {
         }));
       }
       setLlmCheckState("checked");
-      recordVerifyEvent("system_settings.llm.check.result", {
-        status: result.status,
-        code: result.code,
-        model_count: result.model_count,
-        detected_models: result.models,
-      });
     } catch (nextError) {
       setLlmCheckState("idle");
       setLlmError(getErrorMessage(nextError));
-      recordVerifyEvent("system_settings.llm.check.error", {
-        error: getErrorMessage(nextError),
-      });
     }
   }, [llmForm]);
-
-  const runDeepLlmVerify = useCallback(async () => {
-    if (!settings) return;
-    const baseForm = toLlmForm(settings.llm_config);
-    const providerDefaultForm = applyProviderDefaults(
-      baseForm,
-      "lm_studio",
-      settings.llm_config.api_key.configured
-    );
-    const providerDefaultOk =
-      providerDefaultForm.provider === "lm_studio" &&
-      providerDefaultForm.model === LLM_PROVIDER_DEFAULTS.lm_studio.model &&
-      providerDefaultForm.base_url === LLM_PROVIDER_DEFAULTS.lm_studio.base_url &&
-      providerDefaultForm.api_key === LLM_PROVIDER_DEFAULTS.lm_studio.api_key;
-    const checkForm: LlmForm = {
-      ...providerDefaultForm,
-      base_url: deepVerifyStubBaseUrl,
-      model: "",
-      timeout: "3",
-      temperature: "0.2",
-    };
-
-    setActiveSection("llm");
-    setLlmForm(checkForm);
-    const connection = await checkLlmConnection(llmPayloadFromForm(checkForm));
-    setLlmConnection(connection);
-
-    const selectedModel = connection.models[1] ?? connection.models[0] ?? "";
-    const selectedForm: LlmForm = {
-      ...checkForm,
-      model: selectedModel,
-    };
-    setLlmForm(selectedForm);
-    await updateLlmConfig(llmPayloadFromForm(selectedForm));
-    const persistedSettings = await getSettings();
-    setSettings(persistedSettings);
-    setLlmForm(toLlmForm(persistedSettings.llm_config));
-    setLlmSaveState("saved");
-
-    const blocked = await checkLlmConnection({
-      provider: "lm_studio",
-      base_url: "",
-      api_key: "lm-studio",
-      timeout: 1,
-    });
-    const plaintextSecretExposed = exposesPlaintextApiKey(
-      persistedSettings.llm_config
-    );
-    const persistedOk =
-      persistedSettings.llm_config.provider === "lm_studio" &&
-      persistedSettings.llm_config.model === selectedModel &&
-      persistedSettings.llm_config.base_url === deepVerifyStubBaseUrl &&
-      persistedSettings.llm_config.api_key.configured === true &&
-      persistedSettings.llm_config.api_key.masked === true &&
-      !plaintextSecretExposed;
-    const ok =
-      providerDefaultOk &&
-      connection.status === "pass" &&
-      connection.code === "OK" &&
-      connection.models.length >= 2 &&
-      selectedModel === connection.models[1] &&
-      persistedOk &&
-      blocked.status === "blocked" &&
-      blocked.code === "BLOCKED_LOCAL_PROVIDER" &&
-      blocked.models.length === 0;
-
-    recordVerifyEvent("system_settings.llm.deep_verify.result", {
-      ok,
-      provider_default_ok: providerDefaultOk,
-      connection_status: connection.status,
-      connection_code: connection.code,
-      detected_model_count: connection.models.length,
-      detected_models: connection.models,
-      selected_model: selectedModel,
-      persisted_provider: persistedSettings.llm_config.provider,
-      persisted_model: persistedSettings.llm_config.model,
-      persisted_base_url: persistedSettings.llm_config.base_url,
-      api_key_configured: persistedSettings.llm_config.api_key.configured,
-      api_key_masked: persistedSettings.llm_config.api_key.masked,
-      plaintext_secret_exposed: plaintextSecretExposed,
-      blocked_status: blocked.status,
-      blocked_code: blocked.code,
-      blocked_model_count: blocked.models.length,
-    });
-  }, [settings]);
-
-  useEffect(() => {
-    if (
-      !deepVerifyEnabled ||
-      loadState !== "ready" ||
-      !settings ||
-      deepVerifyStartedRef.current
-    ) {
-      return;
-    }
-    deepVerifyStartedRef.current = true;
-    void runDeepLlmVerify().catch((nextError) => {
-      const message = getErrorMessage(nextError);
-      setLlmError(message);
-      recordVerifyEvent("system_settings.llm.deep_verify.error", {
-        error: message,
-      });
-    });
-  }, [loadState, runDeepLlmVerify, settings]);
 
   return (
     <div className="space-y-6">

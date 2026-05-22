@@ -53,11 +53,19 @@ def check_execution_roadmap(root: Path) -> None:
         raise RoadmapError("docs/execution-roadmap.md is missing")
     if not depth_path.exists():
         raise RoadmapError("docs/acceptance-depth.md is missing")
+    constitution_path = root / "constitution.md"
+    if not constitution_path.exists():
+        raise RoadmapError("constitution.md is missing")
 
     if matrix.get("roadmap") != "docs/execution-roadmap.md":
         raise RoadmapError("matrix.roadmap must point to docs/execution-roadmap.md")
     if matrix.get("depth_standard") != "docs/acceptance-depth.md":
         raise RoadmapError("matrix.depth_standard must point to docs/acceptance-depth.md")
+    _check_external_page_acceptance_guardrail(
+        roadmap_path=roadmap_path,
+        depth_path=depth_path,
+        constitution_path=constitution_path,
+    )
     _check_alignment_anchors(matrix)
 
     steps = _require_list(matrix, "steps")
@@ -125,6 +133,22 @@ def _check_alignment_anchors(matrix: dict[str, Any]) -> None:
     gui_pages = tuple(_require_list(design, "gui_pages"))
     if gui_pages != REQUIRED_GUI_PAGES:
         raise RoadmapError("system_design_alignment.gui_pages must match DESIGN.md order")
+
+
+def _check_external_page_acceptance_guardrail(
+    *,
+    roadmap_path: Path,
+    depth_path: Path,
+    constitution_path: Path,
+) -> None:
+    required_phrase = "外部自动化驱动真实页面"
+    for path in (constitution_path, depth_path, roadmap_path):
+        text = path.read_text(encoding="utf-8")
+        if required_phrase not in text:
+            raise RoadmapError(
+                f"{path.relative_to(path.parent.parent if path.parent.name == 'docs' else path.parent)} "
+                f"must mention {required_phrase}"
+            )
 
 
 def _check_step_contract(step: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> None:

@@ -61,6 +61,12 @@ def run_readiness(
     include_gui: bool,
     timeout_seconds: int,
 ) -> ReadinessReport:
+    if include_gui:
+        raise ValueError(
+            "GUI readiness must be implemented by external real-page automation; "
+            "no local GUI readiness flag is available."
+        )
+
     steps = [
         _run_step(
             root=root,
@@ -78,19 +84,6 @@ def run_readiness(
             failure_message="Core demo failed; inspect the demo report and stdout/stderr tails.",
         )
     ]
-
-    if include_gui:
-        steps.append(
-            _run_step(
-                root=root,
-                name="quick run native verifier",
-                command=("pnpm", "--dir", "ui", "run", "e2e:quick-run"),
-                timeout_seconds=timeout_seconds,
-                evidence=str(root / "ui" / "test-results" / "quick-run-native"),
-                success_message="Quick Run native verifier completed.",
-                failure_message="Quick Run native verifier failed; inspect ui/test-results/quick-run-native.",
-            )
-        )
 
     status = "pass" if all(step.status == "pass" for step in steps) else "fail"
     return ReadinessReport(
@@ -121,11 +114,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     _ = parser.add_argument("--run-id", default="", help="Stable readiness run id")
     _ = parser.add_argument(
-        "--include-gui",
-        action="store_true",
-        help="Also run the native Quick Run verifier",
-    )
-    _ = parser.add_argument(
         "--timeout-seconds",
         type=int,
         default=240,
@@ -138,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     report = run_readiness(
         root=root,
         run_id=run_id,
-        include_gui=bool(args.include_gui),
+        include_gui=False,
         timeout_seconds=int(args.timeout_seconds),
     )
     json_path, markdown_path = write_readiness_report(root, report)

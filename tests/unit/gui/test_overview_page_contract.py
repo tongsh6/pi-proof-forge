@@ -4,11 +4,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 OVERVIEW_PAGE = ROOT / "ui" / "src" / "pages" / "overview" / "index.tsx"
-NATIVE_VERIFY_CONTROLLER = (
-    ROOT / "ui" / "src" / "components" / "shell" / "NativeVerifyController.tsx"
-)
-PACKAGE_JSON = ROOT / "ui" / "package.json"
-VERIFY_SCRIPT = ROOT / "ui" / "scripts" / "verify_overview_native.mjs"
 I18N_FILES = [
     ROOT / "ui" / "src" / "i18n" / "en.json",
     ROOT / "ui" / "src" / "i18n" / "zh.json",
@@ -23,22 +18,10 @@ def test_overview_page_renders_product_dashboard_contract():
         "activityIconMap",
         "trendPath",
         "gapSummary",
-        "overview.load.ready",
         "pages.overview.startAgent",
         "aria-label={t(\"pages.overview.matchTrend.chartLabel\")}",
     ):
         assert marker in source
-
-
-def test_overview_native_verifier_is_registered():
-    controller = NATIVE_VERIFY_CONTROLLER.read_text(encoding="utf-8")
-    package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
-    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
-
-    assert 'overview: "/"' in controller
-    assert package["scripts"]["e2e:overview"] == "node ./scripts/verify_overview_native.mjs"
-    assert "overview.load.ready" in script
-    assert "validateReadyEvent" in script
 
 
 def test_overview_i18n_contract_is_complete():

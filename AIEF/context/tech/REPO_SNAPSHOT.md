@@ -75,6 +75,11 @@
 - AIEF/workflow/INDEX.md
 - AIEF/docs/standards/INDEX.md
 
+## Acceptance Guardrail
+- Deep scenario acceptance must be driven by external automation against a real page, real Tauri shell, or real browser boundary.
+- Handler/unit/contract tests, source markers, page-load checks, and internal audits are supporting evidence only; they cannot alone prove `deep_verified`.
+- Audit runners may summarize evidence, but the underlying journey proof must come from real page actions with persisted events/logs/artifacts.
+
 ## AIEF Level
 - Current: L3 (continuous operation)
 - Evidence:

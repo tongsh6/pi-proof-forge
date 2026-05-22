@@ -1,4 +1,5 @@
 import unittest
+import json
 from os import utime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -9,8 +10,10 @@ from tools.sidecar.handlers.jobs import (
     handle_jobs_convert_lead,
     handle_jobs_create_profile,
     handle_jobs_delete_profile,
+    handle_jobs_generate_profile_draft,
     handle_jobs_list_leads,
     handle_jobs_list_profiles,
+    handle_jobs_save_profile_draft,
     handle_jobs_update_profile,
 )
 
@@ -297,6 +300,254 @@ class JobsListProfilesTests(unittest.TestCase):
         self.assertEqual(
             [item["job_profile_id"] for item in result["items"]], ["jp-2026-001"]
         )
+
+
+class JobsProfileDraftReviewTests(unittest.TestCase):
+    def _write_policy(self, path: Path) -> None:
+        path.write_text(
+            "\n".join(
+                [
+                    'llm_provider: "lm_studio"',
+                    'llm_model: "local-model"',
+                    'llm_base_url: "http://127.0.0.1:1234/v1"',
+                    'llm_timeout: "60"',
+                    'llm_temperature: "0.2"',
+                    'llm_api_key_configured: "true"',
+                    'llm_api_key_placeholder: "lm-studio"',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def test_generate_profile_draft_calls_llm_and_does_not_save(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / "policy.yaml"
+            profiles_dir = root / "job_profiles"
+            self._write_policy(policy_path)
+            llm_response = {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "target_role": "Senior Backend Engineer",
+                                    "company": "Acme",
+                                    "source_url": "https://jobs.example.com/1",
+                                    "jd_summary": "Own checkout reliability.",
+                                    "must_have": ["Python", "Distributed systems"],
+                                    "keywords": ["Python", "Reliability"],
+                                    "nice_to_have": ["Kafka"],
+                                    "business_domain": "E-commerce",
+                                    "seniority_signal": ["Owner"],
+                                    "tone": "technical",
+                                }
+                            )
+                        }
+                    }
+                ]
+            }
+
+            with (
+                patch(
+                    "tools.sidecar.handlers.settings._resolve_policy_path",
+                    return_value=policy_path,
+                ),
+                patch("tools.sidecar.handlers.jobs._JOB_PROFILE_DIR", profiles_dir),
+                patch(
+                    "tools.sidecar.handlers.jobs.LLMClient.post_json",
+                    return_value=llm_response,
+                ) as post_json,
+            ):
+                result = cast(
+                    dict[str, Any],
+                    handle_jobs_generate_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_job_draft"},
+                            "jd_text": "Acme needs Python reliability owner.",
+                            "source_url": "https://jobs.example.com/1",
+                        }
+                    ),
+                )
+
+        self.assertEqual(result["status"], "draft_ready_for_review")
+        self.assertFalse(result["active_target_eligible"])
+        self.assertEqual(result["draft"]["target_role"], "Senior Backend Engineer")
+        self.assertEqual(result["draft"]["source_url"], "https://jobs.example.com/1")
+        self.assertEqual(post_json.call_count, 1)
+        self.assertFalse(profiles_dir.exists())
+
+    def test_generate_profile_draft_rejects_invalid_json_without_repair(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / "policy.yaml"
+            self._write_policy(policy_path)
+
+            with (
+                patch(
+                    "tools.sidecar.handlers.settings._resolve_policy_path",
+                    return_value=policy_path,
+                ),
+                patch(
+                    "tools.sidecar.handlers.jobs.LLMClient.post_json",
+                    return_value={"choices": [{"message": {"content": "not-json"}}]},
+                ),
+            ):
+                result = cast(
+                    dict[str, Any],
+                    handle_jobs_generate_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_job_bad_json"},
+                            "jd_text": "Acme needs Python reliability owner.",
+                        }
+                    ),
+                )
+
+        self.assertEqual(result["status"], "parse_invalid_json")
+        self.assertEqual(result["code"], "parse_invalid_json")
+        self.assertIsNone(result["draft"])
+
+    def test_generate_profile_draft_blocks_when_llm_base_url_missing(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            policy_path = Path(temp_dir) / "policy.yaml"
+            policy_path.write_text('llm_model: "local-model"\n', encoding="utf-8")
+
+            with patch(
+                "tools.sidecar.handlers.settings._resolve_policy_path",
+                return_value=policy_path,
+            ):
+                result = cast(
+                    dict[str, Any],
+                    handle_jobs_generate_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_job_blocked"},
+                            "jd_text": "Acme needs Python reliability owner.",
+                        }
+                    ),
+                )
+
+        self.assertEqual(result["status"], "parse_blocked_local_provider")
+        self.assertEqual(result["code"], "BLOCKED_LOCAL_PROVIDER")
+
+    def test_save_profile_draft_requires_review_and_keeps_incomplete_inactive(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            profiles_dir = Path(temp_dir) / "job_profiles"
+            draft = {
+                "target_role": "Senior Backend Engineer",
+                "company": "Acme",
+                "source_jd": "Acme needs Python reliability owner.",
+                "jd_summary": "",
+                "source_url": "",
+                "must_have": ["Python"],
+                "keywords": [],
+                "nice_to_have": [],
+                "business_domain": "E-commerce",
+                "seniority_signal": [],
+                "tone": "technical",
+            }
+
+            with patch("tools.sidecar.handlers.jobs._JOB_PROFILE_DIR", profiles_dir):
+                with self.assertRaises(ValueError):
+                    handle_jobs_save_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_job_no_review"},
+                            "draft": draft,
+                            "save_mode": "incomplete",
+                        }
+                    )
+                result = cast(
+                    dict[str, Any],
+                    handle_jobs_save_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_job_incomplete"},
+                            "draft": draft,
+                            "review": {"decision": "approved"},
+                            "save_mode": "incomplete",
+                        }
+                    ),
+                )
+                saved_text = (
+                    profiles_dir / f"{result['job_profile_id']}.yaml"
+                ).read_text(encoding="utf-8")
+
+        self.assertEqual(result["status"], "saved_incomplete")
+        self.assertFalse(result["active_target_eligible"])
+        self.assertIn("missing_keywords", result["missing_items"])
+        self.assertIn('status: "saved_incomplete"', saved_text)
+
+    def test_save_complete_profile_creates_bidirectional_job_lead_link(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            profiles_dir = root / "job_profiles"
+            leads_dir = root / "job_leads"
+            draft = {
+                "target_role": "Senior Backend Engineer",
+                "company": "Acme",
+                "source_jd": "Acme needs Python reliability owner.",
+                "jd_summary": "Own checkout reliability.",
+                "source_url": "https://jobs.example.com/1",
+                "must_have": ["Python"],
+                "keywords": ["Reliability"],
+                "nice_to_have": [],
+                "business_domain": "E-commerce",
+                "seniority_signal": ["Owner"],
+                "tone": "technical",
+            }
+
+            with (
+                patch("tools.sidecar.handlers.jobs._JOB_PROFILE_DIR", profiles_dir),
+                patch("tools.sidecar.handlers.jobs._JOB_LEAD_DIR", leads_dir),
+                patch(
+                    "tools.sidecar.handlers.jobs._check_source_url_accessible",
+                    return_value={
+                        "checked": True,
+                        "accessible": True,
+                        "status": "accessible",
+                        "status_code": 200,
+                    },
+                ),
+            ):
+                result = cast(
+                    dict[str, Any],
+                    handle_jobs_save_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_job_complete"},
+                            "draft": draft,
+                            "review": {
+                                "decision": "approved",
+                                "reviewed_at": "2026-05-21T00:00:00Z",
+                            },
+                            "save_mode": "complete",
+                        }
+                    ),
+                )
+                profile_text = (
+                    profiles_dir / f"{result['job_profile_id']}.yaml"
+                ).read_text(encoding="utf-8")
+                lead_text = (leads_dir / f"{result['job_lead_id']}.yaml").read_text(
+                    encoding="utf-8"
+                )
+                active_profiles = cast(
+                    dict[str, Any],
+                    handle_jobs_list_profiles(
+                        {
+                            "meta": {"correlation_id": "corr_job_active_list"},
+                            "cursor": None,
+                            "page_size": 20,
+                            "sort": {"field": "updated_at", "order": "desc"},
+                            "filters": {"status": "active", "query": "", "tags": []},
+                        }
+                    ),
+                )
+
+        self.assertEqual(result["status"], "saved_complete")
+        self.assertTrue(result["active_target_eligible"])
+        self.assertEqual(result["missing_items"], [])
+        self.assertTrue(result["job_lead_id"].startswith("jl_"))
+        self.assertIn(f'job_lead_id: "{result["job_lead_id"]}"', profile_text)
+        self.assertIn(f'job_profile_id: "{result["job_profile_id"]}"', lead_text)
+        self.assertEqual(active_profiles["items"][0]["job_profile_id"], result["job_profile_id"])
 
 
 if __name__ == "__main__":

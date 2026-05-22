@@ -185,6 +185,11 @@
       "materialSource": "材料来源",
       "selectedProfile": "选中岗位画像",
       "traceableEvidence": "可追溯证据",
+      "resumePositioning": "简历定位",
+      "positioningOptions": {
+        "technicalDepth": "技术深度",
+        "deliveryOwner": "交付负责人"
+      },
       "provider": "提供方",
       "model": "模型",
       "baseUrl": "服务地址",
@@ -222,7 +227,11 @@
         "delete": "删除",
         "deleting": "删除中...",
         "saved": "已保存。",
-        "importing": "导入中..."
+        "importing": "导入中...",
+        "generateDraft": "生成草稿",
+        "generatingDraft": "生成中...",
+        "saveIncomplete": "保存未完整",
+        "saveEligible": "保存可用卡"
       },
       "filters": {
         "queryPlaceholder": "搜索标题、角色或时间",
@@ -241,7 +250,11 @@
         "pass": "通过",
         "draft": "草稿",
         "gap": "缺口",
-        "needs_review": "待复核"
+        "needs_review": "待复核",
+        "draft_incomplete": "草稿未完整",
+        "draft_ready_for_review": "待审核",
+        "saved_incomplete": "已存未完整",
+        "saved_eligible": "可进入候选池"
       },
       "score": "分数",
       "sections": {
@@ -277,7 +290,15 @@
         "count": "{{count}} 份可用于提炼证据的材料",
         "source": "来自简历中心",
         "empty": "暂无材料来源。请先在简历中心上传 Markdown 或文本工作材料。",
-        "noPreview": "暂无预览。"
+        "noPreview": "暂无预览。",
+        "selectPlaceholder": "选择 Markdown 材料",
+        "select": "选择材料"
+      },
+      "review": {
+        "title": "保存前需要审核",
+        "source": "已关联 {{count}} 份来源材料",
+        "missing": "缺失：{{items}}",
+        "eligible": "成果和 Markdown 附件引用已完整。"
       },
       "empty": {
         "list": "暂无证据卡。可以新增空白卡，或导入文件创建证据卡。"
@@ -285,7 +306,8 @@
       "errors": {
         "titleRequired": "请填写标题。",
         "sourcePathRequired": "请填写源文件路径。",
-        "selectEvidence": "请先选择一张证据卡。"
+        "selectEvidence": "请先选择一张证据卡。",
+        "selectMaterial": "请先选择已上传的 Markdown 材料。"
       }
     },
     "jobs": {
@@ -315,7 +337,21 @@
         "clearDraft": "清空草稿",
         "save": "保存",
         "saving": "保存中...",
-        "converting": "转化中..."
+        "converting": "转化中...",
+        "generateDraft": "解析岗位描述",
+        "generatingDraft": "解析中...",
+        "saveIncomplete": "保存未完整",
+        "saveComplete": "保存完整画像"
+      },
+      "jdDraft": {
+        "title": "岗位描述转画像",
+        "subtitle": "粘贴目标岗位描述，生成待审核草稿，再保存为可运行的岗位目标。",
+        "jdPlaceholder": "粘贴岗位描述文本",
+        "sourceUrlPlaceholder": "可选 HTTPS 来源链接",
+        "ready": "待审核",
+        "incomplete": "未完整",
+        "missing": "缺失项",
+        "none": "无"
       },
       "filters": {
         "query": "搜索",
@@ -380,7 +416,8 @@
         "convert": "转为岗位画像"
       },
       "errors": {
-        "titleRequired": "请填写岗位画像标题。"
+        "titleRequired": "请填写岗位画像标题。",
+        "jdRequired": "请先粘贴岗位描述。"
       }
     },
     "agentRun": {
@@ -500,6 +537,64 @@
       "retryStrategy": {
         "sameChannel": "排队原通道重试",
         "fallbackEmail": "排队邮件降级"
+      },
+      "session": {
+        "title": "通道会话",
+        "manualBoundary": "人工登录边界已启用。凭证、验证码、短信和最终投递均不进入自动化。",
+        "channel": "投递通道",
+        "start": "开始配置",
+        "starting": "启动中...",
+        "check": "检查",
+        "clear": "清除会话",
+        "statusLabel": "状态",
+        "checkedAt": "检查时间",
+        "identity": "账号",
+        "identityUnknown": "account_identity_unknown",
+        "storage": "存储",
+        "path": "路径",
+        "log": "日志",
+        "status": {
+          "ready_to_setup": "可配置",
+          "waiting_for_manual_login": "等待人工登录",
+          "session_valid": "会话有效",
+          "login_required": "需要登录",
+          "session_unknown": "会话未知",
+          "session_expired": "已过期",
+          "session_cleared": "已清除",
+          "channel_unavailable": "通道不可用",
+          "failed": "失败",
+          "unknown": "未知"
+        }
+      },
+      "checkMode": {
+        "title": "Check Mode 演练",
+        "boundary": "记录通道目标、会话、简历路径、频控、附件检查和最终投递跳过状态。",
+        "start": "运行检查",
+        "running": "运行中...",
+        "status": "终态",
+        "jobLead": "Job Lead",
+        "jobLeadPlaceholder": "已保存的通道 Job Lead ID",
+        "resumeVersion": "简历版本",
+        "resumeVersionPlaceholder": "简历版本 ID",
+        "resume": "PDF 简历",
+        "resumePathPlaceholder": "相对或绝对 PDF 路径",
+        "submit": "最终投递",
+        "attempted": "已尝试",
+        "skipped": "已跳过",
+        "json": "JSON",
+        "steps": "步骤"
+      },
+      "feedback": {
+        "title": "反馈迭代",
+        "boundary": "记录反馈项、用户动作、保留的原始产物、版本对比和下一轮 check-mode 候选。",
+        "create": "记录迭代",
+        "recording": "记录中...",
+        "items": "反馈项",
+        "action": "动作",
+        "version": "新版本",
+        "next": "下一步",
+        "record": "记录",
+        "snapshot": "源快照"
       },
       "status": {
         "success": "成功",

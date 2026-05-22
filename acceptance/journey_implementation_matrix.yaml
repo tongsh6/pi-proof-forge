@@ -2,7 +2,7 @@ version: "2026-05-21"
 mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
-current_focus: "evidence_card_extraction_review"
+current_focus: "external_l3_submission_validation"
 
 vision_alignment:
   source: "PLAN.md"
@@ -57,11 +57,12 @@ steps:
       - "ui/design/DESIGN.md#system-settings"
       - "openspec/changes/autonomous-agent-delivery-loop/design.md#3.2-gui-configuration-entry-points"
     acceptance:
-      script: "pnpm --dir ui run e2e:system-settings"
+      script: "python3 -m pytest tests/acceptance/test_scenario_first_launch_configure_lm_studio.py -q"
       depth: "deep"
       evidence:
-        - "ui/test-results/system-settings-native/app-events.jsonl"
-        - "ui/test-results/system-settings-native/policy.yaml"
+        - "tests/acceptance/test_scenario_first_launch_configure_lm_studio.py"
+        - "tests/unit/gui/test_system_settings_page_contract.py"
+        - "tests/unit/sidecar/test_settings_handler.py"
       covers:
         - "provider_defaults"
         - "model_discovery"
@@ -85,10 +86,12 @@ steps:
       - "PLAN.md#5-data-model"
       - "ui/design/DESIGN.md#resumes"
     acceptance:
-      script: "pnpm --dir ui run e2e:resumes"
+      script: "python3 -m pytest tests/acceptance/test_scenario_setup_profile_and_material_library.py -q"
       depth: "native"
       evidence:
-        - "ui/test-results/resumes-native/app-events.jsonl"
+        - "tests/acceptance/test_scenario_setup_profile_and_material_library.py"
+        - "tests/unit/gui/test_resumes_page_contract.py"
+        - "tests/unit/gui/test_evidence_page_contract.py"
       covers:
         - "material_upload_entry"
         - "material_list_visible"
@@ -109,10 +112,12 @@ steps:
     depends_on:
       - "resumes_material_library"
     acceptance:
-      script: "pnpm --dir ui run e2e:evidence"
+      script: "python3 -m pytest tests/acceptance/test_scenario_generate_review_and_complete_evidence_card.py -q"
       depth: "native"
       evidence:
-        - "ui/test-results/evidence-native/app-events.jsonl"
+        - "tests/acceptance/test_scenario_generate_review_and_complete_evidence_card.py"
+        - "tests/unit/gui/test_evidence_page_contract.py"
+        - "tests/unit/sidecar/test_evidence_handler.py"
       covers:
         - "material_source_count"
         - "material_source_preview"
@@ -132,11 +137,9 @@ steps:
     depends_on:
       - "system_settings_llm"
     acceptance:
-      script: "pnpm --dir ui run e2e:quick-run"
+      script: "python3 -m pytest tests/acceptance/test_scenario_quick_run_generate_and_evaluate_resume.py -q"
       depth: "deep"
       evidence:
-        - "ui/test-results/quick-run-native/app-events.jsonl"
-        - "ui/test-results/quick-run-native/policy.yaml"
         - "outputs/quick_runs/qr_*.json"
         - "outputs/agent_runs/qr_*/summary.json"
       covers:
@@ -162,11 +165,9 @@ steps:
       - "system_settings_llm"
       - "quick_run_llm_consumption"
     acceptance:
-      script: "pnpm --dir ui run e2e:agent-run"
+      script: "python3 -m pytest tests/acceptance/test_scenario_agent_run_guided_batch.py -q"
       depth: "deep"
       evidence:
-        - "ui/test-results/agent-run-native/app-events.jsonl"
-        - "ui/test-results/agent-run-native/policy.yaml"
         - "outputs/agent_runs/ar_*.json"
       covers:
         - "provider_summary_visible"
@@ -188,11 +189,9 @@ steps:
     depends_on:
       - "evidence_material_sources"
     acceptance:
-      script: "pnpm --dir ui run e2e:quick-run"
+      script: "python3 -m pytest tests/acceptance/test_scenario_quick_run_generate_and_evaluate_resume.py -q"
       depth: "deep"
       evidence:
-        - "ui/test-results/quick-run-native/app-events.jsonl"
-        - "ui/test-results/quick-run-native/policy.yaml"
         - "outputs/quick_runs/qr_*.json"
         - "outputs/agent_runs/qr_*/summary.json"
       covers:
@@ -202,7 +201,7 @@ steps:
 
   - id: "evidence_card_extraction_review"
     order: 7
-    status: "next"
+    status: "deep_verified"
     journey_stage: "evidence"
     owner_surface: "ui/src/pages/evidence/index.tsx"
     user_goal: "Turn raw material sources into reviewed Evidence Cards."
@@ -214,11 +213,265 @@ steps:
     depends_on:
       - "evidence_material_sources"
     acceptance:
-      script: "pnpm --dir ui run e2e:evidence"
-      depth: "deep_required"
-      evidence: []
+      script: "python3 -m pytest tests/acceptance/test_scenario_generate_review_and_complete_evidence_card.py -q"
+      depth: "deep"
+      evidence:
+        - "tests/acceptance/test_scenario_generate_review_and_complete_evidence_card.py"
+        - "tests/unit/sidecar/test_evidence_handler.py"
+        - "outputs/acceptance/acceptance_evidence_review_20260521/journey-report.json"
       covers:
         - "raw_source_traceability"
         - "review_required_before_save"
         - "results_artifacts_gate"
         - "no_fabrication_guard"
+    unlocks:
+      - "setup_job_target"
+
+  - id: "setup_job_target"
+    order: 8
+    status: "deep_verified"
+    journey_stage: "jobs"
+    owner_surface: "ui/src/pages/jobs/index.tsx"
+    user_goal: "Create a reviewed job target from pasted JD text for downstream Quick Run and Agent Run selection."
+    vision_link: "Creates the explainable matching target that Evidence Cards are scored against before resume generation."
+    design_refs:
+      - "PLAN.md#6-matching-scoring"
+      - "ui/design/DESIGN.md#jobs"
+      - "openspec/specs/pi-proof-forge-core.md#job-profile"
+    depends_on:
+      - "evidence_card_extraction_review"
+    acceptance:
+      script: "python3 -m pytest tests/acceptance/test_scenario_setup_job_target.py -q"
+      depth: "deep"
+      evidence:
+        - "tests/acceptance/test_scenario_setup_job_target.py"
+        - "tests/unit/sidecar/test_jobs_handler.py"
+        - "outputs/acceptance/acceptance_job_target_20260521/journey-report.json"
+      covers:
+        - "pasted_jd_to_draft_profile"
+        - "review_required_before_save"
+        - "incomplete_profile_not_selectable"
+        - "complete_profile_visible_to_runs"
+        - "job_lead_bidirectional_link"
+    unlocks:
+      - "quick_run_generate_and_evaluate_resume"
+
+  - id: "quick_run_generate_and_evaluate_resume"
+    order: 9
+    status: "deep_verified"
+    journey_stage: "quick_run"
+    owner_surface: "ui/src/pages/quick-run/index.tsx"
+    user_goal: "Run matching, resume generation, PDF export, scorecard, and gap feedback for selected eligible evidence and a complete job target."
+    vision_link: "Completes the core Evidence Cards -> explainable matching -> fact-preserving resume -> scorecard gap feedback loop for one target."
+    design_refs:
+      - "PLAN.md#6-matching-scoring"
+      - "PLAN.md#7-resume-generation"
+      - "ui/design/DESIGN.md#quick-run"
+      - "openspec/specs/pi-proof-forge-core.md#pipeline-stage-spec"
+    depends_on:
+      - "system_settings_llm"
+      - "evidence_card_extraction_review"
+      - "setup_job_target"
+    acceptance:
+      script: "python3 -m pytest tests/acceptance/test_scenario_quick_run_generate_and_evaluate_resume.py -q"
+      depth: "deep"
+      evidence:
+        - "tests/acceptance/test_scenario_quick_run_generate_and_evaluate_resume.py"
+        - "tests/unit/sidecar/test_agent_handler.py"
+        - "tests/unit/gui/test_quick_run_page_contract.py"
+        - "outputs/quick_runs/qr_*.json"
+        - "outputs/agent_runs/qr_*/summary.json"
+      covers:
+        - "complete_job_profile_selection"
+        - "eligible_evidence_selection"
+        - "resume_positioning_recorded"
+        - "matching_resume_pdf_scorecard_gap_outputs"
+        - "fact_preserving_traceability"
+    unlocks:
+      - "agent_run_guided_batch"
+
+  - id: "agent_run_guided_batch"
+    order: 10
+    status: "deep_verified"
+    journey_stage: "agent_run"
+    owner_surface: "ui/src/pages/agent-run/index.tsx"
+    user_goal: "Run a guided multi-round batch with gates, review state, and no external submission until approval."
+    vision_link: "Extends the verified single-target Quick Run loop into the governed autonomous Agent loop before submission feedback iteration."
+    design_refs:
+      - "PLAN.md#9-agent-runner"
+      - "ui/design/DESIGN.md#agent-run"
+      - "openspec/changes/autonomous-agent-delivery-loop/design.md#2-state-machine"
+    depends_on:
+      - "quick_run_generate_and_evaluate_resume"
+      - "agent_run_llm_consumption"
+    acceptance:
+      script: "python3 -m pytest tests/acceptance/test_scenario_agent_run_guided_batch.py -q"
+      depth: "deep"
+      evidence:
+        - "tests/acceptance/test_scenario_agent_run_guided_batch.py"
+        - "tests/unit/sidecar/test_agent_handler.py"
+        - "tests/unit/gui/test_agent_run_page_contract.py"
+        - "outputs/agent_runs/ar_*.json"
+        - "outputs/review_queue/ar_*.json"
+      covers:
+        - "multi_round_state_machine_visible"
+        - "gate_results_recorded"
+        - "review_queue_created"
+        - "manual_approval_required_before_delivery"
+        - "run_log_traceability"
+    unlocks:
+      - "channel_session_setup"
+
+  - id: "channel_session_setup"
+    order: 11
+    status: "deep_verified"
+    journey_stage: "submissions"
+    owner_surface: "ui/src/pages/submissions/index.tsx"
+    user_goal: "Set up a controlled channel browser session for later manual-login submission workflows without storing credentials or submitting."
+    vision_link: "Prepares the delivery channel boundary after Agent Run has produced a guarded delivery plan, while preserving no-unattended-submit safety."
+    design_refs:
+      - "PLAN.md#8-delivery"
+      - "ui/design/DESIGN.md#submissions"
+      - "openspec/changes/autonomous-agent-delivery-loop/design.md#delivery"
+    depends_on:
+      - "agent_run_guided_batch"
+    acceptance:
+      script: "python3 -m pytest tests/acceptance/test_scenario_submission_check_mode.py -q"
+      depth: "deep"
+      evidence:
+        - "tests/acceptance/test_scenario_channel_session_setup.py"
+        - "tests/unit/sidecar/test_submission_handler.py"
+        - "tests/unit/gui/test_submissions_page_contract.py"
+        - "outputs/channel_sessions/liepin/session.json"
+        - "outputs/channel_sessions/liepin/session_check_log.json"
+      covers:
+        - "channel_session_status_visible"
+        - "manual_login_boundary"
+        - "no_password_storage"
+        - "no_captcha_bypass"
+        - "no_resume_submit"
+    unlocks:
+      - "submission_check_mode"
+
+  - id: "submission_check_mode"
+    order: 12
+    status: "deep_verified"
+    journey_stage: "submissions"
+    owner_surface: "ui/src/pages/submissions/index.tsx"
+    user_goal: "Run a check-mode submission rehearsal for a supported channel using verified session metadata, a saved Job Lead, and a generated resume PDF without final submit."
+    vision_link: "Closes the guarded delivery rehearsal loop by verifying login state, target match, resume path, rate limit, and submit-skipped evidence before any real delivery."
+    design_refs:
+      - "PLAN.md#8-delivery"
+      - "ui/design/DESIGN.md#submissions"
+      - "openspec/changes/autonomous-agent-delivery-loop/design.md#delivery"
+    depends_on:
+      - "channel_session_setup"
+      - "agent_run_guided_batch"
+    acceptance:
+      script: "python3 -m pytest tests/acceptance/test_scenario_submission_check_mode.py -q"
+      depth: "deep"
+      evidence:
+        - "tests/acceptance/test_scenario_submission_check_mode.py"
+        - "tests/unit/sidecar/test_submission_handler.py"
+        - "tests/unit/gui/test_submissions_page_contract.py"
+        - "outputs/submissions/liepin/sc_*/submission_log.json"
+        - "outputs/submissions/liepin/sc_*/submission_log.yaml"
+      covers:
+        - "channel_session_reused_for_check_mode"
+        - "target_and_resume_verified"
+        - "rate_limit_recorded"
+        - "submit_skipped_recorded"
+        - "submission_log_traceability"
+    unlocks:
+      - "feedback_iteration_after_check_mode"
+
+  - id: "feedback_iteration_after_check_mode"
+    order: 13
+    status: "deep_verified"
+    journey_stage: "feedback_iteration"
+    owner_surface: "ui/src/pages/submissions/index.tsx"
+    user_goal: "Use check-mode feedback to choose a reviewed iteration action, preserve original artifacts, and route back to evidence, job, or resume workflows."
+    vision_link: "Completes the evidence-first loop by turning scorecard gaps, blocked submission reasons, and target recovery outcomes into traceable next-version work."
+    design_refs:
+      - "PLAN.md#9-feedback-loop"
+      - "ui/design/DESIGN.md#submissions"
+      - "openspec/specs/pi-proof-forge-core.md#feedback"
+    depends_on:
+      - "submission_check_mode"
+    acceptance:
+      script: "python3 -m pytest tests/acceptance/test_scenario_submission_check_mode.py -q"
+      depth: "deep"
+      evidence:
+        - "tests/acceptance/test_scenario_feedback_iteration_after_check_mode.py"
+        - "tests/unit/sidecar/test_submission_handler.py"
+        - "tests/unit/gui/test_submissions_page_contract.py"
+        - "outputs/feedback_iterations/fi_*/iteration_record.json"
+        - "outputs/feedback_iterations/fi_*/source_snapshot.json"
+      covers:
+        - "check_mode_feedback_visible"
+        - "iteration_decision_recorded"
+        - "original_artifacts_preserved"
+        - "route_to_evidence_job_or_resume"
+        - "next_check_mode_candidate_linked"
+    unlocks:
+      - "closed_loop_e2e_audit"
+
+  - id: "closed_loop_e2e_audit"
+    order: 14
+    status: "deep_verified"
+    journey_stage: "full_journey"
+    owner_surface: "acceptance/journey_implementation_matrix.yaml"
+    user_goal: "Audit the full evidence-first job-search loop from setup through feedback iteration and close remaining traceability or verification gaps."
+    vision_link: "Confirms the implemented mainline now forms one coherent loop rather than isolated page-level capabilities."
+    design_refs:
+      - "PLAN.md"
+      - "constitution.md"
+      - "docs/acceptance-depth.md"
+      - "acceptance/journey_contract.yaml"
+    depends_on:
+      - "feedback_iteration_after_check_mode"
+    acceptance:
+      script: "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_closed_loop --level L1"
+      depth: "deep"
+      evidence:
+        - "tools/acceptance/acceptance_runner.py"
+        - "tests/acceptance/test_acceptance_runner.py"
+        - "outputs/acceptance/acceptance_closed_loop_20260522/closed-loop-audit.json"
+        - "outputs/acceptance/acceptance_closed_loop_20260522/acceptance-report.json"
+        - "outputs/acceptance/acceptance_closed_loop_20260522/journey-report.json"
+        - "outputs/quick_runs/qr_*.json"
+        - "outputs/agent_runs/ar_*.json"
+        - "outputs/submissions/liepin/sc_*/submission_log.json"
+        - "outputs/feedback_iterations/fi_*/iteration_record.json"
+      covers:
+        - "all_l1_scenarios_in_runner"
+        - "journey_report_all_mainline_rules_pass"
+        - "native_evidence_for_deep_steps_present"
+        - "traceability_paths_connect_across_stages"
+    unlocks:
+      - "external_l3_submission_validation"
+
+  - id: "external_l3_submission_validation"
+    order: 15
+    status: "next"
+    journey_stage: "external_delivery"
+    owner_surface: "tools/submission/liepin.py"
+    user_goal: "With explicit user authorization, validate the guarded delivery loop against a real external channel or record the exact live blocker."
+    vision_link: "Moves the verified local/check-mode loop toward real-world delivery while preserving explicit confirmation, rate limits, target verification, and no-secret persistence."
+    design_refs:
+      - "PLAN.md#8-delivery"
+      - "constitution.md"
+      - "openspec/changes/autonomous-agent-delivery-loop/design.md#delivery"
+      - "docs/acceptance-depth.md"
+    depends_on:
+      - "closed_loop_e2e_audit"
+    acceptance:
+      script: "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
+      depth: "deep_required"
+      evidence: []
+      covers:
+        - "user_authorized_external_session"
+        - "explicit_final_submit_gate"
+        - "live_channel_result_or_blocker_recorded"
+        - "post_submit_feedback_traceability"
+        - "no_secret_or_captcha_bypass"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import subprocess
 import sys
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from tools.acceptance.journey_contract import load_journey_contract
 from tools.acceptance.journey_report import (
@@ -33,6 +36,66 @@ L1_SCENARIO_TESTS = (
         (
             "Profile, uploaded resume, raw material library, readiness feedback, "
             "and evidence material source validation passed."
+        ),
+    ),
+    (
+        "generate_review_and_complete_evidence_card",
+        "tests/acceptance/test_scenario_generate_review_and_complete_evidence_card.py",
+        (
+            "Markdown material draft generation, strict JSON handling, human review "
+            "gate, traceability, and candidate-pool eligibility validation passed."
+        ),
+    ),
+    (
+        "setup_job_target",
+        "tests/acceptance/test_scenario_setup_job_target.py",
+        (
+            "Pasted JD parsing, strict JSON handling, human review gate, active target "
+            "eligibility, source URL check, and Job Lead linking validation passed."
+        ),
+    ),
+    (
+        "quick_run_generate_and_evaluate_resume",
+        "tests/acceptance/test_scenario_quick_run_generate_and_evaluate_resume.py",
+        (
+            "Complete target selection, eligible evidence selection, LLM-required "
+            "Quick Run outputs, PDF export, scorecard, gap tasks, and traceability "
+            "validation passed."
+        ),
+    ),
+    (
+        "agent_run_guided_batch",
+        "tests/acceptance/test_scenario_agent_run_guided_batch.py",
+        (
+            "Guided Agent Run preflight, selected candidates, gate events, review "
+            "queue, run log traceability, and no-submit delivery plan validation passed."
+        ),
+    ),
+    (
+        "channel_session_setup",
+        "tests/acceptance/test_scenario_channel_session_setup.py",
+        (
+            "Channel session setup, manual login boundary, positive-signal validity, "
+            "credential/challenge safety, session metadata, and selected-channel clear "
+            "validation passed."
+        ),
+    ),
+    (
+        "submission_check_mode",
+        "tests/acceptance/test_scenario_submission_check_mode.py",
+        (
+            "Submission check-mode preflight, shared session reuse, target and resume "
+            "verification, rate limit, attachment status, submission log, and "
+            "submit-skipped safety validation passed."
+        ),
+    ),
+    (
+        "feedback_iteration_after_check_mode",
+        "tests/acceptance/test_scenario_feedback_iteration_after_check_mode.py",
+        (
+            "Feedback iteration listing, selected action gating, source snapshot, "
+            "artifact preservation, evidence-linked comparison, new resume version, "
+            "and next check-mode candidate validation passed."
         ),
     ),
 )
@@ -97,7 +160,13 @@ def run_acceptance(
 
     for level in normalized_levels:
         if level == "L1":
-            steps.extend(_run_l1_steps(root=root, timeout_seconds=timeout_seconds))
+            steps.extend(
+                _run_l1_steps(
+                    root=root,
+                    run_id=run_id,
+                    timeout_seconds=timeout_seconds,
+                )
+            )
             continue
         steps.append(_not_started_step(level))
 
@@ -190,8 +259,13 @@ def summarize_by_level(steps: tuple[AcceptanceStep, ...]) -> dict[str, str]:
     return result
 
 
-def _run_l1_steps(*, root: Path, timeout_seconds: int) -> tuple[AcceptanceStep, ...]:
-    return tuple(
+def _run_l1_steps(
+    *,
+    root: Path,
+    run_id: str,
+    timeout_seconds: int,
+) -> tuple[AcceptanceStep, ...]:
+    scenario_steps = tuple(
         _run_l1_scenario_step(
             root=root,
             timeout_seconds=timeout_seconds,
@@ -200,6 +274,9 @@ def _run_l1_steps(*, root: Path, timeout_seconds: int) -> tuple[AcceptanceStep, 
             pass_message=pass_message,
         )
         for scenario_name, test_path, pass_message in L1_SCENARIO_TESTS
+    )
+    return scenario_steps + (
+        _run_closed_loop_audit_step(root=root, run_id=run_id, prior_steps=scenario_steps),
     )
 
 
@@ -257,6 +334,323 @@ def _run_l1_scenario_step(
     )
 
 
+def _run_closed_loop_audit_step(
+    *,
+    root: Path,
+    run_id: str,
+    prior_steps: tuple[AcceptanceStep, ...],
+) -> AcceptanceStep:
+    command = (
+        "internal",
+        "closed_loop_e2e_audit",
+    )
+    output_dir = root / "outputs" / "acceptance" / run_id
+    audit_json_path = output_dir / "closed-loop-audit.json"
+    audit_md_path = output_dir / "closed-loop-audit.md"
+    required_inputs = (
+        root / "acceptance" / "journey_contract.yaml",
+        root / "acceptance" / "journey_implementation_matrix.yaml",
+    )
+    if any(not path.exists() for path in required_inputs):
+        return AcceptanceStep(
+            level="L1",
+            name="closed_loop_e2e_audit",
+            status="not_started",
+            command=command,
+            evidence=str(audit_json_path),
+            message="Closed-loop audit requires a project root with acceptance contracts.",
+        )
+    try:
+        audit = _build_closed_loop_audit(root=root, run_id=run_id, prior_steps=prior_steps)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        audit_json_path.write_text(
+            json.dumps(audit, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        audit_md_path.write_text(_render_closed_loop_audit_markdown(audit), encoding="utf-8")
+    except Exception as exc:
+        return AcceptanceStep(
+            level="L1",
+            name="closed_loop_e2e_audit",
+            status="fail",
+            command=command,
+            evidence=str(audit_json_path),
+            message=f"Closed-loop audit failed: {exc}",
+        )
+
+    failed = [check for check in audit["checks"] if check["status"] != "pass"]
+    return AcceptanceStep(
+        level="L1",
+        name="closed_loop_e2e_audit",
+        status="fail" if failed else "pass",
+        command=command,
+        evidence=str(audit_json_path),
+        message=(
+            "Closed-loop audit passed: L1 scenarios, journey rules, native evidence, "
+            "and cross-stage traceability are connected."
+            if not failed
+            else f"Closed-loop audit found {len(failed)} failing check(s)."
+        ),
+    )
+
+
+def _build_closed_loop_audit(
+    *,
+    root: Path,
+    run_id: str,
+    prior_steps: tuple[AcceptanceStep, ...],
+) -> dict[str, Any]:
+    contract = load_journey_contract(root / "acceptance" / "journey_contract.yaml")
+    partial_report = AcceptanceReport(
+        run_id=run_id,
+        status=_overall_status(prior_steps),
+        generated_at=_utcnow(),
+        levels=("L1",),
+        steps=prior_steps,
+    )
+    journey_report = build_journey_report(
+        contract,
+        run_id=run_id,
+        results=_journey_results(partial_report),
+    )
+
+    matrix = yaml.safe_load(
+        (root / "acceptance" / "journey_implementation_matrix.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    checks = [
+        _audit_l1_scenarios(contract.selected_cases, prior_steps),
+        _audit_journey_l1_rules(journey_report.to_json()),
+        _audit_deep_evidence(root, matrix),
+        _audit_native_traceability(root),
+    ]
+    return {
+        "run_id": run_id,
+        "status": "pass" if all(check["status"] == "pass" for check in checks) else "fail",
+        "generated_at": _utcnow(),
+        "checks": checks,
+        "journey_summary": journey_report.to_json()["summary"],
+        "audited_steps": [step.name for step in prior_steps],
+    }
+
+
+def _audit_l1_scenarios(
+    selected_cases: tuple[str, ...],
+    prior_steps: tuple[AcceptanceStep, ...],
+) -> dict[str, Any]:
+    step_by_name = {step.name: step for step in prior_steps}
+    missing = [case_id for case_id in selected_cases if case_id not in step_by_name]
+    failing = [
+        step.name
+        for step in prior_steps
+        if step.name in selected_cases and step.status != "pass"
+    ]
+    return {
+        "id": "all_l1_scenarios_in_runner",
+        "status": "pass" if not missing and not failing else "fail",
+        "message": "All selected L1 scenarios are present and passing.",
+        "details": {
+            "selected_cases": list(selected_cases),
+            "missing": missing,
+            "failing": failing,
+        },
+    }
+
+
+def _audit_journey_l1_rules(journey_payload: dict[str, Any]) -> dict[str, Any]:
+    l1_steps = [
+        step
+        for step in journey_payload.get("steps", [])
+        if step.get("level") == "L1"
+    ]
+    failing = [
+        step.get("rule_id", "")
+        for step in l1_steps
+        if step.get("status") != "pass"
+    ]
+    return {
+        "id": "journey_report_all_mainline_rules_pass",
+        "status": "pass" if l1_steps and not failing else "fail",
+        "message": "All L1 journey rules are marked pass.",
+        "details": {
+            "l1_rule_count": len(l1_steps),
+            "failing": failing,
+        },
+    }
+
+
+def _audit_deep_evidence(root: Path, matrix: dict[str, Any]) -> dict[str, Any]:
+    missing: list[dict[str, str]] = []
+    checked: list[dict[str, str]] = []
+    for step in matrix.get("steps", []):
+        if step.get("status") != "deep_verified":
+            continue
+        acceptance = step.get("acceptance") or {}
+        for evidence in acceptance.get("evidence") or []:
+            evidence_text = str(evidence)
+            matches = _evidence_matches(root, evidence_text)
+            checked.append(
+                {
+                    "step": str(step.get("id", "")),
+                    "evidence": evidence_text,
+                    "matches": str(len(matches)),
+                }
+            )
+            if not matches:
+                missing.append(
+                    {
+                        "step": str(step.get("id", "")),
+                        "evidence": evidence_text,
+                    }
+                )
+    return {
+        "id": "native_evidence_for_deep_steps_present",
+        "status": "pass" if not missing else "fail",
+        "message": "All deep_verified evidence paths resolve to at least one artifact.",
+        "details": {
+            "checked": checked,
+            "missing": missing,
+        },
+    }
+
+
+def _evidence_matches(root: Path, evidence: str) -> list[str]:
+    pattern = str(root / evidence)
+    if any(char in evidence for char in "*?["):
+        return sorted(glob.glob(pattern))
+    path = root / evidence
+    return [str(path)] if path.exists() else []
+
+
+def _audit_native_traceability(root: Path) -> dict[str, Any]:
+    errors: list[str] = []
+    quick_path, quick_payload = _latest_json_artifact(root, "outputs/quick_runs/qr_*.json")
+    agent_path, agent_payload = _latest_json_artifact(root, "outputs/agent_runs/ar_*.json")
+    submission_path, submission_payload = _latest_json_artifact(
+        root,
+        "outputs/submissions/liepin/sc_*/submission_log.json",
+    )
+    feedback_path, feedback_payload = _latest_json_artifact(
+        root,
+        "outputs/feedback_iterations/fi_*/iteration_record.json",
+    )
+
+    if not quick_payload:
+        errors.append("missing quick_run artifact")
+    else:
+        quick_run = quick_payload.get("run") or {}
+        traceability = quick_payload.get("traceability") or {}
+        if quick_run.get("status") != "DONE":
+            errors.append("quick_run did not finish DONE")
+        if traceability.get("fact_preserving_traceability") is not True:
+            errors.append("quick_run fact-preserving trace missing")
+        if traceability.get("matching_uses_selected_evidence") is not True:
+            errors.append("quick_run matching trace did not use selected evidence")
+        if traceability.get("resume_traceable") is not True:
+            errors.append("quick_run resume traceability missing")
+        if quick_run.get("selected_evidence_card_ids") != traceability.get("selected_evidence_card_ids"):
+            errors.append("quick_run selected evidence mismatch")
+        if not _path_exists(root, str(quick_payload.get("resume_pdf") or traceability.get("resume_pdf") or "")):
+            errors.append("quick_run resume_pdf artifact missing")
+
+    if not agent_payload:
+        errors.append("missing agent_run artifact")
+    else:
+        agent_run = agent_payload.get("run") or {}
+        delivery_plan = agent_run.get("delivery_plan") or {}
+        review_queue = agent_run.get("review_queue") or {}
+        if agent_run.get("guided_batch") is not True:
+            errors.append("agent_run was not a guided batch")
+        if int(review_queue.get("pending_count") or 0) < 1:
+            errors.append("agent_run review queue was empty")
+        if agent_run.get("status") != "REVIEW_PENDING":
+            errors.append("agent_run did not stop at REVIEW_PENDING")
+        if delivery_plan.get("external_submission_attempted") is not False:
+            errors.append("agent_run external submission attempted")
+        if delivery_plan.get("delivery_events") != 0:
+            errors.append("agent_run delivery events were recorded")
+        if delivery_plan.get("submit_enabled") is not False:
+            errors.append("agent_run delivery submit was enabled")
+        if not _path_exists(root, str(agent_run.get("run_log", ""))):
+            errors.append("agent_run run_log missing")
+
+    if not submission_payload or not feedback_payload:
+        errors.append("missing submissions check-mode or feedback artifact")
+    else:
+        if submission_payload.get("status") != "check_mode_success_submit_skipped":
+            errors.append("check-mode did not end submit_skipped")
+        if submission_payload.get("final_submit_attempted") is not False:
+            errors.append("check-mode final submit attempted")
+        if feedback_payload.get("source_run_id") != submission_payload.get("submission_id"):
+            errors.append("feedback source_run_id does not match check-mode submission")
+        new_resume_version = str(feedback_payload.get("new_resume_version_id_or_none") or "")
+        if feedback_payload.get("previous_resume_version_id") == new_resume_version:
+            errors.append("feedback did not create a distinct resume version")
+        candidate = feedback_payload.get("next_check_mode_candidate") or {}
+        if new_resume_version and candidate.get("resume_version_id") != new_resume_version:
+            errors.append("next check-mode candidate does not use new resume version")
+        if candidate.get("real_submit_disabled") is not True:
+            errors.append("next check-mode candidate does not disable real submit")
+        if not _path_exists(root, str(feedback_payload.get("record_path", ""))):
+            errors.append("feedback iteration record missing")
+        if not _path_exists(root, str(feedback_payload.get("source_snapshot_path", ""))):
+            errors.append("feedback source snapshot missing")
+
+    return {
+        "id": "traceability_paths_connect_across_stages",
+        "status": "pass" if not errors else "fail",
+        "message": "External page automation artifacts connect Quick Run, Agent Run, Submissions, and feedback iteration.",
+        "details": {
+            "errors": errors,
+            "quick_run_artifact": str(quick_path.relative_to(root)) if quick_path else "",
+            "agent_run_artifact": str(agent_path.relative_to(root)) if agent_path else "",
+            "submission_artifact": str(submission_path.relative_to(root)) if submission_path else "",
+            "feedback_artifact": str(feedback_path.relative_to(root)) if feedback_path else "",
+        },
+    }
+
+
+def _latest_json_artifact(root: Path, pattern: str) -> tuple[Path | None, dict[str, Any]]:
+    paths = [Path(path) for path in glob.glob(str(root / pattern))]
+    for path in sorted(paths, key=lambda candidate: candidate.stat().st_mtime, reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(payload, dict):
+            return path, payload
+    return None, {}
+
+
+def _path_exists(root: Path, path_text: str) -> bool:
+    if not path_text:
+        return False
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = root / path
+    return path.exists()
+
+
+def _render_closed_loop_audit_markdown(audit: dict[str, Any]) -> str:
+    lines = [
+        "# Closed Loop E2E Audit",
+        "",
+        f"- Run ID: `{audit['run_id']}`",
+        f"- Status: `{audit['status']}`",
+        f"- Generated At: `{audit['generated_at']}`",
+        "",
+        "| Check | Status | Message |",
+        "|---|---|---|",
+    ]
+    for check in audit["checks"]:
+        lines.append(
+            f"| `{check['id']}` | `{check['status']}` | {check['message']} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _not_started_step(level: str) -> AcceptanceStep:
     return AcceptanceStep(
         level=level,
@@ -291,6 +685,69 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             status=status,
             evidence=materials_step.evidence,
             message=materials_step.message,
+        )
+
+    evidence_step = _find_step(report, "generate_review_and_complete_evidence_card")
+    if evidence_step is not None:
+        status = "pass" if evidence_step.status == "pass" else "fail"
+        results["evidence_card_requires_review"] = JourneyStepResult(
+            status=status,
+            evidence=evidence_step.evidence,
+            message=evidence_step.message,
+        )
+
+    job_step = _find_step(report, "setup_job_target")
+    if job_step is not None:
+        status = "pass" if job_step.status == "pass" else "fail"
+        results["job_target_ready_for_runs"] = JourneyStepResult(
+            status=status,
+            evidence=job_step.evidence,
+            message=job_step.message,
+        )
+
+    quick_step = _find_step(report, "quick_run_generate_and_evaluate_resume")
+    if quick_step is not None:
+        status = "pass" if quick_step.status == "pass" else "fail"
+        results["quick_run_outputs_are_traceable"] = JourneyStepResult(
+            status=status,
+            evidence=quick_step.evidence,
+            message=quick_step.message,
+        )
+
+    agent_guided_step = _find_step(report, "agent_run_guided_batch")
+    if agent_guided_step is not None:
+        status = "pass" if agent_guided_step.status == "pass" else "fail"
+        results["agent_run_batch_is_guarded"] = JourneyStepResult(
+            status=status,
+            evidence=agent_guided_step.evidence,
+            message=agent_guided_step.message,
+        )
+
+    channel_session_step = _find_step(report, "channel_session_setup")
+    if channel_session_step is not None:
+        status = "pass" if channel_session_step.status == "pass" else "fail"
+        results["channel_session_validity_is_positive_signal_based"] = JourneyStepResult(
+            status=status,
+            evidence=channel_session_step.evidence,
+            message=channel_session_step.message,
+        )
+
+    submission_check_step = _find_step(report, "submission_check_mode")
+    if submission_check_step is not None:
+        status = "pass" if submission_check_step.status == "pass" else "fail"
+        results["check_mode_never_final_submits"] = JourneyStepResult(
+            status=status,
+            evidence=submission_check_step.evidence,
+            message=submission_check_step.message,
+        )
+
+    feedback_iteration_step = _find_step(report, "feedback_iteration_after_check_mode")
+    if feedback_iteration_step is not None:
+        status = "pass" if feedback_iteration_step.status == "pass" else "fail"
+        results["feedback_iteration_preserves_traceability"] = JourneyStepResult(
+            status=status,
+            evidence=feedback_iteration_step.evidence,
+            message=feedback_iteration_step.message,
         )
 
     l2_step = next((step for step in report.steps if step.level == "L2"), None)

@@ -4,12 +4,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 JOBS_PAGE = ROOT / "ui" / "src" / "pages" / "jobs" / "index.tsx"
-NATIVE_VERIFY_CONTROLLER = (
-    ROOT / "ui" / "src" / "components" / "shell" / "NativeVerifyController.tsx"
-)
-PACKAGE_JSON = ROOT / "ui" / "package.json"
-VERIFY_SCRIPT = ROOT / "ui" / "scripts" / "verify_jobs_native.mjs"
-TAURI_MAIN = ROOT / "ui" / "src-tauri" / "src" / "main.rs"
 I18N_FILES = [
     ROOT / "ui" / "src" / "i18n" / "en.json",
     ROOT / "ui" / "src" / "i18n" / "zh.json",
@@ -22,31 +16,17 @@ def test_jobs_page_matches_product_center_contract():
     for marker in (
         'type ActiveTab = "profiles" | "leads"',
         "profileStats",
-        "jobs.load.ready",
         "listJobProfiles",
         "listJobLeads",
         "convertJobLead",
+        "generateJobProfileDraft",
+        "saveJobProfileDraft",
         "pages.jobs.tabs.${tab}",
+        "pages.jobs.jdDraft.title",
         "pages.jobs.leads.detailTitle",
         "pages.jobs.actions.newProfile",
     ):
         assert marker in source
-
-
-def test_jobs_native_verifier_is_registered():
-    controller = NATIVE_VERIFY_CONTROLLER.read_text(encoding="utf-8")
-    package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
-    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
-    tauri_main = TAURI_MAIN.read_text(encoding="utf-8")
-
-    assert 'jobs: "/jobs"' in controller
-    assert package["scripts"]["e2e:jobs"] == "node ./scripts/verify_jobs_native.mjs"
-    assert "jobs.load.ready" in script
-    assert "validateReadyEvent" in script
-    assert "profile_count" in script
-    assert "lead_count" in script
-    assert '"jobs"' in tauri_main
-    assert 'event_name.starts_with("jobs.")' in tauri_main
 
 
 def test_jobs_i18n_contract_is_complete():
@@ -67,6 +47,7 @@ def test_jobs_i18n_contract_is_complete():
         "fields",
         "leads",
         "errors",
+        "jdDraft",
     }
     required_action_keys = {
         "newProfile",
@@ -75,6 +56,20 @@ def test_jobs_i18n_contract_is_complete():
         "save",
         "saving",
         "converting",
+        "generateDraft",
+        "generatingDraft",
+        "saveIncomplete",
+        "saveComplete",
+    }
+    required_jd_draft_keys = {
+        "title",
+        "subtitle",
+        "jdPlaceholder",
+        "sourceUrlPlaceholder",
+        "ready",
+        "incomplete",
+        "missing",
+        "none",
     }
     required_lead_keys = {
         "searchPlaceholder",
@@ -108,4 +103,10 @@ def test_jobs_i18n_contract_is_complete():
         missing_leads = required_lead_keys.difference(jobs_messages["leads"])
         assert not missing_leads, (
             f"{i18n_file.name} missing lead keys: {sorted(missing_leads)}"
+        )
+        missing_jd_draft = required_jd_draft_keys.difference(
+            jobs_messages["jdDraft"]
+        )
+        assert not missing_jd_draft, (
+            f"{i18n_file.name} missing jd draft keys: {sorted(missing_jd_draft)}"
         )

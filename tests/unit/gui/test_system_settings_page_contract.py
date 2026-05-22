@@ -28,41 +28,18 @@ def test_system_settings_page_renders_design_sections():
         "LLM_PROVIDER_DEFAULTS",
         "applyProviderDefaults",
         "detectedModels",
-        "supports_detected_model_select",
-        "deepVerifyEnabled",
-        "runDeepLlmVerify",
-        "system_settings.llm.deep_verify.result",
-        "system_settings.llm.form.ready",
     ):
         assert marker in source
 
 
-def test_system_settings_native_verifier_is_deep_enough():
+def test_system_settings_page_does_not_embed_page_hooks():
     page_source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
-    script_source = (
-        ROOT / "ui" / "scripts" / "verify_system_settings_native.mjs"
-    ).read_text(encoding="utf-8")
-
-    for marker in (
-        "VITE_SYSTEM_SETTINGS_DEEP_VERIFY",
-        "VITE_SYSTEM_SETTINGS_LLM_STUB_BASE_URL",
-        "PPF_POLICY_PATH",
-        "ROOT_POLICY_PATH",
-        "startLlmStubServer",
-        "/v1/models",
-        "waitForDeepVerifyEvent",
-        "Bearer lm-studio",
-        "modified root policy.yaml",
-    ):
-        assert marker in script_source
 
     for marker in (
         "applyProviderDefaults",
         "checkLlmConnection",
         "updateLlmConfig",
         "getSettings",
-        "exposesPlaintextApiKey",
-        "BLOCKED_LOCAL_PROVIDER",
     ):
         assert marker in page_source
 

@@ -2,7 +2,6 @@
 
 use serde_json::{json, Value};
 use std::env;
-use std::fs::{create_dir_all, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -400,72 +399,6 @@ fn sidecar_shutdown(manager: State<'_, SidecarManager>) -> Result<(), String> {
     manager.shutdown()
 }
 
-#[tauri::command]
-fn quick_run_verify_event(event: Value) -> Result<(), String> {
-    let scenario = match env::var("QUICK_RUN_VERIFY_AUTORUN").ok() {
-        Some(value) => value,
-        _ => return Ok(()),
-    };
-    if !matches!(
-        scenario.as_str(),
-        "quick-run"
-            | "overview"
-            | "system-settings"
-            | "policy"
-            | "resumes"
-            | "jobs"
-            | "evidence"
-            | "agent-run"
-            | "submissions"
-    ) {
-        return Ok(());
-    }
-
-    if let Some(event_name) = event.get("event").and_then(Value::as_str) {
-        let allowed_event = match scenario.as_str() {
-            "quick-run" => event_name.starts_with("quick_run."),
-            "overview" => event_name.starts_with("overview."),
-            "system-settings" => event_name.starts_with("system_settings."),
-            "policy" => event_name.starts_with("policy."),
-            "resumes" => event_name.starts_with("resumes."),
-            "jobs" => event_name.starts_with("jobs."),
-            "evidence" => event_name.starts_with("evidence."),
-            "agent-run" => event_name.starts_with("agent_run."),
-            "submissions" => event_name.starts_with("submissions."),
-            _ => false,
-        };
-        if !allowed_event {
-            return Ok(());
-        }
-    } else {
-        return Ok(());
-    }
-
-    let repo_root = resolve_repo_root(Path::new(env!("CARGO_MANIFEST_DIR")))?;
-    let output_dir = repo_root.join(format!("ui/test-results/{}-native", scenario));
-    create_dir_all(&output_dir)
-        .map_err(|error| format!("Failed to create verifier event dir: {}", error))?;
-
-    let mut payload = event;
-    if let Some(object) = payload.as_object_mut() {
-        let recorded_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| error.to_string())?
-            .as_millis()
-            .to_string();
-        object.insert("recorded_at".to_string(), Value::String(recorded_at));
-    }
-
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(output_dir.join("app-events.jsonl"))
-        .map_err(|error| format!("Failed to open verifier event log: {}", error))?;
-    writeln!(file, "{}", payload)
-        .map_err(|error| format!("Failed to write verifier event: {}", error))?;
-    Ok(())
-}
-
 fn main() {
     tauri::Builder::default()
         .manage(SidecarManager::default())
@@ -491,8 +424,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             sidecar_request,
-            sidecar_shutdown,
-            quick_run_verify_event
+            sidecar_shutdown
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

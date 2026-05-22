@@ -18,8 +18,8 @@ def test_journey_implementation_matrix_selects_one_next_step() -> None:
     steps = matrix["steps"]
     next_steps = [step for step in steps if step["status"] == "next"]
 
-    assert matrix["current_focus"] == "evidence_card_extraction_review"
-    assert [step["id"] for step in next_steps] == ["evidence_card_extraction_review"]
+    assert matrix["current_focus"] == "external_l3_submission_validation"
+    assert [step["id"] for step in next_steps] == ["external_l3_submission_validation"]
     assert next_steps[0]["acceptance"]["depth"] == "deep_required"
 
 
@@ -100,7 +100,14 @@ def test_execution_roadmap_checker_rejects_missing_next(tmp_path: Path) -> None:
         ROADMAP_PATH.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    (docs_dir / "acceptance-depth.md").write_text("depth", encoding="utf-8")
+    (docs_dir / "acceptance-depth.md").write_text(
+        (ROOT / "docs" / "acceptance-depth.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (root / "constitution.md").write_text(
+        (ROOT / "constitution.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
     matrix = yaml.safe_load(MATRIX_PATH.read_text(encoding="utf-8"))
     for step in matrix["steps"]:
         if step["status"] == "next":
@@ -111,4 +118,34 @@ def test_execution_roadmap_checker_rejects_missing_next(tmp_path: Path) -> None:
     )
 
     with pytest.raises(RoadmapError, match="exactly one"):
+        check_execution_roadmap(root)
+
+
+def test_execution_roadmap_checker_requires_external_page_acceptance_guardrail(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    matrix_dir = root / "acceptance"
+    docs_dir = root / "docs"
+    matrix_dir.mkdir(parents=True)
+    docs_dir.mkdir()
+    (matrix_dir / "journey_implementation_matrix.yaml").write_text(
+        MATRIX_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (docs_dir / "execution-roadmap.md").write_text(
+        ROADMAP_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (docs_dir / "acceptance-depth.md").write_text(
+        (ROOT / "docs" / "acceptance-depth.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    constitution = (ROOT / "constitution.md").read_text(encoding="utf-8").replace(
+        "外部自动化驱动真实页面",
+        "真实页面自动化",
+    )
+    (root / "constitution.md").write_text(constitution, encoding="utf-8")
+
+    with pytest.raises(RoadmapError, match="外部自动化驱动真实页面"):
         check_execution_roadmap(root)

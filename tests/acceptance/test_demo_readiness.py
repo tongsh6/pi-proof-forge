@@ -25,30 +25,23 @@ def test_readiness_runs_core_demo_by_default(tmp_path: Path) -> None:
     assert "tools.acceptance.demo_run" in run_mock.call_args.args[0]
 
 
-def test_readiness_can_include_quick_run_native_verifier(tmp_path: Path) -> None:
+def test_readiness_rejects_removed_gui_verifier_flag(tmp_path: Path) -> None:
     with patch("tools.acceptance.demo_readiness.subprocess.run") as run_mock:
         run_mock.return_value = Mock(returncode=0, stdout="ok", stderr="")
 
-        report = run_readiness(
-            root=tmp_path,
-            run_id="ready_test",
-            include_gui=True,
-            timeout_seconds=10,
-        )
+        try:
+            run_readiness(
+                root=tmp_path,
+                run_id="ready_test",
+                include_gui=True,
+                timeout_seconds=10,
+            )
+        except ValueError as error:
+            assert "external real-page automation" in str(error)
+        else:
+            raise AssertionError("include_gui=True should be rejected")
 
-    assert report.status == "pass"
-    assert [step.name for step in report.steps] == [
-        "core demo",
-        "quick run native verifier",
-    ]
-    assert run_mock.call_count == 2
-    assert run_mock.call_args_list[1].args[0] == [
-        "pnpm",
-        "--dir",
-        "ui",
-        "run",
-        "e2e:quick-run",
-    ]
+    assert run_mock.call_count == 0
 
 
 def test_readiness_fails_when_a_step_fails(tmp_path: Path) -> None:

@@ -4,8 +4,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 QUICK_RUN_PAGE = ROOT / "ui" / "src" / "pages" / "quick-run" / "index.tsx"
-PACKAGE_JSON = ROOT / "ui" / "package.json"
-VERIFY_SCRIPT = ROOT / "ui" / "scripts" / "verify_quick_run_native.mjs"
 I18N_FILES = [
     ROOT / "ui" / "src" / "i18n" / "en.json",
     ROOT / "ui" / "src" / "i18n" / "zh.json",
@@ -24,12 +22,8 @@ def test_quick_run_page_renders_product_pipeline_contract():
         "providerSummary",
         "inputSummary",
         "listEvidenceMaterialSources",
-        "material_source_count",
-        "trace_resume_traceable",
-        "quick_run.load.ready",
-        "quick_run.start.result",
-        "llm_config_summary",
-        "api_key_masked",
+        "resumePositioning",
+        "resume_positioning",
         'data-automation-id="quick-run-start"',
         "pages.quickRun.stageOutput",
         "pages.quickRun.scores",
@@ -41,20 +35,6 @@ def test_quick_run_page_renders_product_pipeline_contract():
     assert "Agent (multi-round with gate)" not in source
     assert "api_key.value" not in source
     assert "api_key.secret" not in source
-
-
-def test_quick_run_native_verifier_is_registered():
-    package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
-    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
-
-    assert package["scripts"]["e2e:quick-run"] == "node ./scripts/verify_quick_run_native.mjs"
-    assert "quick_run.load.ready" in script
-    assert "quick_run_verify_provider" in script
-    assert "PPF_POLICY_PATH" in script
-    assert "llm_config_summary" in script
-    assert "mat_quick_run_verify" in script
-    assert "trace_resume_traceable" in script
-    assert "app_events" in script
 
 
 def test_quick_run_i18n_contract_is_complete():
@@ -73,6 +53,7 @@ def test_quick_run_i18n_contract_is_complete():
         "materialSource",
         "selectedProfile",
         "traceableEvidence",
+        "resumePositioning",
         "provider",
         "model",
         "baseUrl",
@@ -89,4 +70,7 @@ def test_quick_run_i18n_contract_is_complete():
         missing_scores = required_score_keys.difference(quick_run_messages["scoreLabels"])
         assert not missing_scores, (
             f"{i18n_file.name} missing score keys: {sorted(missing_scores)}"
+        )
+        assert {"technicalDepth", "deliveryOwner"}.issubset(
+            quick_run_messages["positioningOptions"]
         )

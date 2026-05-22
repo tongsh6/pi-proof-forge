@@ -304,9 +304,36 @@ class ProcessRequestTests(unittest.TestCase):
             raw_path = Path(tmp_dir) / "sample_raw.txt"
             profile_dir = Path(tmp_dir) / "job_profiles"
             profile_path = profile_dir / "jp-001.yaml"
+            evidence_dir = Path(tmp_dir) / "evidence_cards"
             raw_path.write_text("raw", encoding="utf-8")
             profile_dir.mkdir()
-            profile_path.write_text("target_role: Backend\n", encoding="utf-8")
+            profile_path.write_text(
+                "target_role: Backend\nstatus: active\n", encoding="utf-8"
+            )
+            evidence_dir.mkdir()
+            (evidence_dir / "ec-001.yaml").write_text(
+                "\n".join(
+                    [
+                        'id: "ec-001"',
+                        'title: "Eligible evidence"',
+                        'time_range: "2025-06 ~ 2025-09"',
+                        'context: "Backend reliability"',
+                        'role_scope: "Owner"',
+                        'status: "saved_eligible"',
+                        'candidate_pool_eligible: "true"',
+                        "actions:",
+                        '  - "Built backend pipeline"',
+                        "results:",
+                        '  - "Reduced latency by 30%"',
+                        "stack:",
+                        '  - "Python"',
+                        "artifacts:",
+                        '  - "latency.md"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
 
             completed = subprocess.CompletedProcess(
                 args=[],
@@ -315,6 +342,11 @@ class ProcessRequestTests(unittest.TestCase):
                 stderr="",
             )
             with (
+                patch(
+                    "tools.sidecar.handlers.agent._PROJECT_ROOT",
+                    Path(tmp_dir),
+                    create=True,
+                ),
                 patch(
                     "tools.sidecar.handlers.agent._QUICK_RUN_DIR",
                     quick_runs_dir,

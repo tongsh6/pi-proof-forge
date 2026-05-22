@@ -1,13 +1,20 @@
 import { RpcClient } from "@/lib/rpc/client";
 import { TauriRpcTransport } from "@/lib/rpc/tauri-transport";
 import type {
+  ChannelSessionResult,
   EvidenceCreateResult,
   EvidenceDeleteResult,
   EvidenceFilters,
+  EvidenceDraftPayload,
+  EvidenceGenerateDraftResult,
   EvidenceGetResult,
   EvidenceImportResult,
   EvidenceListResult,
+  EvidenceSaveDraftResult,
   EvidenceUpdateResult,
+  FeedbackItem,
+  FeedbackIterationResult,
+  FeedbackListResult,
   GetPendingReviewResult,
   HandshakeResult,
   AgentRunGetResult,
@@ -21,8 +28,11 @@ import type {
   MaterialListResult,
   MaterialReadinessResult,
   MaterialUploadResult,
+  JobProfileDraftPayload,
+  JobProfileGenerateDraftResult,
   JobProfileCreateResult,
   JobProfileDeleteResult,
+  JobProfileSaveDraftResult,
   JobProfilesFilters,
   JobProfilesListResult,
   JobProfileUpdateResult,
@@ -40,6 +50,8 @@ import type {
   ReviewDecisionItem,
   SettingsGetResult,
   SettingsUpdateResult,
+  SubmissionCheckModeOptions,
+  SubmissionCheckModeResult,
   SubmissionDetailResult,
   SubmissionListResult,
   SubmissionRetryResult,
@@ -152,6 +164,22 @@ export async function importEvidence(payload: {
   return client.call<EvidenceImportResult>("evidence.import", payload);
 }
 
+export async function generateEvidenceDraft(
+  materialIds: string[]
+): Promise<EvidenceGenerateDraftResult> {
+  return client.call<EvidenceGenerateDraftResult>("evidence.generateDraft", {
+    material_ids: materialIds,
+  });
+}
+
+export async function saveEvidenceDraft(payload: {
+  draft: EvidenceDraftPayload;
+  save_mode: "incomplete" | "eligible";
+  review: { decision: "approved"; reviewed_at?: string };
+}): Promise<EvidenceSaveDraftResult> {
+  return client.call<EvidenceSaveDraftResult>("evidence.saveDraft", payload);
+}
+
 export async function getSettings(): Promise<SettingsGetResult> {
   return client.call<SettingsGetResult>("settings.get");
 }
@@ -257,6 +285,24 @@ export async function createJobProfile(payload: {
   status: "active" | "draft";
 }): Promise<JobProfileCreateResult> {
   return client.call<JobProfileCreateResult>("jobs.createProfile", payload);
+}
+
+export async function generateJobProfileDraft(payload: {
+  jd_text: string;
+  source_url?: string;
+}): Promise<JobProfileGenerateDraftResult> {
+  return client.call<JobProfileGenerateDraftResult>(
+    "jobs.generateProfileDraft",
+    payload
+  );
+}
+
+export async function saveJobProfileDraft(payload: {
+  draft: JobProfileDraftPayload;
+  save_mode: "incomplete" | "complete";
+  review: { decision: "approved"; reviewed_at?: string };
+}): Promise<JobProfileSaveDraftResult> {
+  return client.call<JobProfileSaveDraftResult>("jobs.saveProfileDraft", payload);
 }
 
 export async function updateJobProfile(
@@ -382,6 +428,85 @@ export async function retrySubmission(
     submission_id: submissionId,
     strategy,
   });
+}
+
+export async function getChannelSession(
+  channel: string
+): Promise<ChannelSessionResult> {
+  return client.call<ChannelSessionResult>("submission.channelSession.get", {
+    channel,
+  });
+}
+
+export async function startChannelSession(
+  channel: string
+): Promise<ChannelSessionResult> {
+  return client.call<ChannelSessionResult>("submission.channelSession.start", {
+    channel,
+  });
+}
+
+export async function checkChannelSession(
+  channel: string,
+  loginSignals: Record<string, unknown> = {},
+  accountIdentity?: Record<string, unknown>
+): Promise<ChannelSessionResult> {
+  return client.call<ChannelSessionResult>("submission.channelSession.check", {
+    channel,
+    login_signals: loginSignals,
+    ...(accountIdentity ? { account_identity: accountIdentity } : {}),
+  });
+}
+
+export async function clearChannelSession(
+  channel: string
+): Promise<ChannelSessionResult> {
+  return client.call<ChannelSessionResult>("submission.channelSession.clear", {
+    channel,
+  });
+}
+
+export async function startSubmissionCheckMode(payload: {
+  channel: string;
+  job_lead_id: string;
+  resume_version_id: string;
+  resume_pdf_path: string;
+  options?: SubmissionCheckModeOptions;
+}): Promise<SubmissionCheckModeResult> {
+  return client.call<SubmissionCheckModeResult>("submission.checkMode.start", {
+    channel: payload.channel,
+    job_lead_id: payload.job_lead_id,
+    resume_version_id: payload.resume_version_id,
+    resume_pdf_path: payload.resume_pdf_path,
+    preflight_confirmed: payload.options?.preflight_confirmed ?? true,
+    confirmed_no_real_submit:
+      payload.options?.confirmed_no_real_submit ?? true,
+    options: payload.options ?? {},
+  });
+}
+
+export async function listSubmissionFeedback(
+  sourceRunId: string
+): Promise<FeedbackListResult> {
+  return client.call<FeedbackListResult>("submission.feedback.list", {
+    source_run_id: sourceRunId,
+  });
+}
+
+export async function createFeedbackIteration(payload: {
+  source_run_id: string;
+  source_feedback_items?: FeedbackItem[];
+  selected_actions: string[];
+  user_notes?: string;
+  evidence_card_ids_added_or_updated?: string[];
+  new_or_updated_claims?: string[];
+  remaining_gap_tasks?: string[];
+  job_target_id_or_none?: string;
+}): Promise<FeedbackIterationResult> {
+  return client.call<FeedbackIterationResult>(
+    "submission.feedback.createIteration",
+    payload,
+  );
 }
 
 export async function getPendingReview(

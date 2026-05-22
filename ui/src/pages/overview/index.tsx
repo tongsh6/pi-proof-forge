@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
@@ -20,7 +19,6 @@ import { getOverview } from "@/lib/sidecar/api";
 import type { OverviewActivity, OverviewGap, OverviewTrendPoint } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
 
 const metricCardKeys = [
   "evidence_count",
@@ -41,19 +39,6 @@ const activityIconMap: Record<OverviewActivity["type"], LucideIcon> = {
   evidence_imported: FolderSearch,
   agent_run_completed: Bot,
 };
-
-function recordVerifyEvent(
-  event: string,
-  details: Record<string, unknown> = {}
-) {
-  if (verifyScenario !== "overview") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
-}
 
 function buildTrendPath(
   trend: OverviewTrendPoint[],
@@ -121,21 +106,9 @@ export function OverviewPage() {
       setTrend(result.match_trend);
       setGaps(result.gaps);
       setLoadState("ready");
-      recordVerifyEvent("overview.load.ready", {
-        evidence_count: result.metrics.evidence_count,
-        matched_jobs_count: result.metrics.matched_jobs_count,
-        resume_count: result.metrics.resume_count,
-        submission_count: result.metrics.submission_count,
-        activity_count: result.recent_activities.length,
-        trend_count: result.match_trend.length,
-        gap_count: result.gaps.length,
-      });
     } catch (nextError) {
       setError(getErrorMessage(nextError));
       setLoadState("error");
-      recordVerifyEvent("overview.load.error", {
-        error: getErrorMessage(nextError),
-      });
     }
   }, []);
 

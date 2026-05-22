@@ -8,15 +8,24 @@
 
 1. 有明确用户目标，不只检查页面或字段存在。
 2. 执行真实动作链，覆盖用户会触发的关键状态变化。
-3. 穿过真实系统边界，例如 Tauri bridge、sidecar、持久化或真实协议 stub。
-4. 断言结果能被后续系统环节读取或消费。
-5. 覆盖至少一个失败路径，且失败原因结构化。
-6. 覆盖安全边界，尤其是 secret 不回显、不误用。
-7. 失败时能定位到具体断裂点。
+3. 由外部自动化驱动真实页面、真实 Tauri 桌面壳或真实浏览器边界。
+4. 穿过真实系统边界，例如 Tauri bridge、sidecar、持久化或真实协议 stub。
+5. 断言结果能被后续系统环节读取或消费。
+6. 覆盖至少一个失败路径，且失败原因结构化。
+7. 覆盖安全边界，尤其是 secret 不回显、不误用。
+8. 失败时能定位到具体断裂点。
+
+以下都不能单独算深度验收：
+
+- 只跑 handler/unit/contract 测试。
+- 只检查源码 marker、按钮存在、页面加载或翻译 key。
+- 只由内部 audit 顺序执行多个测试，但没有真实页面动作链产生的事件和 artifact。
+
+审计层可以汇总和校验证据，但不能替代外部自动化驱动真实页面的场景验收。
 
 ## System Settings LLM 口径
 
-`pnpm --dir ui run e2e:system-settings` 必须验证：
+外部真实页面自动化（待实现） 必须验证：
 
 - 真实 Tauri 桌面壳加载 System Settings。
 - 真实 sidecar 返回 `settings.get`。
@@ -31,16 +40,101 @@
 
 ## Quick Run Material Consumption 口径
 
-`pnpm --dir ui run e2e:quick-run` 必须验证：
+外部真实页面自动化（待实现） 必须验证：
 
 - 真实 Tauri 桌面壳加载 Quick Run。
 - 真实 sidecar 同时读取持久化 LLM 配置、材料库来源、Evidence 列表和 Job Profile 列表。
-- 运行前事件包含材料来源数量、选中材料来源、选中 Job Profile 和 masked LLM 摘要。
-- Quick Run 启动真实本地 pipeline，且 `run.quick.start` 使用材料库文件作为 `--raw` 输入。
-- 本次 pipeline 使用独立 evidence 目录，匹配阶段只消费本次材料派生的 Evidence Card。
-- Quick Run record 保留 `material_source`、`raw_path`、`evidence_dir`、Matching Report、Resume、Scorecard 和 masked LLM 摘要。
-- Matching Report 中的 `evidence_card_ids` 包含本次生成的 Evidence Card。
-- Resume 输出包含对应 Evidence Card 的 `Evidence trace`，能从简历回溯到材料来源。
+- 运行前事件包含材料来源数量、选中材料来源、active Job Profile、`saved_eligible` Evidence Cards 和 masked LLM 摘要。
+- Quick Run 启动真实本地 pipeline，且 `run.quick.start` 使用 complete Job Profile、selected eligible Evidence Cards 和 persisted LLM config。
+- 本次 pipeline 使用独立 evidence 目录，匹配阶段只消费 staging 后的 selected eligible Evidence Cards。
+- Quick Run record 保留 `material_source`、`raw_path`、`evidence_dir`、Matching Report、Resume、PDF、Scorecard、gap tasks、resume positioning 和 masked LLM 摘要。
+- Matching Report 中的 `evidence_card_ids` 必须是本次 selected eligible Evidence Cards 的子集。
+- Resume 输出包含对应 Evidence Card 的 `Evidence trace`，能从简历回溯到材料来源，并记录 fact-preserving traceability。
+- 外部自动化必须证明 LLM required 路径被调用，不能静默 fallback 到非 LLM 路径。
 - 明文 API key 和 policy secret storage 字段不得出现在 Quick Run record 中。
 
 只检查 Quick Run 页面能看到材料来源，不满足材料消费深度验收。
+
+## Agent Run Guided Batch 口径
+
+外部真实页面自动化（待实现） 必须验证：
+
+- 真实 Tauri 桌面壳加载 Agent Run。
+- 真实 sidecar 读取 persisted LLM 摘要，且 run record 只保留 masked secret 状态。
+- Agent Run 使用 active Job Profile、eligible Evidence Cards 和 saved Job Leads 启动 guided batch。
+- run record 记录 preflight confirmation、effective policy limits、selected candidate ids 和 no-real-submit 确认。
+- 真实 AgentLoop 事件至少覆盖 INIT、DISCOVER、SCORE、GENERATE、EVALUATE、GATE、REVIEW。
+- Gate 结果写入 run record，Review queue 写入 `outputs/review_queue/<run_id>.json`。
+- 人工 review 前不得出现 DELIVER 事件，delivery plan 必须记录 `submit_enabled=false` 与 `external_submission_attempted=false`。
+- run log 必须持久化到 `outputs/agent_runs/<run_id>/run_log.json`，且页面/事件能回溯到该 run log。
+
+只检查 Agent Run 页面能启动或只验证 LLM 摘要，不满足 guided batch 深度验收。
+
+## Channel Session Setup 口径
+
+外部真实页面自动化（待实现） 对 `channel_session_setup` 必须验证：
+
+- 真实 Tauri 桌面壳加载 Submissions。
+- 真实 sidecar 暴露 channel session API，且 API/UI/log 中都带 `channel`。
+- 支持的通道以可扩展列表呈现，P0 至少包含 `liepin`，调用层不得写成 Liepin-only 合同。
+- 缺失 channel 和不支持 channel 返回结构化错误。
+- start session 只打开/记录人工登录边界，不输入、不保存 credentials。
+- captcha/SMS 输入和绕过参数必须被拒绝，自动化不得写入 captcha/SMS。
+- 仅 `login_modal_absent` 不能把会话标为 valid，必须返回 `session_unknown`。
+- `login_required` 返回结构化 `login_required`。
+- 只有 positive authenticated signal 才能持久化 `session_valid`。
+- session artifact 记录 `session_path`、`checked_at`、`clear_available`、safe account identity 或 `account_identity_unknown`。
+- account identity 只能保存非敏感或 masked 字段。
+- adapter-specific 字段必须按 channel namespace 保存。
+- clear 只清理选中的 channel session，后续读取不得把 cleared session 视为 valid。
+- `session_check_log` 必须记录 channel、步骤、terminal status 和安全边界。
+
+只检查 Submissions 页面加载或只显示投递记录，不满足 channel session setup 深度验收。
+
+## Submission Check Mode 口径
+
+外部真实页面自动化（待实现） 对 `submission_check_mode` 必须验证：
+
+- 真实 Tauri 桌面壳加载 Submissions。
+- 真实 sidecar 使用 `submission.checkMode.start` 创建 check-mode submission log。
+- API 必须要求 channel、channel Job Lead、resume PDF、usable shared session 和 preflight confirmation。
+- 缺失 session、unknown/cleared session、用户拒绝账号 identity 都必须在 open target 前结构化阻断。
+- preflight 必须记录 selected channel、Job Lead、resume PDF、session metadata、no-real-submit、final confirm disabled。
+- check-mode 必须记录 adapter capabilities，且 adapter-specific 字段按 channel namespace 保存。
+- submission log 必须记录 original Job Lead、final verified target、resume version/PDF、session metadata、rate limit decision、login check、target verify、attachment status 和 submit skipped。
+- `send_resume_path_check` 必须发生在 target verify 之后。
+- `final_submit_attempted=false`、`external_submission_attempted=false`、`submit_enabled=false` 必须同时出现在返回值和 persisted log 中。
+- Submission detail 必须能读取同一 log 的 steps、original/final target、JSON/YAML 路径和 terminal status。
+
+只检查 Submissions 表格新增了一条记录，不满足 check-mode 深度验收。
+
+## Feedback Iteration 口径
+
+外部真实页面自动化（待实现） 对 `feedback_iteration_after_check_mode` 必须验证：
+
+- 真实 Tauri 桌面壳加载 Submissions。
+- 真实 sidecar 从上一轮 check-mode submission log 列出反馈项。
+- 缺失 `source_run_id`、unsupported feedback source 和未选择 action 必须结构化阻断。
+- iteration record 必须保存到 `outputs/feedback_iterations/<iteration_id>/iteration_record.json`。
+- record 必须包含 immutable source snapshot，并保留上一轮 submission log / resume artifact。
+- 用户选择的 action 必须写入 `selected_actions`，不能静默应用修改。
+- 选择 regenerate resume 时必须创建新的 resume version id/path，且不得覆盖 previous resume version。
+- new/updated claims 必须带 Evidence Card 链接。
+- comparison summary 必须包含 previous/new version、changed sections、evidence ids、new/updated claims、removed claims 和 remaining gap tasks。
+- record 必须给出 `next_check_mode_candidate`，且继续保持 `real_submit_disabled=true`。
+
+只显示一条反馈提示或只复制 check-mode 状态，不满足 feedback iteration 深度验收。
+
+## Closed Loop E2E Audit 口径
+
+`bash scripts/acceptance/run-acceptance.sh --run-id acceptance_closed_loop --level L1` 对 `closed_loop_e2e_audit` 必须验证：
+
+- L1 runner 覆盖 `acceptance/journey_contract.yaml` 中所有 selected cases，且所有 case step 通过。
+- Journey report 中所有 L1 mainline rules 均为 pass。
+- `acceptance/journey_implementation_matrix.yaml` 中所有 `deep_verified` step 的 evidence path 或 glob 都能解析到真实文件。
+- Quick Run native evidence 必须证明 selected Evidence -> fact-preserving matching -> traceable resume/PDF artifact。
+- Agent Run native evidence 必须证明 guided batch、review queue、no delivery event、`submit_enabled=false` 和 persisted run log。
+- Submissions native evidence 必须证明 check-mode submit skipped、feedback iteration 继承同一个 source run、新 resume version 进入下一轮 check-mode candidate，且继续 `real_submit_disabled=true`。
+- 审计结果必须写入 `outputs/acceptance/<run_id>/closed-loop-audit.json` 和 `.md`，失败时列出具体断裂检查。
+
+只把多个独立验收脚本顺序跑一遍，不检查 journey rule、evidence artifact 和跨阶段 traceability，不满足 closed-loop 深度验收。

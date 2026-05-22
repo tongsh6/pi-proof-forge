@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -53,18 +52,6 @@ type MaterialUploadForm = {
   sourcePath: string;
   label: string;
 };
-
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
-
-function recordVerifyEvent(event: string, details: Record<string, unknown> = {}) {
-  if (verifyScenario !== "resumes") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
-}
 
 function toProfileForm(profile: ProfilePayload | null): ProfileForm {
   return {
@@ -195,22 +182,9 @@ export function ResumesPage() {
         setPreviewStatus(null);
       }
       setLoadState("ready");
-      recordVerifyEvent("resumes.load.ready", {
-        profile_completeness: profileResult.profile.completeness,
-        resume_count: resumesResult.items.length,
-        uploaded_count: resumesResult.items.filter((item) => item.status === "uploaded").length,
-        generated_count: resumesResult.items.filter((item) => item.status !== "uploaded").length,
-        material_count: materialsResult.items.length,
-        material_readiness: readinessResult.status,
-        material_missing_count: readinessResult.missing_items.length,
-        has_preview: Boolean(preferredResume),
-      });
     } catch (nextError) {
       setError(getErrorMessage(nextError));
       setLoadState("error");
-      recordVerifyEvent("resumes.load.error", {
-        error: getErrorMessage(nextError),
-      });
     }
   }, [loadPreview]);
 

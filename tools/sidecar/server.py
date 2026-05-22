@@ -9,8 +9,10 @@ from tools.sidecar.handlers.jobs import (
     handle_jobs_convert_lead,
     handle_jobs_create_profile,
     handle_jobs_delete_profile,
+    handle_jobs_generate_profile_draft,
     handle_jobs_list_leads,
     handle_jobs_list_profiles,
+    handle_jobs_save_profile_draft,
     handle_jobs_update_profile,
 )
 from tools.sidecar.router import Router
@@ -18,9 +20,11 @@ from tools.sidecar.lifecycle import handle_handshake, handle_ping, handle_shutdo
 from tools.sidecar.handlers.evidence import (
     handle_evidence_create,
     handle_evidence_delete,
+    handle_evidence_generate_draft,
     handle_evidence_get,
     handle_evidence_import,
     handle_evidence_list,
+    handle_evidence_save_draft,
     handle_evidence_update,
 )
 from tools.sidecar.handlers.overview import handle_overview_get
@@ -32,6 +36,13 @@ from tools.sidecar.handlers.resume import (
     handle_resume_upload,
 )
 from tools.sidecar.handlers.submission import (
+    handle_channel_session_check,
+    handle_channel_session_clear,
+    handle_channel_session_get,
+    handle_channel_session_start,
+    handle_feedback_create_iteration,
+    handle_feedback_list,
+    handle_submission_check_mode,
     handle_submission_detail,
     handle_submission_list,
     handle_submission_retry,
@@ -71,12 +82,16 @@ def _create_router() -> Router:
     router.register("evidence.update", handle_evidence_update)
     router.register("evidence.delete", handle_evidence_delete)
     router.register("evidence.import", handle_evidence_import)
+    router.register("evidence.generateDraft", handle_evidence_generate_draft)
+    router.register("evidence.saveDraft", handle_evidence_save_draft)
     router.register("jobs.listLeads", handle_jobs_list_leads)
     router.register("jobs.convertLead", handle_jobs_convert_lead)
     router.register("jobs.listProfiles", handle_jobs_list_profiles)
     router.register("jobs.createProfile", handle_jobs_create_profile)
     router.register("jobs.updateProfile", handle_jobs_update_profile)
     router.register("jobs.deleteProfile", handle_jobs_delete_profile)
+    router.register("jobs.generateProfileDraft", handle_jobs_generate_profile_draft)
+    router.register("jobs.saveProfileDraft", handle_jobs_save_profile_draft)
     router.register("overview.get", handle_overview_get)
     router.register("profile.get", handle_profile_get)
     router.register("profile.update", handle_profile_update)
@@ -90,6 +105,13 @@ def _create_router() -> Router:
     router.register("submission.detail", handle_submission_detail)
     router.register("submission.list", handle_submission_list)
     router.register("submission.retry", handle_submission_retry)
+    router.register("submission.channelSession.get", handle_channel_session_get)
+    router.register("submission.channelSession.start", handle_channel_session_start)
+    router.register("submission.channelSession.check", handle_channel_session_check)
+    router.register("submission.channelSession.clear", handle_channel_session_clear)
+    router.register("submission.checkMode.start", handle_submission_check_mode)
+    router.register("submission.feedback.list", handle_feedback_list)
+    router.register("submission.feedback.createIteration", handle_feedback_create_iteration)
     router.register("settings.get", handle_settings_get)
     router.register("settings.update", handle_settings_update)
     router.register("settings.checkLlmConnection", handle_settings_check_llm_connection)

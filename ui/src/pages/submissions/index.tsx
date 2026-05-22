@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,22 +9,41 @@ import {
   RefreshCw,
   RotateCcw,
   Send,
+  ShieldCheck,
   Timer,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import {
+  checkChannelSession,
+  clearChannelSession,
+  createFeedbackIteration,
+  getChannelSession,
   getSubmissionDetail,
+  listSubmissionFeedback,
   listSubmissions,
   retrySubmission,
+  startSubmissionCheckMode,
+  startChannelSession,
 } from "@/lib/sidecar/api";
-import type { SubmissionDetail, SubmissionListItem } from "@/lib/sidecar/types";
+import type { ChannelSessionResult, FeedbackIterationResult, FeedbackListResult, SubmissionCheckModeResult, SubmissionDetail, SubmissionListItem } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
 type RetryStrategy = "same_channel" | "fallback_email";
 
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
+const defaultSubmissionChannel = "liepin";
+const checkModeConfirmationItems = [
+  "check_mode_no_real_submit",
+  "selected_submission_channel",
+  "selected_channel_job_lead",
+  "selected_resume_pdf",
+  "selected_channel_session_metadata",
+  "may_use_channel_shared_session",
+  "final_confirm_disabled_and_forbidden",
+  "must_stop_before_final_confirm",
+];
 
 type StatItem = {
   key: "total" | "delivered" | "failed" | "fallback";
@@ -32,19 +51,6 @@ type StatItem = {
   icon: typeof Send;
   className: string;
 };
-
-function recordVerifyEvent(
-  event: string,
-  details: Record<string, unknown> = {}
-) {
-  if (verifyScenario !== "submissions") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
-}
 
 function formatDate(value: string, locale: string): string {
   if (!value.trim()) return "--";
@@ -69,7 +75,13 @@ function statusClassName(status: string): string {
   if (isDelivered(status)) {
     return "border-success/40 bg-success/10 text-success";
   }
+  if (status === "session_valid") {
+    return "border-success/40 bg-success/10 text-success";
+  }
   if (status === "blocked") {
+    return "border-warning/40 bg-warning/10 text-warning";
+  }
+  if (status === "waiting_for_manual_login" || status === "session_unknown" || status === "login_required") {
     return "border-warning/40 bg-warning/10 text-warning";
   }
   if (status === "failed") {
@@ -123,6 +135,20 @@ export function SubmissionsPage() {
   const [detail, setDetail] = useState<SubmissionDetail | null>(null);
   const [detailState, setDetailState] = useState<LoadState>("ready");
   const [selectedScreenshotPath, setSelectedScreenshotPath] = useState<string | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState(defaultSubmissionChannel);
+  const [channelSession, setChannelSession] = useState<ChannelSessionResult | null>(null);
+  const [sessionState, setSessionState] = useState<LoadState>("loading");
+  const [sessionAction, setSessionAction] = useState<string | null>(null);
+  const [checkModeResult, setCheckModeResult] = useState<SubmissionCheckModeResult | null>(null);
+  const [checkModeState, setCheckModeState] = useState<LoadState>("ready");
+  const [feedbackList, setFeedbackList] = useState<FeedbackListResult | null>(null);
+  const [feedbackIteration, setFeedbackIteration] = useState<FeedbackIterationResult | null>(null);
+  const [feedbackState, setFeedbackState] = useState<LoadState>("ready");
+  const [checkModeForm, setCheckModeForm] = useState({
+    jobLeadId: "",
+    resumeVersionId: "",
+    resumePdfPath: "",
+  });
 
   const stats = useMemo<StatItem[]>(() => [
     {
@@ -177,26 +203,145 @@ export function SubmissionsPage() {
         setDetail(null);
       }
       setLoadState("ready");
-      recordVerifyEvent("submissions.load.ready", {
-        submission_count: result.items.length,
-        delivered_count: result.items.filter((item) => isDelivered(item.status))
-          .length,
-        failed_count: result.items.filter((item) => isFailed(item.status)).length,
-        fallback_count: result.items.filter(isFallback).length,
-      });
     } catch (nextError) {
       const message = getErrorMessage(nextError);
       setError(message);
       setLoadState("error");
-      recordVerifyEvent("submissions.load.error", {
-        error: message,
-      });
     }
   }, [selectedId]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const loadChannelSession = useCallback(async (channel = selectedChannel) => {
+    setSessionState("loading");
+    try {
+      const result = await getChannelSession(channel);
+      setChannelSession(result);
+      setSessionState("ready");
+    } catch (nextError) {
+      const message = getErrorMessage(nextError);
+      setError(message);
+      setSessionState("error");
+    }
+  }, [selectedChannel]);
+
+  useEffect(() => {
+    void loadChannelSession(selectedChannel);
+  }, [loadChannelSession, selectedChannel]);
+
+  const handleStartSession = useCallback(async () => {
+    setSessionAction("start");
+    setError(null);
+    try {
+      const result = await startChannelSession(selectedChannel);
+      setChannelSession(result);
+      setSessionState("ready");
+    } catch (nextError) {
+      setError(getErrorMessage(nextError));
+      setSessionState("error");
+    } finally {
+      setSessionAction(null);
+    }
+  }, [selectedChannel]);
+
+  const handleCheckSession = useCallback(async (
+    loginSignals: Record<string, unknown> = {
+      login_required: true,
+    },
+    accountIdentity?: Record<string, unknown>,
+  ) => {
+    setSessionAction("check");
+    setError(null);
+    try {
+      const result = await checkChannelSession(
+        selectedChannel,
+        loginSignals,
+        accountIdentity,
+      );
+      setChannelSession(result);
+      setSessionState("ready");
+      return result;
+    } catch (nextError) {
+      setError(getErrorMessage(nextError));
+      setSessionState("error");
+      return null;
+    } finally {
+      setSessionAction(null);
+    }
+  }, [selectedChannel]);
+
+  const handleClearSession = useCallback(async () => {
+    setSessionAction("clear");
+    setError(null);
+    try {
+      const result = await clearChannelSession(selectedChannel);
+      setChannelSession(result);
+      setSessionState("ready");
+    } catch (nextError) {
+      setError(getErrorMessage(nextError));
+      setSessionState("error");
+    } finally {
+      setSessionAction(null);
+    }
+  }, [selectedChannel]);
+
+  const handleStartCheckMode = useCallback(async () => {
+    setCheckModeState("loading");
+    setError(null);
+    try {
+      const result = await startSubmissionCheckMode({
+        channel: selectedChannel,
+        job_lead_id: checkModeForm.jobLeadId.trim(),
+        resume_version_id: checkModeForm.resumeVersionId.trim(),
+        resume_pdf_path: checkModeForm.resumePdfPath.trim(),
+        options: {
+          preflight_confirmed: true,
+          confirmed_no_real_submit: true,
+          check_mode_no_real_submit: true,
+          submit_enabled: false,
+          confirmation_items: checkModeConfirmationItems,
+          target_recovery_limit: 2,
+          session_identity_accepted: true,
+        },
+      });
+      setCheckModeResult(result);
+      setCheckModeState("ready");
+      await loadData();
+      return result;
+    } catch (nextError) {
+      const message = getErrorMessage(nextError);
+      setError(message);
+      setCheckModeState("error");
+      return null;
+    }
+  }, [checkModeForm, loadData, selectedChannel]);
+
+  const handleCreateFeedbackIteration = useCallback(async (sourceRunId?: string) => {
+    const runId = sourceRunId || checkModeResult?.submission_id;
+    if (!runId) return null;
+    setFeedbackState("loading");
+    setError(null);
+    try {
+      const list = await listSubmissionFeedback(runId);
+      setFeedbackList(list);
+      const result = await createFeedbackIteration({
+        source_run_id: runId,
+        source_feedback_items: list.items,
+        selected_actions: ["prepare_next_check_mode"],
+        user_notes: "Prepare a guarded next check-mode iteration.",
+      });
+      setFeedbackIteration(result);
+      setFeedbackState("ready");
+      return result;
+    } catch (nextError) {
+      const message = getErrorMessage(nextError);
+      setError(message);
+      setFeedbackState("error");
+      return null;
+    }
+  }, [checkModeResult?.submission_id]);
 
   const handleRetry = useCallback(async (submissionId: string, strategy: RetryStrategy = "same_channel") => {
     setRetryingId(submissionId);
@@ -265,6 +410,146 @@ export function SubmissionsPage() {
                 </div>
               );
             })}
+          </section>
+
+          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.session.title")}</h2>
+                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.session.manualBoundary")}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select className="h-9 rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} aria-label={t("pages.submissions.session.channel")}>
+                  {(channelSession?.supported_channels ?? [{ channel: defaultSubmissionChannel, label: "Liepin", login_url: "" }]).map((channel) => (
+                    <option key={channel.channel} value={channel.channel}>{channel.label}</option>
+                  ))}
+                </select>
+                <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null} onClick={() => void handleStartSession()} type="button">
+                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                  {sessionAction === "start" ? t("pages.submissions.session.starting") : t("pages.submissions.session.start")}
+                </button>
+                <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null} onClick={() => void handleCheckSession()} type="button">
+                  <RefreshCw className={`h-4 w-4 ${sessionAction === "check" ? "animate-spin" : ""}`} aria-hidden="true" />
+                  {t("pages.submissions.session.check")}
+                </button>
+                <button className="grid h-9 w-9 place-items-center rounded-card border border-border text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null || !channelSession?.session.clear_available} onClick={() => void handleClearSession()} title={t("pages.submissions.session.clear")} type="button" aria-label={t("pages.submissions.session.clear")}>
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.session.statusLabel")}</p>
+                <p className={`mt-1 inline-flex rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(channelSession?.session.login_status ?? "unknown")}`}>
+                  {t(`pages.submissions.session.status.${channelSession?.session.login_status ?? "unknown"}`, { defaultValue: channelSession?.session.login_status ?? "unknown" })}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.session.checkedAt")}</p>
+                <p className="mt-1 truncate text-text-primary">{formatDate(channelSession?.session.checked_at ?? "", i18n.language)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.session.identity")}</p>
+                <p className="mt-1 truncate text-text-primary">{channelSession?.session.account_identity.display_name_or_nickname || channelSession?.session.account_identity.masked_phone_or_email_suffix || t("pages.submissions.session.identityUnknown")}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.session.storage")}</p>
+                <p className="mt-1 truncate text-text-primary">{channelSession?.session.expires_or_unknown ?? "--"}</p>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-text-secondary md:grid-cols-2">
+              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.session.path")}</span> {channelSession?.session.session_path || "--"}</p>
+              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.session.log")}</span> {channelSession?.artifact_paths.session_check_log || "--"}</p>
+            </div>
+            {sessionState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
+          </section>
+
+          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.checkMode.title")}</h2>
+                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.checkMode.boundary")}</p>
+              </div>
+              <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={checkModeState === "loading" || channelSession?.session.login_status !== "session_valid" || !checkModeForm.jobLeadId.trim() || !checkModeForm.resumeVersionId.trim() || !checkModeForm.resumePdfPath.trim()} onClick={() => void handleStartCheckMode()} type="button">
+                <Send className="h-4 w-4" aria-hidden="true" />
+                {checkModeState === "loading" ? t("pages.submissions.checkMode.running") : t("pages.submissions.checkMode.start")}
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+              <label className="space-y-1">
+                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.jobLead")}</span>
+                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.jobLeadId} onChange={(event) => setCheckModeForm((current) => ({ ...current, jobLeadId: event.target.value }))} placeholder={t("pages.submissions.checkMode.jobLeadPlaceholder")} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.resumeVersion")}</span>
+                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.resumeVersionId} onChange={(event) => setCheckModeForm((current) => ({ ...current, resumeVersionId: event.target.value }))} placeholder={t("pages.submissions.checkMode.resumeVersionPlaceholder")} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.resume")}</span>
+                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.resumePdfPath} onChange={(event) => setCheckModeForm((current) => ({ ...current, resumePdfPath: event.target.value }))} placeholder={t("pages.submissions.checkMode.resumePathPlaceholder")} />
+              </label>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.status")}</p>
+                <p className={`mt-1 inline-flex rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(checkModeResult?.terminal_status ?? "unknown")}`}>
+                  {checkModeResult?.terminal_status ?? "--"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.jobLead")}</p>
+                <p className="mt-1 truncate text-text-primary">{String((checkModeResult?.original_job_lead.job_lead_id ?? checkModeForm.jobLeadId) || "--")}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.resume")}</p>
+                <p className="mt-1 truncate text-text-primary">{(checkModeResult?.resume_version_id ?? checkModeForm.resumeVersionId) || "--"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.submit")}</p>
+                <p className="mt-1 text-text-primary">{checkModeResult?.final_submit_attempted ? t("pages.submissions.checkMode.attempted") : t("pages.submissions.checkMode.skipped")}</p>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-text-secondary md:grid-cols-2">
+              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.checkMode.json")}</span> {checkModeResult?.log_json_path || "--"}</p>
+              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.checkMode.steps")}</span> {checkModeResult?.steps.map((step) => step.name).join(" -> ") || "--"}</p>
+            </div>
+            {checkModeState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
+          </section>
+
+          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.feedback.title")}</h2>
+                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.feedback.boundary")}</p>
+              </div>
+              <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={feedbackState === "loading" || !checkModeResult?.submission_id} onClick={() => void handleCreateFeedbackIteration()} type="button">
+                <RotateCcw className={`h-4 w-4 ${feedbackState === "loading" ? "animate-spin" : ""}`} aria-hidden="true" />
+                {feedbackState === "loading" ? t("pages.submissions.feedback.recording") : t("pages.submissions.feedback.create")}
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.items")}</p>
+                <p className="mt-1 text-text-primary">{feedbackList?.items.length ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.action")}</p>
+                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.selected_actions.join(", ") || "--"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.version")}</p>
+                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.new_resume_version_id_or_none || "--"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.next")}</p>
+                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.next_recommended_step || "--"}</p>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-text-secondary md:grid-cols-2">
+              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.feedback.record")}</span> {feedbackIteration?.record_path || "--"}</p>
+              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.feedback.snapshot")}</span> {feedbackIteration?.iteration.source_snapshot_path || "--"}</p>
+            </div>
+            {feedbackState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
           </section>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(390px,0.64fr)]">

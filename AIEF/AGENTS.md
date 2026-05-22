@@ -82,6 +82,12 @@
 - 代码先于 spec 被提议
 - Evidence Card 无 results/artifacts 进入生成
 - 测试在实现之后补写
+- 把纯 handler/unit/contract、源码 marker 或页面加载当作深度场景验收
+
+深度完成口径：
+- 场景化验收必须由外部自动化驱动真实页面、真实 Tauri 桌面壳或真实浏览器边界。
+- `verified_native` / `deep_verified` 必须有可审计的页面事件、运行日志和 artifact。
+- Acceptance runner 或 audit 只能汇总页面级自动化证据，不能替代真实页面动作链。
 
 ### 快速参考
 

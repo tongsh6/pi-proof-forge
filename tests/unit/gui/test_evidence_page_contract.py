@@ -4,12 +4,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 EVIDENCE_PAGE = ROOT / "ui" / "src" / "pages" / "evidence" / "index.tsx"
-NATIVE_VERIFY_CONTROLLER = (
-    ROOT / "ui" / "src" / "components" / "shell" / "NativeVerifyController.tsx"
-)
-PACKAGE_JSON = ROOT / "ui" / "package.json"
-VERIFY_SCRIPT = ROOT / "ui" / "scripts" / "verify_evidence_native.mjs"
-TAURI_MAIN = ROOT / "ui" / "src-tauri" / "src" / "main.rs"
 API_FILE = ROOT / "ui" / "src" / "lib" / "sidecar" / "api.ts"
 I18N_FILES = [
     ROOT / "ui" / "src" / "i18n" / "en.json",
@@ -22,7 +16,6 @@ def test_evidence_page_matches_product_card_contract():
     api_source = API_FILE.read_text(encoding="utf-8")
 
     for marker in (
-        "evidence.load.ready",
         "evidenceStats",
         "EvidenceImportMode",
         "listEvidence(evidenceFilters",
@@ -33,32 +26,20 @@ def test_evidence_page_matches_product_card_contract():
         "pages.evidence.actions.import",
         "pages.evidence.status.ready",
         "listEvidenceMaterialSources",
+        "generateEvidenceDraft",
+        "saveEvidenceDraft",
         "materialSources",
-        "material_source_count",
         "pages.evidence.materialSources.title",
+        "pages.evidence.actions.generateDraft",
+        "pages.evidence.review.title",
     ):
         assert marker in source
 
     assert "evidence.import" in api_source
     assert "evidence.listMaterialSources" in api_source
+    assert "evidence.generateDraft" in api_source
+    assert "evidence.saveDraft" in api_source
     assert "filters?: EvidenceFilters" in api_source
-
-
-def test_evidence_native_verifier_is_registered():
-    controller = NATIVE_VERIFY_CONTROLLER.read_text(encoding="utf-8")
-    package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
-    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
-    tauri_main = TAURI_MAIN.read_text(encoding="utf-8")
-
-    assert 'evidence: "/evidence"' in controller
-    assert package["scripts"]["e2e:evidence"] == "node ./scripts/verify_evidence_native.mjs"
-    assert "evidence.load.ready" in script
-    assert "validateReadyEvent" in script
-    assert "card_count" in script
-    assert "artifact_count" in script
-    assert "material_source_count" in script
-    assert '"evidence"' in tauri_main
-    assert 'event_name.starts_with("evidence.")' in tauri_main
 
 
 def test_evidence_i18n_contract_is_complete():
@@ -92,6 +73,10 @@ def test_evidence_i18n_contract_is_complete():
         "deleting",
         "saved",
         "importing",
+        "generateDraft",
+        "generatingDraft",
+        "saveIncomplete",
+        "saveEligible",
     }
     required_artifact_keys = {
         "title",
@@ -111,6 +96,14 @@ def test_evidence_i18n_contract_is_complete():
         "source",
         "empty",
         "noPreview",
+        "selectPlaceholder",
+        "select",
+    }
+    required_review_keys = {
+        "title",
+        "source",
+        "missing",
+        "eligible",
     }
 
     for i18n_file in I18N_FILES:
@@ -135,4 +128,8 @@ def test_evidence_i18n_contract_is_complete():
         )
         assert not missing_material_sources, (
             f"{i18n_file.name} missing material source keys: {sorted(missing_material_sources)}"
+        )
+        missing_review = required_review_keys.difference(evidence_messages["review"])
+        assert not missing_review, (
+            f"{i18n_file.name} missing review keys: {sorted(missing_review)}"
         )

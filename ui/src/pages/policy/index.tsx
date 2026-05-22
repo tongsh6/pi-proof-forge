@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import {
   Ban,
   Building2,
@@ -30,8 +29,6 @@ type RulePreview = {
   value: string;
   mode: "exact" | "contains";
 };
-
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
 
 function normalizeEntries(value: string): string[] {
   return value
@@ -73,19 +70,6 @@ function statusText(
   if (state === "saved") return labels.saved;
   if (state === "error") return labels.error;
   return null;
-}
-
-function recordVerifyEvent(
-  event: string,
-  details: Record<string, unknown> = {}
-) {
-  if (verifyScenario !== "policy") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
 }
 
 function FieldCard({
@@ -259,19 +243,10 @@ export function PolicyPage() {
       setCompanyDraft(result.exclusion_list.join("\n"));
       setLegalEntityDraft(result.excluded_legal_entities.join("\n"));
       setLoadState("ready");
-      recordVerifyEvent("policy.load.ready", {
-        delivery_mode: result.gate_policy.delivery_mode,
-        batch_review: result.gate_policy.batch_review,
-        company_rule_count: result.exclusion_list.length,
-        legal_entity_rule_count: result.excluded_legal_entities.length,
-      });
     } catch (nextError) {
       setSettings(null);
       setLoadState("error");
       setError(getErrorMessage(nextError));
-      recordVerifyEvent("policy.load.error", {
-        error: getErrorMessage(nextError),
-      });
     }
   }, []);
 

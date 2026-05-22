@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import {
   Briefcase,
@@ -11,6 +10,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   Star,
   Tag,
 } from "lucide-react";
@@ -18,11 +18,14 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   convertJobLead,
   createJobProfile,
+  generateJobProfileDraft,
   listJobLeads,
   listJobProfiles,
+  saveJobProfileDraft,
   updateJobProfile,
 } from "@/lib/sidecar/api";
 import type {
+  JobProfileDraftPayload,
   JobLeadListItem,
   JobLeadsFilters,
   JobProfileListItem,
@@ -31,9 +34,9 @@ import type {
 
 type LoadState = "loading" | "ready" | "error";
 type ActionState = "idle" | "creating" | "saving" | "converting";
+type DraftState = "idle" | "generating";
 type ActiveTab = "profiles" | "leads";
 
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
 const DEFAULT_PROFILE_FILTERS: JobProfilesFilters = { status: null, query: "", tags: [] };
 const DEFAULT_LEAD_FILTERS: JobLeadsFilters = {
   source: null,
@@ -43,19 +46,6 @@ const DEFAULT_LEAD_FILTERS: JobLeadsFilters = {
 };
 const statusOptions = ["active", "draft", "archived"] as const;
 const leadStatusOptions = ["new", "qualified", "contacted", "archived"] as const;
-
-function recordVerifyEvent(
-  event: string,
-  details: Record<string, unknown> = {}
-) {
-  if (verifyScenario !== "jobs") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
-}
 
 function parseTagsInput(value: string): string[] {
   return value
@@ -111,6 +101,7 @@ export function JobsPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("profiles");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [actionState, setActionState] = useState<ActionState>("idle");
+  const [draftState, setDraftState] = useState<DraftState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [queryInput, setQueryInput] = useState("");
   const [statusInput, setStatusInput] = useState("");
@@ -124,6 +115,10 @@ export function JobsPage() {
   const [leadFilters, setLeadFilters] = useState<JobLeadsFilters>(DEFAULT_LEAD_FILTERS);
   const [newTitle, setNewTitle] = useState("");
   const [newTags, setNewTags] = useState("");
+  const [jdText, setJdText] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [generatedDraft, setGeneratedDraft] =
+    useState<JobProfileDraftPayload | null>(null);
   const [editingProfile, setEditingProfile] = useState<{
     title: string;
     tags: string;
@@ -161,13 +156,6 @@ export function JobsPage() {
           return leadResult.items[0]?.job_lead_id ?? null;
         });
         setLoadState("ready");
-        recordVerifyEvent("jobs.load.ready", {
-          profile_count: profileResult.items.length,
-          lead_count: leadResult.items.length,
-          active_profile_count: profileResult.items.filter(
-            (item) => item.status === "active"
-          ).length,
-        });
       } catch (nextError) {
         setProfiles([]);
         setLeads([]);
@@ -175,9 +163,6 @@ export function JobsPage() {
         setSelectedLeadId(null);
         setError(getErrorMessage(nextError));
         setLoadState("error");
-        recordVerifyEvent("jobs.load.error", {
-          error: getErrorMessage(nextError),
-        });
       }
     },
     [leadFilters, profileFilters]
@@ -224,7 +209,16 @@ export function JobsPage() {
     });
   }, [selectedProfile]);
 
-  const isBusy = actionState !== "idle" || convertingLeadId !== null;
+  const isBusy =
+    actionState !== "idle" || draftState !== "idle" || convertingLeadId !== null;
+
+  const fillEditorFromDraft = useCallback((draft: JobProfileDraftPayload) => {
+    setEditingProfile({
+      title: draft.target_role,
+      tags: draft.keywords.join(", "),
+      status: draft.missing_items?.length ? "draft" : "active",
+    });
+  }, []);
 
   const applyProfileFilters = useCallback(() => {
     setProfileFilters({
@@ -284,6 +278,68 @@ export function JobsPage() {
     }
   }, [leadFilters, loadData, newTags, newTitle, resetProfileFilters, t]);
 
+  const handleGenerateProfileDraft = useCallback(async () => {
+    if (!jdText.trim()) {
+      setError(t("pages.jobs.errors.jdRequired"));
+      return;
+    }
+    setDraftState("generating");
+    setError(null);
+    try {
+      const result = await generateJobProfileDraft({
+        jd_text: jdText.trim(),
+        source_url: sourceUrl.trim() || undefined,
+      });
+      if (!result.draft) {
+        setError(result.message);
+        return;
+      }
+      setGeneratedDraft(result.draft);
+      fillEditorFromDraft(result.draft);
+      setActiveTab("profiles");
+    } catch (nextError) {
+      setError(getErrorMessage(nextError));
+    } finally {
+      setDraftState("idle");
+    }
+  }, [fillEditorFromDraft, jdText, sourceUrl, t]);
+
+  const draftFromEditor = useCallback(
+    (draft: JobProfileDraftPayload): JobProfileDraftPayload => ({
+      ...draft,
+      target_role: editingProfile.title.trim(),
+      keywords: parseTagsInput(editingProfile.tags),
+      source_jd: jdText.trim() || draft.source_jd,
+      source_url: sourceUrl.trim() || draft.source_url,
+    }),
+    [editingProfile, jdText, sourceUrl]
+  );
+
+  const handleSaveReviewedDraft = useCallback(
+    async (saveMode: "incomplete" | "complete") => {
+      if (!generatedDraft) return;
+      setActionState("saving");
+      setError(null);
+      try {
+        const result = await saveJobProfileDraft({
+          draft: draftFromEditor(generatedDraft),
+          save_mode: saveMode,
+          review: { decision: "approved", reviewed_at: new Date().toISOString() },
+        });
+        setGeneratedDraft(null);
+        resetProfileFilters();
+        await loadData(DEFAULT_PROFILE_FILTERS, leadFilters);
+        setSelectedProfileId(result.job_profile_id);
+        setActiveTab("profiles");
+      } catch (nextError) {
+        setError(getErrorMessage(nextError));
+      } finally {
+        setActionState("idle");
+      }
+    },
+    [draftFromEditor, generatedDraft, leadFilters, loadData, resetProfileFilters]
+  );
+
   const handleSaveProfile = useCallback(async () => {
     if (!selectedProfile) return;
     if (!editingProfile.title.trim()) {
@@ -324,6 +380,11 @@ export function JobsPage() {
     },
     [leadFilters, loadData, resetProfileFilters]
   );
+
+  useEffect(() => {
+    if (selectedProfile || !generatedDraft) return;
+    fillEditorFromDraft(generatedDraft);
+  }, [fillEditorFromDraft, generatedDraft, selectedProfile]);
 
   return (
     <div className="space-y-6">
@@ -429,6 +490,106 @@ export function JobsPage() {
             {t("pages.jobs.actions.clearDraft")}
           </button>
         </div>
+      </section>
+
+      <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary">
+              {t("pages.jobs.jdDraft.title")}
+            </h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              {t("pages.jobs.jdDraft.subtitle")}
+            </p>
+          </div>
+          {generatedDraft ? (
+            <span className={`rounded-chip border px-2.5 py-1 text-xs ${statusTone(
+              generatedDraft.missing_items?.length ? "draft" : "active"
+            )}`}>
+              {generatedDraft.missing_items?.length
+                ? t("pages.jobs.jdDraft.incomplete")
+                : t("pages.jobs.jdDraft.ready")}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.45fr)]">
+          <textarea
+            className="min-h-28 rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+            disabled={isBusy}
+            onChange={(event) => setJdText(event.target.value)}
+            placeholder={t("pages.jobs.jdDraft.jdPlaceholder")}
+            value={jdText}
+          />
+          <div className="grid content-start gap-3">
+            <input
+              className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+              disabled={isBusy}
+              onChange={(event) => setSourceUrl(event.target.value)}
+              placeholder={t("pages.jobs.jdDraft.sourceUrlPlaceholder")}
+              value={sourceUrl}
+            />
+            <button
+              className="inline-flex items-center justify-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              disabled={isBusy || !jdText.trim()}
+              onClick={() => void handleGenerateProfileDraft()}
+              type="button"
+            >
+              <Sparkles size={16} />
+              {draftState === "generating"
+                ? t("pages.jobs.actions.generatingDraft")
+                : t("pages.jobs.actions.generateDraft")}
+            </button>
+            {generatedDraft ? (
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                <button
+                  className="rounded-card border border-border px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:opacity-50"
+                  disabled={isBusy}
+                  onClick={() => void handleSaveReviewedDraft("incomplete")}
+                  type="button"
+                >
+                  {t("pages.jobs.actions.saveIncomplete")}
+                </button>
+                <button
+                  className="rounded-card border border-success bg-success px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  disabled={isBusy}
+                  onClick={() => void handleSaveReviewedDraft("complete")}
+                  type="button"
+                >
+                  {t("pages.jobs.actions.saveComplete")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {generatedDraft ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-card border border-border bg-bg-primary/50 p-3">
+              <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                {t("pages.jobs.fields.title")}
+              </p>
+              <p className="mt-2 text-sm font-medium text-text-primary">
+                {generatedDraft.target_role || "--"}
+              </p>
+            </div>
+            <div className="rounded-card border border-border bg-bg-primary/50 p-3">
+              <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                {t("pages.jobs.fields.keywords")}
+              </p>
+              <p className="mt-2 text-sm text-text-primary">
+                {generatedDraft.keywords.join(", ") || "--"}
+              </p>
+            </div>
+            <div className="rounded-card border border-border bg-bg-primary/50 p-3">
+              <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
+                {t("pages.jobs.jdDraft.missing")}
+              </p>
+              <p className="mt-2 text-sm text-text-primary">
+                {generatedDraft.missing_items?.join(", ") ||
+                  t("pages.jobs.jdDraft.none")}
+              </p>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-2">

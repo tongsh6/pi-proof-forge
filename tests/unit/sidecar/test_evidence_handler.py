@@ -1,3 +1,4 @@
+import json
 import unittest
 from tempfile import TemporaryDirectory
 from pathlib import Path
@@ -7,9 +8,11 @@ from typing import Any
 from tools.sidecar.handlers.evidence import (
     handle_evidence_create,
     handle_evidence_delete,
+    handle_evidence_generate_draft,
     handle_evidence_get,
     handle_evidence_import,
     handle_evidence_list,
+    handle_evidence_save_draft,
     handle_evidence_update,
 )
 
@@ -481,6 +484,325 @@ class EvidenceCreateTests(unittest.TestCase):
         }
         with self.assertRaises(ValueError):
             handle_evidence_create(params)
+
+
+class EvidenceDraftReviewTests(unittest.TestCase):
+    def _write_material(
+        self,
+        materials_dir: Path,
+        material_id: str = "mat_001",
+        extension: str = ".md",
+        text: str = "# Checkout Reliability\n\nReduced payment failure rate by 43%.",
+    ) -> None:
+        materials_dir.mkdir(parents=True, exist_ok=True)
+        (materials_dir / f"{material_id}{extension}").write_text(text, encoding="utf-8")
+        (materials_dir / f"{material_id}.meta.yaml").write_text(
+            "\n".join(
+                [
+                    f'material_id: "{material_id}"',
+                    'resource_id: "res_001"',
+                    'label: "Checkout Work Log"',
+                    'kind: "raw_work_material"',
+                    f'filename: "{material_id}{extension}"',
+                    f'extension: "{extension}"',
+                    'uploaded_at: "2026-05-21T00:00:00Z"',
+                    'preview: "Reduced payment failure rate by 43%."',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def test_generate_draft_calls_llm_and_returns_review_only_draft(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            materials_dir = root / "materials"
+            policy_path = root / "policy.yaml"
+            self._write_material(materials_dir)
+            policy_path.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "lm_studio"',
+                        'llm_model: "local-model"',
+                        'llm_base_url: "http://127.0.0.1:1234/v1"',
+                        'llm_timeout: "60"',
+                        'llm_temperature: "0.2"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_placeholder: "lm-studio"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            llm_response = {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "source_material_ids": ["mat_001"],
+                                    "title": "Checkout reliability",
+                                    "context": "Checkout incident follow-up",
+                                    "actions": ["Improved payment retry handling"],
+                                    "results": [
+                                        "Reduced payment failure rate by 43%."
+                                    ],
+                                    "artifacts": [
+                                        {
+                                            "type": "markdown_document",
+                                            "ref": "mat_001",
+                                            "label": "Checkout work log",
+                                        }
+                                    ],
+                                    "stack": ["Python"],
+                                    "tags": ["reliability"],
+                                }
+                            )
+                        }
+                    }
+                ]
+            }
+
+            with (
+                patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir),
+                patch("tools.sidecar.handlers.settings._resolve_policy_path", return_value=policy_path),
+                patch("tools.sidecar.handlers.evidence.LLMClient.post_json", return_value=llm_response) as post_json,
+            ):
+                result = handle_evidence_generate_draft(
+                    {
+                        "meta": {"correlation_id": "corr_draft"},
+                        "material_ids": ["mat_001"],
+                    }
+                )
+
+        self.assertEqual(result["status"], "draft_ready_for_review")
+        self.assertFalse(result["candidate_pool_eligible"])
+        self.assertEqual(result["draft"]["source_material_ids"], ["mat_001"])
+        self.assertEqual(result["draft"]["artifacts"][0]["ref"], "mat_001")
+        self.assertEqual(post_json.call_count, 1)
+        self.assertIn("response_format", post_json.call_args.args[1])
+
+    def test_generate_draft_rejects_invalid_json_without_repair(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            materials_dir = root / "materials"
+            policy_path = root / "policy.yaml"
+            self._write_material(materials_dir)
+            policy_path.write_text(
+                'llm_base_url: "http://127.0.0.1:1234/v1"\nllm_model: "local"\n',
+                encoding="utf-8",
+            )
+            llm_response = {"choices": [{"message": {"content": "not-json"}}]}
+
+            with (
+                patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir),
+                patch("tools.sidecar.handlers.settings._resolve_policy_path", return_value=policy_path),
+                patch("tools.sidecar.handlers.evidence.LLMClient.post_json", return_value=llm_response),
+            ):
+                result = handle_evidence_generate_draft(
+                    {
+                        "meta": {"correlation_id": "corr_bad_json"},
+                        "material_ids": ["mat_001"],
+                    }
+                )
+
+        self.assertEqual(result["status"], "llm_output_invalid")
+        self.assertEqual(result["code"], "llm_output_invalid")
+        self.assertIsNone(result["draft"])
+
+    def test_generate_draft_blocks_when_llm_base_url_missing(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            materials_dir = root / "materials"
+            policy_path = root / "policy.yaml"
+            self._write_material(materials_dir)
+            policy_path.write_text('llm_model: "local"\n', encoding="utf-8")
+
+            with (
+                patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir),
+                patch("tools.sidecar.handlers.settings._resolve_policy_path", return_value=policy_path),
+            ):
+                result = handle_evidence_generate_draft(
+                    {
+                        "meta": {"correlation_id": "corr_blocked"},
+                        "material_ids": ["mat_001"],
+                    }
+                )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BLOCKED_LOCAL_PROVIDER")
+
+    def test_save_draft_requires_review_and_keeps_incomplete_out_of_candidate_pool(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            materials_dir = root / "materials"
+            evidence_dir = root / "evidence_cards"
+            self._write_material(materials_dir)
+            draft = {
+                "source_material_ids": ["mat_001"],
+                "title": "Checkout reliability",
+                "context": "Checkout incident follow-up",
+                "actions": "Improved payment retry handling",
+                "results": "",
+                "artifacts": [],
+                "stack": ["Python"],
+                "tags": ["reliability"],
+            }
+
+            with (
+                patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir),
+                patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", evidence_dir),
+            ):
+                with self.assertRaises(ValueError):
+                    handle_evidence_save_draft(
+                        {
+                            "meta": {"correlation_id": "corr_no_review"},
+                            "draft": draft,
+                            "save_mode": "incomplete",
+                        }
+                    )
+                result = handle_evidence_save_draft(
+                    {
+                        "meta": {"correlation_id": "corr_incomplete"},
+                        "draft": draft,
+                        "review": {"decision": "approved"},
+                        "save_mode": "incomplete",
+                    }
+                )
+
+        self.assertEqual(result["status"], "saved_incomplete")
+        self.assertIn("missing_results", result["missing_items"])
+        self.assertFalse(result["candidate_pool_eligible"])
+
+    def test_save_eligible_draft_persists_traceability_and_candidate_status(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            materials_dir = root / "materials"
+            evidence_dir = root / "evidence_cards"
+            self._write_material(materials_dir)
+            draft = {
+                "source_material_ids": ["mat_001"],
+                "title": "Checkout reliability",
+                "context": "Checkout incident follow-up",
+                "actions": "Improved payment retry handling",
+                "results": "Reduced payment failure rate by 43%.",
+                "artifacts": [
+                    {
+                        "type": "markdown_document",
+                        "ref": "mat_001",
+                        "label": "Checkout work log",
+                    }
+                ],
+                "stack": ["Python"],
+                "tags": ["reliability"],
+            }
+
+            with (
+                patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir),
+                patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", evidence_dir),
+            ):
+                result = handle_evidence_save_draft(
+                    {
+                        "meta": {"correlation_id": "corr_eligible"},
+                        "draft": draft,
+                        "review": {
+                            "decision": "approved",
+                            "reviewed_at": "2026-05-21T00:00:00Z",
+                        },
+                        "save_mode": "eligible",
+                    }
+                )
+                detail = handle_evidence_get(
+                    {
+                        "meta": {"correlation_id": "corr_eligible_get"},
+                        "evidence_id": result["evidence_id"],
+                    }
+                )
+
+        self.assertEqual(result["status"], "saved_eligible")
+        self.assertEqual(result["missing_items"], [])
+        self.assertTrue(result["candidate_pool_eligible"])
+        evidence = detail["evidence"]
+        self.assertEqual(evidence["source_material_ids"], ["mat_001"])
+        self.assertEqual(evidence["raw_source"], "materials:mat_001")
+        self.assertTrue(evidence["candidate_pool_eligible"])
+        self.assertEqual(evidence["review_decision"], "approved")
+
+    def test_save_eligible_rejects_artifact_ref_outside_selected_markdown_materials(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            materials_dir = root / "materials"
+            evidence_dir = root / "evidence_cards"
+            self._write_material(materials_dir)
+            draft = {
+                "source_material_ids": ["mat_001"],
+                "title": "Checkout reliability",
+                "context": "Checkout incident follow-up",
+                "actions": "Improved payment retry handling",
+                "results": "Reduced payment failure rate by 43%.",
+                "artifacts": [
+                    {
+                        "type": "markdown_document",
+                        "ref": "mat_missing",
+                        "label": "Missing material",
+                    }
+                ],
+                "stack": ["Python"],
+                "tags": ["reliability"],
+            }
+
+            with (
+                patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir),
+                patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", evidence_dir),
+            ):
+                with self.assertRaises(ValueError):
+                    handle_evidence_save_draft(
+                        {
+                            "meta": {"correlation_id": "corr_bad_artifact"},
+                            "draft": draft,
+                            "review": {"decision": "approved"},
+                            "save_mode": "eligible",
+                        }
+                    )
+
+    def test_save_eligible_rejects_untraceable_result_claim(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            materials_dir = root / "materials"
+            evidence_dir = root / "evidence_cards"
+            self._write_material(materials_dir)
+            draft = {
+                "source_material_ids": ["mat_001"],
+                "title": "Checkout reliability",
+                "context": "Checkout incident follow-up",
+                "actions": "Improved payment retry handling",
+                "results": "Increased revenue by 300%.",
+                "artifacts": [
+                    {
+                        "type": "markdown_document",
+                        "ref": "mat_001",
+                        "label": "Checkout work log",
+                    }
+                ],
+                "stack": ["Python"],
+                "tags": ["reliability"],
+            }
+
+            with (
+                patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir),
+                patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", evidence_dir),
+            ):
+                with self.assertRaises(ValueError) as raised:
+                    handle_evidence_save_draft(
+                        {
+                            "meta": {"correlation_id": "corr_fabrication_guard"},
+                            "draft": draft,
+                            "review": {"decision": "approved"},
+                            "save_mode": "eligible",
+                        }
+                    )
+
+        self.assertIn("no_fabrication_guard", str(raised.exception))
 
 
 class EvidenceUpdateTests(unittest.TestCase):

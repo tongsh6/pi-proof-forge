@@ -26,12 +26,31 @@ def test_acceptance_runner_defaults_to_l1(tmp_path: Path) -> None:
 
     assert report.status == "pass"
     assert report.levels == ("L1",)
-    assert [step.level for step in report.steps] == ["L1", "L1"]
+    assert [step.level for step in report.steps] == [
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+    ]
     assert [step.name for step in report.steps] == [
         "first_launch_configure_lm_studio",
         "setup_profile_and_material_library",
+        "generate_review_and_complete_evidence_card",
+        "setup_job_target",
+        "quick_run_generate_and_evaluate_resume",
+        "agent_run_guided_batch",
+        "channel_session_setup",
+        "submission_check_mode",
+        "feedback_iteration_after_check_mode",
+        "closed_loop_e2e_audit",
     ]
-    assert run_mock.call_count == 2
+    assert run_mock.call_count == 9
     assert run_mock.call_args_list[0].args[0] == [
         sys.executable,
         "-m",
@@ -44,6 +63,55 @@ def test_acceptance_runner_defaults_to_l1(tmp_path: Path) -> None:
         "-m",
         "pytest",
         "tests/acceptance/test_scenario_setup_profile_and_material_library.py",
+        "-q",
+    ]
+    assert run_mock.call_args_list[2].args[0] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/acceptance/test_scenario_generate_review_and_complete_evidence_card.py",
+        "-q",
+    ]
+    assert run_mock.call_args_list[3].args[0] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/acceptance/test_scenario_setup_job_target.py",
+        "-q",
+    ]
+    assert run_mock.call_args_list[4].args[0] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/acceptance/test_scenario_quick_run_generate_and_evaluate_resume.py",
+        "-q",
+    ]
+    assert run_mock.call_args_list[5].args[0] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/acceptance/test_scenario_agent_run_guided_batch.py",
+        "-q",
+    ]
+    assert run_mock.call_args_list[6].args[0] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/acceptance/test_scenario_channel_session_setup.py",
+        "-q",
+    ]
+    assert run_mock.call_args_list[7].args[0] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/acceptance/test_scenario_submission_check_mode.py",
+        "-q",
+    ]
+    assert run_mock.call_args_list[8].args[0] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/acceptance/test_scenario_feedback_iteration_after_check_mode.py",
         "-q",
     ]
 
@@ -62,14 +130,35 @@ def test_acceptance_runner_all_includes_gated_unimplemented_levels(
         )
 
     assert report.status == "pass"
-    assert [step.level for step in report.steps] == ["L1", "L1", "L2", "L3"]
+    assert [step.level for step in report.steps] == [
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L1",
+        "L2",
+        "L3",
+    ]
     assert [step.status for step in report.steps] == [
         "pass",
         "pass",
+        "pass",
+        "pass",
+        "pass",
+        "pass",
+        "pass",
+        "pass",
+        "pass",
+        "not_started",
         "not_started",
         "not_started",
     ]
-    assert run_mock.call_count == 2
+    assert run_mock.call_count == 9
 
 
 def test_acceptance_runner_level_without_implementation_is_not_started(
@@ -165,6 +254,48 @@ def test_write_acceptance_report_outputs_json_markdown_and_journey_report(
         if step["rule_id"] == "profile_and_materials_persisted"
     )
     assert material_rule["status"] == "pass"
+    evidence_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "evidence_card_requires_review"
+    )
+    assert evidence_rule["status"] == "pass"
+    job_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "job_target_ready_for_runs"
+    )
+    assert job_rule["status"] == "pass"
+    quick_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "quick_run_outputs_are_traceable"
+    )
+    assert quick_rule["status"] == "pass"
+    agent_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "agent_run_batch_is_guarded"
+    )
+    assert agent_rule["status"] == "pass"
+    channel_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "channel_session_validity_is_positive_signal_based"
+    )
+    assert channel_rule["status"] == "pass"
+    check_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "check_mode_never_final_submits"
+    )
+    assert check_rule["status"] == "pass"
+    feedback_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "feedback_iteration_preserves_traceability"
+    )
+    assert feedback_rule["status"] == "pass"
     visible_rule = next(
         step
         for step in journey_payload["steps"]

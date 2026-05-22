@@ -26,25 +26,10 @@ Expected result:
 - The demo report lists Evidence Card, Matching Report, A/B Markdown Resume,
   Scorecard, Run Record, and required pipeline events.
 
-## 2. Optional GUI Check
+## 2. GUI Check
 
-Run this only when a local desktop GUI validation is required:
-
-```bash
-bash scripts/acceptance/run-demo-readiness.sh --include-gui
-```
-
-This adds the existing native Quick Run verifier:
-
-```bash
-pnpm --dir ui run e2e:quick-run
-```
-
-Expected result:
-
-- The readiness report still ends with `pass`.
-- The `quick run native verifier` step is `pass`.
-- GUI artifacts are under `ui/test-results/quick-run-native/`.
+There is currently no demo readiness GUI flag. A GUI gate must be implemented
+as external real-page automation.
 
 ## 3. Demo Order
 
@@ -59,8 +44,8 @@ Expected result:
    and `outputs/<run_id>/resume_mr-<run_id>_B.md`
 5. Open the scorecard:
    `outputs/scorecards/scorecard_mr-<run_id>_A.md`
-6. If the GUI check was enabled, open the Quick Run page and show the same
-   pipeline state from the desktop UI.
+6. Open the Quick Run page manually only as a demo aid; do not claim this as
+   automated acceptance until the external GUI driver exists.
 
 ## 4. Failure Handling
 
@@ -71,10 +56,9 @@ If the default check fails:
 - For `core demo` failures, open `outputs/demo/<run_id>/demo-report.md`.
 - Do not proceed to GUI validation until the deterministic core demo passes.
 
-If `--include-gui` fails after the core demo passed:
+If GUI validation is needed after the core demo passed:
 
-- Treat it as a GUI/native verifier issue, not a core pipeline failure.
-- Inspect `ui/test-results/quick-run-native/tauri.log`.
+- Add or run an external real-page automation driver.
 - Keep `readiness-report.md` attached to the issue or handoff note.
 
 ## 5. Scope

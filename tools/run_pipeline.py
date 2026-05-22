@@ -148,6 +148,11 @@ def _legacy_main() -> int:
     _ = parser.add_argument(
         "--require-llm", action="store_true", help="Fail if any LLM step is unavailable"
     )
+    _ = parser.add_argument(
+        "--skip-evidence-extraction",
+        action="store_true",
+        help="Use the supplied evidence directory as-is instead of extracting a new card",
+    )
     args = parser.parse_args()
 
     raw_path = cast(str, args.raw)
@@ -158,6 +163,7 @@ def _legacy_main() -> int:
     )
     use_llm = cast(bool, args.use_llm)
     require_llm = cast(bool, args.require_llm)
+    skip_evidence_extraction = cast(bool, args.skip_evidence_extraction)
     run_store = FileRunStore(base_dir=str(Path("outputs") / "agent_runs"))
     artifacts: dict[str, object] = {
         "raw": raw_path,
@@ -172,6 +178,7 @@ def _legacy_main() -> int:
             "job_profile": job_profile,
             "use_llm": use_llm,
             "require_llm": require_llm,
+            "skip_evidence_extraction": skip_evidence_extraction,
             "mode": "legacy_subprocess",
         },
     )
@@ -284,7 +291,7 @@ def _legacy_main() -> int:
     scorecard_output = Path("outputs/scorecards") / f"scorecard_mr-{run_id}_A.md"
     artifacts.update(
         {
-            "evidence": str(evidence_output),
+            "evidence": str(evidence_dir if skip_evidence_extraction else evidence_output),
             "matching": str(matching_output),
             "resume_dir": str(resume_dir),
             "scorecard": str(scorecard_output),
@@ -297,7 +304,30 @@ def _legacy_main() -> int:
     resume_dir.mkdir(parents=True, exist_ok=True)
     scorecard_output.parent.mkdir(parents=True, exist_ok=True)
 
-    if use_llm:
+    if skip_evidence_extraction:
+        existing_evidence_files = sorted(evidence_dir.glob("*.yaml"))
+        if not existing_evidence_files:
+            print("[pipeline] no selected evidence cards found")
+            return _finish_pipeline_run(
+                run_store,
+                run_id,
+                "FAILED",
+                1,
+                artifacts,
+                reason="no_selected_evidence_cards",
+                failed_step="evidence-selection",
+            )
+        _append_pipeline_event(
+            run_store,
+            run_id,
+            "PIPELINE_STEP_SUCCESS",
+            {
+                "step": "evidence-selection",
+                "evidence_dir": str(evidence_dir),
+                "evidence_count": len(existing_evidence_files),
+            },
+        )
+    elif use_llm:
         if has_llm_env():
             extract_cmd = [
                 "python3",

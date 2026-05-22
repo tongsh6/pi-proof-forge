@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
@@ -63,21 +62,6 @@ const failedStepAliases: Record<(typeof PIPELINE_STEPS)[number]["key"], string[]
   evaluate: ["evaluate", "evaluation"],
 };
 
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
-
-function recordVerifyEvent(
-  event: string,
-  details: Record<string, unknown> = {}
-) {
-  if (verifyScenario !== "quick-run") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
-}
-
 function getStageStatus(
   runState: RunState,
   status: string | null,
@@ -127,10 +111,12 @@ export function QuickRunPage() {
   const [error, setError] = useState<string | null>(null);
   const [runState, setRunState] = useState<RunState>("idle");
   const [evidenceCount, setEvidenceCount] = useState(0);
+  const [eligibleEvidenceIds, setEligibleEvidenceIds] = useState<string[]>([]);
   const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+  const [resumePositioning, setResumePositioning] = useState("technical_depth");
   const [quickRunId, setQuickRunId] = useState<string | null>(null);
   const [quickRunStatus, setQuickRunStatus] = useState<string | null>(null);
   const [quickRunResult, setQuickRunResult] = useState<QuickRunStartResult | null>(null);
@@ -138,7 +124,6 @@ export function QuickRunPage() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const quickRunInFlightRef = useRef(false);
-  const verifyStartedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -150,34 +135,22 @@ export function QuickRunPage() {
         listJobProfiles(),
         getSettings(),
       ]);
-      setEvidenceCount(evidence.items.filter((item) => item.status !== "draft").length);
+      const eligibleEvidence = evidence.items.filter(
+        (item) => item.status === "saved_eligible"
+      );
+      const activeProfiles = jobs.items.filter((item) => item.status === "active");
+      setEvidenceCount(eligibleEvidence.length);
+      setEligibleEvidenceIds(eligibleEvidence.map((item) => item.evidence_id));
       setMaterialSources(materials.items);
       setJobProfiles(jobs.items);
       setLlmConfig(settings.llm_config);
-      if (jobs.items.length > 0 && !selectedProfileId) {
-        setSelectedProfileId(jobs.items[0].job_profile_id);
+      if (activeProfiles.length > 0 && !selectedProfileId) {
+        setSelectedProfileId(activeProfiles[0].job_profile_id);
       }
-      recordVerifyEvent("quick_run.load.ready", {
-        evidence_count: evidence.items.length,
-        material_source_count: materials.items.length,
-        material_source_id: materials.items[0]?.material_id ?? null,
-        material_source_label: materials.items[0]?.label ?? null,
-        job_profile_count: jobs.items.length,
-        selected_profile_id:
-          selectedProfileId || jobs.items[0]?.job_profile_id || null,
-        llm_provider: settings.llm_config.provider,
-        llm_model: settings.llm_config.model,
-        llm_base_url: settings.llm_config.base_url,
-        api_key_configured: settings.llm_config.api_key.configured,
-        api_key_masked: settings.llm_config.api_key.masked,
-      });
       setLoadState("ready");
     } catch (e) {
       setLoadState("error");
       setError(getErrorMessage(e));
-      recordVerifyEvent("quick_run.load.error", {
-        error: getErrorMessage(e),
-      });
     }
   }, [selectedProfileId]);
 
@@ -196,6 +169,7 @@ export function QuickRunPage() {
   const selectedProfile = jobProfiles.find(
     (jp) => jp.job_profile_id === selectedProfileId,
   );
+  const activeJobProfiles = jobProfiles.filter((jp) => jp.status === "active");
   const providerSummary = [
     {
       label: t("pages.quickRun.provider"),
@@ -216,7 +190,8 @@ export function QuickRunPage() {
         : t("pages.systemSettings.secretMissing"),
     },
   ];
-  const canStartRun = selectedProfileId !== "" && runState !== "running";
+  const canStartRun =
+    selectedProfileId !== "" && eligibleEvidenceIds.length > 0 && runState !== "running";
   const canCancelRun =
     quickRunId !== null &&
     quickRunStatus !== null &&
@@ -251,13 +226,16 @@ export function QuickRunPage() {
     setRunError(null);
     setQuickRunStatus(null);
     setQuickRunResult(null);
-    recordVerifyEvent("quick_run.start.request", {
-      selected_profile_id: selectedProfileId,
-    });
     try {
       const result = await startQuickRun({
         job_profile_id: selectedProfileId,
-        options: { generate_resume: true },
+        options: {
+          generate_resume: true,
+          evidence_ids: eligibleEvidenceIds,
+          resume_positioning: resumePositioning,
+          use_llm: true,
+          require_llm: true,
+        },
       });
       setQuickRunId(result.run_id);
       setQuickRunStatus(result.status);
@@ -271,35 +249,13 @@ export function QuickRunPage() {
           `${result.status}${result.exit_code != null ? ` (${result.exit_code})` : ""}`
         );
       }
-      recordVerifyEvent("quick_run.start.result", {
-        run_id: result.run_id,
-        status: result.status,
-        run_record: result.run_record ?? null,
-        score_total: result.score_total ?? null,
-        material_source_id: result.material_source?.material_id ?? null,
-        material_source_label: result.material_source?.label ?? null,
-        trace_evidence_card_ids: result.traceability?.evidence_card_ids ?? [],
-        trace_raw_source: result.traceability?.evidence.raw_source ?? null,
-        trace_resume_a: result.traceability?.resume_a ?? null,
-        trace_resume_traceable: result.traceability?.resume_traceable ?? null,
-        trace_scorecard: result.traceability?.scorecard ?? null,
-        llm_provider: result.llm_config_summary?.provider ?? null,
-        llm_model: result.llm_config_summary?.model ?? null,
-        llm_base_url: result.llm_config_summary?.base_url ?? null,
-        api_key_configured:
-          result.llm_config_summary?.api_key.configured ?? null,
-        api_key_masked: result.llm_config_summary?.api_key.masked ?? null,
-      });
     } catch (e) {
       setRunState("error");
       setRunError(getErrorMessage(e));
-      recordVerifyEvent("quick_run.start.error", {
-        error: getErrorMessage(e),
-      });
     } finally {
       quickRunInFlightRef.current = false;
     }
-  }, [selectedProfileId]);
+  }, [eligibleEvidenceIds, resumePositioning, selectedProfileId]);
 
   const handleCancelQuickRun = async () => {
     if (!quickRunId) return;
@@ -312,44 +268,6 @@ export function QuickRunPage() {
       setRunError(getErrorMessage(e));
     }
   };
-
-  useEffect(() => {
-    if (
-      verifyScenario !== "quick-run" ||
-      verifyStartedRef.current ||
-      loadState !== "ready" ||
-      runState === "running"
-    ) {
-      return;
-    }
-
-    if (!selectedProfileId) {
-      recordVerifyEvent("quick_run.autorun.blocked", {
-        reason: "missing_profile",
-        job_profile_count: jobProfiles.length,
-      });
-      return;
-    }
-
-    verifyStartedRef.current = true;
-    window.setTimeout(() => {
-      const button = document.querySelector<HTMLButtonElement>(
-        '[data-automation-id="quick-run-start"]'
-      );
-      recordVerifyEvent("quick_run.autorun.click", {
-        selected_profile_id: selectedProfileId,
-        has_button: Boolean(button),
-        button_disabled: button?.disabled ?? null,
-      });
-      button?.click();
-      if (!quickRunInFlightRef.current) {
-        recordVerifyEvent("quick_run.autorun.direct_fallback", {
-          selected_profile_id: selectedProfileId,
-        });
-        void handleStartQuickRun();
-      }
-    }, 250);
-  }, [handleStartQuickRun, jobProfiles.length, loadState, runState, selectedProfileId]);
 
   return (
     <div className="space-y-6">
@@ -376,14 +294,27 @@ export function QuickRunPage() {
             className="h-10 min-w-[280px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
             aria-label={t("pages.quickRun.selectProfile")}
           >
-            {jobProfiles.length === 0 ? (
+            {activeJobProfiles.length === 0 ? (
               <option value="">{t("common.empty")}</option>
             ) : null}
-            {jobProfiles.map((profile) => (
+            {activeJobProfiles.map((profile) => (
               <option key={profile.job_profile_id} value={profile.job_profile_id}>
                 {profile.title}
               </option>
             ))}
+          </select>
+          <select
+            value={resumePositioning}
+            onChange={(event) => setResumePositioning(event.target.value)}
+            className="h-10 min-w-[220px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+            aria-label={t("pages.quickRun.resumePositioning")}
+          >
+            <option value="technical_depth">
+              {t("pages.quickRun.positioningOptions.technicalDepth")}
+            </option>
+            <option value="delivery_owner">
+              {t("pages.quickRun.positioningOptions.deliveryOwner")}
+            </option>
           </select>
           <button
             type="button"

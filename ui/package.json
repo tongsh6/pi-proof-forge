@@ -9,17 +9,7 @@
     "preview": "vite preview",
     "prepare:python-runtime": "python3 ./scripts/stage_python_runtime.py",
     "tauri": "pnpm run prepare:python-runtime && tauri",
-    "smoke:app": "pnpm run tauri build --bundles app && python3 ./scripts/verify_packaged_app.py",
-    "e2e:overview": "node ./scripts/verify_overview_native.mjs",
-    "e2e:evidence": "node ./scripts/verify_evidence_native.mjs",
-    "e2e:quick-run": "node ./scripts/verify_quick_run_native.mjs",
-    "e2e:quick-run:webdriver": "node ./scripts/verify_quick_run_webdriver.mjs",
-    "e2e:resumes": "node ./scripts/verify_resumes_native.mjs",
-    "e2e:jobs": "node ./scripts/verify_jobs_native.mjs",
-    "e2e:agent-run": "node ./scripts/verify_agent_run_native.mjs",
-    "e2e:submissions": "node ./scripts/verify_submissions_native.mjs",
-    "e2e:system-settings": "node ./scripts/verify_system_settings_native.mjs",
-    "e2e:policy": "node ./scripts/verify_policy_native.mjs"
+    "smoke:app": "pnpm run tauri build --bundles app && python3 ./scripts/verify_packaged_app.py"
   },
   "dependencies": {
     "i18next": "^24.2.0",

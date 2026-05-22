@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import {
   CheckCircle2,
   Circle,
@@ -38,7 +37,6 @@ type AgentRunEvent = Record<string, unknown> & {
 };
 type GateRowStatus = "pass" | "fail" | "running" | "waiting";
 
-const verifyScenario = import.meta.env.VITE_QUICK_RUN_VERIFY_AUTORUN;
 const STATE_SEQUENCE = [
   "INIT",
   "DISCOVER",
@@ -57,22 +55,10 @@ type AgentState = (typeof STATE_SEQUENCE)[number];
 const FINAL_STATUSES = new Set([
   "DONE",
   "DRY_RUN_COMPLETE",
+  "REVIEW_PENDING",
   "FAILED",
   "stopped",
 ]);
-
-function recordVerifyEvent(
-  event: string,
-  details: Record<string, unknown> = {}
-) {
-  if (verifyScenario !== "agent-run") return;
-  void invoke("quick_run_verify_event", {
-    event: {
-      event,
-      ...details,
-    },
-  }).catch(() => undefined);
-}
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -179,7 +165,6 @@ export function AgentRunPage() {
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const agentRunInFlightRef = useRef(false);
-  const verifyStartedRef = useRef(false);
 
   const loadProfiles = useCallback(async () => {
     setLoadState("loading");
@@ -195,23 +180,10 @@ export function AgentRunPage() {
         setSelectedProfileId(result.items[0].job_profile_id);
       }
       setLoadState("ready");
-      recordVerifyEvent("agent_run.load.ready", {
-        profile_count: result.items.length,
-        selected_profile_id:
-          selectedProfileId || result.items[0]?.job_profile_id || "",
-        llm_provider: settings.llm_config.provider,
-        llm_model: settings.llm_config.model,
-        llm_base_url: settings.llm_config.base_url,
-        api_key_configured: settings.llm_config.api_key.configured,
-        api_key_masked: settings.llm_config.api_key.masked,
-      });
     } catch (nextError) {
       const message = getErrorMessage(nextError);
       setError(message);
       setLoadState("error");
-      recordVerifyEvent("agent_run.load.error", {
-        error: message,
-      });
     }
   }, [selectedProfileId]);
 
@@ -347,68 +319,26 @@ export function AgentRunPage() {
     try {
       const result = await startAgentRun({
         job_profile_id: selectedProfileId,
-        options: { execute_dry_run: true, max_rounds: 1 },
+        options: {
+          execute_guided_batch: true,
+          preflight_confirmed: true,
+          confirmed_no_real_submit: true,
+          max_rounds: 2,
+          max_candidates: 2,
+          max_passed_candidates: 2,
+          max_generated_resumes: 2,
+          submit_enabled: false,
+        },
       });
       setCurrentRunId(result.run_id);
       await loadRun(result.run_id);
-      recordVerifyEvent("agent_run.start.result", {
-        run_id: result.run_id,
-        status: result.status,
-        llm_provider: result.llm_config_summary?.provider ?? null,
-        llm_model: result.llm_config_summary?.model ?? null,
-        llm_base_url: result.llm_config_summary?.base_url ?? null,
-        api_key_configured:
-          result.llm_config_summary?.api_key.configured ?? null,
-        api_key_masked: result.llm_config_summary?.api_key.masked ?? null,
-      });
     } catch (nextError) {
       setRunState("error");
       setError(getErrorMessage(nextError));
-      recordVerifyEvent("agent_run.start.error", {
-        error: getErrorMessage(nextError),
-      });
     } finally {
       agentRunInFlightRef.current = false;
     }
   }, [loadRun, selectedProfileId]);
-
-  useEffect(() => {
-    if (
-      verifyScenario !== "agent-run" ||
-      verifyStartedRef.current ||
-      loadState !== "ready" ||
-      runState === "loading"
-    ) {
-      return;
-    }
-
-    if (!selectedProfileId) {
-      recordVerifyEvent("agent_run.autorun.blocked", {
-        reason: "missing_profile",
-        profile_count: jobProfiles.length,
-      });
-      return;
-    }
-
-    verifyStartedRef.current = true;
-    window.setTimeout(() => {
-      const button = document.querySelector<HTMLButtonElement>(
-        '[data-automation-id="agent-run-start"]'
-      );
-      recordVerifyEvent("agent_run.autorun.click", {
-        selected_profile_id: selectedProfileId,
-        has_button: Boolean(button),
-        button_disabled: button?.disabled ?? null,
-      });
-      button?.click();
-      if (!agentRunInFlightRef.current) {
-        recordVerifyEvent("agent_run.autorun.direct_fallback", {
-          selected_profile_id: selectedProfileId,
-        });
-        void handleStart();
-      }
-    }, 250);
-  }, [handleStart, jobProfiles.length, loadState, runState, selectedProfileId]);
 
   const handleRefreshRun = useCallback(async () => {
     if (currentRunId) {
