@@ -150,7 +150,8 @@
 - L3 证据必须写入 `outputs/acceptance/<run_id>/external-l3-validation.json` 和 `.md`。
 - 证据必须覆盖 `user_authorized_external_session`、`explicit_final_submit_gate`、`live_channel_result_or_blocker_recorded`、`post_submit_feedback_traceability` 和 `no_secret_or_captcha_bypass`。
 - live blocker 是有效 L3 输出，但必须明确 `external_submission_attempted=false`、blocker reason、category 与 next action。
-- L3 证据必须包含 `live_run_readiness`，逐项记录授权、最终确认、渠道、岗位 URL、resume PDF、profile YAML、确认 job id 和确认 recruiter 的 gate 状态；未全 pass 时 `submit_command_allowed=false`。
+- L3 证据必须包含 `live_run_readiness`，逐项记录授权、最终确认、渠道、岗位 URL、URL 格式、resume PDF 路径与文件格式、profile YAML 路径与文件格式、确认 job id 和确认 recruiter 的 gate 状态；未全 pass 时 `submit_command_allowed=false`。
+- 即使所有 env 字符串都存在，真实 Job URL 不是 http/https、resume 不是存在的 `.pdf` 文件或 profile 不是存在的 `.yaml/.yml` 文件，也必须在启动 submit 命令前记录 live blocker。
 - L3 证据必须包含 `submit_safety_decision`，明确最终提交命令是 `blocked_before_command`、`allowed_pending_execution` 还是 `allowed_and_executed`，并证明显式授权、独立最终确认和真实输入齐备才允许 submit。
 - blocker 或真实渠道结果必须包含 `operator_handoff`：列出 required env 是否存在、最终提交前 checklist、禁止输入项和不含真实值的命令模板。
 - 真实渠道命令返回成功也不等于 L3 成功；必须解析并确认 `submission_log.yaml` 与同目录 `submission_log.json` 均存在，且 submission log 必须写回 `external_l3_validation_run_id` 与 `external_l3_validation_path`，共同写入 `submission_traceability.linked_to_validation=true`。
