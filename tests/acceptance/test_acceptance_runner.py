@@ -204,6 +204,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert payload["live_blocker"]["reason"] == "explicit_user_authorization_required"
     assert payload["coverage"]["user_authorized_external_session"] == "blocked_recorded"
     assert payload["coverage"]["no_secret_or_captcha_bypass"] == "pass"
+    readiness = payload["live_run_readiness"]
+    assert readiness["ready"] is False
+    assert readiness["submit_command_allowed"] is False
+    assert readiness["blocking_reason"] == "explicit_user_authorization_required"
+    assert "user_authorization" in readiness["missing_gates"]
+    assert "job_url_present" in readiness["missing_gates"]
     handoff = payload["operator_handoff"]
     assert handoff["status"] == "blocked_until_operator_action"
     assert "显式授权" in handoff["next_action"]
@@ -217,6 +223,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         encoding="utf-8"
     )
     assert "# External L3 投递验证" in markdown
+    assert "## Live Run Readiness" in markdown
+    assert "- 是否允许启动 submit 命令: `False`" in markdown
+    assert "| Gate | 状态 | 说明 |" in markdown
     assert "## 授权交接包" in markdown
     assert "| 必需环境变量 | 是否存在 | 是否敏感 |" in markdown
 
@@ -268,6 +277,10 @@ def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
     )
     assert payload["coverage"]["user_authorized_external_session"] == "pass"
     assert payload["coverage"]["explicit_final_submit_gate"] == "blocked_recorded"
+    readiness = payload["live_run_readiness"]
+    assert readiness["ready"] is False
+    assert "user_authorization" not in readiness["missing_gates"]
+    assert "final_submit_confirmation" in readiness["missing_gates"]
     required_env = {
         item["name"]: item for item in payload["operator_handoff"]["required_env"]
     }
@@ -312,6 +325,9 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["status"] == "external_validated"
     assert payload["external_submission_attempted"] is True
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
+    assert payload["live_run_readiness"]["ready"] is True
+    assert payload["live_run_readiness"]["submit_command_allowed"] is True
+    assert payload["live_run_readiness"]["missing_gates"] == []
     assert payload["operator_handoff"]["status"] == "executed_with_guarded_live_result"
     assert run_mock.call_count == 1
     command = run_mock.call_args.args[0]

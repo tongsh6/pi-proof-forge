@@ -42,6 +42,10 @@ def build_external_l3_validation(
             "output_dir": request["output_dir"],
         },
     }
+    base["live_run_readiness"] = _live_run_readiness(
+        request=request,
+        blocker_reason=blocker_reason,
+    )
     base["operator_handoff"] = _operator_handoff(
         request=request,
         blocker_reason=blocker_reason,
@@ -114,6 +118,10 @@ def build_external_l3_validation(
                 "blocker 已修复后再重试。"
             ),
         }
+    base["live_run_readiness"] = _live_run_readiness(
+        request=request,
+        blocker_reason=blocker_after_run,
+    )
     base["operator_handoff"] = _operator_handoff(
         request=request,
         blocker_reason=blocker_after_run,
@@ -146,6 +154,7 @@ def write_external_l3_validation(
 def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     blocker = validation.get("live_blocker") or {}
     coverage = validation.get("coverage") or {}
+    readiness = validation.get("live_run_readiness") or {}
     handoff = validation.get("operator_handoff") or {}
     lines = [
         "# External L3 投递验证",
@@ -174,6 +183,32 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 下一步: {blocker.get('next_action', '')}",
             ]
         )
+    if readiness:
+        lines.extend(
+            [
+                "",
+                "## Live Run Readiness",
+                "",
+                f"- 是否就绪: `{readiness.get('ready', False)}`",
+                f"- 是否允许启动 submit 命令: `{readiness.get('submit_command_allowed', False)}`",
+                f"- 阻断原因: `{readiness.get('blocking_reason', '')}`",
+                "",
+                "| Gate | 状态 | 说明 |",
+                "|---|---:|---|",
+            ]
+        )
+        for gate in readiness.get("gates", []):
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{gate.get('id', '')}`",
+                        f"`{gate.get('status', '')}`",
+                        str(gate.get("detail", "")),
+                    ]
+                )
+                + " |"
+            )
     if handoff:
         lines.extend(
             [
@@ -356,6 +391,73 @@ def _operator_handoff(
             "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter> "
             "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
         ),
+    }
+
+
+def _live_run_readiness(
+    *,
+    request: dict[str, Any],
+    blocker_reason: str,
+) -> dict[str, Any]:
+    gates = [
+        _readiness_gate(
+            gate_id="user_authorization",
+            passed=bool(request["authorized"]),
+            detail="用户显式授权接触真实外部渠道",
+        ),
+        _readiness_gate(
+            gate_id="final_submit_confirmation",
+            passed=bool(request["final_submit_confirmed"]),
+            detail="用户单独确认最终提交路径",
+        ),
+        _readiness_gate(
+            gate_id="supported_channel",
+            passed=request["channel"] == "liepin",
+            detail=f"channel={request['channel']}",
+        ),
+        _readiness_gate(
+            gate_id="job_url_present",
+            passed=bool(request["job_url"]),
+            detail="真实岗位 URL 已提供",
+        ),
+        _readiness_gate(
+            gate_id="resume_pdf_present",
+            passed=bool(request["resume_pdf_path"]),
+            detail="已审核简历 PDF 路径已提供",
+        ),
+        _readiness_gate(
+            gate_id="profile_yaml_present",
+            passed=bool(request["profile_path"]),
+            detail="已审核 profile YAML 路径已提供",
+        ),
+        _readiness_gate(
+            gate_id="confirm_job_id_present",
+            passed=bool(request["confirm_submit_job_id"]),
+            detail="确认岗位 ID 已提供",
+        ),
+        _readiness_gate(
+            gate_id="confirm_recruiter_present",
+            passed=bool(request["confirm_submit_recruiter"]),
+            detail="确认招聘方已提供",
+        ),
+    ]
+    ready = all(gate["status"] == "pass" for gate in gates) and not blocker_reason
+    return {
+        "ready": ready,
+        "submit_command_allowed": ready,
+        "blocking_reason": blocker_reason,
+        "gates": gates,
+        "missing_gates": [
+            gate["id"] for gate in gates if gate["status"] != "pass"
+        ],
+    }
+
+
+def _readiness_gate(*, gate_id: str, passed: bool, detail: str) -> dict[str, str]:
+    return {
+        "id": gate_id,
+        "status": "pass" if passed else "blocked",
+        "detail": detail,
     }
 
 
