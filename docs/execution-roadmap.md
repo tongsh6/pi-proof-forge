@@ -380,7 +380,9 @@ Vision link:
 Expected evidence:
 
 - L3 主入口：`bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3`
-- 待补：真实外部渠道成功记录，或清晰的 live blocker 记录；不得在缺少用户授权和最终确认时触发真实提交。
+- 当前交付：L3 runner 默认生成 live blocker 记录；未显式授权或未单独最终确认时，`external_submission_attempted=false`。
+- 真实渠道路径：仅当 `PIPF_EXTERNAL_L3_AUTHORIZED=true`、`PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true` 且 Job URL / resume PDF / profile / confirmed job id / confirmed recruiter 均已提供时，才允许启动 `tools.submission.run_submission --submit`。
+- 证据：`outputs/acceptance/acceptance_external_l3/external-l3-validation.json` 与 `.md`。
 
 ## Machine Contract
 

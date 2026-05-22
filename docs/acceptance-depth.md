@@ -138,3 +138,19 @@
 - 审计结果必须写入 `outputs/acceptance/<run_id>/closed-loop-audit.json` 和 `.md`，失败时列出具体断裂检查。
 
 只把多个独立验收脚本顺序跑一遍，不检查 journey rule、evidence artifact 和跨阶段 traceability，不满足 closed-loop 深度验收。
+
+## External L3 Submission Validation 口径
+
+`bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3` 对 `external_l3_submission_validation` 必须验证：
+
+- 默认不得触碰外部渠道；未设置 `PIPF_EXTERNAL_L3_AUTHORIZED=true` 时，必须只写入 live blocker 证据。
+- 即使已有用户授权，未设置独立的 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true` 时，也必须阻断在最终提交前。
+- 真实执行只允许在同时具备授权、最终确认、channel、Job URL、resume PDF、profile YAML、确认 job id 和确认 recruiter 时启动。
+- P0 支持的外部渠道为 `liepin`；其他渠道必须记录 `unsupported_external_l3_channel`，不得隐式 fallback。
+- L3 证据必须写入 `outputs/acceptance/<run_id>/external-l3-validation.json` 和 `.md`。
+- 证据必须覆盖 `user_authorized_external_session`、`explicit_final_submit_gate`、`live_channel_result_or_blocker_recorded`、`post_submit_feedback_traceability` 和 `no_secret_or_captcha_bypass`。
+- live blocker 是有效 L3 输出，但必须明确 `external_submission_attempted=false`、blocker reason、category 与 next action。
+- 真实渠道命令返回非零时不得伪装成功；必须保留 stdout/stderr tail 和 log hint，作为 exact live blocker。
+- runner 不接受 credentials、captcha 或 SMS 输入，也不得保存 secret。
+
+只把 L3 标为 `not_started`，或在缺少授权/最终确认时尝试外部提交，都不满足 External L3 验收。

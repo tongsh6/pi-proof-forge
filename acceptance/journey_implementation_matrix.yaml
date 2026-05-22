@@ -435,6 +435,7 @@ steps:
       depth: "deep"
       evidence:
         - "tools/acceptance/acceptance_runner.py"
+        - "tools/acceptance/external_l3.py"
         - "tests/acceptance/test_acceptance_runner.py"
         - "outputs/acceptance/acceptance_closed_loop_20260522/closed-loop-audit.json"
         - "outputs/acceptance/acceptance_closed_loop_20260522/acceptance-report.json"
@@ -468,7 +469,11 @@ steps:
     acceptance:
       script: "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
       depth: "deep_required"
-      evidence: []
+      evidence:
+        - "tools/acceptance/acceptance_runner.py"
+        - "tests/acceptance/test_acceptance_runner.py"
+        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.md"
       covers:
         - "user_authorized_external_session"
         - "explicit_final_submit_gate"

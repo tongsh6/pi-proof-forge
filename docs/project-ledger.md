@@ -18,6 +18,7 @@ Last updated: 2026-05-22
 - Agent Run: guided batch stops at review state, writes review queue artifacts, and keeps delivery disabled before approval.
 - Submissions: channel session setup, check mode, submit-skipped logging, and feedback iteration are represented by sidecar contracts and real artifacts.
 - Closed-loop audit reads durable artifacts from `outputs/quick_runs`, `outputs/agent_runs`, `outputs/submissions`, and `outputs/feedback_iterations`.
+- External L3: `run-acceptance --level L3` now writes a guarded live blocker or real-channel result record; missing explicit authorization or missing separate final-submit confirmation never attempts external submission.
 
 ## Verification Anchors
 
