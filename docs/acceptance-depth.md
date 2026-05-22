@@ -156,6 +156,7 @@
 - 即使所有 env 字符串都存在，真实 Job URL 不是 http/https、resume 不是存在的 `.pdf` 文件或 profile 不是存在的 `.yaml/.yml` 文件，也必须在启动 submit 命令前记录 live blocker。
 - L3 证据必须包含 `live_input_artifacts`：记录 Job URL 的 scheme/host、resume/profile 的文件名、扩展名、大小和 SHA256；不得持久化 Job URL 原值、确认值或文件原始内容。
 - L3 证据必须包含 `rate_limit_policy`：记录 max-per-batch、cooldown seconds、daily limit 和状态文件路径；频控被关闭时必须在 submit 命令启动前记录 live blocker。
+- L3 证据必须包含 `forbidden_input_audit`：runner 只记录密码、验证码、短信码和原始密钥类 forbidden env 是否出现，不持久化原值；任一 forbidden input 出现时必须阻断在 submit 命令启动前。
 - 如果真实渠道命令被执行，`external-l3-validation.json` 只能持久化脱敏后的 command 和 stdout/stderr 尾部；Job URL、resume/profile 路径、确认 job id 和确认 recruiter 必须以 `<redacted>` 形式保存。
 - L3 证据必须包含 `submit_safety_decision`，明确最终提交命令是 `blocked_before_command`、`allowed_pending_execution` 还是 `allowed_and_executed`，并证明显式授权、独立最终确认和真实输入齐备才允许 submit。
 - blocker 或真实渠道结果必须包含 `operator_handoff`：列出 required env 是否存在、最终提交前 checklist、禁止输入项和不含真实值的命令模板。
@@ -169,6 +170,6 @@
 - 真实渠道命令返回非零时不得伪装成功；必须保留 stdout/stderr tail 和 log hint，作为 exact live blocker。
 - 真实渠道命令超时时也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_timed_out` live blocker、timeout 秒数、脱敏 stdout/stderr tail 和后续处理路径。
 - 真实渠道命令启动错误也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_launch_failed` live blocker，并保存脱敏后的错误类型/信息。
-- runner 不接受 credentials、captcha 或 SMS 输入，也不得保存 secret。
+- runner 不接受 credentials、captcha 或 SMS 输入，也不得保存 secret；如果用户误传相关 env，必须记录 `forbidden_external_l3_sensitive_inputs` blocker，且只保留出现状态不保留值。
 
 只把 L3 标为 `not_started`，或在缺少授权/最终确认时尝试外部提交，都不满足 External L3 验收。
