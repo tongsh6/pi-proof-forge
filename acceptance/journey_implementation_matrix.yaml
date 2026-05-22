@@ -541,6 +541,7 @@ steps:
         - "post_command_blocker_does_not_rewrite_pre_run_readiness"
         - "live_input_file_and_url_validation_recorded"
         - "live_input_artifact_fingerprints_recorded_without_raw_values"
+        - "rate_limit_policy_recorded_and_enforced_before_submit"
         - "live_submission_command_redacted_in_validation_record"
         - "live_submission_output_tails_redacted_in_validation_record"
         - "submit_safety_decision_recorded"
