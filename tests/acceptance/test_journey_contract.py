@@ -22,11 +22,12 @@ def test_journey_contract_loads_and_references_ready_cases() -> None:
         scenario_cases_path=SCENARIO_CASES_PATH,
     )
 
-    assert contract.version == "2026-05-17"
+    assert contract.version == "2026-05-22"
     assert contract.stages == EXPECTED_JOURNEY_STAGES
     assert contract.selected_cases == contract.case_ids
     assert "feedback_iteration_after_check_mode" in contract.selected_cases
-    assert len(contract.case_contracts) == 9
+    assert "external_l3_submission_validation" in contract.selected_cases
+    assert len(contract.case_contracts) == 10
 
 
 def test_journey_contract_requires_exact_stage_order(tmp_path: Path) -> None:

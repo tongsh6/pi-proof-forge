@@ -1,4 +1,4 @@
-version: "2026-05-17"
+version: "2026-05-22"
 source_scenario_cases: "acceptance/scenario_cases.yaml"
 status: "ready_for_implementation"
 purpose: "Machine-readable journey contract derived from approved scenario cases."
@@ -36,6 +36,7 @@ selected_cases:
   - "channel_session_setup"
   - "submission_check_mode"
   - "feedback_iteration_after_check_mode"
+  - "external_l3_submission_validation"
 
 case_contracts:
   first_launch_configure_lm_studio:
@@ -219,3 +220,21 @@ case_contracts:
         status: "not_started"
         evidence: ""
         message: "Feedback iteration preserves source artifacts, selected actions, previous version, new version when created, and next check-mode link."
+
+  external_l3_submission_validation:
+    primary_stage: "submissions"
+    supporting_stages:
+      - "system_settings"
+      - "policy"
+    required_outputs:
+      - "external_l3_validation_record"
+      - "live_channel_result_or_blocker"
+      - "final_submit_gate_result"
+      - "no_secret_or_captcha_bypass_evidence"
+    acceptance_rules:
+      - rule_id: "external_l3_result_or_blocker_recorded"
+        level: "L3"
+        stage: "submissions"
+        status: "not_started"
+        evidence: ""
+        message: "External L3 验收必须记录受控真实渠道结果或精确 live blocker，并保留显式授权、最终提交门禁以及无 secret/captcha 绕过证据。"
