@@ -31,6 +31,7 @@ Last updated: 2026-05-22
 - External L3 submission log audit: submission log 会写入自身 `input_artifacts`；L3 成功要求这些指纹与 validation record 匹配。
 - External L3 trace diagnostics: `submission_traceability` 写入逐项检查结果和 `failed_checks`，让 `submission_log_not_linked` 指向具体缺失或不匹配的证据。
 - External L3 blocker diagnostics: post-command live blockers directly include failed traceability checks, returncode, and related submission log paths so the blocker record is actionable without deep JSON lookup.
+- External L3 timeout handling: timed-out live commands are recorded as `external_channel_command_timed_out` blockers with timeout seconds, redacted output tails, and feedback traceability instead of failing before evidence is written.
 - External L3 feedback trace: validation records now write `post_submit_feedback_traceability`; 真实投递结果或 live blocker 都必须成为下一步反馈动作的可追溯来源产物。
 
 ## Verification Anchors

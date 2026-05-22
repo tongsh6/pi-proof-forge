@@ -165,6 +165,7 @@
 - 真实渠道命令执行后产生 live blocker 时，`live_blocker` 必须直接包含 `failed_checks` 和 `diagnostics`，包括 returncode、submission log 路径和逐项 traceability checks，避免用户为理解 blocker 再反查深层字段。
 - 无论真实渠道成功还是记录 live blocker，L3 证据都必须包含 `post_submit_feedback_traceability`：成功时以 submission log 作为反馈来源，blocker 时以 `external-l3-validation.json` 作为反馈来源，并明确下一步反馈/阻断处理路径。
 - 真实渠道命令返回非零时不得伪装成功；必须保留 stdout/stderr tail 和 log hint，作为 exact live blocker。
+- 真实渠道命令超时时也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_timed_out` live blocker、timeout 秒数、脱敏 stdout/stderr tail 和后续处理路径。
 - runner 不接受 credentials、captcha 或 SMS 输入，也不得保存 secret。
 
 只把 L3 标为 `not_started`，或在缺少授权/最终确认时尝试外部提交，都不满足 External L3 验收。
