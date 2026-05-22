@@ -702,6 +702,10 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
     assert payload["status"] == "live_blocker_recorded"
     assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
+    assert payload["live_run_readiness"]["ready"] is True
+    assert payload["live_run_readiness"]["submit_command_allowed"] is True
+    assert payload["live_run_readiness"]["blocking_reason"] == ""
+    assert payload["live_run_readiness"]["missing_gates"] == []
     assert payload["live_blocker"]["failed_checks"] == [
         "submission_log_hint_found",
         "submission_log_yaml_exists",
@@ -786,6 +790,10 @@ def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artif
     payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
     assert payload["status"] == "live_blocker_recorded"
     assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
+    assert payload["live_run_readiness"]["ready"] is True
+    assert payload["live_run_readiness"]["submit_command_allowed"] is True
+    assert payload["live_run_readiness"]["blocking_reason"] == ""
+    assert payload["live_run_readiness"]["missing_gates"] == []
     assert payload["submission_traceability"]["log_links_back_to_validation"] is True
     assert (
         payload["submission_traceability"]["submission_log_input_artifacts_match"]

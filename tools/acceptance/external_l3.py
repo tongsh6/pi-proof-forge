@@ -172,10 +172,6 @@ def build_external_l3_validation(
         live_blocker=base.get("live_blocker") or {},
         submission_traceability=submission_traceability,
     )
-    base["live_run_readiness"] = _live_run_readiness(
-        request=request,
-        blocker_reason=blocker_after_run,
-    )
     base["operator_handoff"] = _operator_handoff(
         request=request,
         blocker_reason=blocker_after_run,
