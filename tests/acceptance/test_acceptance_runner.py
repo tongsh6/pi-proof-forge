@@ -203,6 +203,22 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert payload["status"] == "live_blocker_recorded"
     assert payload["external_submission_attempted"] is False
     assert payload["live_blocker"]["reason"] == "explicit_user_authorization_required"
+    assert "user_authorization" in payload["live_blocker"]["failed_checks"]
+    assert (
+        payload["live_blocker"]["diagnostics"]["submit_command_allowed"]
+        is False
+    )
+    assert "job_url_present" in payload["live_blocker"]["diagnostics"]["missing_gates"]
+    assert isinstance(
+        payload["live_blocker"]["diagnostics"]["readiness_gates"],
+        list,
+    )
+    assert (
+        payload["live_blocker"]["diagnostics"]["live_input_artifacts"]["job_url"][
+            "raw_value_persisted"
+        ]
+        is False
+    )
     assert payload["coverage"]["user_authorized_external_session"] == "blocked_recorded"
     assert payload["coverage"]["post_submit_feedback_traceability"] == "pass"
     assert payload["coverage"]["no_secret_or_captcha_bypass"] == "pass"
@@ -377,6 +393,18 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert authorization_rule["stage"] == "submissions"
     assert authorization_rule["status"] == "pass"
     assert "授权确认包" in authorization_rule["message"]
+    pre_submit_diagnostics_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_pre_submit_blocker_diagnostics_recorded"
+        )
+    )
+    assert pre_submit_diagnostics_rule["level"] == "L3"
+    assert pre_submit_diagnostics_rule["stage"] == "submissions"
+    assert pre_submit_diagnostics_rule["status"] == "pass"
+    assert "pre-submit blocker" in pre_submit_diagnostics_rule["message"]
 
 
 def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
@@ -398,6 +426,7 @@ def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
         payload["live_blocker"]["reason"]
         == "explicit_final_submit_confirmation_required"
     )
+    assert "final_submit_confirmation" in payload["live_blocker"]["failed_checks"]
     assert payload["coverage"]["user_authorized_external_session"] == "pass"
     assert payload["coverage"]["explicit_final_submit_gate"] == "blocked_recorded"
     readiness = payload["live_run_readiness"]
@@ -452,6 +481,8 @@ def test_acceptance_runner_l3_records_invalid_live_input_gates(
     assert report.status == "pass"
     assert payload["status"] == "live_blocker_recorded"
     assert payload["live_blocker"]["reason"] == "invalid_live_resume_pdf"
+    assert "resume_pdf_file_ready" in payload["live_blocker"]["failed_checks"]
+    assert "profile_yaml_file_ready" in payload["live_blocker"]["failed_checks"]
     assert payload["external_submission_attempted"] is False
     assert run_mock.call_count == 0
     readiness = payload["live_run_readiness"]

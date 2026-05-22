@@ -840,6 +840,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_authorization_packet_recorded"] = (
             _external_l3_authorization_packet_result(external_l3_step)
         )
+        results["external_l3_pre_submit_blocker_diagnostics_recorded"] = (
+            _external_l3_pre_submit_blocker_diagnostics_result(external_l3_step)
+        )
 
     l2_step = next((step for step in report.steps if step.level == "L2"), None)
     if l2_step is not None and l2_step.status != "not_started":
@@ -1153,6 +1156,55 @@ def _external_l3_authorization_packet_result(
         status="fail",
         evidence=step.evidence,
         message="External L3 授权确认包缺失或不可证明最终提交前确认边界。",
+    )
+
+
+def _external_l3_pre_submit_blocker_diagnostics_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 pre-submit blocker 诊断证据不可读取: {exc}",
+        )
+    if payload.get("external_submission_attempted") is True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 已执行真实渠道命令，因此没有 pre-submit blocker 诊断要求。",
+        )
+    blocker = payload.get("live_blocker") or {}
+    diagnostics = blocker.get("diagnostics") or {}
+    failed_checks = blocker.get("failed_checks") or []
+    if (
+        payload.get("status") == "live_blocker_recorded"
+        and isinstance(failed_checks, list)
+        and diagnostics.get("submit_command_allowed") is False
+        and isinstance(diagnostics.get("missing_gates"), list)
+        and isinstance(diagnostics.get("readiness_gates"), list)
+        and isinstance(diagnostics.get("live_input_artifacts"), dict)
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message=(
+                "External L3 pre-submit blocker 已记录 readiness 诊断: "
+                f"{blocker.get('reason', 'unknown')}。"
+            ),
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 pre-submit blocker 缺少 missing gates 或输入审计诊断。",
     )
 
 

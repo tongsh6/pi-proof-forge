@@ -67,11 +67,11 @@ def build_external_l3_validation(
     )
 
     if blocker_reason:
-        live_blocker = {
-            "reason": blocker_reason,
-            "category": _blocker_category(blocker_reason),
-            "next_action": _next_action(blocker_reason),
-        }
+        live_blocker = _pre_submit_live_blocker(
+            reason=blocker_reason,
+            readiness=base["live_run_readiness"],
+            input_artifacts=base["live_input_artifacts"],
+        )
         base.update(
             {
                 "status": "live_blocker_recorded",
@@ -589,6 +589,29 @@ def _post_command_blocker_reason(
     if not submission_traceability["linked_to_validation"]:
         return "submission_log_not_linked"
     return ""
+
+
+def _pre_submit_live_blocker(
+    *,
+    reason: str,
+    readiness: dict[str, Any],
+    input_artifacts: dict[str, Any],
+) -> dict[str, Any]:
+    missing_gates = list(readiness.get("missing_gates") or [])
+    return {
+        "reason": reason,
+        "category": _blocker_category(reason),
+        "next_action": _next_action(reason),
+        "failed_checks": missing_gates,
+        "diagnostics": {
+            "submit_command_allowed": bool(
+                readiness.get("submit_command_allowed", False)
+            ),
+            "missing_gates": missing_gates,
+            "readiness_gates": list(readiness.get("gates") or []),
+            "live_input_artifacts": input_artifacts,
+        },
+    }
 
 
 def _post_command_live_blocker(
