@@ -152,6 +152,7 @@
 - live blocker 是有效 L3 输出，但必须明确 `external_submission_attempted=false`、blocker reason、category 与 next action。
 - L3 证据必须包含 `live_run_readiness`，逐项记录授权、最终确认、渠道、岗位 URL、resume PDF、profile YAML、确认 job id 和确认 recruiter 的 gate 状态；未全 pass 时 `submit_command_allowed=false`。
 - blocker 或真实渠道结果必须包含 `operator_handoff`：列出 required env 是否存在、最终提交前 checklist、禁止输入项和不含真实值的命令模板。
+- 真实渠道命令返回成功也不等于 L3 成功；必须解析并确认 `submission_log.yaml` 与同目录 `submission_log.json` 均存在，写入 `submission_traceability.linked_to_validation=true`。
 - 真实渠道命令返回非零时不得伪装成功；必须保留 stdout/stderr tail 和 log hint，作为 exact live blocker。
 - runner 不接受 credentials、captcha 或 SMS 输入，也不得保存 secret。
 

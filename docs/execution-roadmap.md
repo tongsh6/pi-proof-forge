@@ -425,6 +425,7 @@ Expected evidence:
 - L3 主入口：`bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3`
 - 前置条件：用户提供 `PIPF_EXTERNAL_L3_AUTHORIZED=true`、`PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true`、真实 Job URL、resume PDF、profile YAML、确认 job id 与确认 recruiter。
 - 预检证据：`external-l3-validation.json` 必须包含 `live_run_readiness.ready`、`submit_command_allowed`、`missing_gates` 和逐项 gate 状态。
+- 追溯证据：真实渠道命令即使返回成功，也必须解析并确认 `submission_log.yaml/json` 存在；否则记录为 `submission_log_not_linked` blocker。
 - 证据：`outputs/acceptance/acceptance_external_l3/external-l3-validation.json`，以及真实渠道生成的 `outputs/submissions/liepin/*/submission_log.yaml`。
 
 ## Machine Contract
