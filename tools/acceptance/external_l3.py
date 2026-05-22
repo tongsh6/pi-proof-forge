@@ -81,9 +81,17 @@ def build_external_l3_validation(
         text=True,
         timeout=request["timeout_seconds"],
     )
-    external_validated = completed.returncode == 0
-    blocker_after_run = (
-        "" if external_validated else "external_channel_command_returned_nonzero"
+    submission_traceability = _submission_traceability(
+        root=root,
+        output=completed.stdout + completed.stderr,
+    )
+    command_succeeded = completed.returncode == 0
+    external_validated = command_succeeded and bool(
+        submission_traceability["linked_to_validation"]
+    )
+    blocker_after_run = _post_command_blocker_reason(
+        command_succeeded=command_succeeded,
+        submission_traceability=submission_traceability,
     )
     base.update(
         {
@@ -97,10 +105,9 @@ def build_external_l3_validation(
             "stderr_tail": completed.stderr[-4000:],
             "live_result": {
                 "status": "success" if external_validated else "blocked_or_failed",
-                "log_hint": _extract_submission_log_hint(
-                    completed.stdout + completed.stderr
-                ),
+                "log_hint": submission_traceability["log_hint"],
             },
+            "submission_traceability": submission_traceability,
             "coverage": _coverage(
                 authorized=True,
                 final_submit_confirmed=True,
@@ -112,11 +119,8 @@ def build_external_l3_validation(
     if not external_validated:
         base["live_blocker"] = {
             "reason": blocker_after_run,
-            "category": "external_channel",
-            "next_action": (
-                "检查 stdout_tail、stderr_tail 和持久化 submission log，确认 live "
-                "blocker 已修复后再重试。"
-            ),
+            "category": _blocker_category(blocker_after_run),
+            "next_action": _next_action(blocker_after_run),
         }
     base["live_run_readiness"] = _live_run_readiness(
         request=request,
@@ -155,6 +159,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     blocker = validation.get("live_blocker") or {}
     coverage = validation.get("coverage") or {}
     readiness = validation.get("live_run_readiness") or {}
+    submission_traceability = validation.get("submission_traceability") or {}
     handoff = validation.get("operator_handoff") or {}
     lines = [
         "# External L3 投递验证",
@@ -209,6 +214,19 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 )
                 + " |"
             )
+    if submission_traceability:
+        lines.extend(
+            [
+                "",
+                "## Submission Log Traceability",
+                "",
+                f"- Linked: `{submission_traceability.get('linked_to_validation', False)}`",
+                f"- YAML: `{submission_traceability.get('log_yaml_path', '')}`",
+                f"- JSON: `{submission_traceability.get('log_json_path', '')}`",
+                f"- YAML Exists: `{submission_traceability.get('log_yaml_exists', False)}`",
+                f"- JSON Exists: `{submission_traceability.get('log_json_exists', False)}`",
+            ]
+        )
     if handoff:
         lines.extend(
             [
@@ -342,9 +360,64 @@ def _next_action(reason: str) -> str:
         return (
             "当前 P0 L3 只支持 liepin；如需其他渠道，先扩展渠道适配器。"
         )
+    if reason == "submission_log_not_linked":
+        return (
+            "真实渠道命令已返回成功，但没有解析到可验证的 submission_log.yaml/json；"
+            "请检查命令输出和 submission recorder。"
+        )
+    if reason == "external_channel_command_returned_nonzero":
+        return (
+            "检查 stdout_tail、stderr_tail 和持久化 submission log，确认 live "
+            "blocker 已修复后再重试。"
+        )
     return (
         "检查外部渠道日志，理解并修复 blocker 后再重试。"
     )
+
+
+def _post_command_blocker_reason(
+    *,
+    command_succeeded: bool,
+    submission_traceability: dict[str, Any],
+) -> str:
+    if not command_succeeded:
+        return "external_channel_command_returned_nonzero"
+    if not submission_traceability["linked_to_validation"]:
+        return "submission_log_not_linked"
+    return ""
+
+
+def _submission_traceability(*, root: Path, output: str) -> dict[str, Any]:
+    log_hint = _extract_submission_log_hint(output)
+    yaml_path = _extract_submission_yaml_path(root=root, output=output)
+    json_path = yaml_path.with_name("submission_log.json") if yaml_path else None
+    return {
+        "log_hint": log_hint,
+        "log_yaml_path": str(yaml_path) if yaml_path else "",
+        "log_json_path": str(json_path) if json_path else "",
+        "log_yaml_exists": bool(yaml_path and yaml_path.exists()),
+        "log_json_exists": bool(json_path and json_path.exists()),
+        "linked_to_validation": bool(
+            yaml_path
+            and json_path
+            and yaml_path.exists()
+            and json_path.exists()
+        ),
+    }
+
+
+def _extract_submission_yaml_path(*, root: Path, output: str) -> Path | None:
+    for line in reversed(output.splitlines()):
+        if "submission_log.yaml" not in line:
+            continue
+        candidate = line.split("log:", 1)[-1].strip()
+        if "submission_log.yaml" in candidate:
+            candidate = candidate[: candidate.index("submission_log.yaml") + len("submission_log.yaml")]
+        path = Path(candidate)
+        if not path.is_absolute():
+            path = root / path
+        return path
+    return None
 
 
 def _operator_handoff(

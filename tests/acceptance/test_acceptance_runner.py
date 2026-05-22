@@ -295,8 +295,14 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
 ) -> None:
     resume = tmp_path / "resume.pdf"
     profile = tmp_path / "profile.yaml"
+    log_dir = tmp_path / "outputs" / "submissions" / "liepin" / "live"
+    log_dir.mkdir(parents=True)
+    log_yaml = log_dir / "submission_log.yaml"
+    log_json = log_dir / "submission_log.json"
     resume.write_bytes(b"%PDF-1.4\n")
     profile.write_text("id: profile\n", encoding="utf-8")
+    log_yaml.write_text('status: "success"\n', encoding="utf-8")
+    log_json.write_text('{"status": "success"}\n', encoding="utf-8")
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
@@ -311,7 +317,11 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
         patch.dict(os.environ, env, clear=True),
         patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
     ):
-        run_mock.return_value = Mock(returncode=0, stdout="[DONE] log: ok", stderr="")
+        run_mock.return_value = Mock(
+            returncode=0,
+            stdout=f"[DONE] submit log: {log_yaml}\n",
+            stderr="",
+        )
 
         report = run_acceptance(
             root=tmp_path,
@@ -325,6 +335,9 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["status"] == "external_validated"
     assert payload["external_submission_attempted"] is True
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
+    assert payload["submission_traceability"]["linked_to_validation"] is True
+    assert payload["submission_traceability"]["log_yaml_path"] == str(log_yaml)
+    assert payload["submission_traceability"]["log_json_path"] == str(log_json)
     assert payload["live_run_readiness"]["ready"] is True
     assert payload["live_run_readiness"]["submit_command_allowed"] is True
     assert payload["live_run_readiness"]["missing_gates"] == []
@@ -334,6 +347,41 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert "--submit" in command
     assert "--headless" in command
     assert "--confirm-submit-job-id" in command
+
+
+def test_acceptance_runner_l3_blocks_success_without_submission_log(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        run_mock.return_value = Mock(returncode=0, stdout="[DONE] submit log: missing\n", stderr="")
+
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
+    assert payload["submission_traceability"]["linked_to_validation"] is False
 
 
 def test_acceptance_runner_failure_returns_fail(tmp_path: Path) -> None:
