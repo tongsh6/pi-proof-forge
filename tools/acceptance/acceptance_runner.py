@@ -828,6 +828,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_rate_limit_policy_recorded"] = (
             _external_l3_rate_limit_policy_result(external_l3_step)
         )
+        results["external_l3_forbidden_inputs_rejected"] = (
+            _external_l3_forbidden_inputs_result(external_l3_step)
+        )
         results["external_l3_live_command_redacted"] = (
             _external_l3_live_command_redaction_result(external_l3_step)
         )
@@ -1048,6 +1051,62 @@ def _external_l3_rate_limit_policy_result(step: AcceptanceStep) -> JourneyStepRe
         status="fail",
         evidence=step.evidence,
         message="External L3 频控策略缺失或允许真实 submit 绕过 rate limit。",
+    )
+
+
+def _external_l3_forbidden_inputs_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 禁止输入审计证据不可读取: {exc}",
+        )
+    audit = payload.get("forbidden_input_audit") or {}
+    inputs = audit.get("inputs") or []
+    present = audit.get("forbidden_inputs_present") is True
+    raw_values_not_persisted = (
+        audit.get("raw_values_persisted") is False
+        and all(
+            isinstance(item, dict) and item.get("raw_value_persisted") is False
+            for item in inputs
+        )
+    )
+    blocker_reason = (payload.get("live_blocker") or {}).get("reason", "")
+    safety_decision = payload.get("submit_safety_decision") or {}
+    if (
+        present
+        and raw_values_not_persisted
+        and blocker_reason == "forbidden_external_l3_sensitive_inputs"
+        and payload.get("external_submission_attempted") is False
+        and safety_decision.get("forbidden_inputs_present") is True
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 已把密码/验证码/短信码/原始密钥类输入阻断在 submit 命令前。",
+        )
+    if (
+        not present
+        and raw_values_not_persisted
+        and safety_decision.get("credentials_or_challenge_inputs_accepted") is False
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 禁止输入审计已记录，未接收或持久化 secret/challenge 输入。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 禁止输入审计缺失、持久化原值，或未在 submit 前阻断 forbidden inputs。",
     )
 
 

@@ -11,6 +11,12 @@ from urllib.parse import urlparse
 
 
 _REDACTED_LIVE_INPUT = "<redacted>"
+_FORBIDDEN_EXTERNAL_L3_ENV = (
+    ("PIPF_EXTERNAL_L3_PASSWORD", "password", "credential"),
+    ("PIPF_EXTERNAL_L3_CAPTCHA_CODE", "captcha_code", "challenge"),
+    ("PIPF_EXTERNAL_L3_SMS_CODE", "sms_code", "challenge"),
+    ("PIPF_EXTERNAL_L3_RAW_API_KEY", "raw_api_key", "secret"),
+)
 
 
 def build_external_l3_validation(
@@ -52,6 +58,7 @@ def build_external_l3_validation(
         },
         "live_input_artifacts": _live_input_artifacts(request),
         "rate_limit_policy": _rate_limit_policy(request),
+        "forbidden_input_audit": request["forbidden_input_audit"],
     }
     base["live_run_readiness"] = _live_run_readiness(
         request=request,
@@ -76,6 +83,7 @@ def build_external_l3_validation(
             readiness=base["live_run_readiness"],
             input_artifacts=base["live_input_artifacts"],
             rate_limit_policy=base["rate_limit_policy"],
+            forbidden_input_audit=base["forbidden_input_audit"],
         )
         base.update(
             {
@@ -346,6 +354,28 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 状态文件: `{rate_limit_policy.get('state_path', '')}`",
             ]
         )
+    forbidden_input_audit = validation.get("forbidden_input_audit") or {}
+    if forbidden_input_audit:
+        lines.extend(
+            [
+                "",
+                "## 禁止输入审计",
+                "",
+                f"- 禁止输入是否出现: `{forbidden_input_audit.get('forbidden_inputs_present', False)}`",
+                f"- 原始禁止输入值是否持久化: `{forbidden_input_audit.get('raw_values_persisted', True)}`",
+                "",
+                "| 输入项 | Env | 是否出现 | 类别 |",
+                "|---|---|---:|---|",
+            ]
+        )
+        for item in forbidden_input_audit.get("inputs") or []:
+            lines.append(
+                "| "
+                f"`{item.get('name', '')}` | "
+                f"`{item.get('env', '')}` | "
+                f"`{item.get('present', False)}` | "
+                f"`{item.get('category', '')}` |"
+            )
     if output_redaction:
         lines.extend(
             [
@@ -557,12 +587,38 @@ def _request_from_env(root: Path, default_timeout_seconds: int) -> dict[str, Any
             "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT",
             30,
         ),
+        "forbidden_input_audit": _forbidden_input_audit(),
         "headless": _env_bool("PIPF_EXTERNAL_L3_HEADLESS"),
         "root": str(root),
     }
 
 
+def _forbidden_input_audit() -> dict[str, Any]:
+    inputs = [
+        {
+            "env": env_name,
+            "name": input_name,
+            "category": category,
+            "present": env_name in os.environ and bool(os.environ.get(env_name, "")),
+            "raw_value_persisted": False,
+        }
+        for env_name, input_name, category in _FORBIDDEN_EXTERNAL_L3_ENV
+    ]
+    return {
+        "forbidden_inputs_present": any(item["present"] for item in inputs),
+        "raw_values_persisted": False,
+        "inputs": inputs,
+    }
+
+
+def _forbidden_inputs_present(request: dict[str, Any]) -> bool:
+    audit = request.get("forbidden_input_audit") or {}
+    return bool(audit.get("forbidden_inputs_present", False))
+
+
 def _blocker_reason(request: dict[str, Any]) -> str:
+    if _forbidden_inputs_present(request):
+        return "forbidden_external_l3_sensitive_inputs"
     if not request["authorized"]:
         return "explicit_user_authorization_required"
     if not request["final_submit_confirmed"]:
@@ -597,6 +653,8 @@ def _blocker_reason(request: dict[str, Any]) -> str:
 
 
 def _blocker_category(reason: str) -> str:
+    if reason.startswith("forbidden_"):
+        return "safety"
     if reason.startswith("explicit_"):
         return "authorization"
     if reason.startswith("missing_") or reason.startswith("invalid_"):
@@ -607,6 +665,11 @@ def _blocker_category(reason: str) -> str:
 
 
 def _next_action(reason: str) -> str:
+    if reason == "forbidden_external_l3_sensitive_inputs":
+        return (
+            "移除密码、验证码、短信码或原始密钥类环境变量；External L3 只能复用人工登录会话，"
+            "不得接收或持久化这些值。"
+        )
     if reason == "explicit_user_authorization_required":
         return (
             "先取得用户对真实外部渠道验证的显式授权；未授权前不得触碰外部渠道。"
@@ -694,6 +757,7 @@ def _pre_submit_live_blocker(
     readiness: dict[str, Any],
     input_artifacts: dict[str, Any],
     rate_limit_policy: dict[str, Any],
+    forbidden_input_audit: dict[str, Any],
 ) -> dict[str, Any]:
     missing_gates = list(readiness.get("missing_gates") or [])
     return {
@@ -709,6 +773,7 @@ def _pre_submit_live_blocker(
             "readiness_gates": list(readiness.get("gates") or []),
             "live_input_artifacts": input_artifacts,
             "rate_limit_policy": rate_limit_policy,
+            "forbidden_input_audit": forbidden_input_audit,
         },
     }
 
@@ -1073,6 +1138,7 @@ def _operator_handoff(
         "status": status,
         "next_action": next_action,
         "required_env": _required_env_handoff(request),
+        "forbidden_input_audit": request["forbidden_input_audit"],
         "pre_run_checklist": [
             "用户已明确授权接触真实外部渠道。",
             "用户已单独确认允许最终提交路径进入真实渠道命令。",
@@ -1132,6 +1198,7 @@ def _operator_authorization_packet(
             "submit_safety_decision",
             "live_input_artifacts",
             "rate_limit_policy",
+            "forbidden_input_audit",
             "command_redaction",
             "live_output_redaction",
             "post_submit_feedback_traceability",
@@ -1178,6 +1245,7 @@ def _live_run_readiness(
     resume_path_present = bool(request["resume_pdf_path"])
     profile_path_present = bool(request["profile_path"])
     rate_limit_enabled = _rate_limit_enabled(request)
+    forbidden_inputs_absent = not _forbidden_inputs_present(request)
     gates = [
         _readiness_gate(
             gate_id="user_authorization",
@@ -1201,6 +1269,11 @@ def _live_run_readiness(
                 "真实渠道 submit 使用正数 max-per-batch、cooldown seconds "
                 "和 daily limit"
             ),
+        ),
+        _readiness_gate(
+            gate_id="forbidden_sensitive_inputs_absent",
+            passed=forbidden_inputs_absent,
+            detail="未提供密码、验证码、短信码或原始密钥类禁止输入",
         ),
         _readiness_gate(
             gate_id="job_url_present",
@@ -1279,6 +1352,7 @@ def _submit_safety_decision(
         "confirm_job_id_present",
         "confirm_recruiter_present",
         "rate_limit_policy_enabled",
+        "forbidden_sensitive_inputs_absent",
     }
     live_inputs_ready = all(
         gate["status"] == "pass"
@@ -1308,6 +1382,8 @@ def _submit_safety_decision(
         "requires_explicit_user_authorization": True,
         "requires_separate_final_submit_confirmation": True,
         "credentials_or_challenge_inputs_accepted": False,
+        "forbidden_inputs_present": _forbidden_inputs_present(request),
+        "forbidden_input_audit": request["forbidden_input_audit"],
         "confirmation_scope": [
             "用户显式授权接触真实外部渠道",
             "用户单独确认允许最终提交路径进入真实渠道命令",
