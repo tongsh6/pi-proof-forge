@@ -819,6 +819,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             evidence=external_l3_step.evidence,
             message=external_l3_step.message,
         )
+        results["external_l3_post_submit_feedback_traceable"] = (
+            _external_l3_feedback_trace_result(external_l3_step)
+        )
 
     l2_step = next((step for step in report.steps if step.level == "L2"), None)
     if l2_step is not None and l2_step.status != "not_started":
@@ -828,6 +831,38 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             message=l2_step.message,
         )
     return results
+
+
+def _external_l3_feedback_trace_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 提交后反馈追溯证据不可读取: {exc}",
+        )
+    trace = payload.get("post_submit_feedback_traceability") or {}
+    if trace.get("traceable") is True and trace.get("source_artifact_path"):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message=(
+                "External L3 提交后反馈追溯已记录，来源类型: "
+                f"{trace.get('source_type', 'unknown')}。"
+            ),
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 提交后反馈追溯缺失或不可追溯。",
+    )
 
 
 def _find_step(report: AcceptanceReport, name: str) -> AcceptanceStep | None:

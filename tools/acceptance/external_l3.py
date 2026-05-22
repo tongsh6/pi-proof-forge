@@ -57,15 +57,23 @@ def build_external_l3_validation(
     )
 
     if blocker_reason:
+        live_blocker = {
+            "reason": blocker_reason,
+            "category": _blocker_category(blocker_reason),
+            "next_action": _next_action(blocker_reason),
+        }
         base.update(
             {
                 "status": "live_blocker_recorded",
                 "external_submission_attempted": False,
-                "live_blocker": {
-                    "reason": blocker_reason,
-                    "category": _blocker_category(blocker_reason),
-                    "next_action": _next_action(blocker_reason),
-                },
+                "live_blocker": live_blocker,
+                "post_submit_feedback_traceability": _post_submit_feedback_traceability(
+                    request=request,
+                    external_validated=False,
+                    external_submission_attempted=False,
+                    live_blocker=live_blocker,
+                    submission_traceability={},
+                ),
                 "coverage": _coverage(
                     authorized=request["authorized"],
                     final_submit_confirmed=request["final_submit_confirmed"],
@@ -128,6 +136,13 @@ def build_external_l3_validation(
             "category": _blocker_category(blocker_after_run),
             "next_action": _next_action(blocker_after_run),
         }
+    base["post_submit_feedback_traceability"] = _post_submit_feedback_traceability(
+        request=request,
+        external_validated=external_validated,
+        external_submission_attempted=True,
+        live_blocker=base.get("live_blocker") or {},
+        submission_traceability=submission_traceability,
+    )
     base["live_run_readiness"] = _live_run_readiness(
         request=request,
         blocker_reason=blocker_after_run,
@@ -166,6 +181,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     coverage = validation.get("coverage") or {}
     readiness = validation.get("live_run_readiness") or {}
     submission_traceability = validation.get("submission_traceability") or {}
+    feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
     handoff = validation.get("operator_handoff") or {}
     lines = [
         "# External L3 投递验证",
@@ -238,6 +254,25 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 记录 validation path: `{submission_traceability.get('logged_external_l3_validation_path', '')}`",
             ]
         )
+    if feedback_traceability:
+        lines.extend(
+            [
+                "",
+                "## 提交后反馈追溯",
+                "",
+                f"- 是否可追溯: `{feedback_traceability.get('traceable', False)}`",
+                f"- 状态: `{feedback_traceability.get('status', '')}`",
+                f"- 来源类型: `{feedback_traceability.get('source_type', '')}`",
+                f"- 来源产物: `{feedback_traceability.get('source_artifact_path', '')}`",
+                f"- 下一步反馈路径: `{feedback_traceability.get('feedback_iteration_route', '')}`",
+                f"- 下一步: {feedback_traceability.get('next_action', '')}",
+            ]
+        )
+        required_evidence = feedback_traceability.get("required_follow_up_evidence") or []
+        if required_evidence:
+            lines.extend(["", "### 后续必需证据", ""])
+            for item in required_evidence:
+                lines.append(f"- `{item}`")
     if handoff:
         lines.extend(
             [
@@ -452,6 +487,75 @@ def _read_submission_json(json_path: Path | None) -> tuple[dict[str, Any], str]:
     if not isinstance(payload, dict):
         return {}, "submission_log.json root is not an object"
     return payload, ""
+
+
+def _post_submit_feedback_traceability(
+    *,
+    request: dict[str, Any],
+    external_validated: bool,
+    external_submission_attempted: bool,
+    live_blocker: dict[str, Any],
+    submission_traceability: dict[str, Any],
+) -> dict[str, Any]:
+    validation_path = str(request["external_l3_validation_path"])
+    if external_validated:
+        source_artifact = str(
+            submission_traceability.get("log_json_path")
+            or submission_traceability.get("log_yaml_path")
+            or validation_path
+        )
+        return {
+            "traceable": bool(submission_traceability.get("linked_to_validation")),
+            "status": "ready_for_feedback_review",
+            "source_type": "submission_log",
+            "source_status": "external_validated",
+            "source_reason": "",
+            "source_artifact_path": source_artifact,
+            "related_submission_log_yaml": str(
+                submission_traceability.get("log_yaml_path", "")
+            ),
+            "related_submission_log_json": str(
+                submission_traceability.get("log_json_path", "")
+            ),
+            "feedback_iteration_route": "feedback_iteration_after_check_mode",
+            "next_action": (
+                "复核真实渠道 submission log 和后续招聘方反馈；如产生反馈项，"
+                "进入 feedback iteration 并保留 source artifact。"
+            ),
+            "required_follow_up_evidence": [
+                "submission_log.yaml",
+                "submission_log.json",
+                "external-l3-validation.json",
+                "feedback_iteration_record.json",
+            ],
+        }
+
+    reason = str(live_blocker.get("reason", "unknown"))
+    return {
+        "traceable": bool(reason and validation_path),
+        "status": "blocked_by_live_blocker",
+        "source_type": "live_blocker",
+        "source_status": (
+            "external_submission_attempted_blocked"
+            if external_submission_attempted
+            else "pre_submit_blocked"
+        ),
+        "source_reason": reason,
+        "source_artifact_path": validation_path,
+        "related_submission_log_yaml": str(
+            submission_traceability.get("log_yaml_path", "")
+        ),
+        "related_submission_log_json": str(
+            submission_traceability.get("log_json_path", "")
+        ),
+        "feedback_iteration_route": "resolve_live_blocker_before_feedback_iteration",
+        "next_action": str(live_blocker.get("next_action") or _next_action(reason)),
+        "required_follow_up_evidence": [
+            "external-l3-validation.json",
+            "live_run_readiness",
+            "operator_handoff",
+        ],
+    }
 
 
 def _extract_submission_yaml_path(*, root: Path, output: str) -> Path | None:
@@ -677,7 +781,7 @@ def _coverage(
             "pass" if (has_external_result or has_live_blocker) else "fail"
         ),
         "post_submit_feedback_traceability": (
-            "pass" if has_external_result else "not_applicable_live_blocker"
+            "pass" if (has_external_result or has_live_blocker) else "fail"
         ),
         "no_secret_or_captcha_bypass": "pass",
     }

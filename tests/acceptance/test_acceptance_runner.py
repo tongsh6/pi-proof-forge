@@ -203,7 +203,17 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert payload["external_submission_attempted"] is False
     assert payload["live_blocker"]["reason"] == "explicit_user_authorization_required"
     assert payload["coverage"]["user_authorized_external_session"] == "blocked_recorded"
+    assert payload["coverage"]["post_submit_feedback_traceability"] == "pass"
     assert payload["coverage"]["no_secret_or_captcha_bypass"] == "pass"
+    feedback_trace = payload["post_submit_feedback_traceability"]
+    assert feedback_trace["traceable"] is True
+    assert feedback_trace["source_type"] == "live_blocker"
+    assert feedback_trace["source_status"] == "pre_submit_blocked"
+    assert feedback_trace["source_reason"] == "explicit_user_authorization_required"
+    assert (
+        feedback_trace["feedback_iteration_route"]
+        == "resolve_live_blocker_before_feedback_iteration"
+    )
     readiness = payload["live_run_readiness"]
     assert readiness["ready"] is False
     assert readiness["submit_command_allowed"] is False
@@ -228,6 +238,8 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "| Gate | 状态 | 说明 |" in markdown
     assert "## 授权交接包" in markdown
     assert "| 必需环境变量 | 是否存在 | 是否敏感 |" in markdown
+    assert "## 提交后反馈追溯" in markdown
+    assert "- 来源类型: `live_blocker`" in markdown
 
 
 def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
@@ -254,6 +266,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert external_rule["status"] == "pass"
     assert "external-l3-validation.json" in external_rule["evidence"]
     assert "explicit_user_authorization_required" in external_rule["message"]
+    feedback_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_post_submit_feedback_traceable"
+    )
+    assert feedback_rule["level"] == "L3"
+    assert feedback_rule["stage"] == "submissions"
+    assert feedback_rule["status"] == "pass"
+    assert "live_blocker" in feedback_rule["message"]
 
 
 def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
@@ -358,6 +379,12 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     )
     assert payload["submission_traceability"]["log_yaml_path"] == str(log_yaml)
     assert payload["submission_traceability"]["log_json_path"] == str(log_json)
+    feedback_trace = payload["post_submit_feedback_traceability"]
+    assert feedback_trace["traceable"] is True
+    assert feedback_trace["source_type"] == "submission_log"
+    assert feedback_trace["source_status"] == "external_validated"
+    assert feedback_trace["source_artifact_path"] == str(log_json)
+    assert feedback_trace["feedback_iteration_route"] == "feedback_iteration_after_check_mode"
     assert payload["live_run_readiness"]["ready"] is True
     assert payload["live_run_readiness"]["submit_command_allowed"] is True
     assert payload["live_run_readiness"]["missing_gates"] == []
@@ -412,6 +439,11 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     assert payload["status"] == "live_blocker_recorded"
     assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
     assert payload["submission_traceability"]["linked_to_validation"] is False
+    feedback_trace = payload["post_submit_feedback_traceability"]
+    assert feedback_trace["traceable"] is True
+    assert feedback_trace["source_type"] == "live_blocker"
+    assert feedback_trace["source_status"] == "external_submission_attempted_blocked"
+    assert feedback_trace["source_reason"] == "submission_log_not_linked"
 
 
 def test_acceptance_runner_failure_returns_fail(tmp_path: Path) -> None:
