@@ -34,6 +34,7 @@ Last updated: 2026-05-22
 - External L3 submission log audit: submission log 会写入自身 `input_artifacts`；L3 成功要求这些指纹与 validation record 匹配，且 External L3 关联日志中的原始 Job URL、resume/profile 路径字段必须写成 `<redacted>`。
 - External L3 trace diagnostics: `submission_traceability` 写入逐项检查结果和 `failed_checks`，让 `submission_log_not_linked` 指向具体缺失或不匹配的证据。
 - External L3 submission log summary: parsed submission logs promote status, error, mode, and last step into validation and post-command blocker diagnostics so business blockers are actionable.
+- External L3 submission log required steps: 成功 submission log 必须包含并通过 `rate_limit`、`login_check`、`target_verify`、`submit_safety`、`chat_send_resume` 和 `submit` 步骤；否则 validation 记录 traceability blocker，而不是信任 returncode 0。
 - External L3 blocker diagnostics: post-command live blockers directly include failed traceability checks, returncode, and related submission log paths so the blocker record is actionable without deep JSON lookup.
 - External L3 timeout handling: timed-out live commands are recorded as `external_channel_command_timed_out` blockers with timeout seconds, redacted output tails, and feedback traceability instead of failing before evidence is written.
 - External L3 command launch errors: browser/driver/permission launch failures are recorded as `external_channel_command_launch_failed` blockers with redacted error evidence instead of failing before validation evidence is written.
