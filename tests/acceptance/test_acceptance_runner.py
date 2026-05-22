@@ -337,6 +337,18 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert feedback_rule["stage"] == "submissions"
     assert feedback_rule["status"] == "pass"
     assert "live_blocker" in feedback_rule["message"]
+    diagnostics_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_post_command_blocker_diagnostics_recorded"
+        )
+    )
+    assert diagnostics_rule["level"] == "L3"
+    assert diagnostics_rule["stage"] == "submissions"
+    assert diagnostics_rule["status"] == "pass"
+    assert "post-command blocker" in diagnostics_rule["message"]
 
 
 def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
@@ -690,6 +702,22 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
     assert payload["status"] == "live_blocker_recorded"
     assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
+    assert payload["live_blocker"]["failed_checks"] == [
+        "submission_log_hint_found",
+        "submission_log_yaml_exists",
+        "submission_log_json_exists",
+        "submission_log_json_parseable",
+        "external_l3_validation_run_id_matches",
+        "external_l3_validation_path_matches",
+        "input_artifacts_match_validation",
+    ]
+    assert payload["live_blocker"]["diagnostics"]["returncode"] == 0
+    assert (
+        payload["live_blocker"]["diagnostics"][
+            "submission_traceability_failed_checks"
+        ]
+        == payload["live_blocker"]["failed_checks"]
+    )
     assert payload["submission_traceability"]["linked_to_validation"] is False
     assert "submission_log_hint_found" in payload["submission_traceability"]["failed_checks"]
     assert "submission_log_json_exists" in payload["submission_traceability"]["failed_checks"]
@@ -768,6 +796,12 @@ def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artif
         in payload["submission_traceability"]["failed_checks"]
     )
     assert payload["submission_traceability"]["linked_to_validation"] is False
+    assert (
+        "input_artifacts_match_validation"
+        in payload["live_blocker"]["failed_checks"]
+    )
+    assert payload["live_blocker"]["diagnostics"]["log_yaml_path"] == str(log_yaml)
+    assert payload["live_blocker"]["diagnostics"]["log_json_path"] == str(log_json)
 
 
 def test_acceptance_runner_failure_returns_fail(tmp_path: Path) -> None:

@@ -834,6 +834,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_post_submit_feedback_traceable"] = (
             _external_l3_feedback_trace_result(external_l3_step)
         )
+        results["external_l3_post_command_blocker_diagnostics_recorded"] = (
+            _external_l3_post_command_blocker_diagnostics_result(external_l3_step)
+        )
 
     l2_step = next((step for step in report.steps if step.level == "L2"), None)
     if l2_step is not None and l2_step.status != "not_started":
@@ -1050,6 +1053,60 @@ def _external_l3_feedback_trace_result(step: AcceptanceStep) -> JourneyStepResul
         status="fail",
         evidence=step.evidence,
         message="External L3 提交后反馈追溯缺失或不可追溯。",
+    )
+
+
+def _external_l3_post_command_blocker_diagnostics_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 post-command blocker 诊断证据不可读取: {exc}",
+        )
+    if payload.get("external_submission_attempted") is not True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未执行真实渠道命令，因此没有 post-command blocker 诊断要求。",
+        )
+    if payload.get("status") != "live_blocker_recorded":
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 真实渠道结果已验证，无 post-command blocker。",
+        )
+
+    blocker = payload.get("live_blocker") or {}
+    diagnostics = blocker.get("diagnostics") or {}
+    failed_checks = blocker.get("failed_checks") or []
+    if (
+        isinstance(failed_checks, list)
+        and diagnostics.get("returncode") is not None
+        and isinstance(diagnostics.get("submission_traceability_checks"), list)
+        and isinstance(diagnostics.get("submission_traceability_failed_checks"), list)
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message=(
+                "External L3 post-command blocker 已记录 traceability 诊断: "
+                f"{blocker.get('reason', 'unknown')}。"
+            ),
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 post-command blocker 缺少 traceability failed_checks 或诊断字段。",
     )
 
 

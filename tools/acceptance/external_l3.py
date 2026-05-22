@@ -160,11 +160,11 @@ def build_external_l3_validation(
         post_run_blocker_reason=blocker_after_run,
     )
     if not external_validated:
-        base["live_blocker"] = {
-            "reason": blocker_after_run,
-            "category": _blocker_category(blocker_after_run),
-            "next_action": _next_action(blocker_after_run),
-        }
+        base["live_blocker"] = _post_command_live_blocker(
+            reason=blocker_after_run,
+            returncode=completed.returncode,
+            submission_traceability=submission_traceability,
+        )
     base["post_submit_feedback_traceability"] = _post_submit_feedback_traceability(
         request=request,
         external_validated=external_validated,
@@ -232,6 +232,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     for key, status in coverage.items():
         lines.append(f"| `{key}` | `{status}` |")
     if blocker:
+        blocker_diagnostics = blocker.get("diagnostics") or {}
         lines.extend(
             [
                 "",
@@ -240,8 +241,18 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- Reason: `{blocker.get('reason', '')}`",
                 f"- 分类: `{blocker.get('category', '')}`",
                 f"- 下一步: {blocker.get('next_action', '')}",
+                f"- Failed Checks: `{', '.join(blocker.get('failed_checks', []))}`",
             ]
         )
+        if blocker_diagnostics:
+            lines.extend(
+                [
+                    f"- Returncode: `{blocker_diagnostics.get('returncode', '')}`",
+                    f"- Log Hint: `{blocker_diagnostics.get('log_hint', '')}`",
+                    f"- YAML: `{blocker_diagnostics.get('log_yaml_path', '')}`",
+                    f"- JSON: `{blocker_diagnostics.get('log_json_path', '')}`",
+                ]
+            )
     if readiness:
         lines.extend(
             [
@@ -556,6 +567,31 @@ def _post_command_blocker_reason(
     if not submission_traceability["linked_to_validation"]:
         return "submission_log_not_linked"
     return ""
+
+
+def _post_command_live_blocker(
+    *,
+    reason: str,
+    returncode: int,
+    submission_traceability: dict[str, Any],
+) -> dict[str, Any]:
+    failed_checks = list(submission_traceability.get("failed_checks") or [])
+    return {
+        "reason": reason,
+        "category": _blocker_category(reason),
+        "next_action": _next_action(reason),
+        "failed_checks": failed_checks,
+        "diagnostics": {
+            "returncode": returncode,
+            "log_hint": str(submission_traceability.get("log_hint", "")),
+            "log_yaml_path": str(submission_traceability.get("log_yaml_path", "")),
+            "log_json_path": str(submission_traceability.get("log_json_path", "")),
+            "submission_traceability_checks": list(
+                submission_traceability.get("checks") or []
+            ),
+            "submission_traceability_failed_checks": failed_checks,
+        },
+    }
 
 
 def _submission_traceability(
