@@ -151,6 +151,7 @@ def build_external_l3_validation(
         expected_validation_run_id=run_id,
         expected_validation_path=str(request["external_l3_validation_path"]),
         expected_input_artifacts=base["live_input_artifacts"],
+        redaction_values=_live_output_redaction_values(request),
     )
     command_succeeded = command_returncode == 0 and not command_timed_out
     external_validated = command_succeeded and bool(
@@ -462,6 +463,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- Submission log 是否反向链接: `{submission_traceability.get('log_links_back_to_validation', False)}`",
                 f"- Submission log 输入产物是否匹配: `{submission_traceability.get('submission_log_input_artifacts_match', False)}`",
                 f"- Submission log 原始 live 输入是否脱敏: `{submission_traceability.get('submission_log_raw_live_inputs_redacted', False)}`",
+                f"- Submission log 步骤详情是否脱敏: `{submission_traceability.get('submission_log_step_details_redacted', False)}`",
                 f"- 成功投递关键步骤是否齐备: `{required_steps.get('passed', False)}`",
                 f"- Submission Status: `{submission_summary.get('status', '')}`",
                 f"- Submission Error: `{submission_summary.get('error', '')}`",
@@ -882,6 +884,7 @@ def _submission_traceability(
     expected_validation_run_id: str,
     expected_validation_path: str,
     expected_input_artifacts: dict[str, Any],
+    redaction_values: list[str],
 ) -> dict[str, Any]:
     log_hint = _extract_submission_log_hint(output)
     yaml_path = _extract_submission_yaml_path(root=root, output=output)
@@ -904,6 +907,10 @@ def _submission_traceability(
         actual=logged_input_artifacts if isinstance(logged_input_artifacts, dict) else {},
     )
     raw_live_inputs_redacted = _submission_log_raw_live_inputs_redacted(log_payload)
+    step_details_redacted = _submission_log_step_details_redacted(
+        log_payload,
+        redaction_values,
+    )
     required_steps_evidence = _submission_log_required_steps_evidence(log_payload)
     checks = _submission_traceability_checks(
         yaml_path=yaml_path,
@@ -914,6 +921,7 @@ def _submission_traceability(
         path_matches=logged_validation_path == expected_validation_path,
         input_artifacts_match=input_artifacts_match,
         raw_live_inputs_redacted=raw_live_inputs_redacted,
+        step_details_redacted=step_details_redacted,
         required_steps_present=bool(required_steps_evidence.get("passed")),
     )
     return {
@@ -929,6 +937,7 @@ def _submission_traceability(
         "log_links_back_to_validation": log_links_back,
         "submission_log_input_artifacts_match": input_artifacts_match,
         "submission_log_raw_live_inputs_redacted": raw_live_inputs_redacted,
+        "submission_log_step_details_redacted": step_details_redacted,
         "submission_log_required_steps": required_steps_evidence,
         "submission_log_summary": _submission_log_summary(log_payload),
         "log_json_parse_error": parse_error,
@@ -944,6 +953,7 @@ def _submission_traceability(
             and log_links_back
             and input_artifacts_match
             and raw_live_inputs_redacted
+            and step_details_redacted
             and required_steps_evidence.get("passed") is True
         ),
     }
@@ -956,6 +966,25 @@ def _submission_log_raw_live_inputs_redacted(log_payload: dict[str, Any]) -> boo
         str(log_payload.get(field, "")) == _REDACTED_LIVE_INPUT
         for field in ("job_url", "resume_path", "profile_path")
     )
+
+
+def _submission_log_step_details_redacted(
+    log_payload: dict[str, Any],
+    redaction_values: list[str],
+) -> bool:
+    if not log_payload:
+        return False
+    steps = log_payload.get("steps") or []
+    if not isinstance(steps, list):
+        return False
+    raw_values = [value for value in redaction_values if value]
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        detail = str(step.get("detail", ""))
+        if any(value in detail for value in raw_values):
+            return False
+    return True
 
 
 def _submission_log_summary(log_payload: dict[str, Any]) -> dict[str, Any]:
@@ -1039,6 +1068,7 @@ def _submission_traceability_checks(
     path_matches: bool,
     input_artifacts_match: bool,
     raw_live_inputs_redacted: bool,
+    step_details_redacted: bool,
     required_steps_present: bool,
 ) -> list[dict[str, str]]:
     return [
@@ -1081,6 +1111,11 @@ def _submission_traceability_checks(
             check_id="submission_log_raw_live_inputs_redacted",
             passed=raw_live_inputs_redacted,
             detail="submission log 原始 Job URL 与文件路径字段已脱敏",
+        ),
+        _traceability_check(
+            check_id="submission_log_step_details_redacted",
+            passed=step_details_redacted,
+            detail="submission log steps.detail 未持久化 Job URL、文件路径或确认值原文",
         ),
         _traceability_check(
             check_id="successful_submission_required_steps_present",

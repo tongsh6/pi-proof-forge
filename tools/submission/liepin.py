@@ -86,6 +86,11 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
         browser_channel=config.browser_channel,
         external_l3_validation_run_id=config.external_l3_validation_run_id,
         external_l3_validation_path=config.external_l3_validation_path,
+        redaction_values=[
+            config.confirm_submit_job_id,
+            config.confirm_submit_recruiter,
+            _extract_liepin_job_id(config.job_url) or "",
+        ],
     )
 
     if config.dry_run:

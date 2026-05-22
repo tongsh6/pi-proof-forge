@@ -5,6 +5,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterable
 from urllib.parse import urlparse
 
 
@@ -56,6 +57,7 @@ class SubmissionRecorder:
     log_yaml: Path
     log_json: Path
     record: SubmissionRecord
+    _redaction_values: list[str]
 
     def __init__(self, output_root: Path, platform: str, mode: str) -> None:
         run_id = make_run_id()
@@ -70,6 +72,7 @@ class SubmissionRecorder:
             mode=mode,
             started_at=utc_now_iso(),
         )
+        self._redaction_values = []
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     def set_meta(
@@ -82,10 +85,21 @@ class SubmissionRecorder:
         *,
         external_l3_validation_run_id: str = "",
         external_l3_validation_path: str = "",
+        redaction_values: Iterable[str] = (),
     ) -> None:
         redact_live_inputs = bool(
             external_l3_validation_run_id or external_l3_validation_path
         )
+        if redact_live_inputs:
+            values = [job_url, resume_path, profile_path, *redaction_values]
+            for path_text in (resume_path, profile_path):
+                if path_text:
+                    values.append(str(Path(path_text).resolve()))
+            self._redaction_values = _unique_redaction_values(
+                values
+            )
+        else:
+            self._redaction_values = []
         self.record.job_url = _REDACTED_LIVE_INPUT if redact_live_inputs else job_url
         self.record.resume_path = _REDACTED_LIVE_INPUT if redact_live_inputs else resume_path
         self.record.profile_path = _REDACTED_LIVE_INPUT if redact_live_inputs else profile_path
@@ -108,7 +122,7 @@ class SubmissionRecorder:
             SubmissionStep(
                 name=name,
                 status=status,
-                detail=detail,
+                detail=self._redact_live_text(detail),
                 screenshot=screenshot_rel,
             )
         )
@@ -119,10 +133,16 @@ class SubmissionRecorder:
 
     def finish(self, status: str, error: str = "") -> None:
         self.record.status = status
-        self.record.error = error
+        self.record.error = self._redact_live_text(error)
         self.record.ended_at = utc_now_iso()
         self._write_json()
         self._write_yaml()
+
+    def _redact_live_text(self, value: str) -> str:
+        redacted = value
+        for raw_value in self._redaction_values:
+            redacted = redacted.replace(raw_value, _REDACTED_LIVE_INPUT)
+        return redacted
 
     def _write_json(self) -> None:
         payload = {
@@ -207,6 +227,11 @@ class SubmissionRecorder:
 
 def _escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _unique_redaction_values(values: Iterable[str]) -> list[str]:
+    unique = {str(value) for value in values if str(value)}
+    return sorted(unique, key=len, reverse=True)
 
 
 def _input_artifacts(

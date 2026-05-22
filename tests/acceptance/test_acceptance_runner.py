@@ -466,6 +466,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert log_redaction_rule["stage"] == "submissions"
     assert log_redaction_rule["status"] == "pass"
     assert "未执行真实渠道命令" in log_redaction_rule["message"]
+    step_detail_redaction_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submission_log_step_details_redacted"
+    )
+    assert step_detail_redaction_rule["level"] == "L3"
+    assert step_detail_redaction_rule["stage"] == "submissions"
+    assert step_detail_redaction_rule["status"] == "pass"
+    assert "未执行真实渠道命令" in step_detail_redaction_rule["message"]
     authorization_rule = next(
         step
         for step in journey_payload["steps"]
@@ -864,8 +873,16 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
                 "steps": [
                     {"name": "rate_limit", "status": "success", "detail": ""},
                     {"name": "login_check", "status": "success", "detail": ""},
-                    {"name": "target_verify", "status": "success", "detail": ""},
-                    {"name": "submit_safety", "status": "success", "detail": ""},
+                    {
+                        "name": "target_verify",
+                        "status": "success",
+                        "detail": "url_job_id=<redacted>; recruiter=<redacted>",
+                    },
+                    {
+                        "name": "submit_safety",
+                        "status": "success",
+                        "detail": "submit_confirmed:job_id=<redacted>; recruiter=<redacted>",
+                    },
                     {"name": "chat_send_resume", "status": "success", "detail": ""},
                     {"name": "submit", "status": "success", "detail": ""},
                 ],
@@ -958,6 +975,10 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     )
     assert (
         payload["submission_traceability"]["submission_log_raw_live_inputs_redacted"]
+        is True
+    )
+    assert (
+        payload["submission_traceability"]["submission_log_step_details_redacted"]
         is True
     )
     required_steps = payload["submission_traceability"]["submission_log_required_steps"]
@@ -1150,6 +1171,132 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_live_inputs(
     )
 
 
+def test_acceptance_runner_l3_blocks_submission_log_with_raw_step_details(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    log_dir = tmp_path / "outputs" / "submissions" / "liepin" / "live"
+    log_dir.mkdir(parents=True)
+    log_yaml = log_dir / "submission_log.yaml"
+    log_json = log_dir / "submission_log.json"
+    resume_bytes = b"%PDF-1.4\n"
+    profile_bytes = b"id: profile\n"
+    resume.write_bytes(resume_bytes)
+    profile.write_bytes(profile_bytes)
+    log_yaml.write_text('status: "success"\n', encoding="utf-8")
+    validation_path = "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+    log_json.write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "mode": "submit",
+                "job_url": "<redacted>",
+                "resume_path": "<redacted>",
+                "profile_path": "<redacted>",
+                "live_inputs_redacted": True,
+                "external_l3_validation_run_id": "acceptance_external_l3",
+                "external_l3_validation_path": validation_path,
+                "input_artifacts": {
+                    "job_url": {
+                        "present": True,
+                        "scheme": "https",
+                        "hostname": "www.liepin.com",
+                        "supported_scheme": True,
+                        "raw_value_persisted": False,
+                    },
+                    "files": [
+                        {
+                            "id": "resume_pdf",
+                            "basename": "resume.pdf",
+                            "suffix": ".pdf",
+                            "size_bytes": len(resume_bytes),
+                            "sha256": hashlib.sha256(resume_bytes).hexdigest(),
+                            "raw_content_persisted": False,
+                        },
+                        {
+                            "id": "profile_yaml",
+                            "basename": "profile.yaml",
+                            "suffix": ".yaml",
+                            "size_bytes": len(profile_bytes),
+                            "sha256": hashlib.sha256(profile_bytes).hexdigest(),
+                            "raw_content_persisted": False,
+                        },
+                    ],
+                },
+                "steps": [
+                    {"name": "rate_limit", "status": "success", "detail": ""},
+                    {"name": "login_check", "status": "success", "detail": ""},
+                    {
+                        "name": "target_verify",
+                        "status": "success",
+                        "detail": (
+                            "url=https://www.liepin.com/job/123.shtml; "
+                            f"resume={resume}; profile={profile}; "
+                            "job_id=123; recruiter=Verifier"
+                        ),
+                    },
+                    {
+                        "name": "submit_safety",
+                        "status": "success",
+                        "detail": "submit_confirmed:job_id=123; recruiter=Verifier",
+                    },
+                    {"name": "chat_send_resume", "status": "success", "detail": ""},
+                    {"name": "submit", "status": "success", "detail": ""},
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        run_mock.return_value = Mock(
+            returncode=0,
+            stdout=f"[DONE] submit log: {log_yaml}\n",
+            stderr="",
+        )
+
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
+    assert (
+        payload["submission_traceability"]["submission_log_raw_live_inputs_redacted"]
+        is True
+    )
+    assert (
+        payload["submission_traceability"]["submission_log_step_details_redacted"]
+        is False
+    )
+    assert payload["submission_traceability"]["linked_to_validation"] is False
+    assert (
+        "submission_log_step_details_redacted"
+        in payload["submission_traceability"]["failed_checks"]
+    )
+    assert (
+        "submission_log_step_details_redacted"
+        in payload["live_blocker"]["failed_checks"]
+    )
+
+
 def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
     tmp_path: Path,
 ) -> None:
@@ -1314,6 +1461,7 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
         "external_l3_validation_path_matches",
         "input_artifacts_match_validation",
         "submission_log_raw_live_inputs_redacted",
+        "submission_log_step_details_redacted",
         "successful_submission_required_steps_present",
     ]
     assert payload["live_blocker"]["diagnostics"]["returncode"] == 0
