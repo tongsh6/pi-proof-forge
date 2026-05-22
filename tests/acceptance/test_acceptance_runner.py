@@ -319,6 +319,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert command_rule["stage"] == "submissions"
     assert command_rule["status"] == "pass"
     assert "命令" in command_rule["message"]
+    output_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_live_output_redacted"
+    )
+    assert output_rule["level"] == "L3"
+    assert output_rule["stage"] == "submissions"
+    assert output_rule["status"] == "pass"
+    assert "output" in output_rule["message"]
     feedback_rule = next(
         step
         for step in journey_payload["steps"]
@@ -528,8 +537,17 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     ):
         run_mock.return_value = Mock(
             returncode=0,
-            stdout=f"[DONE] submit log: {log_yaml}\n",
-            stderr="",
+            stdout=(
+                "submitted "
+                "https://www.liepin.com/job/123.shtml "
+                f"{resume} {profile} 123 Verifier\n"
+                f"[DONE] submit log: {log_yaml}\n"
+            ),
+            stderr=(
+                "trace "
+                "https://www.liepin.com/job/123.shtml "
+                f"{resume} {profile} 123 Verifier\n"
+            ),
         )
 
         report = run_acceptance(
@@ -551,6 +569,24 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert "123" not in payload["command"]
     assert "Verifier" not in payload["command"]
     assert payload["command"].count("<redacted>") == 5
+    assert payload["live_output_redaction"]["raw_live_inputs_persisted"] is False
+    assert set(payload["live_output_redaction"]["redacted_fields"]) == {
+        "job_url",
+        "resume_pdf_path",
+        "profile_path",
+        "confirm_submit_job_id",
+        "confirm_submit_recruiter",
+    }
+    assert "https://www.liepin.com/job/123.shtml" not in payload["stdout_tail"]
+    assert str(resume) not in payload["stdout_tail"]
+    assert str(profile) not in payload["stdout_tail"]
+    assert "Verifier" not in payload["stdout_tail"]
+    assert "https://www.liepin.com/job/123.shtml" not in payload["stderr_tail"]
+    assert str(resume) not in payload["stderr_tail"]
+    assert str(profile) not in payload["stderr_tail"]
+    assert "Verifier" not in payload["stderr_tail"]
+    assert payload["stdout_tail"].count("<redacted>") >= 5
+    assert payload["stderr_tail"].count("<redacted>") >= 5
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
     assert payload["submission_traceability"]["linked_to_validation"] is True
     assert payload["submission_traceability"]["log_links_back_to_validation"] is True

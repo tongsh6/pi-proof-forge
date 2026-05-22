@@ -134,9 +134,10 @@ def build_external_l3_validation(
                     "--confirm-submit-recruiter",
                 ],
             },
+            "live_output_redaction": _live_output_redaction_evidence(),
             "returncode": completed.returncode,
-            "stdout_tail": completed.stdout[-4000:],
-            "stderr_tail": completed.stderr[-4000:],
+            "stdout_tail": _redacted_live_output_tail(completed.stdout, request),
+            "stderr_tail": _redacted_live_output_tail(completed.stderr, request),
             "live_result": {
                 "status": "success" if external_validated else "blocked_or_failed",
                 "log_hint": submission_traceability["log_hint"],
@@ -210,6 +211,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     readiness = validation.get("live_run_readiness") or {}
     submit_decision = validation.get("submit_safety_decision") or {}
     input_artifacts = validation.get("live_input_artifacts") or {}
+    output_redaction = validation.get("live_output_redaction") or {}
     submission_traceability = validation.get("submission_traceability") or {}
     feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
     handoff = validation.get("operator_handoff") or {}
@@ -287,6 +289,16 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             lines.extend(["", "### 缺失 Gate", ""])
             for gate in missing_gates:
                 lines.append(f"- `{gate}`")
+    if output_redaction:
+        lines.extend(
+            [
+                "",
+                "## 执行输出脱敏",
+                "",
+                f"- Live 输入原值是否持久化: `{output_redaction.get('raw_live_inputs_persisted', True)}`",
+                f"- 脱敏字段: `{', '.join(output_redaction.get('redacted_fields', []))}`",
+            ]
+        )
     if input_artifacts:
         job_url = input_artifacts.get("job_url") or {}
         files = input_artifacts.get("files") or []
@@ -1191,6 +1203,46 @@ def _redacted_submission_command(command: tuple[str, ...]) -> list[str]:
         if token in redacted_flags:
             redact_next = True
     return redacted
+
+
+def _live_output_redaction_evidence() -> dict[str, Any]:
+    return {
+        "raw_live_inputs_persisted": False,
+        "redacted_fields": [
+            "job_url",
+            "resume_pdf_path",
+            "profile_path",
+            "confirm_submit_job_id",
+            "confirm_submit_recruiter",
+        ],
+    }
+
+
+def _redacted_live_output_tail(output: str, request: dict[str, Any]) -> str:
+    return _redact_live_output(output, request)[-4000:]
+
+
+def _redact_live_output(output: str, request: dict[str, Any]) -> str:
+    redacted = output
+    for value in _live_output_redaction_values(request):
+        redacted = redacted.replace(value, "<redacted>")
+    return redacted
+
+
+def _live_output_redaction_values(request: dict[str, Any]) -> list[str]:
+    values = [
+        str(request["job_url"]),
+        str(request["resume_pdf_path"]),
+        str(request["profile_path"]),
+        str(request["confirm_submit_job_id"]),
+        str(request["confirm_submit_recruiter"]),
+    ]
+    for field in ("resume_pdf_path", "profile_path"):
+        if request[field]:
+            values.append(str(_resolve_request_path(request, field)))
+
+    unique_values = {value for value in values if value}
+    return sorted(unique_values, key=len, reverse=True)
 
 
 def _coverage(

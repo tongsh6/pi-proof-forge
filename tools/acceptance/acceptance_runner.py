@@ -828,6 +828,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_live_command_redacted"] = (
             _external_l3_live_command_redaction_result(external_l3_step)
         )
+        results["external_l3_live_output_redacted"] = (
+            _external_l3_live_output_redaction_result(external_l3_step)
+        )
         results["external_l3_post_submit_feedback_traceable"] = (
             _external_l3_feedback_trace_result(external_l3_step)
         )
@@ -888,6 +891,54 @@ def _external_l3_live_command_redaction_result(step: AcceptanceStep) -> JourneyS
         status="fail",
         evidence=step.evidence,
         message="External L3 持久化命令缺少脱敏证据或脱敏参数不完整。",
+    )
+
+
+def _external_l3_live_output_redaction_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 输出脱敏证据不可读取: {exc}",
+        )
+    if payload.get("external_submission_attempted") is not True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未执行真实渠道命令，因此没有持久化 live output 原文。",
+        )
+    redaction = payload.get("live_output_redaction") or {}
+    redacted_fields = set(redaction.get("redacted_fields") or [])
+    required_fields = {
+        "job_url",
+        "resume_pdf_path",
+        "profile_path",
+        "confirm_submit_job_id",
+        "confirm_submit_recruiter",
+    }
+    if (
+        redaction.get("raw_live_inputs_persisted") is False
+        and required_fields.issubset(redacted_fields)
+        and isinstance(payload.get("stdout_tail", ""), str)
+        and isinstance(payload.get("stderr_tail", ""), str)
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 持久化输出尾部已纳入 live 输入脱敏策略。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 持久化输出尾部缺少 live 输入脱敏证据。",
     )
 
 
