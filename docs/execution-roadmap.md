@@ -41,7 +41,7 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 ## Current Focus
 
-`external_l3_submission_validation`
+`authorized_external_l3_live_run`
 
 下一次“继续推进项目”默认只处理 `acceptance/journey_implementation_matrix.yaml` 中第一个 `status: next` 的任务。
 
@@ -364,7 +364,7 @@ Expected evidence:
 
 ### P0-015 External L3 Submission Validation
 
-Status: `next`
+Status: `deep_verified`
 
 Journey step: `external_l3_submission_validation`
 
@@ -383,6 +383,48 @@ Expected evidence:
 - 当前交付：L3 runner 默认生成 live blocker 记录；未显式授权或未单独最终确认时，`external_submission_attempted=false`。
 - 真实渠道路径：仅当 `PIPF_EXTERNAL_L3_AUTHORIZED=true`、`PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true` 且 Job URL / resume PDF / profile / confirmed job id / confirmed recruiter 均已提供时，才允许启动 `tools.submission.run_submission --submit`。
 - 证据：`outputs/acceptance/acceptance_external_l3/external-l3-validation.json` 与 `.md`。
+
+### P0-016 External L3 Authorization Handoff
+
+Status: `deep_verified`
+
+Journey step: `external_l3_authorization_handoff`
+
+Depends on:
+
+- `external_l3_submission_validation`
+
+Vision link:
+
+- 将 External L3 blocker 转成可执行的授权交接包，而不是让用户只看到“未授权”。
+- 必须列出下一次真实渠道验证所需 env、最终提交确认清单、禁止输入项和不含真实值的命令模板。
+
+Expected evidence:
+
+- L3 主入口：`bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3`
+- 交接包字段：`operator_handoff.required_env`、`pre_run_checklist`、`forbidden_inputs`、`command_template`
+- 证据：`outputs/acceptance/acceptance_external_l3/external-l3-validation.json` 与 `.md`
+
+### P0-017 Authorized External L3 Live Run
+
+Status: `next`
+
+Journey step: `authorized_external_l3_live_run`
+
+Depends on:
+
+- `external_l3_authorization_handoff`
+
+Vision link:
+
+- 在用户显式授权并单独确认最终提交后，执行一次真实外部渠道 L3 验证，或记录真实渠道 blocker。
+- 必须把真实渠道结果或 blocker 与 submission log、L3 validation record 和后续反馈追溯连接起来。
+
+Expected evidence:
+
+- L3 主入口：`bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3`
+- 前置条件：用户提供 `PIPF_EXTERNAL_L3_AUTHORIZED=true`、`PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true`、真实 Job URL、resume PDF、profile YAML、确认 job id 与确认 recruiter。
+- 证据：`outputs/acceptance/acceptance_external_l3/external-l3-validation.json`，以及真实渠道生成的 `outputs/submissions/liepin/*/submission_log.yaml`。
 
 ## Machine Contract
 

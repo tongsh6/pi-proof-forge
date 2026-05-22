@@ -18,8 +18,8 @@ def test_journey_implementation_matrix_selects_one_next_step() -> None:
     steps = matrix["steps"]
     next_steps = [step for step in steps if step["status"] == "next"]
 
-    assert matrix["current_focus"] == "external_l3_submission_validation"
-    assert [step["id"] for step in next_steps] == ["external_l3_submission_validation"]
+    assert matrix["current_focus"] == "authorized_external_l3_live_run"
+    assert [step["id"] for step in next_steps] == ["authorized_external_l3_live_run"]
     assert next_steps[0]["acceptance"]["depth"] == "deep_required"
 
 
