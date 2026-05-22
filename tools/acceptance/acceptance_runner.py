@@ -837,6 +837,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_post_command_blocker_diagnostics_recorded"] = (
             _external_l3_post_command_blocker_diagnostics_result(external_l3_step)
         )
+        results["external_l3_authorization_packet_recorded"] = (
+            _external_l3_authorization_packet_result(external_l3_step)
+        )
 
     l2_step = next((step for step in report.steps if step.level == "L2"), None)
     if l2_step is not None and l2_step.status != "not_started":
@@ -1107,6 +1110,49 @@ def _external_l3_post_command_blocker_diagnostics_result(
         status="fail",
         evidence=step.evidence,
         message="External L3 post-command blocker 缺少 traceability failed_checks 或诊断字段。",
+    )
+
+
+def _external_l3_authorization_packet_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 授权确认包证据不可读取: {exc}",
+        )
+    packet = (payload.get("operator_handoff") or {}).get("authorization_packet") or {}
+    required_statements = packet.get("required_confirmation_statements") or []
+    required_evidence = set(packet.get("required_evidence") or [])
+    abort_conditions = packet.get("abort_conditions") or []
+    prohibited_inputs = set(packet.get("operator_must_not_provide") or [])
+    if (
+        packet.get("raw_confirmation_values_persisted") is False
+        and len(required_statements) >= 3
+        and {"live_run_readiness", "submit_safety_decision"}.issubset(
+            required_evidence
+        )
+        and abort_conditions
+        and {"password", "captcha_code", "sms_code"}.issubset(prohibited_inputs)
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 授权确认包已记录必需声明、证据清单、中止条件和禁止输入项。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 授权确认包缺失或不可证明最终提交前确认边界。",
     )
 
 

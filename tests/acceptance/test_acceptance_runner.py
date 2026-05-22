@@ -251,6 +251,22 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
     assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
     assert all("value" not in item for item in handoff["required_env"])
+    authorization_packet = handoff["authorization_packet"]
+    assert authorization_packet["status"] == "blocked_until_missing_gates_resolved"
+    assert authorization_packet["raw_confirmation_values_persisted"] is False
+    assert len(authorization_packet["required_confirmation_statements"]) >= 3
+    assert "live_run_readiness" in authorization_packet["required_evidence"]
+    assert "submit_safety_decision" in authorization_packet["required_evidence"]
+    assert "password" in authorization_packet["operator_must_not_provide"]
+    assert "captcha_code" in authorization_packet["operator_must_not_provide"]
+    assert any(
+        "当前缺失 gate" in item
+        for item in authorization_packet["abort_conditions"]
+    )
+    assert all(
+        "https://www.liepin.com/job/123.shtml" not in item
+        for item in authorization_packet["required_confirmation_statements"]
+    )
     markdown = (evidence_path.parent / "external-l3-validation.md").read_text(
         encoding="utf-8"
     )
@@ -263,6 +279,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- Job URL 原值是否持久化: `False`" in markdown
     assert "| Gate | 状态 | 说明 |" in markdown
     assert "## 授权交接包" in markdown
+    assert "### 授权确认包" in markdown
+    assert "#### 必需确认声明" in markdown
+    assert "#### 中止条件" in markdown
     assert "| 必需环境变量 | 是否存在 | 是否敏感 |" in markdown
     assert "## 提交后反馈追溯" in markdown
     assert "- 来源类型: `live_blocker`" in markdown
@@ -349,6 +368,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert diagnostics_rule["stage"] == "submissions"
     assert diagnostics_rule["status"] == "pass"
     assert "post-command blocker" in diagnostics_rule["message"]
+    authorization_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_authorization_packet_recorded"
+    )
+    assert authorization_rule["level"] == "L3"
+    assert authorization_rule["stage"] == "submissions"
+    assert authorization_rule["status"] == "pass"
+    assert "授权确认包" in authorization_rule["message"]
 
 
 def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
@@ -653,6 +681,10 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["live_run_readiness"]["submit_command_allowed"] is True
     assert payload["live_run_readiness"]["missing_gates"] == []
     assert payload["operator_handoff"]["status"] == "executed_with_guarded_live_result"
+    authorization_packet = payload["operator_handoff"]["authorization_packet"]
+    assert authorization_packet["status"] == "executed"
+    assert authorization_packet["raw_confirmation_values_persisted"] is False
+    assert "live_input_artifacts" in authorization_packet["required_evidence"]
     assert run_mock.call_count == 1
     command = run_mock.call_args.args[0]
     assert "--submit" in command

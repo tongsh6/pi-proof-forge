@@ -61,6 +61,7 @@ def build_external_l3_validation(
     )
     base["operator_handoff"] = _operator_handoff(
         request=request,
+        readiness=base["live_run_readiness"],
         blocker_reason=blocker_reason,
         external_submission_attempted=False,
     )
@@ -174,6 +175,7 @@ def build_external_l3_validation(
     )
     base["operator_handoff"] = _operator_handoff(
         request=request,
+        readiness=base["live_run_readiness"],
         blocker_reason=blocker_after_run,
         external_submission_attempted=True,
     )
@@ -402,6 +404,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             for item in required_evidence:
                 lines.append(f"- `{item}`")
     if handoff:
+        authorization_packet = handoff.get("authorization_packet") or {}
         lines.extend(
             [
                 "",
@@ -435,6 +438,29 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
         )
         for item in handoff.get("pre_run_checklist", []):
             lines.append(f"- {item}")
+        if authorization_packet:
+            lines.extend(
+                [
+                    "",
+                    "### 授权确认包",
+                    "",
+                    f"- 状态: `{authorization_packet.get('status', '')}`",
+                    f"- 原始确认值是否持久化: `{authorization_packet.get('raw_confirmation_values_persisted', True)}`",
+                    "",
+                    "#### 必需确认声明",
+                    "",
+                ]
+            )
+            for item in authorization_packet.get(
+                "required_confirmation_statements", []
+            ):
+                lines.append(f"- {item}")
+            lines.extend(["", "#### 必需证据", ""])
+            for item in authorization_packet.get("required_evidence", []):
+                lines.append(f"- `{item}`")
+            lines.extend(["", "#### 中止条件", ""])
+            for item in authorization_packet.get("abort_conditions", []):
+                lines.append(f"- {item}")
     lines.append("")
     return "\n".join(lines)
 
@@ -857,6 +883,7 @@ def _extract_submission_yaml_path(*, root: Path, output: str) -> Path | None:
 def _operator_handoff(
     *,
     request: dict[str, Any],
+    readiness: dict[str, Any],
     blocker_reason: str,
     external_submission_attempted: bool,
 ) -> dict[str, Any]:
@@ -888,6 +915,10 @@ def _operator_handoff(
             "raw_api_key",
             "unconfirmed_submit",
         ],
+        "authorization_packet": _operator_authorization_packet(
+            readiness=readiness,
+            external_submission_attempted=external_submission_attempted,
+        ),
         "command_template": (
             "PIPF_EXTERNAL_L3_AUTHORIZED=true "
             "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true "
@@ -899,6 +930,67 @@ def _operator_handoff(
             "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
         ),
     }
+
+
+def _operator_authorization_packet(
+    *,
+    readiness: dict[str, Any],
+    external_submission_attempted: bool,
+) -> dict[str, Any]:
+    missing_gates = list(readiness.get("missing_gates") or [])
+    if external_submission_attempted:
+        status = "executed"
+    elif readiness.get("submit_command_allowed") is True:
+        status = "ready_for_operator_confirmation"
+    else:
+        status = "blocked_until_missing_gates_resolved"
+    return {
+        "status": status,
+        "raw_confirmation_values_persisted": False,
+        "required_confirmation_statements": [
+            "我明确授权本次 External L3 接触真实外部渠道，但不会提供密码、验证码或短信码。",
+            "我已单独确认允许最终提交路径在目标岗位与招聘方一致时执行。",
+            "我已人工复核 Job URL、确认 job id、确认 recruiter、resume PDF 和 profile YAML。",
+        ],
+        "required_evidence": [
+            "live_run_readiness",
+            "submit_safety_decision",
+            "live_input_artifacts",
+            "command_redaction",
+            "live_output_redaction",
+            "post_submit_feedback_traceability",
+        ],
+        "abort_conditions": _operator_abort_conditions(missing_gates),
+        "redaction_policy": {
+            "raw_live_inputs_persisted": False,
+            "redacted_fields": [
+                "job_url",
+                "resume_pdf_path",
+                "profile_path",
+                "confirm_submit_job_id",
+                "confirm_submit_recruiter",
+            ],
+        },
+        "operator_must_not_provide": [
+            "password",
+            "captcha_code",
+            "sms_code",
+            "raw_api_key",
+            "credential_recovery_flow",
+        ],
+    }
+
+
+def _operator_abort_conditions(missing_gates: list[str]) -> list[str]:
+    abort_conditions = [
+        "任一 live_run_readiness gate 未通过时中止。",
+        "页面目标岗位、确认 job id 或确认 recruiter 不一致时中止。",
+        "渠道要求密码、验证码、短信码或账号恢复流程时中止。",
+        "命令输出或 submission log 无法保持脱敏和可追溯时中止。",
+    ]
+    if missing_gates:
+        abort_conditions.append("当前缺失 gate: " + ", ".join(missing_gates))
+    return abort_conditions
 
 
 def _live_run_readiness(
