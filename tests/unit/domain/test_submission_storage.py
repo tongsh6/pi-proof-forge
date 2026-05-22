@@ -34,6 +34,10 @@ class SubmissionStorageTests(unittest.TestCase):
             yaml_text = recorder.log_yaml.read_text(encoding="utf-8")
 
         self.assertEqual(payload["browser_channel"], "chrome")
+        self.assertEqual(payload["job_url"], "<redacted>")
+        self.assertEqual(payload["resume_path"], "<redacted>")
+        self.assertEqual(payload["profile_path"], "<redacted>")
+        self.assertTrue(payload["live_inputs_redacted"])
         self.assertEqual(
             payload["external_l3_validation_run_id"],
             "acceptance_external_l3",
@@ -56,6 +60,10 @@ class SubmissionStorageTests(unittest.TestCase):
         )
         self.assertFalse(files["resume_pdf"]["raw_content_persisted"])
         self.assertIn('browser_channel: "chrome"', yaml_text)
+        self.assertIn('job_url: "<redacted>"', yaml_text)
+        self.assertIn('resume_path: "<redacted>"', yaml_text)
+        self.assertIn('profile_path: "<redacted>"', yaml_text)
+        self.assertIn("live_inputs_redacted: true", yaml_text)
         self.assertIn("input_artifacts:", yaml_text)
         self.assertIn('sha256: "', yaml_text)
         self.assertIn(
@@ -66,6 +74,34 @@ class SubmissionStorageTests(unittest.TestCase):
             'external_l3_validation_path: "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"',
             yaml_text,
         )
+
+    def test_recorder_keeps_raw_inputs_for_non_external_l3_logs(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            resume = root / "resume.pdf"
+            profile = root / "profile.yaml"
+            resume.write_bytes(b"%PDF-1.4\n")
+            profile.write_text("id: profile\n", encoding="utf-8")
+            recorder = SubmissionRecorder(Path(tmp), platform="liepin", mode="check")
+            recorder.set_meta(
+                job_url="https://www.liepin.com/job/123.shtml",
+                resume_path=str(resume),
+                profile_path=str(profile),
+                headless=False,
+                browser_channel="chrome",
+            )
+
+            recorder.finish("success")
+
+            payload = json.loads(recorder.log_json.read_text(encoding="utf-8"))
+            yaml_text = recorder.log_yaml.read_text(encoding="utf-8")
+
+        self.assertEqual(payload["job_url"], "https://www.liepin.com/job/123.shtml")
+        self.assertEqual(payload["resume_path"], str(resume))
+        self.assertEqual(payload["profile_path"], str(profile))
+        self.assertFalse(payload["live_inputs_redacted"])
+        self.assertIn('job_url: "https://www.liepin.com/job/123.shtml"', yaml_text)
+        self.assertIn("live_inputs_redacted: false", yaml_text)
 
 
 if __name__ == "__main__":

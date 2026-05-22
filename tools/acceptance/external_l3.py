@@ -10,6 +10,9 @@ from typing import Any
 from urllib.parse import urlparse
 
 
+_REDACTED_LIVE_INPUT = "<redacted>"
+
+
 def build_external_l3_validation(
     *,
     root: Path,
@@ -403,6 +406,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- JSON 是否存在: `{submission_traceability.get('log_json_exists', False)}`",
                 f"- Submission log 是否反向链接: `{submission_traceability.get('log_links_back_to_validation', False)}`",
                 f"- Submission log 输入产物是否匹配: `{submission_traceability.get('submission_log_input_artifacts_match', False)}`",
+                f"- Submission log 原始 live 输入是否脱敏: `{submission_traceability.get('submission_log_raw_live_inputs_redacted', False)}`",
                 f"- Submission Status: `{submission_summary.get('status', '')}`",
                 f"- Submission Error: `{submission_summary.get('error', '')}`",
                 f"- Last Step: `{last_step.get('name', '')}/{last_step.get('status', '')}`",
@@ -771,6 +775,7 @@ def _submission_traceability(
         expected=expected_input_artifacts,
         actual=logged_input_artifacts if isinstance(logged_input_artifacts, dict) else {},
     )
+    raw_live_inputs_redacted = _submission_log_raw_live_inputs_redacted(log_payload)
     checks = _submission_traceability_checks(
         yaml_path=yaml_path,
         json_path=json_path,
@@ -779,6 +784,7 @@ def _submission_traceability(
         run_id_matches=logged_validation_run_id == expected_validation_run_id,
         path_matches=logged_validation_path == expected_validation_path,
         input_artifacts_match=input_artifacts_match,
+        raw_live_inputs_redacted=raw_live_inputs_redacted,
     )
     return {
         "log_hint": log_hint,
@@ -792,6 +798,7 @@ def _submission_traceability(
         "logged_external_l3_validation_path": logged_validation_path,
         "log_links_back_to_validation": log_links_back,
         "submission_log_input_artifacts_match": input_artifacts_match,
+        "submission_log_raw_live_inputs_redacted": raw_live_inputs_redacted,
         "submission_log_summary": _submission_log_summary(log_payload),
         "log_json_parse_error": parse_error,
         "checks": checks,
@@ -805,8 +812,18 @@ def _submission_traceability(
             and json_path.exists()
             and log_links_back
             and input_artifacts_match
+            and raw_live_inputs_redacted
         ),
     }
+
+
+def _submission_log_raw_live_inputs_redacted(log_payload: dict[str, Any]) -> bool:
+    if not log_payload:
+        return False
+    return all(
+        str(log_payload.get(field, "")) == _REDACTED_LIVE_INPUT
+        for field in ("job_url", "resume_path", "profile_path")
+    )
 
 
 def _submission_log_summary(log_payload: dict[str, Any]) -> dict[str, Any]:
@@ -839,6 +856,7 @@ def _submission_traceability_checks(
     run_id_matches: bool,
     path_matches: bool,
     input_artifacts_match: bool,
+    raw_live_inputs_redacted: bool,
 ) -> list[dict[str, str]]:
     return [
         _traceability_check(
@@ -875,6 +893,11 @@ def _submission_traceability_checks(
             check_id="input_artifacts_match_validation",
             passed=input_artifacts_match,
             detail="submission log 输入产物指纹匹配 validation record",
+        ),
+        _traceability_check(
+            check_id="submission_log_raw_live_inputs_redacted",
+            passed=raw_live_inputs_redacted,
+            detail="submission log 原始 Job URL 与文件路径字段已脱敏",
         ),
     ]
 

@@ -8,6 +8,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
+_REDACTED_LIVE_INPUT = "<redacted>"
+
+
 @dataclass
 class SubmissionStep:
     name: str
@@ -32,6 +35,7 @@ class SubmissionRecord:
     browser_channel: str = "chrome"
     external_l3_validation_run_id: str = ""
     external_l3_validation_path: str = ""
+    live_inputs_redacted: bool = False
     input_artifacts: dict[str, object] = field(default_factory=dict)
     steps: list[SubmissionStep] = field(default_factory=list)
 
@@ -79,13 +83,17 @@ class SubmissionRecorder:
         external_l3_validation_run_id: str = "",
         external_l3_validation_path: str = "",
     ) -> None:
-        self.record.job_url = job_url
-        self.record.resume_path = resume_path
-        self.record.profile_path = profile_path
+        redact_live_inputs = bool(
+            external_l3_validation_run_id or external_l3_validation_path
+        )
+        self.record.job_url = _REDACTED_LIVE_INPUT if redact_live_inputs else job_url
+        self.record.resume_path = _REDACTED_LIVE_INPUT if redact_live_inputs else resume_path
+        self.record.profile_path = _REDACTED_LIVE_INPUT if redact_live_inputs else profile_path
         self.record.headless = headless
         self.record.browser_channel = browser_channel
         self.record.external_l3_validation_run_id = external_l3_validation_run_id
         self.record.external_l3_validation_path = external_l3_validation_path
+        self.record.live_inputs_redacted = redact_live_inputs
         self.record.input_artifacts = _input_artifacts(
             job_url=job_url,
             resume_path=resume_path,
@@ -132,6 +140,7 @@ class SubmissionRecorder:
             "browser_channel": self.record.browser_channel,
             "external_l3_validation_run_id": self.record.external_l3_validation_run_id,
             "external_l3_validation_path": self.record.external_l3_validation_path,
+            "live_inputs_redacted": self.record.live_inputs_redacted,
             "input_artifacts": self.record.input_artifacts,
             "steps": [
                 {
@@ -161,6 +170,7 @@ class SubmissionRecorder:
             f"browser_channel: \"{_escape(self.record.browser_channel)}\"",
             f"external_l3_validation_run_id: \"{_escape(self.record.external_l3_validation_run_id)}\"",
             f"external_l3_validation_path: \"{_escape(self.record.external_l3_validation_path)}\"",
+            f"live_inputs_redacted: {'true' if self.record.live_inputs_redacted else 'false'}",
             "input_artifacts:",
             f"  job_url_scheme: \"{_escape(str(_nested_get(self.record.input_artifacts, 'job_url', 'scheme')))}\"",
             f"  job_url_hostname: \"{_escape(str(_nested_get(self.record.input_artifacts, 'job_url', 'hostname')))}\"",
