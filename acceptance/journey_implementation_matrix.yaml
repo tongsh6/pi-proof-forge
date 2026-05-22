@@ -457,8 +457,8 @@ steps:
     status: "deep_verified"
     journey_stage: "external_delivery"
     owner_surface: "tools/submission/liepin.py"
-    user_goal: "With explicit user authorization, validate the guarded delivery loop against a real external channel or record the exact live blocker."
-    vision_link: "Moves the verified local/check-mode loop toward real-world delivery while preserving explicit confirmation, rate limits, target verification, and no-secret persistence."
+    user_goal: "在用户显式授权下，对真实外部渠道验证受控投递闭环，或记录精确 live blocker。"
+    vision_link: "把已验证的本地/check-mode 闭环推进到真实世界投递边界，同时保留显式确认、频控、目标校验和无 secret 持久化。"
     design_refs:
       - "PLAN.md#8-delivery"
       - "constitution.md"
