@@ -846,6 +846,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_timeout_recorded_as_live_blocker"] = (
             _external_l3_timeout_blocker_result(external_l3_step)
         )
+        results["external_l3_command_error_recorded_as_live_blocker"] = (
+            _external_l3_command_error_blocker_result(external_l3_step)
+        )
 
     l2_step = next((step for step in report.steps if step.level == "L2"), None)
     if l2_step is not None and l2_step.status != "not_started":
@@ -1101,6 +1104,7 @@ def _external_l3_post_command_blocker_diagnostics_result(
     has_command_outcome = (
         diagnostics.get("returncode") is not None
         or diagnostics.get("command_timed_out") is True
+        or bool(diagnostics.get("command_error"))
     )
     if (
         isinstance(failed_checks, list)
@@ -1253,6 +1257,50 @@ def _external_l3_timeout_blocker_result(step: AcceptanceStep) -> JourneyStepResu
         status="fail",
         evidence=step.evidence,
         message="External L3 真实渠道命令超时未记录为精确 live blocker。",
+    )
+
+
+def _external_l3_command_error_blocker_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 command error blocker 证据不可读取: {exc}",
+        )
+    if not payload.get("command_error"):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 本次未发生真实渠道命令启动错误。",
+        )
+    blocker = payload.get("live_blocker") or {}
+    diagnostics = blocker.get("diagnostics") or {}
+    command_error = diagnostics.get("command_error") or {}
+    if (
+        payload.get("status") == "live_blocker_recorded"
+        and blocker.get("reason") == "external_channel_command_launch_failed"
+        and command_error.get("type")
+        and command_error.get("message") is not None
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 真实渠道命令启动错误已记录为可审计 live blocker。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 真实渠道命令启动错误未记录为精确 live blocker。",
     )
 
 

@@ -414,6 +414,18 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert timeout_rule["stage"] == "submissions"
     assert timeout_rule["status"] == "pass"
     assert "超时" in timeout_rule["message"]
+    command_error_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_command_error_recorded_as_live_blocker"
+        )
+    )
+    assert command_error_rule["level"] == "L3"
+    assert command_error_rule["stage"] == "submissions"
+    assert command_error_rule["status"] == "pass"
+    assert "启动错误" in command_error_rule["message"]
 
 
 def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
@@ -873,6 +885,69 @@ def test_acceptance_runner_l3_records_timeout_as_live_blocker(
     )
     assert timeout_rule["status"] == "pass"
     assert "超时已记录" in timeout_rule["message"]
+
+
+def test_acceptance_runner_l3_records_command_error_as_live_blocker(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        run_mock.side_effect = OSError(
+            f"browser failed for https://www.liepin.com/job/123.shtml {resume}"
+        )
+
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert report.status == "pass"
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["external_submission_attempted"] is True
+    assert payload["returncode"] is None
+    assert payload["live_blocker"]["reason"] == (
+        "external_channel_command_launch_failed"
+    )
+    command_error = payload["live_blocker"]["diagnostics"]["command_error"]
+    assert command_error["type"] == "OSError"
+    assert "https://www.liepin.com/job/123.shtml" not in command_error["message"]
+    assert str(resume) not in command_error["message"]
+    assert "<redacted>" in command_error["message"]
+    assert payload["command_error"] == command_error
+    assert payload["submit_safety_decision"]["post_run_blocker_reason"] == (
+        "external_channel_command_launch_failed"
+    )
+
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    command_error_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_command_error_recorded_as_live_blocker"
+        )
+    )
+    assert command_error_rule["status"] == "pass"
+    assert "启动错误已记录" in command_error_rule["message"]
 
 
 def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artifacts(

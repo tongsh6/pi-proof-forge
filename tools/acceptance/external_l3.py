@@ -96,6 +96,7 @@ def build_external_l3_validation(
 
     command = _submission_command(request)
     command_timed_out = False
+    command_error: dict[str, str] = {}
     timeout_seconds: int | None = None
     try:
         completed = subprocess.run(
@@ -115,6 +116,11 @@ def build_external_l3_validation(
         completed_stdout = _timeout_output_text(exc.output)
         completed_stderr = _timeout_output_text(exc.stderr)
         command_returncode = None
+    except OSError as exc:
+        command_error = _command_error_evidence(exc, request)
+        completed_stdout = ""
+        completed_stderr = command_error["message"]
+        command_returncode = None
     submission_traceability = _submission_traceability(
         root=root,
         output=completed_stdout + completed_stderr,
@@ -127,6 +133,7 @@ def build_external_l3_validation(
         submission_traceability["linked_to_validation"]
     )
     blocker_after_run = _post_command_blocker_reason(
+        command_error=command_error,
         command_timed_out=command_timed_out,
         command_succeeded=command_succeeded,
         submission_traceability=submission_traceability,
@@ -138,6 +145,7 @@ def build_external_l3_validation(
             ),
             "external_submission_attempted": True,
             "command_timed_out": command_timed_out,
+            "command_error": command_error,
             "timeout_seconds": timeout_seconds,
             "command": _redacted_submission_command(command),
             "command_redaction": {
@@ -180,6 +188,7 @@ def build_external_l3_validation(
             reason=blocker_after_run,
             returncode=command_returncode,
             command_timed_out=command_timed_out,
+            command_error=command_error,
             timeout_seconds=timeout_seconds,
             submission_traceability=submission_traceability,
         )
@@ -265,6 +274,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     f"- Returncode: `{blocker_diagnostics.get('returncode', '')}`",
                     f"- 是否超时: `{blocker_diagnostics.get('command_timed_out', False)}`",
                     f"- Timeout 秒数: `{blocker_diagnostics.get('timeout_seconds', '')}`",
+                    f"- Command Error: `{(blocker_diagnostics.get('command_error') or {}).get('type', '')}`",
                     f"- Log Hint: `{blocker_diagnostics.get('log_hint', '')}`",
                     f"- YAML: `{blocker_diagnostics.get('log_yaml_path', '')}`",
                     f"- JSON: `{blocker_diagnostics.get('log_json_path', '')}`",
@@ -598,6 +608,11 @@ def _next_action(reason: str) -> str:
             "真实渠道命令超时；检查脱敏 stdout_tail、stderr_tail、页面状态和 "
             "submission log 后再决定是否延长超时或重试。"
         )
+    if reason == "external_channel_command_launch_failed":
+        return (
+            "真实渠道命令未能启动；检查本地浏览器、驱动、权限和依赖状态，"
+            "修复后再重试 External L3。"
+        )
     return (
         "检查外部渠道日志，理解并修复 blocker 后再重试。"
     )
@@ -605,10 +620,13 @@ def _next_action(reason: str) -> str:
 
 def _post_command_blocker_reason(
     *,
+    command_error: dict[str, str],
     command_timed_out: bool,
     command_succeeded: bool,
     submission_traceability: dict[str, Any],
 ) -> str:
+    if command_error:
+        return "external_channel_command_launch_failed"
     if command_timed_out:
         return "external_channel_command_timed_out"
     if not command_succeeded:
@@ -646,6 +664,7 @@ def _post_command_live_blocker(
     reason: str,
     returncode: int | None,
     command_timed_out: bool,
+    command_error: dict[str, str],
     timeout_seconds: int | None,
     submission_traceability: dict[str, Any],
 ) -> dict[str, Any]:
@@ -658,6 +677,7 @@ def _post_command_live_blocker(
         "diagnostics": {
             "returncode": returncode,
             "command_timed_out": command_timed_out,
+            "command_error": command_error,
             "timeout_seconds": timeout_seconds,
             "log_hint": str(submission_traceability.get("log_hint", "")),
             "log_yaml_path": str(submission_traceability.get("log_yaml_path", "")),
@@ -1406,6 +1426,13 @@ def _timeout_output_text(output: str | bytes | None) -> str:
     if isinstance(output, bytes):
         return output.decode("utf-8", errors="replace")
     return output
+
+
+def _command_error_evidence(exc: OSError, request: dict[str, Any]) -> dict[str, str]:
+    return {
+        "type": type(exc).__name__,
+        "message": _redact_live_output(str(exc), request),
+    }
 
 
 def _redact_live_output(output: str, request: dict[str, Any]) -> str:
