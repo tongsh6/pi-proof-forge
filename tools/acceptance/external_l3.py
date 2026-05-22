@@ -398,13 +398,13 @@ def _blocker_reason(request: dict[str, Any]) -> str:
     ]
     if missing:
         return "missing_live_submission_inputs:" + ",".join(missing)
-    root = Path(str(request["root"]))
     for field in ("resume_pdf_path", "profile_path"):
-        path = Path(str(request[field]))
-        if not path.is_absolute():
-            path = root / path
-        if not path.exists():
+        if not _request_path_exists(request, field):
             return f"missing_live_input_file:{field}"
+    if not _request_path_has_suffix(request, "resume_pdf_path", {".pdf"}):
+        return "invalid_live_resume_pdf"
+    if not _request_path_has_suffix(request, "profile_path", {".yaml", ".yml"}):
+        return "invalid_live_profile_yaml"
     if not str(request["job_url"]).startswith(("http://", "https://")):
         return "invalid_live_job_url"
     return ""
@@ -436,6 +436,10 @@ def _next_action(reason: str) -> str:
         )
     if reason.startswith("missing_live_input_file"):
         return "将 PIPF_EXTERNAL_L3_* 文件路径指向已存在的本地产物。"
+    if reason == "invalid_live_resume_pdf":
+        return "将 PIPF_EXTERNAL_L3_RESUME_PDF 指向已审核的 PDF 文件。"
+    if reason == "invalid_live_profile_yaml":
+        return "将 PIPF_EXTERNAL_L3_PROFILE 指向已审核的 YAML 文件。"
     if reason == "invalid_live_job_url":
         return "为真实渠道目标提供 http 或 https 岗位 URL。"
     if reason == "unsupported_external_l3_channel":
@@ -660,6 +664,9 @@ def _live_run_readiness(
     request: dict[str, Any],
     blocker_reason: str,
 ) -> dict[str, Any]:
+    job_url_present = bool(request["job_url"])
+    resume_path_present = bool(request["resume_pdf_path"])
+    profile_path_present = bool(request["profile_path"])
     gates = [
         _readiness_gate(
             gate_id="user_authorization",
@@ -678,18 +685,38 @@ def _live_run_readiness(
         ),
         _readiness_gate(
             gate_id="job_url_present",
-            passed=bool(request["job_url"]),
+            passed=job_url_present,
             detail="真实岗位 URL 已提供",
         ),
         _readiness_gate(
+            gate_id="job_url_valid",
+            passed=job_url_present
+            and str(request["job_url"]).startswith(("http://", "https://")),
+            detail="真实岗位 URL 使用 http/https",
+        ),
+        _readiness_gate(
             gate_id="resume_pdf_present",
-            passed=bool(request["resume_pdf_path"]),
+            passed=resume_path_present,
             detail="已审核简历 PDF 路径已提供",
         ),
         _readiness_gate(
+            gate_id="resume_pdf_file_ready",
+            passed=resume_path_present
+            and _request_path_exists(request, "resume_pdf_path")
+            and _request_path_has_suffix(request, "resume_pdf_path", {".pdf"}),
+            detail="已审核简历 PDF 文件存在且扩展名有效",
+        ),
+        _readiness_gate(
             gate_id="profile_yaml_present",
-            passed=bool(request["profile_path"]),
+            passed=profile_path_present,
             detail="已审核 profile YAML 路径已提供",
+        ),
+        _readiness_gate(
+            gate_id="profile_yaml_file_ready",
+            passed=profile_path_present
+            and _request_path_exists(request, "profile_path")
+            and _request_path_has_suffix(request, "profile_path", {".yaml", ".yml"}),
+            detail="已审核 profile YAML 文件存在且扩展名有效",
         ),
         _readiness_gate(
             gate_id="confirm_job_id_present",
@@ -723,15 +750,20 @@ def _submit_safety_decision(
     command_returncode: int | None = None,
     post_run_blocker_reason: str = "",
 ) -> dict[str, Any]:
+    live_input_gate_ids = {
+        "job_url_present",
+        "job_url_valid",
+        "resume_pdf_present",
+        "resume_pdf_file_ready",
+        "profile_yaml_present",
+        "profile_yaml_file_ready",
+        "confirm_job_id_present",
+        "confirm_recruiter_present",
+    }
     live_inputs_ready = all(
-        bool(request[field])
-        for field in (
-            "job_url",
-            "resume_pdf_path",
-            "profile_path",
-            "confirm_submit_job_id",
-            "confirm_submit_recruiter",
-        )
+        gate["status"] == "pass"
+        for gate in readiness.get("gates", [])
+        if gate.get("id") in live_input_gate_ids
     )
     submit_command_allowed = bool(readiness.get("submit_command_allowed"))
     if external_submission_attempted:
@@ -772,6 +804,27 @@ def _readiness_gate(*, gate_id: str, passed: bool, detail: str) -> dict[str, str
         "status": "pass" if passed else "blocked",
         "detail": detail,
     }
+
+
+def _resolve_request_path(request: dict[str, Any], field: str) -> Path:
+    path = Path(str(request[field]))
+    if not path.is_absolute():
+        path = Path(str(request["root"])) / path
+    return path
+
+
+def _request_path_exists(request: dict[str, Any], field: str) -> bool:
+    path = _resolve_request_path(request, field)
+    return path.exists() and path.is_file()
+
+
+def _request_path_has_suffix(
+    request: dict[str, Any],
+    field: str,
+    suffixes: set[str],
+) -> bool:
+    path = _resolve_request_path(request, field)
+    return path.suffix.lower() in suffixes
 
 
 def _required_env_handoff(request: dict[str, Any]) -> list[dict[str, Any]]:

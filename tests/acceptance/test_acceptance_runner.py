@@ -230,6 +230,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert readiness["blocking_reason"] == "explicit_user_authorization_required"
     assert "user_authorization" in readiness["missing_gates"]
     assert "job_url_present" in readiness["missing_gates"]
+    assert "job_url_valid" in readiness["missing_gates"]
+    assert "resume_pdf_file_ready" in readiness["missing_gates"]
+    assert "profile_yaml_file_ready" in readiness["missing_gates"]
     handoff = payload["operator_handoff"]
     assert handoff["status"] == "blocked_until_operator_action"
     assert "显式授权" in handoff["next_action"]
@@ -338,6 +341,85 @@ def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
         submit_decision["blocking_reason"]
         == "explicit_final_submit_confirmation_required"
     )
+
+
+def test_acceptance_runner_l3_records_invalid_live_input_gates(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.txt"
+    profile = tmp_path / "profile.json"
+    resume.write_text("not a pdf\n", encoding="utf-8")
+    profile.write_text("{}\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert report.status == "pass"
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["live_blocker"]["reason"] == "invalid_live_resume_pdf"
+    assert payload["external_submission_attempted"] is False
+    assert run_mock.call_count == 0
+    readiness = payload["live_run_readiness"]
+    assert readiness["ready"] is False
+    assert "resume_pdf_file_ready" in readiness["missing_gates"]
+    assert "profile_yaml_file_ready" in readiness["missing_gates"]
+    submit_decision = payload["submit_safety_decision"]
+    assert submit_decision["decision"] == "blocked_before_command"
+    assert submit_decision["live_inputs_ready"] is False
+    assert submit_decision["blocking_reason"] == "invalid_live_resume_pdf"
+
+
+def test_acceptance_runner_l3_records_invalid_job_url_gate(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "ftp://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert payload["live_blocker"]["reason"] == "invalid_live_job_url"
+    assert run_mock.call_count == 0
+    readiness = payload["live_run_readiness"]
+    assert "job_url_valid" in readiness["missing_gates"]
+    assert "resume_pdf_file_ready" not in readiness["missing_gates"]
+    assert "profile_yaml_file_ready" not in readiness["missing_gates"]
 
 
 def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
