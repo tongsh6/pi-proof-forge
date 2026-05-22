@@ -2339,6 +2339,7 @@ cases:
       - "live_channel_result_or_exact_blocker_recorded"
       - "post_command_live_blocker_diagnostics_recorded"
       - "external_channel_timeout_recorded_as_live_blocker"
+      - "external_channel_command_error_recorded_as_live_blocker"
       - "post_submit_or_blocker_feedback_traceable"
       - "no_secret_or_captcha_bypass_recorded"
 
@@ -2362,5 +2363,6 @@ cases:
           - "external_l3_runner_only_executes_submit_command_after_all_gates"
           - "external_l3_runner_records_post_command_blocker_diagnostics"
           - "external_l3_runner_records_timeout_as_live_blocker"
+          - "external_l3_runner_records_command_error_as_live_blocker"
           - "external_l3_runner_records_post_submit_feedback_trace"
           - "external_l3_runner_persists_json_and_markdown_evidence"

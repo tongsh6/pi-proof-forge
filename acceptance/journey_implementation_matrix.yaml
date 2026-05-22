@@ -555,4 +555,5 @@ steps:
         - "successful_command_requires_submission_log"
         - "post_command_live_blocker_diagnostics_recorded"
         - "external_channel_timeout_recorded_as_live_blocker"
+        - "external_channel_command_error_recorded_as_live_blocker"
         - "post_submit_or_blocker_feedback_traceability"
