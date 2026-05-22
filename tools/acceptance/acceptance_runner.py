@@ -12,6 +12,10 @@ from typing import Any
 
 import yaml
 
+from tools.acceptance.external_l3 import (
+    build_external_l3_validation,
+    write_external_l3_validation,
+)
 from tools.acceptance.journey_contract import load_journey_contract
 from tools.acceptance.journey_report import (
     JourneyStepResult,
@@ -162,6 +166,15 @@ def run_acceptance(
         if level == "L1":
             steps.extend(
                 _run_l1_steps(
+                    root=root,
+                    run_id=run_id,
+                    timeout_seconds=timeout_seconds,
+                )
+            )
+            continue
+        if level == "L3":
+            steps.append(
+                _run_l3_external_validation_step(
                     root=root,
                     run_id=run_id,
                     timeout_seconds=timeout_seconds,
@@ -391,6 +404,54 @@ def _run_closed_loop_audit_step(
             if not failed
             else f"Closed-loop audit found {len(failed)} failing check(s)."
         ),
+    )
+
+
+def _run_l3_external_validation_step(
+    *,
+    root: Path,
+    run_id: str,
+    timeout_seconds: int,
+) -> AcceptanceStep:
+    command = ("internal", "external_l3_submission_validation")
+    json_path = root / "outputs" / "acceptance" / run_id / "external-l3-validation.json"
+    try:
+        validation = build_external_l3_validation(
+            root=root,
+            run_id=run_id,
+            generated_at=_utcnow(),
+            default_timeout_seconds=timeout_seconds,
+        )
+        json_path, _ = write_external_l3_validation(
+            root=root,
+            run_id=run_id,
+            validation=validation,
+        )
+    except Exception as exc:
+        return AcceptanceStep(
+            level="L3",
+            name="external_l3_submission_validation",
+            status="fail",
+            command=command,
+            evidence=str(json_path),
+            message=f"External L3 validation failed before writing evidence: {exc}",
+        )
+
+    if validation["status"] == "external_validated":
+        message = "External L3 validation recorded a real guarded channel result."
+    else:
+        blocker = validation.get("live_blocker") or {}
+        message = (
+            "External L3 validation recorded live blocker "
+            f"`{blocker.get('reason', 'unknown')}`; no external submit was attempted."
+        )
+    return AcceptanceStep(
+        level="L3",
+        name="external_l3_submission_validation",
+        status="pass",
+        command=command,
+        evidence=str(json_path),
+        message=message,
     )
 
 

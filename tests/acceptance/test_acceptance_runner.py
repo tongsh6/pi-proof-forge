@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -116,10 +117,13 @@ def test_acceptance_runner_defaults_to_l1(tmp_path: Path) -> None:
     ]
 
 
-def test_acceptance_runner_all_includes_gated_unimplemented_levels(
+def test_acceptance_runner_all_includes_l2_gate_and_l3_blocker_record(
     tmp_path: Path,
 ) -> None:
-    with patch("tools.acceptance.acceptance_runner.subprocess.run") as run_mock:
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch("tools.acceptance.acceptance_runner.subprocess.run") as run_mock,
+    ):
         run_mock.return_value = Mock(returncode=0, stdout="l1 ok", stderr="")
 
         report = run_acceptance(
@@ -156,7 +160,7 @@ def test_acceptance_runner_all_includes_gated_unimplemented_levels(
         "pass",
         "not_started",
         "not_started",
-        "not_started",
+        "pass",
     ]
     assert run_mock.call_count == 9
 
@@ -176,6 +180,95 @@ def test_acceptance_runner_level_without_implementation_is_not_started(
     assert report.steps[0].level == "L2"
     assert report.steps[0].status == "not_started"
     assert run_mock.call_count == 0
+
+
+def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> None:
+    with patch.dict(os.environ, {}, clear=True):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    assert report.status == "pass"
+    assert report.steps[0].level == "L3"
+    assert report.steps[0].name == "external_l3_submission_validation"
+    assert report.steps[0].status == "pass"
+    assert "explicit_user_authorization_required" in report.steps[0].message
+
+    evidence_path = Path(report.steps[0].evidence)
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["external_submission_attempted"] is False
+    assert payload["live_blocker"]["reason"] == "explicit_user_authorization_required"
+    assert payload["coverage"]["user_authorized_external_session"] == "blocked_recorded"
+    assert payload["coverage"]["no_secret_or_captcha_bypass"] == "pass"
+
+
+def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
+    tmp_path: Path,
+) -> None:
+    with patch.dict(os.environ, {"PIPF_EXTERNAL_L3_AUTHORIZED": "true"}, clear=True):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert report.status == "pass"
+    assert payload["authorized"] is True
+    assert payload["final_submit_confirmed"] is False
+    assert (
+        payload["live_blocker"]["reason"]
+        == "explicit_final_submit_confirmation_required"
+    )
+    assert payload["coverage"]["user_authorized_external_session"] == "pass"
+    assert payload["coverage"]["explicit_final_submit_gate"] == "blocked_recorded"
+
+
+def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+        "PIPF_EXTERNAL_L3_HEADLESS": "true",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        run_mock.return_value = Mock(returncode=0, stdout="[DONE] log: ok", stderr="")
+
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert report.status == "pass"
+    assert payload["status"] == "external_validated"
+    assert payload["external_submission_attempted"] is True
+    assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
+    assert run_mock.call_count == 1
+    command = run_mock.call_args.args[0]
+    assert "--submit" in command
+    assert "--headless" in command
+    assert "--confirm-submit-job-id" in command
 
 
 def test_acceptance_runner_failure_returns_fail(tmp_path: Path) -> None:
