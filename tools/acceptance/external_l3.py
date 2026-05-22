@@ -42,6 +42,11 @@ def build_external_l3_validation(
             "output_dir": request["output_dir"],
         },
     }
+    base["operator_handoff"] = _operator_handoff(
+        request=request,
+        blocker_reason=blocker_reason,
+        external_submission_attempted=False,
+    )
 
     if blocker_reason:
         base.update(
@@ -73,6 +78,9 @@ def build_external_l3_validation(
         timeout=request["timeout_seconds"],
     )
     external_validated = completed.returncode == 0
+    blocker_after_run = (
+        "" if external_validated else "external_channel_command_returned_nonzero"
+    )
     base.update(
         {
             "status": (
@@ -99,13 +107,18 @@ def build_external_l3_validation(
     )
     if not external_validated:
         base["live_blocker"] = {
-            "reason": "external_channel_command_returned_nonzero",
+            "reason": blocker_after_run,
             "category": "external_channel",
             "next_action": (
-                "Inspect stdout_tail/stderr_tail and persisted submission log, then "
-                "retry only after fixing the live blocker."
+                "检查 stdout_tail、stderr_tail 和持久化 submission log，确认 live "
+                "blocker 已修复后再重试。"
             ),
         }
+    base["operator_handoff"] = _operator_handoff(
+        request=request,
+        blocker_reason=blocker_after_run,
+        external_submission_attempted=True,
+    )
     return base
 
 
@@ -133,6 +146,7 @@ def write_external_l3_validation(
 def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     blocker = validation.get("live_blocker") or {}
     coverage = validation.get("coverage") or {}
+    handoff = validation.get("operator_handoff") or {}
     lines = [
         "# External L3 Submission Validation",
         "",
@@ -160,6 +174,40 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- Next Action: {blocker.get('next_action', '')}",
             ]
         )
+    if handoff:
+        lines.extend(
+            [
+                "",
+                "## Operator Handoff",
+                "",
+                f"- Status: `{handoff.get('status', '')}`",
+                f"- Next Action: {handoff.get('next_action', '')}",
+                "",
+                "| Required Env | Present | Sensitive |",
+                "|---|---:|---:|",
+            ]
+        )
+        for item in handoff.get("required_env", []):
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{item.get('name', '')}`",
+                        f"`{item.get('present', False)}`",
+                        f"`{item.get('sensitive', False)}`",
+                    ]
+                )
+                + " |"
+            )
+        lines.extend(
+            [
+                "",
+                "### Pre-run Checklist",
+                "",
+            ]
+        )
+        for item in handoff.get("pre_run_checklist", []):
+            lines.append(f"- {item}")
     lines.append("")
     return "\n".join(lines)
 
@@ -240,32 +288,121 @@ def _blocker_category(reason: str) -> str:
 def _next_action(reason: str) -> str:
     if reason == "explicit_user_authorization_required":
         return (
-            "Ask the user for explicit live-channel authorization before touching "
-            "the external channel."
+            "先取得用户对真实外部渠道验证的显式授权；未授权前不得触碰外部渠道。"
         )
     if reason == "explicit_final_submit_confirmation_required":
         return (
-            "Ask the user for a separate final-submit confirmation after reviewing "
-            "the exact channel, target, resume, and account."
+            "在用户复核渠道、目标岗位、简历和账号后，要求单独最终提交确认。"
         )
     if reason.startswith("missing_live_submission_inputs"):
         return (
-            "Provide the live job URL, resume PDF, profile YAML, expected job id, "
-            "and expected recruiter via PIPF_EXTERNAL_L3_* environment variables."
+            "通过 PIPF_EXTERNAL_L3_* 环境变量补齐真实岗位 URL、简历 PDF、"
+            "profile YAML、确认 job id 和确认 recruiter。"
         )
     if reason.startswith("missing_live_input_file"):
-        return "Point the PIPF_EXTERNAL_L3_* file path at an existing local artifact."
+        return "将 PIPF_EXTERNAL_L3_* 文件路径指向已存在的本地产物。"
     if reason == "invalid_live_job_url":
-        return "Use an http or https job URL for the live channel target."
+        return "为真实渠道目标提供 http 或 https 岗位 URL。"
     if reason == "unsupported_external_l3_channel":
         return (
-            "Use channel liepin for the current P0 L3 validation, or extend the "
-            "channel adapter first."
+            "当前 P0 L3 只支持 liepin；如需其他渠道，先扩展渠道适配器。"
         )
     return (
-        "Inspect the external channel log and retry only after the blocker is "
-        "understood."
+        "检查外部渠道日志，理解并修复 blocker 后再重试。"
     )
+
+
+def _operator_handoff(
+    *,
+    request: dict[str, Any],
+    blocker_reason: str,
+    external_submission_attempted: bool,
+) -> dict[str, Any]:
+    if external_submission_attempted and not blocker_reason:
+        status = "executed_with_guarded_live_result"
+        next_action = "复核真实渠道结果、submission log 和后续反馈记录。"
+    elif blocker_reason:
+        status = "blocked_until_operator_action"
+        next_action = _next_action(blocker_reason)
+    else:
+        status = "ready_for_authorized_live_run"
+        next_action = "运行 L3 前再次复核账号、岗位、简历和最终提交确认。"
+
+    return {
+        "status": status,
+        "next_action": next_action,
+        "required_env": _required_env_handoff(request),
+        "pre_run_checklist": [
+            "用户已明确授权接触真实外部渠道。",
+            "用户已单独确认允许最终提交路径进入真实渠道命令。",
+            "岗位 URL、确认 job id、确认 recruiter 与页面目标一致。",
+            "resume PDF 与 profile YAML 指向本地已审核产物。",
+            "确认不会输入、保存或绕过密码、验证码、短信码。",
+        ],
+        "forbidden_inputs": [
+            "password",
+            "captcha_code",
+            "sms_code",
+            "raw_api_key",
+            "unconfirmed_submit",
+        ],
+        "command_template": (
+            "PIPF_EXTERNAL_L3_AUTHORIZED=true "
+            "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true "
+            "PIPF_EXTERNAL_L3_JOB_URL=<https-url> "
+            "PIPF_EXTERNAL_L3_RESUME_PDF=<resume.pdf> "
+            "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml> "
+            "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id> "
+            "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter> "
+            "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
+        ),
+    }
+
+
+def _required_env_handoff(request: dict[str, Any]) -> list[dict[str, Any]]:
+    fields = (
+        ("PIPF_EXTERNAL_L3_AUTHORIZED", request["authorized"], False, "真实渠道授权"),
+        (
+            "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED",
+            request["final_submit_confirmed"],
+            False,
+            "最终提交确认",
+        ),
+        ("PIPF_EXTERNAL_L3_JOB_URL", bool(request["job_url"]), False, "目标岗位 URL"),
+        (
+            "PIPF_EXTERNAL_L3_RESUME_PDF",
+            bool(request["resume_pdf_path"]),
+            False,
+            "已审核简历 PDF",
+        ),
+        (
+            "PIPF_EXTERNAL_L3_PROFILE",
+            bool(request["profile_path"]),
+            False,
+            "已审核 profile YAML",
+        ),
+        (
+            "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID",
+            bool(request["confirm_submit_job_id"]),
+            False,
+            "确认岗位 ID",
+        ),
+        (
+            "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER",
+            bool(request["confirm_submit_recruiter"]),
+            False,
+            "确认招聘方",
+        ),
+    )
+    return [
+        {
+            "name": name,
+            "present": bool(present),
+            "sensitive": sensitive,
+            "description": description,
+        }
+        for name, present, sensitive, description in fields
+    ]
 
 
 def _submission_command(request: dict[str, Any]) -> tuple[str, ...]:

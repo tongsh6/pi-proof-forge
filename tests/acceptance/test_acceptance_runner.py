@@ -204,6 +204,15 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert payload["live_blocker"]["reason"] == "explicit_user_authorization_required"
     assert payload["coverage"]["user_authorized_external_session"] == "blocked_recorded"
     assert payload["coverage"]["no_secret_or_captcha_bypass"] == "pass"
+    handoff = payload["operator_handoff"]
+    assert handoff["status"] == "blocked_until_operator_action"
+    assert "显式授权" in handoff["next_action"]
+    assert "password" in handoff["forbidden_inputs"]
+    assert "captcha_code" in handoff["forbidden_inputs"]
+    required_env = {item["name"]: item for item in handoff["required_env"]}
+    assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
+    assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
+    assert all("value" not in item for item in handoff["required_env"])
 
 
 def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
@@ -253,6 +262,13 @@ def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
     )
     assert payload["coverage"]["user_authorized_external_session"] == "pass"
     assert payload["coverage"]["explicit_final_submit_gate"] == "blocked_recorded"
+    required_env = {
+        item["name"]: item for item in payload["operator_handoff"]["required_env"]
+    }
+    assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is True
+    assert (
+        required_env["PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED"]["present"] is False
+    )
 
 
 def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
@@ -290,6 +306,7 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["status"] == "external_validated"
     assert payload["external_submission_attempted"] is True
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
+    assert payload["operator_handoff"]["status"] == "executed_with_guarded_live_result"
     assert run_mock.call_count == 1
     command = run_mock.call_args.args[0]
     assert "--submit" in command
