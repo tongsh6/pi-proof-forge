@@ -876,7 +876,11 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
                     {
                         "name": "target_verify",
                         "status": "success",
-                        "detail": "url_job_id=<redacted>; recruiter=<redacted>",
+                        "detail": (
+                            "url_job_id_present=True; dom_jobid_present=True; "
+                            "params_jobid_present=True; recruiter_present=True; "
+                            "matched_count=1; raw_values_redacted=true"
+                        ),
                     },
                     {
                         "name": "submit_safety",

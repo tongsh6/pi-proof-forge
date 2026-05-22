@@ -190,12 +190,7 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
             recorder.add_step(
                 "target_verify",
                 "success",
-                (
-                    f"url_job_id={verification.url_job_id}; "
-                    f"dom_jobid={verification.dom_jobid}; "
-                    f"params_jobid={verification.params_jobid}; "
-                    f"recruiter={verification.recruiter_name}"
-                ),
+                _target_verification_detail(config, verification),
             )
 
             if config.submit:
@@ -466,6 +461,27 @@ def _verify_submit_safety(
     return (
         True,
         f"submit_confirmed:job_id={expected_job_id}; recruiter={expected_recruiter}",
+    )
+
+
+def _target_verification_detail(
+    config: LiepinSubmissionConfig,
+    verification: TargetVerification,
+) -> str:
+    if config.external_l3_validation_run_id or config.external_l3_validation_path:
+        return (
+            f"url_job_id_present={bool(verification.url_job_id)}; "
+            f"dom_jobid_present={bool(verification.dom_jobid)}; "
+            f"params_jobid_present={bool(verification.params_jobid)}; "
+            f"recruiter_present={bool(verification.recruiter_name)}; "
+            f"matched_count={verification.matched_count}; "
+            "raw_values_redacted=true"
+        )
+    return (
+        f"url_job_id={verification.url_job_id}; "
+        f"dom_jobid={verification.dom_jobid}; "
+        f"params_jobid={verification.params_jobid}; "
+        f"recruiter={verification.recruiter_name}"
     )
 
 

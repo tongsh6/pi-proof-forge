@@ -242,6 +242,74 @@ class LiepinChatSendResumeTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(detail, "submit_confirmed:job_id=123456; recruiter=Sun")
 
+    def test_target_verification_detail_redacts_observed_values_for_external_l3(self) -> None:
+        config = liepin.LiepinSubmissionConfig(
+            job_url="https://www.liepin.com/job/123456.shtml",
+            resume_path="outputs/resume.pdf",
+            profile_path="profiles/candidate_profile.yaml",
+            headless=True,
+            dry_run=False,
+            submit=True,
+            output_dir="outputs/submissions",
+            session_dir="outputs/submissions",
+            timeout_ms=45000,
+            confirm_submit_job_id="123456",
+            confirm_submit_recruiter="Expected",
+            external_l3_validation_run_id="acceptance_external_l3",
+            external_l3_validation_path=(
+                "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+            ),
+        )
+        verification = liepin.TargetVerification(
+            ok=True,
+            url_job_id="123456",
+            dom_jobid="654321",
+            params_jobid="777888",
+            recruiter_name="UnexpectedRecruiter",
+            matched_count=1,
+        )
+
+        detail = liepin._target_verification_detail(config, verification)
+
+        self.assertIn("url_job_id_present=True", detail)
+        self.assertIn("dom_jobid_present=True", detail)
+        self.assertIn("params_jobid_present=True", detail)
+        self.assertIn("recruiter_present=True", detail)
+        self.assertIn("matched_count=1", detail)
+        self.assertIn("raw_values_redacted=true", detail)
+        self.assertNotIn("123456", detail)
+        self.assertNotIn("654321", detail)
+        self.assertNotIn("777888", detail)
+        self.assertNotIn("UnexpectedRecruiter", detail)
+
+    def test_target_verification_detail_keeps_legacy_detail_outside_external_l3(self) -> None:
+        config = liepin.LiepinSubmissionConfig(
+            job_url="https://www.liepin.com/job/123456.shtml",
+            resume_path="outputs/resume.pdf",
+            profile_path="profiles/candidate_profile.yaml",
+            headless=True,
+            dry_run=False,
+            submit=False,
+            output_dir="outputs/submissions",
+            session_dir="outputs/submissions",
+            timeout_ms=45000,
+        )
+        verification = liepin.TargetVerification(
+            ok=True,
+            url_job_id="123456",
+            dom_jobid="654321",
+            params_jobid="777888",
+            recruiter_name="Sun",
+            matched_count=1,
+        )
+
+        detail = liepin._target_verification_detail(config, verification)
+
+        self.assertEqual(
+            detail,
+            "url_job_id=123456; dom_jobid=654321; params_jobid=777888; recruiter=Sun",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
