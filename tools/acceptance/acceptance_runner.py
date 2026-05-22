@@ -849,6 +849,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_submission_log_summary_recorded"] = (
             _external_l3_submission_log_summary_result(external_l3_step)
         )
+        results["external_l3_submission_log_required_steps_recorded"] = (
+            _external_l3_submission_log_required_steps_result(external_l3_step)
+        )
         results["external_l3_submission_log_raw_inputs_redacted"] = (
             _external_l3_submission_log_raw_inputs_redacted_result(external_l3_step)
         )
@@ -1344,6 +1347,57 @@ def _external_l3_submission_log_summary_result(
         status="fail",
         evidence=step.evidence,
         message="External L3 submission log 摘要缺失 status/error/last_step。",
+    )
+
+
+def _external_l3_submission_log_required_steps_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 submission log 关键步骤证据不可读取: {exc}",
+        )
+    if payload.get("external_submission_attempted") is not True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未执行真实渠道命令，因此没有成功投递步骤链要求。",
+        )
+    traceability = payload.get("submission_traceability") or {}
+    if not traceability.get("log_json_exists"):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未产生可解析 submission log，关键步骤缺失由 traceability failed_checks 记录。",
+        )
+    required_steps = traceability.get("submission_log_required_steps") or {}
+    if required_steps.get("passed") is True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 submission log 已记录成功投递所需关键步骤或本次非成功投递无需完整步骤链。",
+        )
+    failed_checks = set(traceability.get("failed_checks") or [])
+    if "successful_submission_required_steps_present" in failed_checks:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 已把成功投递关键步骤缺失记录为 traceability blocker。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 submission log 缺少成功投递关键步骤审计。",
     )
 
 

@@ -18,6 +18,14 @@ _FORBIDDEN_EXTERNAL_L3_ENV = (
     ("PIPF_EXTERNAL_L3_SMS_CODE", "sms_code", "challenge"),
     ("PIPF_EXTERNAL_L3_RAW_API_KEY", "raw_api_key", "secret"),
 )
+_SUCCESS_SUBMISSION_REQUIRED_STEPS = (
+    "rate_limit",
+    "login_check",
+    "target_verify",
+    "submit_safety",
+    "chat_send_resume",
+    "submit",
+)
 
 
 def build_external_l3_validation(
@@ -439,6 +447,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             )
     if submission_traceability:
         submission_summary = submission_traceability.get("submission_log_summary") or {}
+        required_steps = submission_traceability.get("submission_log_required_steps") or {}
         last_step = submission_summary.get("last_step") or {}
         lines.extend(
             [
@@ -453,6 +462,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- Submission log 是否反向链接: `{submission_traceability.get('log_links_back_to_validation', False)}`",
                 f"- Submission log 输入产物是否匹配: `{submission_traceability.get('submission_log_input_artifacts_match', False)}`",
                 f"- Submission log 原始 live 输入是否脱敏: `{submission_traceability.get('submission_log_raw_live_inputs_redacted', False)}`",
+                f"- 成功投递关键步骤是否齐备: `{required_steps.get('passed', False)}`",
                 f"- Submission Status: `{submission_summary.get('status', '')}`",
                 f"- Submission Error: `{submission_summary.get('error', '')}`",
                 f"- Last Step: `{last_step.get('name', '')}/{last_step.get('status', '')}`",
@@ -894,6 +904,7 @@ def _submission_traceability(
         actual=logged_input_artifacts if isinstance(logged_input_artifacts, dict) else {},
     )
     raw_live_inputs_redacted = _submission_log_raw_live_inputs_redacted(log_payload)
+    required_steps_evidence = _submission_log_required_steps_evidence(log_payload)
     checks = _submission_traceability_checks(
         yaml_path=yaml_path,
         json_path=json_path,
@@ -903,6 +914,7 @@ def _submission_traceability(
         path_matches=logged_validation_path == expected_validation_path,
         input_artifacts_match=input_artifacts_match,
         raw_live_inputs_redacted=raw_live_inputs_redacted,
+        required_steps_present=bool(required_steps_evidence.get("passed")),
     )
     return {
         "log_hint": log_hint,
@@ -917,6 +929,7 @@ def _submission_traceability(
         "log_links_back_to_validation": log_links_back,
         "submission_log_input_artifacts_match": input_artifacts_match,
         "submission_log_raw_live_inputs_redacted": raw_live_inputs_redacted,
+        "submission_log_required_steps": required_steps_evidence,
         "submission_log_summary": _submission_log_summary(log_payload),
         "log_json_parse_error": parse_error,
         "checks": checks,
@@ -931,6 +944,7 @@ def _submission_traceability(
             and log_links_back
             and input_artifacts_match
             and raw_live_inputs_redacted
+            and required_steps_evidence.get("passed") is True
         ),
     }
 
@@ -965,6 +979,56 @@ def _submission_log_summary(log_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _submission_log_required_steps_evidence(log_payload: dict[str, Any]) -> dict[str, Any]:
+    steps = log_payload.get("steps") if log_payload else []
+    if not isinstance(steps, list):
+        steps = []
+    recorded_steps = [
+        {
+            "name": str(step.get("name", "")),
+            "status": str(step.get("status", "")),
+        }
+        for step in steps
+        if isinstance(step, dict)
+    ]
+    steps_by_name = {step["name"]: step for step in recorded_steps}
+    successful_log = (
+        str(log_payload.get("status", "")) == "success" if log_payload else False
+    )
+    if not successful_log:
+        not_required_reason = (
+            "submission_log_status_not_success" if log_payload else "missing_submission_log"
+        )
+        return {
+            "required_for_successful_submit": list(_SUCCESS_SUBMISSION_REQUIRED_STEPS),
+            "recorded_steps": recorded_steps,
+            "missing_steps": [],
+            "failed_steps": [],
+            "passed": bool(log_payload),
+            "not_required_reason": not_required_reason,
+        }
+
+    missing_steps = [
+        step_name
+        for step_name in _SUCCESS_SUBMISSION_REQUIRED_STEPS
+        if step_name not in steps_by_name
+    ]
+    failed_steps = [
+        step_name
+        for step_name in _SUCCESS_SUBMISSION_REQUIRED_STEPS
+        if step_name in steps_by_name
+        and steps_by_name[step_name]["status"] != "success"
+    ]
+    return {
+        "required_for_successful_submit": list(_SUCCESS_SUBMISSION_REQUIRED_STEPS),
+        "recorded_steps": recorded_steps,
+        "missing_steps": missing_steps,
+        "failed_steps": failed_steps,
+        "passed": not missing_steps and not failed_steps,
+        "not_required_reason": "",
+    }
+
+
 def _submission_traceability_checks(
     *,
     yaml_path: Path | None,
@@ -975,6 +1039,7 @@ def _submission_traceability_checks(
     path_matches: bool,
     input_artifacts_match: bool,
     raw_live_inputs_redacted: bool,
+    required_steps_present: bool,
 ) -> list[dict[str, str]]:
     return [
         _traceability_check(
@@ -1016,6 +1081,11 @@ def _submission_traceability_checks(
             check_id="submission_log_raw_live_inputs_redacted",
             passed=raw_live_inputs_redacted,
             detail="submission log 原始 Job URL 与文件路径字段已脱敏",
+        ),
+        _traceability_check(
+            check_id="successful_submission_required_steps_present",
+            passed=required_steps_present,
+            detail="成功 submission log 包含 rate_limit/login_check/target_verify/submit_safety/chat_send_resume/submit 步骤",
         ),
     ]
 
