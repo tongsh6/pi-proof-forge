@@ -822,6 +822,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_submit_safety_decision_recorded"] = (
             _external_l3_submit_safety_result(external_l3_step)
         )
+        results["external_l3_live_input_artifacts_fingerprinted"] = (
+            _external_l3_live_input_artifacts_result(external_l3_step)
+        )
         results["external_l3_post_submit_feedback_traceable"] = (
             _external_l3_feedback_trace_result(external_l3_step)
         )
@@ -834,6 +837,48 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             message=l2_step.message,
         )
     return results
+
+
+def _external_l3_live_input_artifacts_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 真实输入产物审计证据不可读取: {exc}",
+        )
+    artifacts = payload.get("live_input_artifacts") or {}
+    files = artifacts.get("files") or []
+    job_url = artifacts.get("job_url") or {}
+    confirmations = artifacts.get("confirmations") or {}
+    files_have_audit_fields = all(
+        isinstance(item, dict)
+        and "sha256" in item
+        and item.get("raw_content_persisted") is False
+        for item in files
+    )
+    values_not_persisted = (
+        job_url.get("raw_value_persisted") is False
+        and confirmations.get("raw_values_persisted") is False
+    )
+    if files and files_have_audit_fields and values_not_persisted:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 真实输入产物审计已记录，且未持久化原始内容或确认值。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 真实输入产物审计缺失或原始值持久化约束不完整。",
+    )
 
 
 def _external_l3_submit_safety_result(step: AcceptanceStep) -> JourneyStepResult:

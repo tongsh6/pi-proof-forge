@@ -4,8 +4,10 @@ import json
 import os
 import subprocess
 import sys
+import hashlib
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 def build_external_l3_validation(
@@ -45,6 +47,7 @@ def build_external_l3_validation(
             "session_dir": request["session_dir"],
             "output_dir": request["output_dir"],
         },
+        "live_input_artifacts": _live_input_artifacts(request),
     }
     base["live_run_readiness"] = _live_run_readiness(
         request=request,
@@ -195,6 +198,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     coverage = validation.get("coverage") or {}
     readiness = validation.get("live_run_readiness") or {}
     submit_decision = validation.get("submit_safety_decision") or {}
+    input_artifacts = validation.get("live_input_artifacts") or {}
     submission_traceability = validation.get("submission_traceability") or {}
     feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
     handoff = validation.get("operator_handoff") or {}
@@ -272,6 +276,41 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             lines.extend(["", "### 缺失 Gate", ""])
             for gate in missing_gates:
                 lines.append(f"- `{gate}`")
+    if input_artifacts:
+        job_url = input_artifacts.get("job_url") or {}
+        files = input_artifacts.get("files") or []
+        confirmations = input_artifacts.get("confirmations") or {}
+        lines.extend(
+            [
+                "",
+                "## 真实输入产物审计",
+                "",
+                f"- Job URL 已提供: `{job_url.get('present', False)}`",
+                f"- Job URL Scheme: `{job_url.get('scheme', '')}`",
+                f"- Job URL Host: `{job_url.get('hostname', '')}`",
+                f"- Job URL 原值是否持久化: `{job_url.get('raw_value_persisted', False)}`",
+                f"- 确认 job id 已提供: `{confirmations.get('confirm_submit_job_id_present', False)}`",
+                f"- 确认 recruiter 已提供: `{confirmations.get('confirm_submit_recruiter_present', False)}`",
+                "",
+                "| 产物 | 已提供 | 存在文件 | 扩展名 | 大小 | SHA256 |",
+                "|---|---:|---:|---|---:|---|",
+            ]
+        )
+        for item in files:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{item.get('id', '')}`",
+                        f"`{item.get('provided', False)}`",
+                        f"`{item.get('is_file', False)}`",
+                        f"`{item.get('suffix', '')}`",
+                        str(item.get("size_bytes", 0)),
+                        f"`{item.get('sha256', '')}`",
+                    ]
+                )
+                + " |"
+            )
     if submission_traceability:
         lines.extend(
             [
@@ -804,6 +843,74 @@ def _readiness_gate(*, gate_id: str, passed: bool, detail: str) -> dict[str, str
         "status": "pass" if passed else "blocked",
         "detail": detail,
     }
+
+
+def _live_input_artifacts(request: dict[str, Any]) -> dict[str, Any]:
+    parsed_job_url = urlparse(str(request["job_url"]))
+    return {
+        "job_url": {
+            "present": bool(request["job_url"]),
+            "scheme": parsed_job_url.scheme,
+            "hostname": parsed_job_url.hostname or "",
+            "supported_scheme": parsed_job_url.scheme in {"http", "https"},
+            "raw_value_persisted": False,
+        },
+        "files": [
+            _file_artifact_evidence(
+                request=request,
+                field="resume_pdf_path",
+                artifact_id="resume_pdf",
+                expected_suffixes={".pdf"},
+            ),
+            _file_artifact_evidence(
+                request=request,
+                field="profile_path",
+                artifact_id="profile_yaml",
+                expected_suffixes={".yaml", ".yml"},
+            ),
+        ],
+        "confirmations": {
+            "confirm_submit_job_id_present": bool(request["confirm_submit_job_id"]),
+            "confirm_submit_recruiter_present": bool(
+                request["confirm_submit_recruiter"]
+            ),
+            "raw_values_persisted": False,
+        },
+    }
+
+
+def _file_artifact_evidence(
+    *,
+    request: dict[str, Any],
+    field: str,
+    artifact_id: str,
+    expected_suffixes: set[str],
+) -> dict[str, Any]:
+    provided = bool(request[field])
+    path = _resolve_request_path(request, field) if provided else Path("")
+    is_file = provided and path.exists() and path.is_file()
+    suffix = path.suffix.lower() if provided else ""
+    return {
+        "id": artifact_id,
+        "provided": provided,
+        "basename": path.name if provided else "",
+        "suffix": suffix,
+        "expected_suffixes": sorted(expected_suffixes),
+        "suffix_valid": suffix in expected_suffixes,
+        "exists": bool(provided and path.exists()),
+        "is_file": bool(is_file),
+        "size_bytes": path.stat().st_size if is_file else 0,
+        "sha256": _sha256_file(path) if is_file else "",
+        "raw_content_persisted": False,
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _resolve_request_path(request: dict[str, Any], field: str) -> Path:

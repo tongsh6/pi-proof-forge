@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -205,6 +206,14 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert payload["coverage"]["user_authorized_external_session"] == "blocked_recorded"
     assert payload["coverage"]["post_submit_feedback_traceability"] == "pass"
     assert payload["coverage"]["no_secret_or_captcha_bypass"] == "pass"
+    input_artifacts = payload["live_input_artifacts"]
+    assert input_artifacts["job_url"]["present"] is False
+    assert input_artifacts["job_url"]["raw_value_persisted"] is False
+    assert input_artifacts["confirmations"]["raw_values_persisted"] is False
+    assert all(
+        item["raw_content_persisted"] is False
+        for item in input_artifacts["files"]
+    )
     submit_decision = payload["submit_safety_decision"]
     assert submit_decision["decision"] == "blocked_before_command"
     assert submit_decision["submit_command_allowed"] is False
@@ -250,6 +259,8 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 是否允许启动 submit 命令: `False`" in markdown
     assert "## 最终提交安全决策" in markdown
     assert "- 决策: `blocked_before_command`" in markdown
+    assert "## 真实输入产物审计" in markdown
+    assert "- Job URL 原值是否持久化: `False`" in markdown
     assert "| Gate | 状态 | 说明 |" in markdown
     assert "## 授权交接包" in markdown
     assert "| 必需环境变量 | 是否存在 | 是否敏感 |" in markdown
@@ -290,6 +301,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert safety_rule["stage"] == "submissions"
     assert safety_rule["status"] == "pass"
     assert "blocked_before_command" in safety_rule["message"]
+    input_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_live_input_artifacts_fingerprinted"
+    )
+    assert input_rule["level"] == "L3"
+    assert input_rule["stage"] == "submissions"
+    assert input_rule["status"] == "pass"
+    assert "真实输入产物审计" in input_rule["message"]
     feedback_rule = next(
         step
         for step in journey_payload["steps"]
@@ -380,6 +400,14 @@ def test_acceptance_runner_l3_records_invalid_live_input_gates(
     assert readiness["ready"] is False
     assert "resume_pdf_file_ready" in readiness["missing_gates"]
     assert "profile_yaml_file_ready" in readiness["missing_gates"]
+    input_artifacts = payload["live_input_artifacts"]
+    files = {item["id"]: item for item in input_artifacts["files"]}
+    assert files["resume_pdf"]["suffix"] == ".txt"
+    assert files["resume_pdf"]["suffix_valid"] is False
+    assert files["resume_pdf"]["sha256"]
+    assert files["profile_yaml"]["suffix"] == ".json"
+    assert files["profile_yaml"]["suffix_valid"] is False
+    assert files["profile_yaml"]["sha256"]
     submit_decision = payload["submit_safety_decision"]
     assert submit_decision["decision"] == "blocked_before_command"
     assert submit_decision["live_inputs_ready"] is False
@@ -490,6 +518,23 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     )
     assert payload["submission_traceability"]["log_yaml_path"] == str(log_yaml)
     assert payload["submission_traceability"]["log_json_path"] == str(log_json)
+    input_artifacts = payload["live_input_artifacts"]
+    assert input_artifacts["job_url"]["scheme"] == "https"
+    assert input_artifacts["job_url"]["hostname"] == "www.liepin.com"
+    assert input_artifacts["job_url"]["raw_value_persisted"] is False
+    assert input_artifacts["confirmations"]["confirm_submit_job_id_present"] is True
+    assert input_artifacts["confirmations"]["raw_values_persisted"] is False
+    files = {item["id"]: item for item in input_artifacts["files"]}
+    assert files["resume_pdf"]["basename"] == "resume.pdf"
+    assert files["resume_pdf"]["suffix_valid"] is True
+    assert files["resume_pdf"]["sha256"] == hashlib.sha256(
+        b"%PDF-1.4\n"
+    ).hexdigest()
+    assert files["profile_yaml"]["basename"] == "profile.yaml"
+    assert files["profile_yaml"]["suffix_valid"] is True
+    assert files["profile_yaml"]["sha256"] == hashlib.sha256(
+        b"id: profile\n"
+    ).hexdigest()
     submit_decision = payload["submit_safety_decision"]
     assert submit_decision["decision"] == "allowed_and_executed"
     assert submit_decision["submit_command_allowed"] is True
