@@ -389,6 +389,8 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 + " |"
             )
     if submission_traceability:
+        submission_summary = submission_traceability.get("submission_log_summary") or {}
+        last_step = submission_summary.get("last_step") or {}
         lines.extend(
             [
                 "",
@@ -401,6 +403,9 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- JSON 是否存在: `{submission_traceability.get('log_json_exists', False)}`",
                 f"- Submission log 是否反向链接: `{submission_traceability.get('log_links_back_to_validation', False)}`",
                 f"- Submission log 输入产物是否匹配: `{submission_traceability.get('submission_log_input_artifacts_match', False)}`",
+                f"- Submission Status: `{submission_summary.get('status', '')}`",
+                f"- Submission Error: `{submission_summary.get('error', '')}`",
+                f"- Last Step: `{last_step.get('name', '')}/{last_step.get('status', '')}`",
                 f"- Failed Checks: `{', '.join(submission_traceability.get('failed_checks', []))}`",
                 f"- 预期 validation run id: `{submission_traceability.get('expected_external_l3_validation_run_id', '')}`",
                 f"- 记录 validation run id: `{submission_traceability.get('logged_external_l3_validation_run_id', '')}`",
@@ -638,6 +643,11 @@ def _next_action(reason: str) -> str:
             "检查 stdout_tail、stderr_tail 和持久化 submission log，确认 live "
             "blocker 已修复后再重试。"
         )
+    if reason == "external_channel_rate_limited":
+        return (
+            "真实渠道频控已阻断本次 submit；等待 submission log 中记录的 "
+            "wait_seconds 或调整下一次验证窗口后再重试。"
+        )
     if reason == "external_channel_command_timed_out":
         return (
             "真实渠道命令超时；检查脱敏 stdout_tail、stderr_tail、页面状态和 "
@@ -664,6 +674,9 @@ def _post_command_blocker_reason(
         return "external_channel_command_launch_failed"
     if command_timed_out:
         return "external_channel_command_timed_out"
+    submission_summary = submission_traceability.get("submission_log_summary") or {}
+    if submission_summary.get("error") in {"batch_cooldown", "daily_limit_exceeded"}:
+        return "external_channel_rate_limited"
     if not command_succeeded:
         return "external_channel_command_returned_nonzero"
     if not submission_traceability["linked_to_validation"]:
@@ -723,6 +736,9 @@ def _post_command_live_blocker(
                 submission_traceability.get("checks") or []
             ),
             "submission_traceability_failed_checks": failed_checks,
+            "submission_log_summary": dict(
+                submission_traceability.get("submission_log_summary") or {}
+            ),
         },
     }
 
@@ -776,6 +792,7 @@ def _submission_traceability(
         "logged_external_l3_validation_path": logged_validation_path,
         "log_links_back_to_validation": log_links_back,
         "submission_log_input_artifacts_match": input_artifacts_match,
+        "submission_log_summary": _submission_log_summary(log_payload),
         "log_json_parse_error": parse_error,
         "checks": checks,
         "failed_checks": [
@@ -789,6 +806,27 @@ def _submission_traceability(
             and log_links_back
             and input_artifacts_match
         ),
+    }
+
+
+def _submission_log_summary(log_payload: dict[str, Any]) -> dict[str, Any]:
+    if not log_payload:
+        return {}
+    steps = log_payload.get("steps") or []
+    last_step = {}
+    if isinstance(steps, list) and steps:
+        candidate = steps[-1]
+        if isinstance(candidate, dict):
+            last_step = {
+                "name": str(candidate.get("name", "")),
+                "status": str(candidate.get("status", "")),
+                "detail": str(candidate.get("detail", "")),
+            }
+    return {
+        "status": str(log_payload.get("status", "")),
+        "error": str(log_payload.get("error", "")),
+        "mode": str(log_payload.get("mode", "")),
+        "last_step": last_step,
     }
 
 

@@ -840,6 +840,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_post_command_blocker_diagnostics_recorded"] = (
             _external_l3_post_command_blocker_diagnostics_result(external_l3_step)
         )
+        results["external_l3_submission_log_summary_recorded"] = (
+            _external_l3_submission_log_summary_result(external_l3_step)
+        )
         results["external_l3_authorization_packet_recorded"] = (
             _external_l3_authorization_packet_result(external_l3_step)
         )
@@ -1170,6 +1173,54 @@ def _external_l3_post_command_blocker_diagnostics_result(
         status="fail",
         evidence=step.evidence,
         message="External L3 post-command blocker 缺少 traceability failed_checks 或诊断字段。",
+    )
+
+
+def _external_l3_submission_log_summary_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 submission log 摘要证据不可读取: {exc}",
+        )
+    traceability = payload.get("submission_traceability") or {}
+    if not traceability:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未执行真实渠道命令，因此没有 submission log 摘要要求。",
+        )
+    if not traceability.get("log_json_exists"):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未产生可解析 submission log，因此由 traceability failed_checks 记录缺失原因。",
+        )
+    summary = traceability.get("submission_log_summary") or {}
+    last_step = summary.get("last_step") or {}
+    if summary.get("status") and "error" in summary and isinstance(last_step, dict):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message=(
+                "External L3 submission log 摘要已记录: "
+                f"{summary.get('status', 'unknown')}/{summary.get('error', '')}。"
+            ),
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 submission log 摘要缺失 status/error/last_step。",
     )
 
 

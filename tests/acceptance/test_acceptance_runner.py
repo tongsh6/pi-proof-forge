@@ -403,6 +403,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert diagnostics_rule["stage"] == "submissions"
     assert diagnostics_rule["status"] == "pass"
     assert "post-command blocker" in diagnostics_rule["message"]
+    summary_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submission_log_summary_recorded"
+    )
+    assert summary_rule["level"] == "L3"
+    assert summary_rule["stage"] == "submissions"
+    assert summary_rule["status"] == "pass"
+    assert "submission log" in summary_rule["message"]
     authorization_rule = next(
         step
         for step in journey_payload["steps"]
@@ -891,6 +900,135 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     assert feedback_trace["source_type"] == "live_blocker"
     assert feedback_trace["source_status"] == "external_submission_attempted_blocked"
     assert feedback_trace["source_reason"] == "submission_log_not_linked"
+
+
+def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    log_dir = tmp_path / "outputs" / "submissions" / "liepin" / "rate_limited"
+    log_dir.mkdir(parents=True)
+    log_yaml = log_dir / "submission_log.yaml"
+    log_json = log_dir / "submission_log.json"
+    resume_bytes = b"%PDF-1.4\n"
+    profile_bytes = b"id: profile\n"
+    resume.write_bytes(resume_bytes)
+    profile.write_bytes(profile_bytes)
+    validation_path = (
+        "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+    )
+    input_artifacts = {
+        "job_url": {
+            "scheme": "https",
+            "hostname": "www.liepin.com",
+            "raw_value_persisted": False,
+        },
+        "files": [
+            {
+                "id": "resume_pdf",
+                "basename": "resume.pdf",
+                "suffix": ".pdf",
+                "size_bytes": len(resume_bytes),
+                "sha256": hashlib.sha256(resume_bytes).hexdigest(),
+                "raw_content_persisted": False,
+            },
+            {
+                "id": "profile_yaml",
+                "basename": "profile.yaml",
+                "suffix": ".yaml",
+                "size_bytes": len(profile_bytes),
+                "sha256": hashlib.sha256(profile_bytes).hexdigest(),
+                "raw_content_persisted": False,
+            },
+        ],
+    }
+    log_yaml.write_text('status: "blocked"\nerror: "batch_cooldown"\n', encoding="utf-8")
+    log_json.write_text(
+        json.dumps(
+            {
+                "status": "blocked",
+                "error": "batch_cooldown",
+                "mode": "submit",
+                "external_l3_validation_run_id": "acceptance_external_l3",
+                "external_l3_validation_path": validation_path,
+                "input_artifacts": input_artifacts,
+                "steps": [
+                    {
+                        "name": "rate_limit",
+                        "status": "blocked",
+                        "detail": (
+                            "batch_cooldown; wait_seconds=385; "
+                            "batch_count=5; daily_count=7"
+                        ),
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        run_mock.return_value = Mock(
+            returncode=14,
+            stdout=f"[INFO] log: {log_yaml}\n",
+            stderr="",
+        )
+
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert report.status == "pass"
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["returncode"] == 14
+    assert payload["live_blocker"]["reason"] == "external_channel_rate_limited"
+    summary = payload["submission_traceability"]["submission_log_summary"]
+    assert summary["status"] == "blocked"
+    assert summary["error"] == "batch_cooldown"
+    assert summary["mode"] == "submit"
+    assert summary["last_step"]["name"] == "rate_limit"
+    assert summary["last_step"]["status"] == "blocked"
+    assert (
+        payload["live_blocker"]["diagnostics"]["submission_log_summary"]
+        == summary
+    )
+    assert payload["submission_traceability"]["linked_to_validation"] is True
+    assert payload["submit_safety_decision"]["post_run_blocker_reason"] == (
+        "external_channel_rate_limited"
+    )
+    markdown = (
+        Path(report.steps[0].evidence).parent / "external-l3-validation.md"
+    ).read_text(encoding="utf-8")
+    assert "- Submission Status: `blocked`" in markdown
+    assert "- Submission Error: `batch_cooldown`" in markdown
+    assert "- Last Step: `rate_limit/blocked`" in markdown
+
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    summary_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submission_log_summary_recorded"
+    )
+    assert summary_rule["status"] == "pass"
+    assert "blocked/batch_cooldown" in summary_rule["message"]
 
 
 def test_acceptance_runner_l3_records_timeout_as_live_blocker(
