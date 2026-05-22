@@ -2297,6 +2297,7 @@ cases:
         - "live_channel_result_record"
         - "exact_live_blocker_record"
         - "external_submission_attempt_audit"
+        - "post_submit_or_blocker_feedback_trace"
         - "no_secret_or_captcha_bypass_evidence"
       excludes:
         - "implicit_external_access"
@@ -2325,6 +2326,7 @@ cases:
       - "final_confirmation_missing_records_live_blocker_without_external_submit"
       - "valid_live_inputs_required_before_submit_command"
       - "live_channel_result_or_exact_blocker_recorded"
+      - "post_submit_or_blocker_feedback_traceable"
       - "no_secret_or_captcha_bypass_recorded"
 
     validation:
@@ -2335,4 +2337,5 @@ cases:
           - "external_l3_runner_requires_separate_final_submit_confirmation"
           - "external_l3_runner_requires_live_input_set"
           - "external_l3_runner_only_executes_submit_command_after_all_gates"
+          - "external_l3_runner_records_post_submit_feedback_trace"
           - "external_l3_runner_persists_json_and_markdown_evidence"
