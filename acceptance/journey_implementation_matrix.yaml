@@ -552,6 +552,7 @@ steps:
         - "submission_log_linked_to_l3_validation"
         - "submission_log_links_back_to_l3_validation"
         - "submission_log_input_artifacts_match_l3_validation"
+        - "submission_log_raw_live_inputs_redacted"
         - "submission_traceability_failed_checks_recorded"
         - "successful_command_requires_submission_log"
         - "post_command_live_blocker_diagnostics_recorded"

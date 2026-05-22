@@ -29,7 +29,7 @@ Last updated: 2026-05-22
 - External L3 command/output audit: validation records only persist redacted live submission command and redacted stdout/stderr tails；原始 Job URL、resume/profile 路径、确认 job id 和 recruiter 不写入 command 或 output tail 证据。
 - External L3 submit safety: validation records include `submit_safety_decision`；真实渠道命令是否阻断、允许待执行或已执行，必须在信任结果前成为显式可审计状态。
 - External L3 traceability: successful external commands must link `external-l3-validation.json` to persisted `submission_log.yaml/json`, and submission logs must write back `external_l3_validation_run_id/path`; missing or one-way-only links are recorded as `submission_log_not_linked`.
-- External L3 submission log audit: submission log 会写入自身 `input_artifacts`；L3 成功要求这些指纹与 validation record 匹配。
+- External L3 submission log audit: submission log 会写入自身 `input_artifacts`；L3 成功要求这些指纹与 validation record 匹配，且 External L3 关联日志中的原始 Job URL、resume/profile 路径字段必须写成 `<redacted>`。
 - External L3 trace diagnostics: `submission_traceability` 写入逐项检查结果和 `failed_checks`，让 `submission_log_not_linked` 指向具体缺失或不匹配的证据。
 - External L3 submission log summary: parsed submission logs promote status, error, mode, and last step into validation and post-command blocker diagnostics so business blockers are actionable.
 - External L3 blocker diagnostics: post-command live blockers directly include failed traceability checks, returncode, and related submission log paths so the blocker record is actionable without deep JSON lookup.
