@@ -536,6 +536,7 @@ steps:
         - "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
         - "outputs/submissions/liepin/*/submission_log.yaml"
       covers:
+        - "live_run_readiness_gates_recorded"
         - "explicit_user_authorized_live_run"
         - "separate_final_submit_confirmed"
         - "real_channel_result_or_live_blocker"

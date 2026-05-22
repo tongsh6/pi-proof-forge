@@ -20,6 +20,7 @@ Last updated: 2026-05-22
 - Closed-loop audit reads durable artifacts from `outputs/quick_runs`, `outputs/agent_runs`, `outputs/submissions`, and `outputs/feedback_iterations`.
 - External L3: `run-acceptance --level L3` now writes a guarded live blocker or real-channel result record; missing explicit authorization or missing separate final-submit confirmation never attempts external submission.
 - External L3 handoff: validation records include an `operator_handoff` package with required env presence, pre-run checklist, forbidden inputs, and a redacted command template for a future authorized live run.
+- External L3 readiness: validation records include `live_run_readiness` gates and keep `submit_command_allowed=false` until every authorization and live-input gate passes.
 
 ## Verification Anchors
 
