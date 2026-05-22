@@ -537,6 +537,7 @@ steps:
         - "outputs/submissions/liepin/*/submission_log.yaml"
       covers:
         - "live_run_readiness_gates_recorded"
+        - "pre_submit_live_blocker_diagnostics_recorded"
         - "post_command_blocker_does_not_rewrite_pre_run_readiness"
         - "live_input_file_and_url_validation_recorded"
         - "live_input_artifact_fingerprints_recorded_without_raw_values"
