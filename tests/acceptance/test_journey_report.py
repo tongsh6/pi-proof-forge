@@ -69,6 +69,7 @@ def test_journey_report_markdown_contains_status_rows() -> None:
 
     markdown = render_markdown(report)
 
+    assert report.status == "pass"
     assert "# PiProofForge Journey Acceptance" in markdown
     assert "| Case | Rule | Level | Stage | Status | Evidence | Message |" in markdown
     assert "quick_run_outputs_are_traceable" in markdown

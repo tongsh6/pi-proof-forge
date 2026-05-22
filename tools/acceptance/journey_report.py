@@ -237,7 +237,7 @@ def overall_status(steps: tuple[JourneyReportStep, ...]) -> str:
         return "fail"
     if "blocked" in statuses:
         return "blocked"
-    if statuses == {"pass"}:
+    if "pass" in statuses:
         return "pass"
     return "not_started"
 

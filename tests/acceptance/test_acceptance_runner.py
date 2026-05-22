@@ -219,6 +219,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
 
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    assert journey_payload["status"] == "pass"
     external_rule = next(
         step
         for step in journey_payload["steps"]
