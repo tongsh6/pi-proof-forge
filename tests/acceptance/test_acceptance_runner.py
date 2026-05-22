@@ -222,6 +222,13 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert payload["coverage"]["user_authorized_external_session"] == "blocked_recorded"
     assert payload["coverage"]["post_submit_feedback_traceability"] == "pass"
     assert payload["coverage"]["no_secret_or_captcha_bypass"] == "pass"
+    assert payload["rate_limit_policy"]["enabled"] is True
+    assert payload["rate_limit_policy"]["max_per_batch"] == 5
+    assert payload["rate_limit_policy"]["cooldown_seconds"] == 900
+    assert payload["rate_limit_policy"]["daily_limit"] == 30
+    assert payload["rate_limit_policy"]["state_path"].endswith(
+        "outputs/submissions/liepin_rate_limit.json"
+    )
     input_artifacts = payload["live_input_artifacts"]
     assert input_artifacts["job_url"]["present"] is False
     assert input_artifacts["job_url"]["raw_value_persisted"] is False
@@ -263,6 +270,7 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "显式授权" in handoff["next_action"]
     assert "password" in handoff["forbidden_inputs"]
     assert "captcha_code" in handoff["forbidden_inputs"]
+    assert "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH=5" in handoff["command_template"]
     required_env = {item["name"]: item for item in handoff["required_env"]}
     assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
     assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
@@ -293,6 +301,8 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 决策: `blocked_before_command`" in markdown
     assert "## 真实输入产物审计" in markdown
     assert "- Job URL 原值是否持久化: `False`" in markdown
+    assert "## 频控策略" in markdown
+    assert "- 是否启用: `True`" in markdown
     assert "| Gate | 状态 | 说明 |" in markdown
     assert "## 授权交接包" in markdown
     assert "### 授权确认包" in markdown
@@ -345,6 +355,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert input_rule["stage"] == "submissions"
     assert input_rule["status"] == "pass"
     assert "真实输入产物审计" in input_rule["message"]
+    rate_limit_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_rate_limit_policy_recorded"
+    )
+    assert rate_limit_rule["level"] == "L3"
+    assert rate_limit_rule["stage"] == "submissions"
+    assert rate_limit_rule["status"] == "pass"
+    assert "频控策略" in rate_limit_rule["message"]
     command_rule = next(
         step
         for step in journey_payload["steps"]
@@ -560,6 +579,50 @@ def test_acceptance_runner_l3_records_invalid_job_url_gate(
     assert "profile_yaml_file_ready" not in readiness["missing_gates"]
 
 
+def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+        "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH": "0",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert report.status == "pass"
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["external_submission_attempted"] is False
+    assert payload["live_blocker"]["reason"] == "invalid_external_l3_rate_limit_policy"
+    assert payload["rate_limit_policy"]["enabled"] is False
+    assert payload["rate_limit_policy"]["max_per_batch"] == 0
+    assert (
+        payload["live_blocker"]["diagnostics"]["rate_limit_policy"]["enabled"]
+        is False
+    )
+    assert "rate_limit_policy_enabled" in payload["live_run_readiness"]["missing_gates"]
+    assert "rate_limit_policy_enabled" in payload["live_blocker"]["failed_checks"]
+    assert run_mock.call_count == 0
+
+
 def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     tmp_path: Path,
 ) -> None:
@@ -679,6 +742,10 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert "Verifier" not in payload["stderr_tail"]
     assert payload["stdout_tail"].count("<redacted>") >= 5
     assert payload["stderr_tail"].count("<redacted>") >= 5
+    assert payload["rate_limit_policy"]["enabled"] is True
+    assert payload["rate_limit_policy"]["max_per_batch"] == 5
+    assert payload["rate_limit_policy"]["cooldown_seconds"] == 900
+    assert payload["rate_limit_policy"]["daily_limit"] == 30
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
     assert payload["submission_traceability"]["linked_to_validation"] is True
     assert payload["submission_traceability"]["log_links_back_to_validation"] is True
@@ -752,6 +819,12 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
         command[command.index("--external-l3-validation-path") + 1]
         == validation_path
     )
+    assert "--rate-limit-max-per-batch" in command
+    assert command[command.index("--rate-limit-max-per-batch") + 1] == "5"
+    assert "--rate-limit-cooldown-seconds" in command
+    assert command[command.index("--rate-limit-cooldown-seconds") + 1] == "900"
+    assert "--rate-limit-daily-limit" in command
+    assert command[command.index("--rate-limit-daily-limit") + 1] == "30"
 
 
 def test_acceptance_runner_l3_blocks_success_without_submission_log(

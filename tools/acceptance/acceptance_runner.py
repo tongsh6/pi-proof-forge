@@ -825,6 +825,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_live_input_artifacts_fingerprinted"] = (
             _external_l3_live_input_artifacts_result(external_l3_step)
         )
+        results["external_l3_rate_limit_policy_recorded"] = (
+            _external_l3_rate_limit_policy_result(external_l3_step)
+        )
         results["external_l3_live_command_redacted"] = (
             _external_l3_live_command_redaction_result(external_l3_step)
         )
@@ -996,6 +999,49 @@ def _external_l3_live_input_artifacts_result(step: AcceptanceStep) -> JourneySte
         status="fail",
         evidence=step.evidence,
         message="External L3 真实输入产物审计缺失或原始值持久化约束不完整。",
+    )
+
+
+def _external_l3_rate_limit_policy_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 频控策略证据不可读取: {exc}",
+        )
+    policy = payload.get("rate_limit_policy") or {}
+    if (
+        policy.get("enabled") is True
+        and int(policy.get("max_per_batch", 0)) > 0
+        and int(policy.get("cooldown_seconds", 0)) > 0
+        and int(policy.get("daily_limit", 0)) > 0
+        and policy.get("state_path")
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 频控策略已记录，真实 submit 不会绕过 rate limit。",
+        )
+    if (payload.get("live_blocker") or {}).get("reason") == (
+        "invalid_external_l3_rate_limit_policy"
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 已把无效频控策略记录为 pre-submit live blocker。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 频控策略缺失或允许真实 submit 绕过 rate limit。",
     )
 
 

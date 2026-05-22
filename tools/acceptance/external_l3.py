@@ -48,6 +48,7 @@ def build_external_l3_validation(
             "output_dir": request["output_dir"],
         },
         "live_input_artifacts": _live_input_artifacts(request),
+        "rate_limit_policy": _rate_limit_policy(request),
     }
     base["live_run_readiness"] = _live_run_readiness(
         request=request,
@@ -71,6 +72,7 @@ def build_external_l3_validation(
             reason=blocker_reason,
             readiness=base["live_run_readiness"],
             input_artifacts=base["live_input_artifacts"],
+            rate_limit_policy=base["rate_limit_policy"],
         )
         base.update(
             {
@@ -235,6 +237,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     readiness = validation.get("live_run_readiness") or {}
     submit_decision = validation.get("submit_safety_decision") or {}
     input_artifacts = validation.get("live_input_artifacts") or {}
+    rate_limit_policy = validation.get("rate_limit_policy") or {}
     output_redaction = validation.get("live_output_redaction") or {}
     submission_traceability = validation.get("submission_traceability") or {}
     feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
@@ -327,6 +330,19 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             lines.extend(["", "### 缺失 Gate", ""])
             for gate in missing_gates:
                 lines.append(f"- `{gate}`")
+    if rate_limit_policy:
+        lines.extend(
+            [
+                "",
+                "## 频控策略",
+                "",
+                f"- 是否启用: `{rate_limit_policy.get('enabled', False)}`",
+                f"- Max Per Batch: `{rate_limit_policy.get('max_per_batch', '')}`",
+                f"- Cooldown 秒数: `{rate_limit_policy.get('cooldown_seconds', '')}`",
+                f"- Daily Limit: `{rate_limit_policy.get('daily_limit', '')}`",
+                f"- 状态文件: `{rate_limit_policy.get('state_path', '')}`",
+            ]
+        )
     if output_redaction:
         lines.extend(
             [
@@ -520,6 +536,18 @@ def _request_from_env(root: Path, default_timeout_seconds: int) -> dict[str, Any
             default_timeout_seconds,
         ),
         "timeout_ms": _env_int("PIPF_EXTERNAL_L3_TIMEOUT_MS", 45000),
+        "rate_limit_max_per_batch": _env_nonnegative_int(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH",
+            5,
+        ),
+        "rate_limit_cooldown_seconds": _env_nonnegative_int(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS",
+            900,
+        ),
+        "rate_limit_daily_limit": _env_nonnegative_int(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT",
+            30,
+        ),
         "headless": _env_bool("PIPF_EXTERNAL_L3_HEADLESS"),
         "root": str(root),
     }
@@ -532,6 +560,8 @@ def _blocker_reason(request: dict[str, Any]) -> str:
         return "explicit_final_submit_confirmation_required"
     if request["channel"] != "liepin":
         return "unsupported_external_l3_channel"
+    if not _rate_limit_enabled(request):
+        return "invalid_external_l3_rate_limit_policy"
     missing = [
         name
         for name in (
@@ -593,6 +623,11 @@ def _next_action(reason: str) -> str:
         return (
             "当前 P0 L3 只支持 liepin；如需其他渠道，先扩展渠道适配器。"
         )
+    if reason == "invalid_external_l3_rate_limit_policy":
+        return (
+            "External L3 真实提交必须启用频控；设置正数 max-per-batch、"
+            "cooldown seconds 和 daily limit 后再重试。"
+        )
     if reason == "submission_log_not_linked":
         return (
             "真实渠道命令已返回成功，但没有解析到可验证的 submission_log.yaml/json；"
@@ -641,6 +676,7 @@ def _pre_submit_live_blocker(
     reason: str,
     readiness: dict[str, Any],
     input_artifacts: dict[str, Any],
+    rate_limit_policy: dict[str, Any],
 ) -> dict[str, Any]:
     missing_gates = list(readiness.get("missing_gates") or [])
     return {
@@ -655,6 +691,7 @@ def _pre_submit_live_blocker(
             "missing_gates": missing_gates,
             "readiness_gates": list(readiness.get("gates") or []),
             "live_input_artifacts": input_artifacts,
+            "rate_limit_policy": rate_limit_policy,
         },
     }
 
@@ -1001,6 +1038,9 @@ def _operator_handoff(
             "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml> "
             "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id> "
             "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter> "
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH=5 "
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS=900 "
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT=30 "
             "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
         ),
     }
@@ -1030,6 +1070,7 @@ def _operator_authorization_packet(
             "live_run_readiness",
             "submit_safety_decision",
             "live_input_artifacts",
+            "rate_limit_policy",
             "command_redaction",
             "live_output_redaction",
             "post_submit_feedback_traceability",
@@ -1075,6 +1116,7 @@ def _live_run_readiness(
     job_url_present = bool(request["job_url"])
     resume_path_present = bool(request["resume_pdf_path"])
     profile_path_present = bool(request["profile_path"])
+    rate_limit_enabled = _rate_limit_enabled(request)
     gates = [
         _readiness_gate(
             gate_id="user_authorization",
@@ -1090,6 +1132,14 @@ def _live_run_readiness(
             gate_id="supported_channel",
             passed=request["channel"] == "liepin",
             detail=f"channel={request['channel']}",
+        ),
+        _readiness_gate(
+            gate_id="rate_limit_policy_enabled",
+            passed=rate_limit_enabled,
+            detail=(
+                "真实渠道 submit 使用正数 max-per-batch、cooldown seconds "
+                "和 daily limit"
+            ),
         ),
         _readiness_gate(
             gate_id="job_url_present",
@@ -1167,6 +1217,7 @@ def _submit_safety_decision(
         "profile_yaml_file_ready",
         "confirm_job_id_present",
         "confirm_recruiter_present",
+        "rate_limit_policy_enabled",
     }
     live_inputs_ready = all(
         gate["status"] == "pass"
@@ -1246,6 +1297,27 @@ def _live_input_artifacts(request: dict[str, Any]) -> dict[str, Any]:
             "raw_values_persisted": False,
         },
     }
+
+
+def _rate_limit_policy(request: dict[str, Any]) -> dict[str, Any]:
+    output_dir = Path(str(request["output_dir"]))
+    if not output_dir.is_absolute():
+        output_dir = Path(str(request["root"])) / output_dir
+    return {
+        "enabled": _rate_limit_enabled(request),
+        "max_per_batch": int(request["rate_limit_max_per_batch"]),
+        "cooldown_seconds": int(request["rate_limit_cooldown_seconds"]),
+        "daily_limit": int(request["rate_limit_daily_limit"]),
+        "state_path": str(output_dir / "liepin_rate_limit.json"),
+    }
+
+
+def _rate_limit_enabled(request: dict[str, Any]) -> bool:
+    return (
+        int(request["rate_limit_max_per_batch"]) > 0
+        and int(request["rate_limit_cooldown_seconds"]) > 0
+        and int(request["rate_limit_daily_limit"]) > 0
+    )
 
 
 def _file_artifact_evidence(
@@ -1368,6 +1440,12 @@ def _submission_command(request: dict[str, Any]) -> tuple[str, ...]:
         str(request["session_dir"]),
         "--timeout-ms",
         str(request["timeout_ms"]),
+        "--rate-limit-max-per-batch",
+        str(request["rate_limit_max_per_batch"]),
+        "--rate-limit-cooldown-seconds",
+        str(request["rate_limit_cooldown_seconds"]),
+        "--rate-limit-daily-limit",
+        str(request["rate_limit_daily_limit"]),
         "--confirm-submit-job-id",
         str(request["confirm_submit_job_id"]),
         "--confirm-submit-recruiter",
@@ -1500,3 +1578,14 @@ def _env_int(name: str, default: int) -> int:
     except ValueError:
         return default
     return parsed if parsed > 0 else default
+
+
+def _env_nonnegative_int(name: str, default: int) -> int:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    return parsed if parsed >= 0 else default
