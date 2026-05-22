@@ -151,6 +151,7 @@
 - 证据必须覆盖 `user_authorized_external_session`、`explicit_final_submit_gate`、`live_channel_result_or_blocker_recorded`、`post_submit_feedback_traceability` 和 `no_secret_or_captcha_bypass`。
 - live blocker 是有效 L3 输出，但必须明确 `external_submission_attempted=false`、blocker reason、category 与 next action。
 - L3 证据必须包含 `live_run_readiness`，逐项记录授权、最终确认、渠道、岗位 URL、URL 格式、resume PDF 路径与文件格式、profile YAML 路径与文件格式、确认 job id 和确认 recruiter 的 gate 状态；未全 pass 时 `submit_command_allowed=false`。
+- `live_run_readiness` 表示 submit 命令启动前的 gate 结果；真实渠道命令执行后产生的 traceability blocker 不得回写成 pre-run gate 未通过，而应记录在 `submit_safety_decision.post_run_blocker_reason` 和 `live_blocker`。
 - 即使所有 env 字符串都存在，真实 Job URL 不是 http/https、resume 不是存在的 `.pdf` 文件或 profile 不是存在的 `.yaml/.yml` 文件，也必须在启动 submit 命令前记录 live blocker。
 - L3 证据必须包含 `live_input_artifacts`：记录 Job URL 的 scheme/host、resume/profile 的文件名、扩展名、大小和 SHA256；不得持久化 Job URL 原值、确认值或文件原始内容。
 - 如果真实渠道命令被执行，`external-l3-validation.json` 只能持久化脱敏后的 command 和 stdout/stderr 尾部；Job URL、resume/profile 路径、确认 job id 和确认 recruiter 必须以 `<redacted>` 形式保存。

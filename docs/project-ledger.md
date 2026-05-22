@@ -21,6 +21,7 @@ Last updated: 2026-05-22
 - External L3: `run-acceptance --level L3` now writes a guarded live blocker or real-channel result record; missing explicit authorization or missing separate final-submit confirmation never attempts external submission.
 - External L3 handoff: validation records include an `operator_handoff` package with required env presence, pre-run checklist, forbidden inputs, and a redacted command template for a future authorized live run.
 - External L3 readiness: validation records include `live_run_readiness` gates and keep `submit_command_allowed=false` until every authorization gate and real-input validation gate passes, including URL format and local resume/profile file type checks.
+- External L3 readiness semantics: post-command traceability blockers do not rewrite pre-run readiness; they are recorded in `submit_safety_decision.post_run_blocker_reason` and `live_blocker`.
 - External L3 input audit: validation records include `live_input_artifacts`，用 Job URL scheme/host 与 resume/profile SHA256 指纹绑定输入产物，同时不持久化原始 URL、确认值或文件内容。
 - External L3 command/output audit: validation records only persist redacted live submission command and redacted stdout/stderr tails；原始 Job URL、resume/profile 路径、确认 job id 和 recruiter 不写入 command 或 output tail 证据。
 - External L3 submit safety: validation records include `submit_safety_decision`；真实渠道命令是否阻断、允许待执行或已执行，必须在信任结果前成为显式可审计状态。
