@@ -25,6 +25,16 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Required with --submit. Must match the verified recruiter name.",
     )
+    _ = parser.add_argument(
+        "--external-l3-validation-run-id",
+        default="",
+        help="External L3 acceptance run id that authorized this submission",
+    )
+    _ = parser.add_argument(
+        "--external-l3-validation-path",
+        default="",
+        help="External L3 validation JSON path that authorized this submission",
+    )
     _ = parser.add_argument("--output-dir", default="outputs/submissions")
     _ = parser.add_argument("--session-dir", default=".sessions")
     _ = parser.add_argument(
@@ -111,6 +121,8 @@ def main() -> int:
             rate_limit_daily_limit=int(cast(int, args.rate_limit_daily_limit)),
             confirm_submit_job_id=cast(str, args.confirm_submit_job_id),
             confirm_submit_recruiter=cast(str, args.confirm_submit_recruiter),
+            external_l3_validation_run_id=cast(str, args.external_l3_validation_run_id),
+            external_l3_validation_path=cast(str, args.external_l3_validation_path),
         )
         return run_liepin_submission(config)
 

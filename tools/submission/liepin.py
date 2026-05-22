@@ -71,6 +71,8 @@ class LiepinSubmissionConfig:
     rate_limit_daily_limit: int = 30
     confirm_submit_job_id: str = ""
     confirm_submit_recruiter: str = ""
+    external_l3_validation_run_id: str = ""
+    external_l3_validation_path: str = ""
 
 
 def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
@@ -82,6 +84,8 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
         profile_path=config.profile_path,
         headless=config.headless,
         browser_channel=config.browser_channel,
+        external_l3_validation_run_id=config.external_l3_validation_run_id,
+        external_l3_validation_path=config.external_l3_validation_path,
     )
 
     if config.dry_run:

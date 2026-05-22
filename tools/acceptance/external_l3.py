@@ -16,6 +16,10 @@ def build_external_l3_validation(
     default_timeout_seconds: int,
 ) -> dict[str, Any]:
     request = _request_from_env(root, default_timeout_seconds)
+    request["external_l3_validation_run_id"] = run_id
+    request["external_l3_validation_path"] = str(
+        Path("outputs") / "acceptance" / run_id / "external-l3-validation.json"
+    )
     blocker_reason = _blocker_reason(request)
     base: dict[str, Any] = {
         "run_id": run_id,
@@ -84,6 +88,8 @@ def build_external_l3_validation(
     submission_traceability = _submission_traceability(
         root=root,
         output=completed.stdout + completed.stderr,
+        expected_validation_run_id=run_id,
+        expected_validation_path=str(request["external_l3_validation_path"]),
     )
     command_succeeded = completed.returncode == 0
     external_validated = command_succeeded and bool(
@@ -218,13 +224,18 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
         lines.extend(
             [
                 "",
-                "## Submission Log Traceability",
+                "## Submission Log 追溯",
                 "",
-                f"- Linked: `{submission_traceability.get('linked_to_validation', False)}`",
+                f"- 是否完成双向链接: `{submission_traceability.get('linked_to_validation', False)}`",
                 f"- YAML: `{submission_traceability.get('log_yaml_path', '')}`",
                 f"- JSON: `{submission_traceability.get('log_json_path', '')}`",
-                f"- YAML Exists: `{submission_traceability.get('log_yaml_exists', False)}`",
-                f"- JSON Exists: `{submission_traceability.get('log_json_exists', False)}`",
+                f"- YAML 是否存在: `{submission_traceability.get('log_yaml_exists', False)}`",
+                f"- JSON 是否存在: `{submission_traceability.get('log_json_exists', False)}`",
+                f"- Submission log 是否反向链接: `{submission_traceability.get('log_links_back_to_validation', False)}`",
+                f"- 预期 validation run id: `{submission_traceability.get('expected_external_l3_validation_run_id', '')}`",
+                f"- 记录 validation run id: `{submission_traceability.get('logged_external_l3_validation_run_id', '')}`",
+                f"- 预期 validation path: `{submission_traceability.get('expected_external_l3_validation_path', '')}`",
+                f"- 记录 validation path: `{submission_traceability.get('logged_external_l3_validation_path', '')}`",
             ]
         )
     if handoff:
@@ -387,23 +398,60 @@ def _post_command_blocker_reason(
     return ""
 
 
-def _submission_traceability(*, root: Path, output: str) -> dict[str, Any]:
+def _submission_traceability(
+    *,
+    root: Path,
+    output: str,
+    expected_validation_run_id: str,
+    expected_validation_path: str,
+) -> dict[str, Any]:
     log_hint = _extract_submission_log_hint(output)
     yaml_path = _extract_submission_yaml_path(root=root, output=output)
     json_path = yaml_path.with_name("submission_log.json") if yaml_path else None
+    log_payload, parse_error = _read_submission_json(json_path)
+    logged_validation_run_id = str(
+        log_payload.get("external_l3_validation_run_id", "")
+    ) if log_payload else ""
+    logged_validation_path = str(
+        log_payload.get("external_l3_validation_path", "")
+    ) if log_payload else ""
+    log_links_back = (
+        bool(log_payload)
+        and logged_validation_run_id == expected_validation_run_id
+        and logged_validation_path == expected_validation_path
+    )
     return {
         "log_hint": log_hint,
         "log_yaml_path": str(yaml_path) if yaml_path else "",
         "log_json_path": str(json_path) if json_path else "",
         "log_yaml_exists": bool(yaml_path and yaml_path.exists()),
         "log_json_exists": bool(json_path and json_path.exists()),
+        "expected_external_l3_validation_run_id": expected_validation_run_id,
+        "expected_external_l3_validation_path": expected_validation_path,
+        "logged_external_l3_validation_run_id": logged_validation_run_id,
+        "logged_external_l3_validation_path": logged_validation_path,
+        "log_links_back_to_validation": log_links_back,
+        "log_json_parse_error": parse_error,
         "linked_to_validation": bool(
             yaml_path
             and json_path
             and yaml_path.exists()
             and json_path.exists()
+            and log_links_back
         ),
     }
+
+
+def _read_submission_json(json_path: Path | None) -> tuple[dict[str, Any], str]:
+    if json_path is None or not json_path.exists():
+        return {}, ""
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {}, str(exc)
+    if not isinstance(payload, dict):
+        return {}, "submission_log.json root is not an object"
+    return payload, ""
 
 
 def _extract_submission_yaml_path(*, root: Path, output: str) -> Path | None:
@@ -603,6 +651,10 @@ def _submission_command(request: dict[str, Any]) -> tuple[str, ...]:
         str(request["confirm_submit_job_id"]),
         "--confirm-submit-recruiter",
         str(request["confirm_submit_recruiter"]),
+        "--external-l3-validation-run-id",
+        str(request["external_l3_validation_run_id"]),
+        "--external-l3-validation-path",
+        str(request["external_l3_validation_path"]),
         "--submit",
     ]
     command.append("--headless" if request["headless"] else "--no-headless")

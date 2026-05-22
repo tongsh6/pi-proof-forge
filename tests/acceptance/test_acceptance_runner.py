@@ -302,7 +302,18 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     resume.write_bytes(b"%PDF-1.4\n")
     profile.write_text("id: profile\n", encoding="utf-8")
     log_yaml.write_text('status: "success"\n', encoding="utf-8")
-    log_json.write_text('{"status": "success"}\n', encoding="utf-8")
+    validation_path = "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+    log_json.write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "external_l3_validation_run_id": "acceptance_external_l3",
+                "external_l3_validation_path": validation_path,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
@@ -336,6 +347,15 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["external_submission_attempted"] is True
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
     assert payload["submission_traceability"]["linked_to_validation"] is True
+    assert payload["submission_traceability"]["log_links_back_to_validation"] is True
+    assert (
+        payload["submission_traceability"]["logged_external_l3_validation_run_id"]
+        == "acceptance_external_l3"
+    )
+    assert (
+        payload["submission_traceability"]["logged_external_l3_validation_path"]
+        == validation_path
+    )
     assert payload["submission_traceability"]["log_yaml_path"] == str(log_yaml)
     assert payload["submission_traceability"]["log_json_path"] == str(log_json)
     assert payload["live_run_readiness"]["ready"] is True
@@ -347,6 +367,16 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert "--submit" in command
     assert "--headless" in command
     assert "--confirm-submit-job-id" in command
+    assert "--external-l3-validation-run-id" in command
+    assert (
+        command[command.index("--external-l3-validation-run-id") + 1]
+        == "acceptance_external_l3"
+    )
+    assert "--external-l3-validation-path" in command
+    assert (
+        command[command.index("--external-l3-validation-path") + 1]
+        == validation_path
+    )
 
 
 def test_acceptance_runner_l3_blocks_success_without_submission_log(

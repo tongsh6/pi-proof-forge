@@ -16,6 +16,10 @@ class SubmissionStorageTests(unittest.TestCase):
                 profile_path="profiles/candidate_profile.yaml",
                 headless=False,
                 browser_channel="chrome",
+                external_l3_validation_run_id="acceptance_external_l3",
+                external_l3_validation_path=(
+                    "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+                ),
             )
 
             recorder.finish("success")
@@ -24,7 +28,23 @@ class SubmissionStorageTests(unittest.TestCase):
             yaml_text = recorder.log_yaml.read_text(encoding="utf-8")
 
         self.assertEqual(payload["browser_channel"], "chrome")
+        self.assertEqual(
+            payload["external_l3_validation_run_id"],
+            "acceptance_external_l3",
+        )
+        self.assertEqual(
+            payload["external_l3_validation_path"],
+            "outputs/acceptance/acceptance_external_l3/external-l3-validation.json",
+        )
         self.assertIn('browser_channel: "chrome"', yaml_text)
+        self.assertIn(
+            'external_l3_validation_run_id: "acceptance_external_l3"',
+            yaml_text,
+        )
+        self.assertIn(
+            'external_l3_validation_path: "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"',
+            yaml_text,
+        )
 
 
 if __name__ == "__main__":

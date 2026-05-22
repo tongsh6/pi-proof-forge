@@ -28,6 +28,8 @@ class SubmissionRecord:
     profile_path: str = ""
     headless: bool = True
     browser_channel: str = "chrome"
+    external_l3_validation_run_id: str = ""
+    external_l3_validation_path: str = ""
     steps: list[SubmissionStep] = field(default_factory=list)
 
 
@@ -63,12 +65,24 @@ class SubmissionRecorder:
         )
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
-    def set_meta(self, job_url: str, resume_path: str, profile_path: str, headless: bool, browser_channel: str = "chrome") -> None:
+    def set_meta(
+        self,
+        job_url: str,
+        resume_path: str,
+        profile_path: str,
+        headless: bool,
+        browser_channel: str = "chrome",
+        *,
+        external_l3_validation_run_id: str = "",
+        external_l3_validation_path: str = "",
+    ) -> None:
         self.record.job_url = job_url
         self.record.resume_path = resume_path
         self.record.profile_path = profile_path
         self.record.headless = headless
         self.record.browser_channel = browser_channel
+        self.record.external_l3_validation_run_id = external_l3_validation_run_id
+        self.record.external_l3_validation_path = external_l3_validation_path
 
     def add_step(self, name: str, status: str, detail: str, screenshot: Path | None = None) -> None:
         screenshot_rel = ""
@@ -108,6 +122,8 @@ class SubmissionRecorder:
             "profile_path": self.record.profile_path,
             "headless": self.record.headless,
             "browser_channel": self.record.browser_channel,
+            "external_l3_validation_run_id": self.record.external_l3_validation_run_id,
+            "external_l3_validation_path": self.record.external_l3_validation_path,
             "steps": [
                 {
                     "name": s.name,
@@ -134,6 +150,8 @@ class SubmissionRecorder:
             f"profile_path: \"{_escape(self.record.profile_path)}\"",
             f"headless: {'true' if self.record.headless else 'false'}",
             f"browser_channel: \"{_escape(self.record.browser_channel)}\"",
+            f"external_l3_validation_run_id: \"{_escape(self.record.external_l3_validation_run_id)}\"",
+            f"external_l3_validation_path: \"{_escape(self.record.external_l3_validation_path)}\"",
             "steps:",
         ]
         for step in self.record.steps:
