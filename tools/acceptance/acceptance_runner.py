@@ -843,6 +843,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_pre_submit_blocker_diagnostics_recorded"] = (
             _external_l3_pre_submit_blocker_diagnostics_result(external_l3_step)
         )
+        results["external_l3_timeout_recorded_as_live_blocker"] = (
+            _external_l3_timeout_blocker_result(external_l3_step)
+        )
 
     l2_step = next((step for step in report.steps if step.level == "L2"), None)
     if l2_step is not None and l2_step.status != "not_started":
@@ -1095,9 +1098,13 @@ def _external_l3_post_command_blocker_diagnostics_result(
     blocker = payload.get("live_blocker") or {}
     diagnostics = blocker.get("diagnostics") or {}
     failed_checks = blocker.get("failed_checks") or []
+    has_command_outcome = (
+        diagnostics.get("returncode") is not None
+        or diagnostics.get("command_timed_out") is True
+    )
     if (
         isinstance(failed_checks, list)
-        and diagnostics.get("returncode") is not None
+        and has_command_outcome
         and isinstance(diagnostics.get("submission_traceability_checks"), list)
         and isinstance(diagnostics.get("submission_traceability_failed_checks"), list)
     ):
@@ -1205,6 +1212,47 @@ def _external_l3_pre_submit_blocker_diagnostics_result(
         status="fail",
         evidence=step.evidence,
         message="External L3 pre-submit blocker 缺少 missing gates 或输入审计诊断。",
+    )
+
+
+def _external_l3_timeout_blocker_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 timeout blocker 证据不可读取: {exc}",
+        )
+    if payload.get("command_timed_out") is not True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 本次未发生真实渠道命令超时。",
+        )
+    blocker = payload.get("live_blocker") or {}
+    diagnostics = blocker.get("diagnostics") or {}
+    if (
+        payload.get("status") == "live_blocker_recorded"
+        and blocker.get("reason") == "external_channel_command_timed_out"
+        and diagnostics.get("command_timed_out") is True
+        and diagnostics.get("timeout_seconds") is not None
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 真实渠道命令超时已记录为可审计 live blocker。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 真实渠道命令超时未记录为精确 live blocker。",
     )
 
 

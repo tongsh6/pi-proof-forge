@@ -405,6 +405,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert pre_submit_diagnostics_rule["stage"] == "submissions"
     assert pre_submit_diagnostics_rule["status"] == "pass"
     assert "pre-submit blocker" in pre_submit_diagnostics_rule["message"]
+    timeout_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_timeout_recorded_as_live_blocker"
+    )
+    assert timeout_rule["level"] == "L3"
+    assert timeout_rule["stage"] == "submissions"
+    assert timeout_rule["status"] == "pass"
+    assert "超时" in timeout_rule["message"]
 
 
 def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
@@ -797,6 +806,73 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     assert feedback_trace["source_type"] == "live_blocker"
     assert feedback_trace["source_status"] == "external_submission_attempted_blocked"
     assert feedback_trace["source_reason"] == "submission_log_not_linked"
+
+
+def test_acceptance_runner_l3_records_timeout_as_live_blocker(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        run_mock.side_effect = subprocess.TimeoutExpired(
+            cmd=["submit"],
+            timeout=10,
+            output=f"partial https://www.liepin.com/job/123.shtml {resume}",
+            stderr=f"slow {profile} Verifier",
+        )
+
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert report.status == "pass"
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["external_submission_attempted"] is True
+    assert payload["command_timed_out"] is True
+    assert payload["timeout_seconds"] == 10
+    assert payload["returncode"] is None
+    assert payload["live_blocker"]["reason"] == "external_channel_command_timed_out"
+    assert payload["live_blocker"]["diagnostics"]["command_timed_out"] is True
+    assert payload["live_blocker"]["diagnostics"]["timeout_seconds"] == 10
+    assert payload["submit_safety_decision"]["post_run_blocker_reason"] == (
+        "external_channel_command_timed_out"
+    )
+    assert "https://www.liepin.com/job/123.shtml" not in payload["stdout_tail"]
+    assert str(resume) not in payload["stdout_tail"]
+    assert str(profile) not in payload["stderr_tail"]
+    assert "Verifier" not in payload["stderr_tail"]
+    feedback_trace = payload["post_submit_feedback_traceability"]
+    assert feedback_trace["source_type"] == "live_blocker"
+    assert feedback_trace["source_status"] == "external_submission_attempted_blocked"
+    assert feedback_trace["source_reason"] == "external_channel_command_timed_out"
+
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    timeout_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_timeout_recorded_as_live_blocker"
+    )
+    assert timeout_rule["status"] == "pass"
+    assert "超时已记录" in timeout_rule["message"]
 
 
 def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artifacts(

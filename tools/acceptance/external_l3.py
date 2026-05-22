@@ -95,26 +95,39 @@ def build_external_l3_validation(
         return base
 
     command = _submission_command(request)
-    completed = subprocess.run(
-        list(command),
-        cwd=str(root),
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=request["timeout_seconds"],
-    )
+    command_timed_out = False
+    timeout_seconds: int | None = None
+    try:
+        completed = subprocess.run(
+            list(command),
+            cwd=str(root),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=request["timeout_seconds"],
+        )
+        completed_stdout = completed.stdout
+        completed_stderr = completed.stderr
+        command_returncode: int | None = completed.returncode
+    except subprocess.TimeoutExpired as exc:
+        command_timed_out = True
+        timeout_seconds = int(exc.timeout)
+        completed_stdout = _timeout_output_text(exc.output)
+        completed_stderr = _timeout_output_text(exc.stderr)
+        command_returncode = None
     submission_traceability = _submission_traceability(
         root=root,
-        output=completed.stdout + completed.stderr,
+        output=completed_stdout + completed_stderr,
         expected_validation_run_id=run_id,
         expected_validation_path=str(request["external_l3_validation_path"]),
         expected_input_artifacts=base["live_input_artifacts"],
     )
-    command_succeeded = completed.returncode == 0
+    command_succeeded = command_returncode == 0 and not command_timed_out
     external_validated = command_succeeded and bool(
         submission_traceability["linked_to_validation"]
     )
     blocker_after_run = _post_command_blocker_reason(
+        command_timed_out=command_timed_out,
         command_succeeded=command_succeeded,
         submission_traceability=submission_traceability,
     )
@@ -124,6 +137,8 @@ def build_external_l3_validation(
                 "external_validated" if external_validated else "live_blocker_recorded"
             ),
             "external_submission_attempted": True,
+            "command_timed_out": command_timed_out,
+            "timeout_seconds": timeout_seconds,
             "command": _redacted_submission_command(command),
             "command_redaction": {
                 "raw_live_inputs_persisted": False,
@@ -136,9 +151,9 @@ def build_external_l3_validation(
                 ],
             },
             "live_output_redaction": _live_output_redaction_evidence(),
-            "returncode": completed.returncode,
-            "stdout_tail": _redacted_live_output_tail(completed.stdout, request),
-            "stderr_tail": _redacted_live_output_tail(completed.stderr, request),
+            "returncode": command_returncode,
+            "stdout_tail": _redacted_live_output_tail(completed_stdout, request),
+            "stderr_tail": _redacted_live_output_tail(completed_stderr, request),
             "live_result": {
                 "status": "success" if external_validated else "blocked_or_failed",
                 "log_hint": submission_traceability["log_hint"],
@@ -157,13 +172,15 @@ def build_external_l3_validation(
         readiness=base["live_run_readiness"],
         pre_submit_blocker_reason="",
         external_submission_attempted=True,
-        command_returncode=completed.returncode,
+        command_returncode=command_returncode,
         post_run_blocker_reason=blocker_after_run,
     )
     if not external_validated:
         base["live_blocker"] = _post_command_live_blocker(
             reason=blocker_after_run,
-            returncode=completed.returncode,
+            returncode=command_returncode,
+            command_timed_out=command_timed_out,
+            timeout_seconds=timeout_seconds,
             submission_traceability=submission_traceability,
         )
     base["post_submit_feedback_traceability"] = _post_submit_feedback_traceability(
@@ -246,6 +263,8 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             lines.extend(
                 [
                     f"- Returncode: `{blocker_diagnostics.get('returncode', '')}`",
+                    f"- 是否超时: `{blocker_diagnostics.get('command_timed_out', False)}`",
+                    f"- Timeout 秒数: `{blocker_diagnostics.get('timeout_seconds', '')}`",
                     f"- Log Hint: `{blocker_diagnostics.get('log_hint', '')}`",
                     f"- YAML: `{blocker_diagnostics.get('log_yaml_path', '')}`",
                     f"- JSON: `{blocker_diagnostics.get('log_json_path', '')}`",
@@ -574,6 +593,11 @@ def _next_action(reason: str) -> str:
             "检查 stdout_tail、stderr_tail 和持久化 submission log，确认 live "
             "blocker 已修复后再重试。"
         )
+    if reason == "external_channel_command_timed_out":
+        return (
+            "真实渠道命令超时；检查脱敏 stdout_tail、stderr_tail、页面状态和 "
+            "submission log 后再决定是否延长超时或重试。"
+        )
     return (
         "检查外部渠道日志，理解并修复 blocker 后再重试。"
     )
@@ -581,9 +605,12 @@ def _next_action(reason: str) -> str:
 
 def _post_command_blocker_reason(
     *,
+    command_timed_out: bool,
     command_succeeded: bool,
     submission_traceability: dict[str, Any],
 ) -> str:
+    if command_timed_out:
+        return "external_channel_command_timed_out"
     if not command_succeeded:
         return "external_channel_command_returned_nonzero"
     if not submission_traceability["linked_to_validation"]:
@@ -617,7 +644,9 @@ def _pre_submit_live_blocker(
 def _post_command_live_blocker(
     *,
     reason: str,
-    returncode: int,
+    returncode: int | None,
+    command_timed_out: bool,
+    timeout_seconds: int | None,
     submission_traceability: dict[str, Any],
 ) -> dict[str, Any]:
     failed_checks = list(submission_traceability.get("failed_checks") or [])
@@ -628,6 +657,8 @@ def _post_command_live_blocker(
         "failed_checks": failed_checks,
         "diagnostics": {
             "returncode": returncode,
+            "command_timed_out": command_timed_out,
+            "timeout_seconds": timeout_seconds,
             "log_hint": str(submission_traceability.get("log_hint", "")),
             "log_yaml_path": str(submission_traceability.get("log_yaml_path", "")),
             "log_json_path": str(submission_traceability.get("log_json_path", "")),
@@ -1367,6 +1398,14 @@ def _live_output_redaction_evidence() -> dict[str, Any]:
 
 def _redacted_live_output_tail(output: str, request: dict[str, Any]) -> str:
     return _redact_live_output(output, request)[-4000:]
+
+
+def _timeout_output_text(output: str | bytes | None) -> str:
+    if output is None:
+        return ""
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="replace")
+    return output
 
 
 def _redact_live_output(output: str, request: dict[str, Any]) -> str:
