@@ -230,6 +230,7 @@ case_contracts:
       - "external_l3_validation_record"
       - "live_channel_result_or_blocker"
       - "final_submit_gate_result"
+      - "bidirectional_submission_log_trace"
       - "no_secret_or_captcha_bypass_evidence"
     acceptance_rules:
       - rule_id: "external_l3_result_or_blocker_recorded"

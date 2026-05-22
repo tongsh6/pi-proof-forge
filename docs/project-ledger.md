@@ -21,7 +21,7 @@ Last updated: 2026-05-22
 - External L3: `run-acceptance --level L3` now writes a guarded live blocker or real-channel result record; missing explicit authorization or missing separate final-submit confirmation never attempts external submission.
 - External L3 handoff: validation records include an `operator_handoff` package with required env presence, pre-run checklist, forbidden inputs, and a redacted command template for a future authorized live run.
 - External L3 readiness: validation records include `live_run_readiness` gates and keep `submit_command_allowed=false` until every authorization and live-input gate passes.
-- External L3 traceability: successful external commands must link `external-l3-validation.json` to persisted `submission_log.yaml/json`; missing logs are recorded as `submission_log_not_linked`.
+- External L3 traceability: successful external commands must link `external-l3-validation.json` to persisted `submission_log.yaml/json`, and submission logs must write back `external_l3_validation_run_id/path`; missing or one-way-only links are recorded as `submission_log_not_linked`.
 
 ## Verification Anchors
 

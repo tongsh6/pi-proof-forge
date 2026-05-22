@@ -541,5 +541,6 @@ steps:
         - "separate_final_submit_confirmed"
         - "real_channel_result_or_live_blocker"
         - "submission_log_linked_to_l3_validation"
+        - "submission_log_links_back_to_l3_validation"
         - "successful_command_requires_submission_log"
         - "post_submit_or_blocker_feedback_traceability"
