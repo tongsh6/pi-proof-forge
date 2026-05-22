@@ -213,6 +213,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
     assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
     assert all("value" not in item for item in handoff["required_env"])
+    markdown = (evidence_path.parent / "external-l3-validation.md").read_text(
+        encoding="utf-8"
+    )
+    assert "# External L3 投递验证" in markdown
+    assert "## 授权交接包" in markdown
+    assert "| 必需环境变量 | 是否存在 | 是否敏感 |" in markdown
 
 
 def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(

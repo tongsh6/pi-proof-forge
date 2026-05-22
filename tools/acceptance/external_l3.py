@@ -148,17 +148,17 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     coverage = validation.get("coverage") or {}
     handoff = validation.get("operator_handoff") or {}
     lines = [
-        "# External L3 Submission Validation",
+        "# External L3 投递验证",
         "",
         f"- Run ID: `{validation['run_id']}`",
-        f"- Status: `{validation['status']}`",
-        f"- Channel: `{validation['channel']}`",
-        f"- External Submission Attempted: `{validation['external_submission_attempted']}`",
-        f"- Generated At: `{validation['generated_at']}`",
+        f"- 状态: `{validation['status']}`",
+        f"- 渠道: `{validation['channel']}`",
+        f"- 是否触发外部提交: `{validation['external_submission_attempted']}`",
+        f"- 生成时间: `{validation['generated_at']}`",
         "",
-        "## Coverage",
+        "## 覆盖项",
         "",
-        "| Check | Status |",
+        "| 检查项 | 状态 |",
         "|---|---:|",
     ]
     for key, status in coverage.items():
@@ -170,20 +170,20 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 "## Live Blocker",
                 "",
                 f"- Reason: `{blocker.get('reason', '')}`",
-                f"- Category: `{blocker.get('category', '')}`",
-                f"- Next Action: {blocker.get('next_action', '')}",
+                f"- 分类: `{blocker.get('category', '')}`",
+                f"- 下一步: {blocker.get('next_action', '')}",
             ]
         )
     if handoff:
         lines.extend(
             [
                 "",
-                "## Operator Handoff",
+                "## 授权交接包",
                 "",
-                f"- Status: `{handoff.get('status', '')}`",
-                f"- Next Action: {handoff.get('next_action', '')}",
+                f"- 状态: `{handoff.get('status', '')}`",
+                f"- 下一步: {handoff.get('next_action', '')}",
                 "",
-                "| Required Env | Present | Sensitive |",
+                "| 必需环境变量 | 是否存在 | 是否敏感 |",
                 "|---|---:|---:|",
             ]
         )
@@ -202,7 +202,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
         lines.extend(
             [
                 "",
-                "### Pre-run Checklist",
+                "### 运行前检查清单",
                 "",
             ]
         )
