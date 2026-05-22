@@ -429,6 +429,7 @@ Expected evidence:
 - 输入产物证据：`external-l3-validation.json` 必须包含 `live_input_artifacts`，用 scheme/host 与文件 SHA256 证明本次验证绑定到具体输入产物，同时不持久化 Job URL 原值、确认值或文件原始内容。
 - 命令审计证据：真实渠道命令执行后，validation record 只允许保存脱敏 command 和脱敏后的 stdout/stderr 尾部，不能保存 Job URL、resume/profile 路径、确认 job id 或确认 recruiter 原值。
 - 提交安全证据：`external-l3-validation.json` 必须包含 `submit_safety_decision`，记录最终提交命令是否被阻断、允许待执行或已执行，并保留授权、最终确认、真实输入和禁止凭据/验证码输入的决策依据。
+- 授权确认证据：`operator_handoff.authorization_packet` 必须记录必需确认声明、证据清单、中止条件、脱敏策略和禁止输入项，且不持久化原始确认值。
 - 追溯证据：真实渠道命令即使返回成功，也必须解析并确认 `submission_log.yaml/json` 存在，且 submission log 写回本次 `external_l3_validation_run_id`、`external_l3_validation_path` 和匹配 validation record 的输入产物指纹；否则记录为 `submission_log_not_linked` blocker。
 - 诊断证据：`submission_traceability` 必须记录 `checks` 与 `failed_checks`，让操作者能区分缺日志、JSON 不可解析、反向链接不匹配或输入产物指纹不匹配。
 - Blocker 诊断证据：真实渠道命令执行后产生 live blocker 时，`live_blocker.failed_checks` 与 `live_blocker.diagnostics` 必须直接汇总 returncode、submission log 路径和 traceability checks。

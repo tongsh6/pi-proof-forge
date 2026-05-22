@@ -543,6 +543,7 @@ steps:
         - "live_submission_command_redacted_in_validation_record"
         - "live_submission_output_tails_redacted_in_validation_record"
         - "submit_safety_decision_recorded"
+        - "structured_authorization_packet_recorded_without_raw_values"
         - "explicit_user_authorized_live_run"
         - "separate_final_submit_confirmed"
         - "real_channel_result_or_live_blocker"
