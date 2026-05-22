@@ -236,6 +236,11 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         item["name"] for item in forbidden_audit["inputs"]
     } == {"password", "captcha_code", "sms_code", "raw_api_key"}
     assert all(item["raw_value_persisted"] is False for item in forbidden_audit["inputs"])
+    target_audit = payload["target_confirmation_audit"]
+    assert target_audit["job_url_has_parseable_job_id"] is False
+    assert target_audit["confirm_submit_job_id_present"] is False
+    assert target_audit["job_id_matches_confirmation"] is False
+    assert target_audit["raw_values_persisted"] is False
     input_artifacts = payload["live_input_artifacts"]
     assert input_artifacts["job_url"]["present"] is False
     assert input_artifacts["job_url"]["raw_value_persisted"] is False
@@ -314,6 +319,8 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 是否启用: `True`" in markdown
     assert "## 禁止输入审计" in markdown
     assert "- 禁止输入是否出现: `False`" in markdown
+    assert "## 目标确认审计" in markdown
+    assert "- URL 岗位 ID 与确认值是否一致: `False`" in markdown
     assert "| Gate | 状态 | 说明 |" in markdown
     assert "## 授权交接包" in markdown
     assert "### 授权确认包" in markdown
@@ -384,6 +391,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert forbidden_rule["stage"] == "submissions"
     assert forbidden_rule["status"] == "pass"
     assert "禁止输入审计" in forbidden_rule["message"]
+    target_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_target_confirmation_matches_url"
+    )
+    assert target_rule["level"] == "L3"
+    assert target_rule["stage"] == "submissions"
+    assert target_rule["status"] == "pass"
+    assert "目标确认审计" in target_rule["message"]
     command_rule = next(
         step
         for step in journey_payload["steps"]
@@ -585,6 +601,69 @@ def test_acceptance_runner_l3_rejects_forbidden_secret_or_challenge_inputs(
     )
     assert forbidden_rule["status"] == "pass"
     assert "阻断在 submit 命令前" in forbidden_rule["message"]
+
+
+def test_acceptance_runner_l3_blocks_confirm_job_id_mismatch_before_submit(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123456789.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "987654321",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    payload_text = json.dumps(payload, ensure_ascii=False)
+    assert report.status == "pass"
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["external_submission_attempted"] is False
+    assert payload["live_blocker"]["reason"] == "target_confirmation_mismatch"
+    assert "target_job_id_matches_confirmation" in payload["live_blocker"]["failed_checks"]
+    assert "123456789" not in payload_text
+    assert "987654321" not in payload_text
+    target_audit = payload["target_confirmation_audit"]
+    assert target_audit["job_url_has_parseable_job_id"] is True
+    assert target_audit["confirm_submit_job_id_present"] is True
+    assert target_audit["job_id_matches_confirmation"] is False
+    assert target_audit["raw_values_persisted"] is False
+    assert (
+        payload["submit_safety_decision"]["target_confirmation_audit"]
+        == target_audit
+    )
+    readiness = payload["live_run_readiness"]
+    assert "target_job_id_extractable" not in readiness["missing_gates"]
+    assert "target_job_id_matches_confirmation" in readiness["missing_gates"]
+    diagnostics = payload["live_blocker"]["diagnostics"]["target_confirmation_audit"]
+    assert diagnostics["job_id_matches_confirmation"] is False
+    assert run_mock.call_count == 0
+
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    target_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_target_confirmation_matches_url"
+    )
+    assert target_rule["status"] == "pass"
+    assert "阻断 URL 岗位 ID 与确认岗位 ID 不一致" in target_rule["message"]
 
 
 def test_acceptance_runner_l3_records_invalid_live_input_gates(
@@ -848,6 +927,11 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["rate_limit_policy"]["cooldown_seconds"] == 900
     assert payload["rate_limit_policy"]["daily_limit"] == 30
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
+    target_audit = payload["target_confirmation_audit"]
+    assert target_audit["job_url_has_parseable_job_id"] is True
+    assert target_audit["confirm_submit_job_id_present"] is True
+    assert target_audit["job_id_matches_confirmation"] is True
+    assert target_audit["raw_values_persisted"] is False
     assert payload["submission_traceability"]["linked_to_validation"] is True
     assert payload["submission_traceability"]["log_links_back_to_validation"] is True
     assert (

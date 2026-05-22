@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import hashlib
@@ -59,6 +60,7 @@ def build_external_l3_validation(
         "live_input_artifacts": _live_input_artifacts(request),
         "rate_limit_policy": _rate_limit_policy(request),
         "forbidden_input_audit": request["forbidden_input_audit"],
+        "target_confirmation_audit": request["target_confirmation_audit"],
     }
     base["live_run_readiness"] = _live_run_readiness(
         request=request,
@@ -84,6 +86,7 @@ def build_external_l3_validation(
             input_artifacts=base["live_input_artifacts"],
             rate_limit_policy=base["rate_limit_policy"],
             forbidden_input_audit=base["forbidden_input_audit"],
+            target_confirmation_audit=base["target_confirmation_audit"],
         )
         base.update(
             {
@@ -376,6 +379,19 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"`{item.get('present', False)}` | "
                 f"`{item.get('category', '')}` |"
             )
+    target_confirmation_audit = validation.get("target_confirmation_audit") or {}
+    if target_confirmation_audit:
+        lines.extend(
+            [
+                "",
+                "## 目标确认审计",
+                "",
+                f"- Job URL 是否可解析岗位 ID: `{target_confirmation_audit.get('job_url_has_parseable_job_id', False)}`",
+                f"- 确认岗位 ID 是否已提供: `{target_confirmation_audit.get('confirm_submit_job_id_present', False)}`",
+                f"- URL 岗位 ID 与确认值是否一致: `{target_confirmation_audit.get('job_id_matches_confirmation', False)}`",
+                f"- 原始确认值是否持久化: `{target_confirmation_audit.get('raw_values_persisted', True)}`",
+            ]
+        )
     if output_redaction:
         lines.extend(
             [
@@ -550,7 +566,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
 
 
 def _request_from_env(root: Path, default_timeout_seconds: int) -> dict[str, Any]:
-    return {
+    request = {
         "authorized": _env_bool("PIPF_EXTERNAL_L3_AUTHORIZED"),
         "final_submit_confirmed": _env_bool("PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED"),
         "channel": os.environ.get("PIPF_EXTERNAL_L3_CHANNEL", "liepin").strip()
@@ -591,6 +607,8 @@ def _request_from_env(root: Path, default_timeout_seconds: int) -> dict[str, Any
         "headless": _env_bool("PIPF_EXTERNAL_L3_HEADLESS"),
         "root": str(root),
     }
+    request["target_confirmation_audit"] = _target_confirmation_audit(request)
+    return request
 
 
 def _forbidden_input_audit() -> dict[str, Any]:
@@ -614,6 +632,30 @@ def _forbidden_input_audit() -> dict[str, Any]:
 def _forbidden_inputs_present(request: dict[str, Any]) -> bool:
     audit = request.get("forbidden_input_audit") or {}
     return bool(audit.get("forbidden_inputs_present", False))
+
+
+def _target_confirmation_audit(request: dict[str, Any]) -> dict[str, Any]:
+    url_job_id = _extract_liepin_job_id(str(request.get("job_url", "")))
+    confirm_job_id = str(request.get("confirm_submit_job_id", "")).strip()
+    return {
+        "source": "job_url_path",
+        "job_url_has_parseable_job_id": bool(url_job_id),
+        "confirm_submit_job_id_present": bool(confirm_job_id),
+        "job_id_matches_confirmation": bool(url_job_id)
+        and bool(confirm_job_id)
+        and url_job_id == confirm_job_id,
+        "raw_values_persisted": False,
+    }
+
+
+def _target_confirmation_ready(request: dict[str, Any]) -> bool:
+    audit = request.get("target_confirmation_audit") or {}
+    return bool(audit.get("job_id_matches_confirmation", False))
+
+
+def _target_job_id_extractable(request: dict[str, Any]) -> bool:
+    audit = request.get("target_confirmation_audit") or {}
+    return bool(audit.get("job_url_has_parseable_job_id", False))
 
 
 def _blocker_reason(request: dict[str, Any]) -> str:
@@ -649,6 +691,10 @@ def _blocker_reason(request: dict[str, Any]) -> str:
         return "invalid_live_profile_yaml"
     if not str(request["job_url"]).startswith(("http://", "https://")):
         return "invalid_live_job_url"
+    if not _target_job_id_extractable(request):
+        return "invalid_live_job_url"
+    if not _target_confirmation_ready(request):
+        return "target_confirmation_mismatch"
     return ""
 
 
@@ -690,7 +736,12 @@ def _next_action(reason: str) -> str:
     if reason == "invalid_live_profile_yaml":
         return "将 PIPF_EXTERNAL_L3_PROFILE 指向已审核的 YAML 文件。"
     if reason == "invalid_live_job_url":
-        return "为真实渠道目标提供 http 或 https 岗位 URL。"
+        return "为真实渠道目标提供包含可解析岗位 ID 的 http 或 https 岗位 URL。"
+    if reason == "target_confirmation_mismatch":
+        return (
+            "复核 PIPF_EXTERNAL_L3_JOB_URL 与 PIPF_EXTERNAL_L3_CONFIRM_JOB_ID；"
+            "确认岗位 ID 必须与 URL 中解析到的岗位 ID 一致。"
+        )
     if reason == "unsupported_external_l3_channel":
         return (
             "当前 P0 L3 只支持 liepin；如需其他渠道，先扩展渠道适配器。"
@@ -758,6 +809,7 @@ def _pre_submit_live_blocker(
     input_artifacts: dict[str, Any],
     rate_limit_policy: dict[str, Any],
     forbidden_input_audit: dict[str, Any],
+    target_confirmation_audit: dict[str, Any],
 ) -> dict[str, Any]:
     missing_gates = list(readiness.get("missing_gates") or [])
     return {
@@ -774,6 +826,7 @@ def _pre_submit_live_blocker(
             "live_input_artifacts": input_artifacts,
             "rate_limit_policy": rate_limit_policy,
             "forbidden_input_audit": forbidden_input_audit,
+            "target_confirmation_audit": target_confirmation_audit,
         },
     }
 
@@ -1139,6 +1192,7 @@ def _operator_handoff(
         "next_action": next_action,
         "required_env": _required_env_handoff(request),
         "forbidden_input_audit": request["forbidden_input_audit"],
+        "target_confirmation_audit": request["target_confirmation_audit"],
         "pre_run_checklist": [
             "用户已明确授权接触真实外部渠道。",
             "用户已单独确认允许最终提交路径进入真实渠道命令。",
@@ -1199,6 +1253,7 @@ def _operator_authorization_packet(
             "live_input_artifacts",
             "rate_limit_policy",
             "forbidden_input_audit",
+            "target_confirmation_audit",
             "command_redaction",
             "live_output_redaction",
             "post_submit_feedback_traceability",
@@ -1246,6 +1301,8 @@ def _live_run_readiness(
     profile_path_present = bool(request["profile_path"])
     rate_limit_enabled = _rate_limit_enabled(request)
     forbidden_inputs_absent = not _forbidden_inputs_present(request)
+    target_job_id_extractable = _target_job_id_extractable(request)
+    target_confirmation_matches = _target_confirmation_ready(request)
     gates = [
         _readiness_gate(
             gate_id="user_authorization",
@@ -1285,6 +1342,16 @@ def _live_run_readiness(
             passed=job_url_present
             and str(request["job_url"]).startswith(("http://", "https://")),
             detail="真实岗位 URL 使用 http/https",
+        ),
+        _readiness_gate(
+            gate_id="target_job_id_extractable",
+            passed=target_job_id_extractable,
+            detail="真实岗位 URL 可解析出岗位 ID",
+        ),
+        _readiness_gate(
+            gate_id="target_job_id_matches_confirmation",
+            passed=target_confirmation_matches,
+            detail="URL 岗位 ID 与确认岗位 ID 一致",
         ),
         _readiness_gate(
             gate_id="resume_pdf_present",
@@ -1353,6 +1420,8 @@ def _submit_safety_decision(
         "confirm_recruiter_present",
         "rate_limit_policy_enabled",
         "forbidden_sensitive_inputs_absent",
+        "target_job_id_extractable",
+        "target_job_id_matches_confirmation",
     }
     live_inputs_ready = all(
         gate["status"] == "pass"
@@ -1384,6 +1453,7 @@ def _submit_safety_decision(
         "credentials_or_challenge_inputs_accepted": False,
         "forbidden_inputs_present": _forbidden_inputs_present(request),
         "forbidden_input_audit": request["forbidden_input_audit"],
+        "target_confirmation_audit": request["target_confirmation_audit"],
         "confirmation_scope": [
             "用户显式授权接触真实外部渠道",
             "用户单独确认允许最终提交路径进入真实渠道命令",
@@ -1455,6 +1525,13 @@ def _rate_limit_enabled(request: dict[str, Any]) -> bool:
         and int(request["rate_limit_cooldown_seconds"]) > 0
         and int(request["rate_limit_daily_limit"]) > 0
     )
+
+
+def _extract_liepin_job_id(job_url: str) -> str:
+    match = re.search(r"/job/([^/?#]+)", job_url)
+    if not match:
+        return ""
+    return match.group(1).split(".")[0].strip()
 
 
 def _file_artifact_evidence(

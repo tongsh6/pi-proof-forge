@@ -831,6 +831,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_forbidden_inputs_rejected"] = (
             _external_l3_forbidden_inputs_result(external_l3_step)
         )
+        results["external_l3_target_confirmation_matches_url"] = (
+            _external_l3_target_confirmation_result(external_l3_step)
+        )
         results["external_l3_live_command_redacted"] = (
             _external_l3_live_command_redaction_result(external_l3_step)
         )
@@ -1107,6 +1110,64 @@ def _external_l3_forbidden_inputs_result(step: AcceptanceStep) -> JourneyStepRes
         status="fail",
         evidence=step.evidence,
         message="External L3 禁止输入审计缺失、持久化原值，或未在 submit 前阻断 forbidden inputs。",
+    )
+
+
+def _external_l3_target_confirmation_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 目标确认审计证据不可读取: {exc}",
+        )
+    audit = payload.get("target_confirmation_audit") or {}
+    raw_values_not_persisted = audit.get("raw_values_persisted") is False
+    blocker_reason = (payload.get("live_blocker") or {}).get("reason", "")
+    safety_decision = payload.get("submit_safety_decision") or {}
+    safety_audit = safety_decision.get("target_confirmation_audit", {})
+    if (
+        audit.get("confirm_submit_job_id_present") is False
+        and raw_values_not_persisted
+        and payload.get("external_submission_attempted") is False
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 目标确认审计已记录；本次缺少确认岗位 ID，已由 readiness blocker 覆盖。",
+        )
+    if (
+        blocker_reason == "target_confirmation_mismatch"
+        and raw_values_not_persisted
+        and payload.get("external_submission_attempted") is False
+        and safety_audit.get("job_id_matches_confirmation") is False
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 已在 submit 命令前阻断 URL 岗位 ID 与确认岗位 ID 不一致。",
+        )
+    if (
+        audit.get("job_url_has_parseable_job_id") is True
+        and audit.get("job_id_matches_confirmation") is True
+        and raw_values_not_persisted
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 目标确认审计已证明 URL 岗位 ID 与确认岗位 ID 一致，且未持久化原值。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 目标确认审计缺失、持久化原值，或未阻断 URL/确认岗位 ID 不一致。",
     )
 
 
