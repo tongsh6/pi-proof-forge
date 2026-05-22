@@ -540,6 +540,7 @@ steps:
         - "live_input_file_and_url_validation_recorded"
         - "live_input_artifact_fingerprints_recorded_without_raw_values"
         - "live_submission_command_redacted_in_validation_record"
+        - "live_submission_output_tails_redacted_in_validation_record"
         - "submit_safety_decision_recorded"
         - "explicit_user_authorized_live_run"
         - "separate_final_submit_confirmed"
