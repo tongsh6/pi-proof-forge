@@ -655,6 +655,8 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     assert payload["status"] == "live_blocker_recorded"
     assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
     assert payload["submission_traceability"]["linked_to_validation"] is False
+    assert "submission_log_hint_found" in payload["submission_traceability"]["failed_checks"]
+    assert "submission_log_json_exists" in payload["submission_traceability"]["failed_checks"]
     submit_decision = payload["submit_safety_decision"]
     assert submit_decision["decision"] == "allowed_and_executed"
     assert submit_decision["submit_command_allowed"] is True
@@ -724,6 +726,10 @@ def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artif
     assert (
         payload["submission_traceability"]["submission_log_input_artifacts_match"]
         is False
+    )
+    assert (
+        "input_artifacts_match_validation"
+        in payload["submission_traceability"]["failed_checks"]
     )
     assert payload["submission_traceability"]["linked_to_validation"] is False
 

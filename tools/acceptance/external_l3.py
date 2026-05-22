@@ -335,12 +335,34 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- JSON 是否存在: `{submission_traceability.get('log_json_exists', False)}`",
                 f"- Submission log 是否反向链接: `{submission_traceability.get('log_links_back_to_validation', False)}`",
                 f"- Submission log 输入产物是否匹配: `{submission_traceability.get('submission_log_input_artifacts_match', False)}`",
+                f"- Failed Checks: `{', '.join(submission_traceability.get('failed_checks', []))}`",
                 f"- 预期 validation run id: `{submission_traceability.get('expected_external_l3_validation_run_id', '')}`",
                 f"- 记录 validation run id: `{submission_traceability.get('logged_external_l3_validation_run_id', '')}`",
                 f"- 预期 validation path: `{submission_traceability.get('expected_external_l3_validation_path', '')}`",
                 f"- 记录 validation path: `{submission_traceability.get('logged_external_l3_validation_path', '')}`",
             ]
         )
+        trace_checks = submission_traceability.get("checks") or []
+        if trace_checks:
+            lines.extend(
+                [
+                    "",
+                    "| 检查项 | 状态 | 说明 |",
+                    "|---|---:|---|",
+                ]
+            )
+            for check in trace_checks:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            f"`{check.get('id', '')}`",
+                            f"`{check.get('status', '')}`",
+                            str(check.get("detail", "")),
+                        ]
+                    )
+                    + " |"
+                )
     if feedback_traceability:
         lines.extend(
             [
@@ -552,6 +574,15 @@ def _submission_traceability(
         expected=expected_input_artifacts,
         actual=logged_input_artifacts if isinstance(logged_input_artifacts, dict) else {},
     )
+    checks = _submission_traceability_checks(
+        yaml_path=yaml_path,
+        json_path=json_path,
+        parse_error=parse_error,
+        log_payload=log_payload,
+        run_id_matches=logged_validation_run_id == expected_validation_run_id,
+        path_matches=logged_validation_path == expected_validation_path,
+        input_artifacts_match=input_artifacts_match,
+    )
     return {
         "log_hint": log_hint,
         "log_yaml_path": str(yaml_path) if yaml_path else "",
@@ -565,6 +596,10 @@ def _submission_traceability(
         "log_links_back_to_validation": log_links_back,
         "submission_log_input_artifacts_match": input_artifacts_match,
         "log_json_parse_error": parse_error,
+        "checks": checks,
+        "failed_checks": [
+            check["id"] for check in checks if check["status"] != "pass"
+        ],
         "linked_to_validation": bool(
             yaml_path
             and json_path
@@ -573,6 +608,68 @@ def _submission_traceability(
             and log_links_back
             and input_artifacts_match
         ),
+    }
+
+
+def _submission_traceability_checks(
+    *,
+    yaml_path: Path | None,
+    json_path: Path | None,
+    parse_error: str,
+    log_payload: dict[str, Any],
+    run_id_matches: bool,
+    path_matches: bool,
+    input_artifacts_match: bool,
+) -> list[dict[str, str]]:
+    return [
+        _traceability_check(
+            check_id="submission_log_hint_found",
+            passed=yaml_path is not None,
+            detail="命令输出包含 submission_log.yaml 路径",
+        ),
+        _traceability_check(
+            check_id="submission_log_yaml_exists",
+            passed=bool(yaml_path and yaml_path.exists()),
+            detail="submission_log.yaml 存在",
+        ),
+        _traceability_check(
+            check_id="submission_log_json_exists",
+            passed=bool(json_path and json_path.exists()),
+            detail="submission_log.json 存在",
+        ),
+        _traceability_check(
+            check_id="submission_log_json_parseable",
+            passed=bool(log_payload) and not parse_error,
+            detail=parse_error or "submission_log.json 可解析",
+        ),
+        _traceability_check(
+            check_id="external_l3_validation_run_id_matches",
+            passed=run_id_matches,
+            detail="submission log 反向链接本次 validation run id",
+        ),
+        _traceability_check(
+            check_id="external_l3_validation_path_matches",
+            passed=path_matches,
+            detail="submission log 反向链接本次 validation path",
+        ),
+        _traceability_check(
+            check_id="input_artifacts_match_validation",
+            passed=input_artifacts_match,
+            detail="submission log 输入产物指纹匹配 validation record",
+        ),
+    ]
+
+
+def _traceability_check(
+    *,
+    check_id: str,
+    passed: bool,
+    detail: str,
+) -> dict[str, str]:
+    return {
+        "id": check_id,
+        "status": "pass" if passed else "fail",
+        "detail": detail,
     }
 
 
