@@ -478,6 +478,35 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
                 "status": "success",
                 "external_l3_validation_run_id": "acceptance_external_l3",
                 "external_l3_validation_path": validation_path,
+                "input_artifacts": {
+                    "job_url": {
+                        "present": True,
+                        "scheme": "https",
+                        "hostname": "www.liepin.com",
+                        "supported_scheme": True,
+                        "raw_value_persisted": False,
+                    },
+                    "files": [
+                        {
+                            "id": "resume_pdf",
+                            "basename": "resume.pdf",
+                            "suffix": ".pdf",
+                            "size_bytes": len(b"%PDF-1.4\n"),
+                            "sha256": hashlib.sha256(b"%PDF-1.4\n").hexdigest(),
+                            "raw_content_persisted": False,
+                        },
+                        {
+                            "id": "profile_yaml",
+                            "basename": "profile.yaml",
+                            "suffix": ".yaml",
+                            "size_bytes": len(b"id: profile\n"),
+                            "sha256": hashlib.sha256(
+                                b"id: profile\n"
+                            ).hexdigest(),
+                            "raw_content_persisted": False,
+                        },
+                    ],
+                },
             }
         )
         + "\n",
@@ -525,6 +554,10 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["coverage"]["explicit_final_submit_gate"] == "pass"
     assert payload["submission_traceability"]["linked_to_validation"] is True
     assert payload["submission_traceability"]["log_links_back_to_validation"] is True
+    assert (
+        payload["submission_traceability"]["submission_log_input_artifacts_match"]
+        is True
+    )
     assert (
         payload["submission_traceability"]["logged_external_l3_validation_run_id"]
         == "acceptance_external_l3"
@@ -631,6 +664,68 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     assert feedback_trace["source_type"] == "live_blocker"
     assert feedback_trace["source_status"] == "external_submission_attempted_blocked"
     assert feedback_trace["source_reason"] == "submission_log_not_linked"
+
+
+def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artifacts(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    log_dir = tmp_path / "outputs" / "submissions" / "liepin" / "live"
+    log_dir.mkdir(parents=True)
+    log_yaml = log_dir / "submission_log.yaml"
+    log_json = log_dir / "submission_log.json"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    log_yaml.write_text('status: "success"\n', encoding="utf-8")
+    log_json.write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "external_l3_validation_run_id": "acceptance_external_l3",
+                "external_l3_validation_path": (
+                    "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+                ),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        run_mock.return_value = Mock(
+            returncode=0,
+            stdout=f"[DONE] submit log: {log_yaml}\n",
+            stderr="",
+        )
+
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
+    assert payload["submission_traceability"]["log_links_back_to_validation"] is True
+    assert (
+        payload["submission_traceability"]["submission_log_input_artifacts_match"]
+        is False
+    )
+    assert payload["submission_traceability"]["linked_to_validation"] is False
 
 
 def test_acceptance_runner_failure_returns_fail(tmp_path: Path) -> None:

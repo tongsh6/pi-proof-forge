@@ -107,6 +107,7 @@ def build_external_l3_validation(
         output=completed.stdout + completed.stderr,
         expected_validation_run_id=run_id,
         expected_validation_path=str(request["external_l3_validation_path"]),
+        expected_input_artifacts=base["live_input_artifacts"],
     )
     command_succeeded = completed.returncode == 0
     external_validated = command_succeeded and bool(
@@ -333,6 +334,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- YAML 是否存在: `{submission_traceability.get('log_yaml_exists', False)}`",
                 f"- JSON 是否存在: `{submission_traceability.get('log_json_exists', False)}`",
                 f"- Submission log 是否反向链接: `{submission_traceability.get('log_links_back_to_validation', False)}`",
+                f"- Submission log 输入产物是否匹配: `{submission_traceability.get('submission_log_input_artifacts_match', False)}`",
                 f"- 预期 validation run id: `{submission_traceability.get('expected_external_l3_validation_run_id', '')}`",
                 f"- 记录 validation run id: `{submission_traceability.get('logged_external_l3_validation_run_id', '')}`",
                 f"- 预期 validation path: `{submission_traceability.get('expected_external_l3_validation_path', '')}`",
@@ -528,6 +530,7 @@ def _submission_traceability(
     output: str,
     expected_validation_run_id: str,
     expected_validation_path: str,
+    expected_input_artifacts: dict[str, Any],
 ) -> dict[str, Any]:
     log_hint = _extract_submission_log_hint(output)
     yaml_path = _extract_submission_yaml_path(root=root, output=output)
@@ -544,6 +547,11 @@ def _submission_traceability(
         and logged_validation_run_id == expected_validation_run_id
         and logged_validation_path == expected_validation_path
     )
+    logged_input_artifacts = log_payload.get("input_artifacts") if log_payload else {}
+    input_artifacts_match = _input_artifacts_match(
+        expected=expected_input_artifacts,
+        actual=logged_input_artifacts if isinstance(logged_input_artifacts, dict) else {},
+    )
     return {
         "log_hint": log_hint,
         "log_yaml_path": str(yaml_path) if yaml_path else "",
@@ -555,6 +563,7 @@ def _submission_traceability(
         "logged_external_l3_validation_run_id": logged_validation_run_id,
         "logged_external_l3_validation_path": logged_validation_path,
         "log_links_back_to_validation": log_links_back,
+        "submission_log_input_artifacts_match": input_artifacts_match,
         "log_json_parse_error": parse_error,
         "linked_to_validation": bool(
             yaml_path
@@ -562,8 +571,51 @@ def _submission_traceability(
             and yaml_path.exists()
             and json_path.exists()
             and log_links_back
+            and input_artifacts_match
         ),
     }
+
+
+def _input_artifacts_match(
+    *,
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> bool:
+    expected_job_url = expected.get("job_url") or {}
+    actual_job_url = actual.get("job_url") or {}
+    if not isinstance(expected_job_url, dict) or not isinstance(actual_job_url, dict):
+        return False
+    if expected_job_url.get("scheme", "") != actual_job_url.get("scheme", ""):
+        return False
+    if expected_job_url.get("hostname", "") != actual_job_url.get("hostname", ""):
+        return False
+
+    expected_files = _artifact_files_by_id(expected)
+    actual_files = _artifact_files_by_id(actual)
+    for artifact_id, expected_file in expected_files.items():
+        actual_file = actual_files.get(artifact_id)
+        if actual_file is None:
+            return False
+        for field in ("basename", "suffix", "size_bytes", "sha256"):
+            if expected_file.get(field) != actual_file.get(field):
+                return False
+        if actual_file.get("raw_content_persisted") is not False:
+            return False
+    return bool(expected_files)
+
+
+def _artifact_files_by_id(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    files = payload.get("files") or []
+    if not isinstance(files, list):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        artifact_id = str(item.get("id", ""))
+        if artifact_id:
+            result[artifact_id] = item
+    return result
 
 
 def _read_submission_json(json_path: Path | None) -> tuple[dict[str, Any], str]:
