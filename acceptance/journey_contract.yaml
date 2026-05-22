@@ -316,7 +316,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须保证关联 submission log 的 steps.detail 不持久化 Job URL、resume/profile 路径、确认岗位 ID 或确认 recruiter 原文。"
+        message: "External L3 验收必须保证关联 submission log 的 steps.detail 不持久化 Job URL、resume/profile 路径、确认岗位 ID、确认 recruiter 或页面读取到的岗位/招聘方原文。"
       - rule_id: "external_l3_authorization_packet_recorded"
         level: "L3"
         stage: "submissions"
