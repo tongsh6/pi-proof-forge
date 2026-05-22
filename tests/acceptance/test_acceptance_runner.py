@@ -206,6 +206,31 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert payload["coverage"]["no_secret_or_captcha_bypass"] == "pass"
 
 
+def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
+    tmp_path: Path,
+) -> None:
+    with patch.dict(os.environ, {}, clear=True):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    external_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_result_or_blocker_recorded"
+    )
+    assert external_rule["level"] == "L3"
+    assert external_rule["stage"] == "submissions"
+    assert external_rule["status"] == "pass"
+    assert "external-l3-validation.json" in external_rule["evidence"]
+    assert "explicit_user_authorization_required" in external_rule["message"]
+
+
 def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
     tmp_path: Path,
 ) -> None:

@@ -811,6 +811,15 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
             message=feedback_iteration_step.message,
         )
 
+    external_l3_step = _find_step(report, "external_l3_submission_validation")
+    if external_l3_step is not None:
+        status = "pass" if external_l3_step.status == "pass" else "fail"
+        results["external_l3_result_or_blocker_recorded"] = JourneyStepResult(
+            status=status,
+            evidence=external_l3_step.evidence,
+            message=external_l3_step.message,
+        )
+
     l2_step = next((step for step in report.steps if step.level == "L2"), None)
     if l2_step is not None and l2_step.status != "not_started":
         results["lm_studio_visible_to_run_pages"] = JourneyStepResult(
