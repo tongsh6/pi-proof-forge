@@ -554,6 +554,7 @@ steps:
         - "handoff_command_template_matches_effective_rate_limit_policy"
         - "handoff_runtime_options_recorded_for_reproducible_live_run"
         - "handoff_command_template_shell_safe_for_copy_paste"
+        - "handoff_command_template_rendered_in_markdown_report"
         - "explicit_user_authorized_live_run"
         - "separate_final_submit_confirmed"
         - "real_channel_result_or_live_blocker"
