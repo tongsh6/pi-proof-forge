@@ -2488,6 +2488,7 @@ def _external_l3_manual_session_readiness_result(
         "session_dir_exists",
         "channel_session_dir_exists",
         "channel_session_dir_has_state",
+        "channel_session_state_markers",
         "session_storage_ready",
     ):
         if field not in session_readiness:
@@ -2533,6 +2534,7 @@ def _external_l3_manual_session_readiness_result(
         "- 会话根目录是否存在:",
         "- Liepin 持久化会话目录是否存在:",
         "- Liepin 持久化会话目录是否包含状态文件:",
+        "- Liepin 持久化会话状态标记:",
         "- 会话存储是否就绪:",
         "- 自动化是否输入凭据: `False`",
         "- 自动化是否处理验证码或短信码: `False`",

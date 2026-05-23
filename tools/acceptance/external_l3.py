@@ -60,6 +60,14 @@ _BROWSER_ARTIFACT_PATH_MARKERS = (
     ".html",
     ".htm",
 )
+_SESSION_STATE_MARKER_PATHS = (
+    "Local State",
+    "Default/Preferences",
+    "Default/Cookies",
+    "Default/Network/Cookies",
+    "Cookies",
+    "storage-state.json",
+)
 
 
 def build_external_l3_validation(
@@ -485,6 +493,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 会话根目录是否存在: `{session_readiness.get('session_dir_exists', False)}`",
                 f"- Liepin 持久化会话目录是否存在: `{session_readiness.get('channel_session_dir_exists', False)}`",
                 f"- Liepin 持久化会话目录是否包含状态文件: `{session_readiness.get('channel_session_dir_has_state', False)}`",
+                f"- Liepin 持久化会话状态标记: `{', '.join(session_readiness.get('channel_session_state_markers', []))}`",
                 f"- 会话存储是否就绪: `{session_readiness.get('session_storage_ready', False)}`",
                 f"- 必须人工登录: `{session_readiness.get('manual_login_required', True)}`",
                 f"- 自动化是否输入凭据: `{session_readiness.get('browser_automation_enters_credentials', True)}`",
@@ -895,7 +904,8 @@ def _forbidden_inputs_present(request: dict[str, Any]) -> bool:
 def _session_readiness(request: dict[str, Any]) -> dict[str, Any]:
     session_dir = _session_dir_path(request)
     channel_session_dir = _channel_session_dir_path(request)
-    channel_session_has_state = _session_dir_has_persistent_state(channel_session_dir)
+    state_markers = _session_state_markers(channel_session_dir)
+    channel_session_has_state = bool(state_markers)
     return {
         "session_ready_confirmed": bool(request.get("session_ready_confirmed", False)),
         "session_dir": str(request.get("session_dir", "")),
@@ -903,6 +913,7 @@ def _session_readiness(request: dict[str, Any]) -> dict[str, Any]:
         "channel_session_dir": str(channel_session_dir),
         "channel_session_dir_exists": channel_session_dir.is_dir(),
         "channel_session_dir_has_state": channel_session_has_state,
+        "channel_session_state_markers": state_markers,
         "session_storage_ready": (
             session_dir.is_dir()
             and channel_session_dir.is_dir()
@@ -2582,7 +2593,7 @@ def _session_storage_ready(request: dict[str, Any]) -> bool:
     return (
         _session_dir_path(request).is_dir()
         and _channel_session_dir_path(request).is_dir()
-        and _session_dir_has_persistent_state(_channel_session_dir_path(request))
+        and bool(_session_state_markers(_channel_session_dir_path(request)))
     )
 
 
@@ -2598,10 +2609,14 @@ def _channel_session_dir_path(request: dict[str, Any]) -> Path:
     return _session_dir_path(request) / channel / "session" / channel
 
 
-def _session_dir_has_persistent_state(path: Path) -> bool:
+def _session_state_markers(path: Path) -> list[str]:
     if not path.is_dir():
-        return False
-    return any(item.is_file() for item in path.rglob("*"))
+        return []
+    return [
+        marker
+        for marker in _SESSION_STATE_MARKER_PATHS
+        if (path / marker).is_file()
+    ]
 
 
 def _required_env_handoff(request: dict[str, Any]) -> list[dict[str, Any]]:
