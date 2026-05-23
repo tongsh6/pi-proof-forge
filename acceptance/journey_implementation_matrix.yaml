@@ -561,6 +561,7 @@ steps:
         - "successful_command_requires_submission_log"
         - "post_command_live_blocker_diagnostics_recorded"
         - "submission_log_business_summary_recorded"
+        - "submission_log_summary_detail_redacted"
         - "successful_submission_log_required_steps_recorded"
         - "external_channel_timeout_recorded_as_live_blocker"
         - "external_channel_command_error_recorded_as_live_blocker"

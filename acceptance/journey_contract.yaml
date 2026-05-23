@@ -298,7 +298,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须在 submission log 可解析时，把 status、error、mode 和 last step 摘要提升到 validation 与 live blocker 诊断。"
+        message: "External L3 验收必须在 submission log 可解析时，把 status、error、mode 和已脱敏的 last step 摘要提升到 validation 与 live blocker 诊断。"
       - rule_id: "external_l3_submission_log_required_steps_recorded"
         level: "L3"
         stage: "submissions"
