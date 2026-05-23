@@ -145,6 +145,7 @@
 
 - 默认不得触碰外部渠道；未设置 `PIPF_EXTERNAL_L3_AUTHORIZED=true` 时，必须只写入 live blocker 证据。
 - 即使已有用户授权，未设置独立的 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true` 时，也必须阻断在最终提交前。
+- 即使已有授权和最终提交确认，未设置 `PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true` 时，也必须阻断在真实渠道命令启动前。
 - 真实执行只允许在同时具备授权、最终确认、channel、Job URL、resume PDF、profile YAML、确认 job id 和确认 recruiter 时启动。
 - P0 支持的外部渠道为 `liepin`；其他渠道必须记录 `unsupported_external_l3_channel`，不得隐式 fallback。
 - L3 证据必须写入 `outputs/acceptance/<run_id>/external-l3-validation.json` 和 `.md`。
@@ -156,11 +157,12 @@
 - 即使所有 env 字符串都存在，真实 Job URL 不是 http/https、resume 不是存在的 `.pdf` 文件或 profile 不是存在的 `.yaml/.yml` 文件，也必须在启动 submit 命令前记录 live blocker。
 - L3 证据必须包含 `live_input_artifacts`：记录 Job URL 的 scheme/host、resume/profile 的扩展名、大小和 SHA256；不得持久化 Job URL 原值、确认值、文件原始内容或 resume/profile 文件名，Markdown 报告也必须展示这些未持久化结论。
 - L3 证据必须包含 `rate_limit_policy`：记录 max-per-batch、cooldown seconds、daily limit 和状态文件路径；频控被关闭时必须在 submit 命令启动前记录 live blocker。
+- L3 证据必须包含 `session_readiness` 和 `manual_session_ready_confirmed` gate：真实渠道命令启动前必须由用户确认共享渠道 session 已经人工登录或刷新可用；未确认时必须阻断在 submit 命令启动前，并继续证明自动化不会输入凭据、验证码或短信码。
 - L3 证据必须包含 `forbidden_input_audit`：runner 只记录密码、验证码、短信码和原始密钥类 forbidden env 是否出现，不持久化原值；任一 forbidden input 出现时必须阻断在 submit 命令启动前。
 - L3 证据必须包含 `target_confirmation_audit`：runner 只记录 Job URL 中岗位 ID 是否可解析、确认岗位 ID 是否已提供、二者是否一致，不持久化原始 ID；不一致时必须阻断在 submit 命令启动前。
 - 如果真实渠道命令被执行，`external-l3-validation.json` 只能持久化脱敏后的 command 和 stdout/stderr 尾部；Job URL、resume/profile 路径、确认 job id 和确认 recruiter 必须以 `<redacted>` 形式保存。
 - L3 证据必须包含 `submit_safety_decision`，明确最终提交命令是 `blocked_before_command`、`allowed_pending_execution` 还是 `allowed_and_executed`，并证明显式授权、独立最终确认和真实输入齐备才允许 submit。
-- blocker 或真实渠道结果必须包含 `operator_handoff`：列出 required env 是否存在、最终提交前 checklist、禁止输入项、当前运行配置和不含真实值的命令模板；命令模板必须使用 shell-safe 的 live 输入占位符，并与当前 channel、session/output 目录、timeout/headless 和有效频控参数一致；Markdown 报告必须展示同一条可复制命令模板。`operator_handoff.command_template_review` 必须同步记录 `copy_paste_ready=false`、占位符替换、显式授权和独立最终提交确认要求，防止操作者把交接模板盲贴成真实运行命令。
+- blocker 或真实渠道结果必须包含 `operator_handoff`：列出 required env 是否存在、最终提交前 checklist、禁止输入项、当前运行配置和不含真实值的命令模板；命令模板必须使用 shell-safe 的 live 输入占位符，并与当前 channel、session/output 目录、timeout/headless 和有效频控参数一致；Markdown 报告必须展示同一条可复制命令模板。`operator_handoff.command_template_review` 必须同步记录 `copy_paste_ready=false`、占位符替换、显式授权、独立最终提交确认和人工会话可用确认要求，防止操作者把交接模板盲贴成真实运行命令。
 - `operator_handoff` 必须包含结构化 `authorization_packet`：记录必需确认声明、必需证据、中止条件、脱敏策略和禁止输入项；不得持久化 Job URL、文件路径、确认 job id 或 recruiter 原值。
 - L3 证据必须包含 `evidence_manifest`：统一列出 validation JSON/Markdown、关键嵌入段、live blocker 或 submission log、feedback source 的位置、必需性和存在状态；每一项都必须标记 `raw_live_inputs_persisted=false`，Markdown 报告必须同步展示该清单。
 - L3 证据必须包含 `outcome_summary`：把 acceptance runner 的 `pass` 解释为“证据写出与规则通过”，并明确区分 pre-submit blocker、post-command blocker 和真实外部验证成功；只要未达到 `external_validated`，`p0_017_complete` 必须为 `false`。

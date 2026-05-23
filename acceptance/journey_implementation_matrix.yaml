@@ -558,6 +558,7 @@ steps:
         - "handoff_command_template_review_blocks_blind_copy_paste"
         - "external_l3_evidence_manifest_links_required_artifacts"
         - "external_l3_outcome_summary_disambiguates_acceptance_pass"
+        - "manual_session_ready_confirmed_before_external_submit"
         - "explicit_user_authorized_live_run"
         - "separate_final_submit_confirmed"
         - "real_channel_result_or_live_blocker"

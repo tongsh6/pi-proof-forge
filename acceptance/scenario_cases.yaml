@@ -2311,6 +2311,7 @@ cases:
       required_before_external_submit:
         - "PIPF_EXTERNAL_L3_AUTHORIZED"
         - "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED"
+        - "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED"
         - "PIPF_EXTERNAL_L3_JOB_URL"
         - "PIPF_EXTERNAL_L3_RESUME_PDF"
         - "PIPF_EXTERNAL_L3_PROFILE"
@@ -2354,6 +2355,7 @@ cases:
       - "handoff_command_template_review_blocks_blind_copy_paste"
       - "external_l3_evidence_manifest_links_required_artifacts"
       - "external_l3_outcome_summary_disambiguates_acceptance_pass"
+      - "manual_session_ready_confirmed_before_external_submit"
       - "live_channel_result_or_exact_blocker_recorded"
       - "post_command_live_blocker_diagnostics_recorded"
       - "submission_log_business_summary_recorded"
@@ -2398,6 +2400,7 @@ cases:
           - "external_l3_runner_records_handoff_command_template_review"
           - "external_l3_runner_records_evidence_manifest"
           - "external_l3_runner_records_outcome_summary"
+          - "external_l3_runner_requires_manual_session_ready_confirmation"
           - "external_l3_runner_only_executes_submit_command_after_all_gates"
           - "external_l3_runner_records_post_command_blocker_diagnostics"
           - "external_l3_runner_records_submission_log_business_summary"
