@@ -1118,6 +1118,10 @@ def submission_log_error_blocker_reason(submission_summary: dict[str, Any]) -> s
     if (
         error.startswith("send_resume_")
         or error.startswith("chat_send_resume")
+        or error.startswith("main_chat_click_failed:")
+        or error.startswith("send_resume_click_failed:")
+        or error.startswith("upload input not found")
+        or error.startswith("phase=")
         or error in {
             "main_chat_click_failed",
             "upload_input_not_found",
