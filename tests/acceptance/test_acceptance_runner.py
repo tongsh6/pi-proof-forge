@@ -18,7 +18,9 @@ from tools.acceptance.external_l3 import submission_log_error_blocker_reason
 
 def _external_l3_session_dir(root: Path) -> Path:
     session_dir = root / ".sessions"
-    (session_dir / "liepin" / "session" / "liepin").mkdir(parents=True, exist_ok=True)
+    channel_session_dir = session_dir / "liepin" / "session" / "liepin"
+    channel_session_dir.mkdir(parents=True, exist_ok=True)
+    (channel_session_dir / "storage-state.json").write_text("{}", encoding="utf-8")
     return session_dir
 
 
@@ -1275,6 +1277,7 @@ def test_acceptance_runner_l3_requires_prepared_session_storage_before_command(
     assert payload["session_readiness"]["session_ready_confirmed"] is True
     assert payload["session_readiness"]["session_dir_exists"] is False
     assert payload["session_readiness"]["channel_session_dir_exists"] is False
+    assert payload["session_readiness"]["channel_session_dir_has_state"] is False
     assert payload["session_readiness"]["session_storage_ready"] is False
     assert payload["live_run_readiness"]["submit_command_allowed"] is False
     assert payload["external_submission_attempted"] is False
@@ -1289,6 +1292,49 @@ def test_acceptance_runner_l3_requires_prepared_session_storage_before_command(
     )
     assert session_rule["status"] == "pass"
     assert "人工会话准备" in session_rule["message"]
+
+
+def test_acceptance_runner_l3_requires_session_storage_state_before_command(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    session_dir = tmp_path / ".sessions"
+    (session_dir / "liepin" / "session" / "liepin").mkdir(parents=True)
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(session_dir),
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["live_blocker"]["reason"] == "manual_session_storage_not_ready"
+    assert payload["live_blocker"]["category"] == "session_readiness"
+    assert payload["session_readiness"]["session_dir_exists"] is True
+    assert payload["session_readiness"]["channel_session_dir_exists"] is True
+    assert payload["session_readiness"]["channel_session_dir_has_state"] is False
+    assert payload["session_readiness"]["session_storage_ready"] is False
+    assert payload["external_submission_attempted"] is False
+    assert run_mock.call_count == 0
 
 
 def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(

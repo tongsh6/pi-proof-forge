@@ -376,7 +376,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须在 submit 命令启动前记录人工会话准备 gate 和 session 存储预检 gate；共享渠道 session 未经人工登录或刷新确认可用，或 session 根目录 / Liepin 持久化会话目录不存在时，必须阻断在真实渠道命令启动前，且不得接收或持久化密码、验证码或短信码。"
+        message: "External L3 验收必须在 submit 命令启动前记录人工会话准备 gate 和 session 存储预检 gate；共享渠道 session 未经人工登录或刷新确认可用，或 session 根目录不存在、Liepin 持久化会话目录不存在、目录为空没有状态文件时，必须阻断在真实渠道命令启动前，且不得接收或持久化密码、验证码或短信码。"
       - rule_id: "external_l3_pre_submit_blocker_diagnostics_recorded"
         level: "L3"
         stage: "submissions"

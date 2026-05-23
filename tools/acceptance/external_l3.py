@@ -484,6 +484,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 会话目录: `{session_readiness.get('session_dir', '')}`",
                 f"- 会话根目录是否存在: `{session_readiness.get('session_dir_exists', False)}`",
                 f"- Liepin 持久化会话目录是否存在: `{session_readiness.get('channel_session_dir_exists', False)}`",
+                f"- Liepin 持久化会话目录是否包含状态文件: `{session_readiness.get('channel_session_dir_has_state', False)}`",
                 f"- 会话存储是否就绪: `{session_readiness.get('session_storage_ready', False)}`",
                 f"- 必须人工登录: `{session_readiness.get('manual_login_required', True)}`",
                 f"- 自动化是否输入凭据: `{session_readiness.get('browser_automation_enters_credentials', True)}`",
@@ -894,13 +895,19 @@ def _forbidden_inputs_present(request: dict[str, Any]) -> bool:
 def _session_readiness(request: dict[str, Any]) -> dict[str, Any]:
     session_dir = _session_dir_path(request)
     channel_session_dir = _channel_session_dir_path(request)
+    channel_session_has_state = _session_dir_has_persistent_state(channel_session_dir)
     return {
         "session_ready_confirmed": bool(request.get("session_ready_confirmed", False)),
         "session_dir": str(request.get("session_dir", "")),
         "session_dir_exists": session_dir.is_dir(),
         "channel_session_dir": str(channel_session_dir),
         "channel_session_dir_exists": channel_session_dir.is_dir(),
-        "session_storage_ready": session_dir.is_dir() and channel_session_dir.is_dir(),
+        "channel_session_dir_has_state": channel_session_has_state,
+        "session_storage_ready": (
+            session_dir.is_dir()
+            and channel_session_dir.is_dir()
+            and channel_session_has_state
+        ),
         "manual_login_required": True,
         "positive_login_signal_required": True,
         "browser_automation_enters_credentials": False,
@@ -1018,7 +1025,7 @@ def _next_action(reason: str) -> str:
     if reason == "manual_session_storage_not_ready":
         return (
             "先确认 PIPF_EXTERNAL_L3_SESSION_DIR 指向已存在的共享渠道 session 根目录，"
-            "且 Liepin 持久化会话目录已由人工登录或刷新生成；未准备好前不得启动真实渠道命令。"
+            "且 Liepin 持久化会话目录已由人工登录或刷新生成状态文件；未准备好前不得启动真实渠道命令。"
         )
     if reason.startswith("missing_live_submission_inputs"):
         return (
@@ -2286,7 +2293,7 @@ def _live_run_readiness(
         _readiness_gate(
             gate_id="manual_session_storage_ready",
             passed=session_storage_ready,
-            detail="共享渠道 session 根目录与 Liepin 持久化会话目录已存在",
+            detail="共享渠道 session 根目录存在，且 Liepin 持久化会话目录包含状态文件",
         ),
         _readiness_gate(
             gate_id="supported_channel",
@@ -2572,7 +2579,11 @@ def _session_storage_ready(request: dict[str, Any]) -> bool:
     readiness = request.get("session_readiness") or {}
     if readiness:
         return bool(readiness.get("session_storage_ready", False))
-    return _session_dir_path(request).is_dir() and _channel_session_dir_path(request).is_dir()
+    return (
+        _session_dir_path(request).is_dir()
+        and _channel_session_dir_path(request).is_dir()
+        and _session_dir_has_persistent_state(_channel_session_dir_path(request))
+    )
 
 
 def _session_dir_path(request: dict[str, Any]) -> Path:
@@ -2585,6 +2596,12 @@ def _session_dir_path(request: dict[str, Any]) -> Path:
 def _channel_session_dir_path(request: dict[str, Any]) -> Path:
     channel = str(request.get("channel", "liepin"))
     return _session_dir_path(request) / channel / "session" / channel
+
+
+def _session_dir_has_persistent_state(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    return any(item.is_file() for item in path.rglob("*"))
 
 
 def _required_env_handoff(request: dict[str, Any]) -> list[dict[str, Any]]:
