@@ -1083,6 +1083,12 @@ def _post_command_blocker_reason(
         return submission_error_reason
     if not command_succeeded:
         return "external_channel_command_returned_nonzero"
+    if (
+        submission_error_reason
+        and submission_traceability.get("linked_to_validation") is True
+        and submission_traceability.get("submission_log_status_success") is not True
+    ):
+        return submission_error_reason
     if not submission_traceability["linked_to_validation"]:
         return "submission_log_not_linked"
     if not submission_traceability.get("submission_log_status_success"):

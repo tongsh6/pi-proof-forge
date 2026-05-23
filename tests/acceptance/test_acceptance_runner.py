@@ -1622,7 +1622,7 @@ def test_acceptance_runner_l3_blocks_zero_returncode_when_submission_log_failed(
     assert payload["returncode"] == 0
     assert (
         payload["live_blocker"]["reason"]
-        == "external_channel_submission_not_success"
+        == "external_channel_target_verify_failed"
     )
     assert (
         "external submit was attempted and blocked after command"
@@ -1637,7 +1637,11 @@ def test_acceptance_runner_l3_blocks_zero_returncode_when_submission_log_failed(
     assert "submission_log_status_success" in payload["live_blocker"]["failed_checks"]
     assert (
         payload["submit_safety_decision"]["post_run_blocker_reason"]
-        == "external_channel_submission_not_success"
+        == "external_channel_target_verify_failed"
+    )
+    assert (
+        payload["post_submit_feedback_traceability"]["source_reason"]
+        == "external_channel_target_verify_failed"
     )
     assert payload["outcome_summary"]["external_l3_success"] is False
     assert payload["outcome_summary"]["p0_017_complete"] is False
