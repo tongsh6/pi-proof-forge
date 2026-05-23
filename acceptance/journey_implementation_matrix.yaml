@@ -552,6 +552,7 @@ steps:
         - "separate_final_submit_confirmed"
         - "real_channel_result_or_live_blocker"
         - "submission_log_linked_to_l3_validation"
+        - "submission_log_path_within_allowed_output_root"
         - "submission_log_links_back_to_l3_validation"
         - "submission_log_input_artifacts_match_l3_validation"
         - "submission_log_raw_live_inputs_redacted"
