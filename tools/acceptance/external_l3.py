@@ -117,6 +117,12 @@ def build_external_l3_validation(
                 ),
             }
         )
+        base["outcome_summary"] = _outcome_summary(
+            status=base["status"],
+            external_submission_attempted=False,
+            live_blocker=live_blocker,
+            next_action=live_blocker["next_action"],
+        )
         return base
 
     command = _submission_command(request)
@@ -232,6 +238,16 @@ def build_external_l3_validation(
         blocker_reason=blocker_after_run,
         external_submission_attempted=True,
     )
+    base["outcome_summary"] = _outcome_summary(
+        status=base["status"],
+        external_submission_attempted=True,
+        live_blocker=base.get("live_blocker") or {},
+        next_action=(
+            "复核真实渠道 submission log 和后续招聘方反馈。"
+            if external_validated
+            else str((base.get("live_blocker") or {}).get("next_action", ""))
+        ),
+    )
     return base
 
 
@@ -269,6 +285,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
     handoff = validation.get("operator_handoff") or {}
     evidence_manifest = validation.get("evidence_manifest") or {}
+    outcome_summary = validation.get("outcome_summary") or {}
     lines = [
         "# External L3 投递验证",
         "",
@@ -285,6 +302,22 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     ]
     for key, status in coverage.items():
         lines.append(f"| `{key}` | `{status}` |")
+    if outcome_summary:
+        lines.extend(
+            [
+                "",
+                "## 结果分级",
+                "",
+                f"- Outcome: `{outcome_summary.get('outcome', '')}`",
+                f"- Acceptance pass 含义: `{outcome_summary.get('acceptance_status_meaning', '')}`",
+                f"- 是否已真实验证成功: `{outcome_summary.get('external_l3_success', False)}`",
+                f"- 是否已尝试外部提交: `{outcome_summary.get('external_submission_attempted', False)}`",
+                f"- 是否需要阻断处理: `{outcome_summary.get('blocker_resolution_required', False)}`",
+                f"- 阻断原因: `{outcome_summary.get('blocker_reason', '')}`",
+                f"- P0-017 是否完成: `{outcome_summary.get('p0_017_complete', False)}`",
+                f"- 下一步: {outcome_summary.get('next_action', '')}",
+            ]
+        )
     if blocker:
         blocker_diagnostics = blocker.get("diagnostics") or {}
         lines.extend(
@@ -1409,6 +1442,38 @@ def _read_submission_json(json_path: Path | None) -> tuple[dict[str, Any], str]:
     if not isinstance(payload, dict):
         return {}, "submission_log.json root is not an object"
     return payload, ""
+
+
+def _outcome_summary(
+    *,
+    status: str,
+    external_submission_attempted: bool,
+    live_blocker: dict[str, Any],
+    next_action: str,
+) -> dict[str, Any]:
+    blocker_reason = str(live_blocker.get("reason", ""))
+    external_l3_success = status == "external_validated"
+    if external_l3_success:
+        outcome = "external_validated"
+        acceptance_status_meaning = "real_channel_result_recorded"
+    elif external_submission_attempted:
+        outcome = "post_command_blocker_recorded"
+        acceptance_status_meaning = "post_command_blocker_evidence_recorded"
+    else:
+        outcome = "pre_submit_blocker_recorded"
+        acceptance_status_meaning = "pre_submit_blocker_evidence_recorded"
+
+    return {
+        "outcome": outcome,
+        "acceptance_status_meaning": acceptance_status_meaning,
+        "external_l3_success": external_l3_success,
+        "external_submission_attempted": external_submission_attempted,
+        "live_blocker_recorded": bool(blocker_reason),
+        "blocker_resolution_required": bool(blocker_reason),
+        "blocker_reason": blocker_reason,
+        "p0_017_complete": external_l3_success,
+        "next_action": next_action,
+    }
 
 
 def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, Any]:

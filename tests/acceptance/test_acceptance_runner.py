@@ -269,6 +269,17 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         feedback_trace["feedback_iteration_route"]
         == "resolve_live_blocker_before_feedback_iteration"
     )
+    outcome_summary = payload["outcome_summary"]
+    assert outcome_summary["outcome"] == "pre_submit_blocker_recorded"
+    assert (
+        outcome_summary["acceptance_status_meaning"]
+        == "pre_submit_blocker_evidence_recorded"
+    )
+    assert outcome_summary["external_l3_success"] is False
+    assert outcome_summary["external_submission_attempted"] is False
+    assert outcome_summary["blocker_resolution_required"] is True
+    assert outcome_summary["blocker_reason"] == "explicit_user_authorization_required"
+    assert outcome_summary["p0_017_complete"] is False
     evidence_manifest = payload["evidence_manifest"]
     assert evidence_manifest["status"] == "complete"
     assert evidence_manifest["raw_live_inputs_persisted"] is False
@@ -370,6 +381,14 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         encoding="utf-8"
     )
     assert "# External L3 投递验证" in markdown
+    assert "## 结果分级" in markdown
+    assert "- Outcome: `pre_submit_blocker_recorded`" in markdown
+    assert (
+        "- Acceptance pass 含义: `pre_submit_blocker_evidence_recorded`"
+        in markdown
+    )
+    assert "- 是否已真实验证成功: `False`" in markdown
+    assert "- P0-017 是否完成: `False`" in markdown
     assert "## Live Run Readiness" in markdown
     assert "- 是否允许启动 submit 命令: `False`" in markdown
     assert "## 最终提交安全决策" in markdown
@@ -638,6 +657,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert evidence_manifest_rule["stage"] == "submissions"
     assert evidence_manifest_rule["status"] == "pass"
     assert "证据清单" in evidence_manifest_rule["message"]
+    outcome_summary_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_outcome_summary_recorded"
+    )
+    assert outcome_summary_rule["level"] == "L3"
+    assert outcome_summary_rule["stage"] == "submissions"
+    assert outcome_summary_rule["status"] == "pass"
+    assert "结果分级" in outcome_summary_rule["message"]
     pre_submit_diagnostics_rule = next(
         step
         for step in journey_payload["steps"]
@@ -1246,6 +1274,14 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["live_run_readiness"]["submit_command_allowed"] is True
     assert payload["live_run_readiness"]["missing_gates"] == []
     assert payload["operator_handoff"]["status"] == "executed_with_guarded_live_result"
+    assert payload["outcome_summary"]["outcome"] == "external_validated"
+    assert (
+        payload["outcome_summary"]["acceptance_status_meaning"]
+        == "real_channel_result_recorded"
+    )
+    assert payload["outcome_summary"]["external_l3_success"] is True
+    assert payload["outcome_summary"]["blocker_resolution_required"] is False
+    assert payload["outcome_summary"]["p0_017_complete"] is True
     evidence_entries = {
         item["id"]: item for item in payload["evidence_manifest"]["entries"]
     }

@@ -885,6 +885,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_evidence_manifest_recorded"] = (
             _external_l3_evidence_manifest_result(external_l3_step)
         )
+        results["external_l3_outcome_summary_recorded"] = (
+            _external_l3_outcome_summary_result(external_l3_step)
+        )
         results["external_l3_pre_submit_blocker_diagnostics_recorded"] = (
             _external_l3_pre_submit_blocker_diagnostics_result(external_l3_step)
         )
@@ -2019,6 +2022,80 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         status="fail",
         evidence=step.evidence,
         message=f"External L3 证据清单缺失或不完整: {', '.join(missing)}",
+    )
+
+
+def _external_l3_outcome_summary_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 结果分级证据不可读取: {exc}",
+        )
+
+    outcome = payload.get("outcome_summary") or {}
+    status = payload.get("status")
+    expected_outcome = (
+        "external_validated"
+        if status == "external_validated"
+        else (
+            "post_command_blocker_recorded"
+            if payload.get("external_submission_attempted") is True
+            else "pre_submit_blocker_recorded"
+        )
+    )
+    missing = []
+    if outcome.get("outcome") != expected_outcome:
+        missing.append("outcome")
+    if outcome.get("external_submission_attempted") is not payload.get(
+        "external_submission_attempted"
+    ):
+        missing.append("external_submission_attempted")
+    if outcome.get("external_l3_success") is not (status == "external_validated"):
+        missing.append("external_l3_success")
+    if outcome.get("p0_017_complete") is not (status == "external_validated"):
+        missing.append("p0_017_complete")
+    blocker = payload.get("live_blocker") or {}
+    blocker_reason = str(blocker.get("reason", ""))
+    if outcome.get("blocker_resolution_required") is not bool(blocker_reason):
+        missing.append("blocker_resolution_required")
+    if blocker_reason and outcome.get("blocker_reason") != blocker_reason:
+        missing.append("blocker_reason")
+    if not outcome.get("acceptance_status_meaning"):
+        missing.append("acceptance_status_meaning")
+    if not outcome.get("next_action"):
+        missing.append("next_action")
+
+    markdown_fragments = [
+        "## 结果分级",
+        "- Outcome:",
+        "- Acceptance pass 含义:",
+        "- 是否已真实验证成功:",
+        "- P0-017 是否完成:",
+    ]
+    missing.extend(
+        fragment for fragment in markdown_fragments if fragment not in markdown
+    )
+    if not missing:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 结果分级已记录，区分 evidence pass、真实验证成功和仍需处理的 blocker。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message=f"External L3 结果分级缺失或不一致: {', '.join(missing)}",
     )
 
 
