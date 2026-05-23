@@ -555,6 +555,7 @@ steps:
         - "handoff_runtime_options_recorded_for_reproducible_live_run"
         - "handoff_command_template_shell_safe_for_copy_paste"
         - "handoff_command_template_rendered_in_markdown_report"
+        - "handoff_command_template_review_blocks_blind_copy_paste"
         - "explicit_user_authorized_live_run"
         - "separate_final_submit_confirmed"
         - "real_channel_result_or_live_blocker"
