@@ -175,8 +175,8 @@
 - 当 submission log JSON 可解析且 `error` 属于已知渠道业务失败时，post-command blocker 必须把 `batch_cooldown`/`daily_limit_exceeded`、`target_mismatch`/`target_verify_failed`、`login_required`、`security_redirect`、`job_page_unavailable`、`submit_confirmation_*`、`send_resume_*`、`submission_uncertain`、`timeout` 等错误提升为精确 `external_channel_*` blocker；只有未知错误才回落到通用非零退出码 blocker。journey report 必须验证该映射，避免 validation record 只携带摘要却仍把已知业务失败归成泛化 returncode。
 - 无论真实渠道成功还是记录 live blocker，L3 证据都必须包含 `post_submit_feedback_traceability`：成功时以 submission log 作为反馈来源，blocker 时以 `external-l3-validation.json` 作为反馈来源，并明确下一步反馈/阻断处理路径；blocker 场景的 `source_reason` 必须与 `live_blocker.reason` 一致，Markdown 报告必须展示与 JSON 一致的来源状态、来源原因和下一步。
 - 真实渠道命令返回非零时不得伪装成功；必须保留 stdout/stderr tail 和 log hint，作为 exact live blocker。
-- 真实渠道命令超时时也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_timed_out` live blocker、timeout 秒数、脱敏 stdout/stderr tail 和后续处理路径。
-- 真实渠道命令启动错误也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_launch_failed` live blocker，并保存脱敏后的错误类型/信息。
+- 真实渠道命令超时时也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_timed_out` live blocker、timeout 秒数、脱敏 stdout/stderr tail 和后续处理路径；Markdown 报告必须同步展示 timeout blocker 原因、超时状态和 timeout 秒数。
+- 真实渠道命令启动错误也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_launch_failed` live blocker，并保存脱敏后的错误类型/信息；Markdown 报告必须同步展示错误类型和脱敏错误信息，且不得泄露 Job URL 或本地文件路径。
 - runner 不接受 credentials、captcha 或 SMS 输入，也不得保存 secret；如果用户误传相关 env，必须记录 `forbidden_external_l3_sensitive_inputs` blocker，且只保留出现状态不保留值。
 
 只把 L3 标为 `not_started`，或在缺少授权/最终确认时尝试外部提交，都不满足 External L3 验收。
