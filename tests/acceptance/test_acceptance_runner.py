@@ -2718,6 +2718,38 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     assert feedback_trace["source_status"] == "external_submission_attempted_blocked"
     assert feedback_trace["source_reason"] == "submission_log_not_linked"
 
+    markdown_path = Path(report.steps[0].evidence).with_suffix(".md")
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert "- Failed Checks: `submission_log_hint_found" in markdown
+    expected_row = (
+        "| `submission_log_json_exists` | `fail` | "
+        "submission_log.json 存在 |"
+    )
+    assert expected_row in markdown
+    markdown_path.write_text(
+        markdown.replace(expected_row, expected_row.replace("`fail`", "`pass`")),
+        encoding="utf-8",
+    )
+
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    summary_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submission_log_summary_recorded"
+    )
+    assert summary_rule["status"] == "fail"
+    assert "submission_log_json_exists.markdown_check_row" in summary_rule["message"]
+    diagnostics_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_post_command_blocker_diagnostics_recorded"
+        )
+    )
+    assert diagnostics_rule["status"] == "pass"
+
 
 def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     tmp_path: Path,

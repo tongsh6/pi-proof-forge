@@ -1602,7 +1602,21 @@ def _external_l3_submission_log_summary_result(
             evidence=step.evidence,
             message="External L3 未执行真实渠道命令，因此没有 submission log 摘要要求。",
         )
+    trace_markdown_missing = _external_l3_submission_traceability_markdown_missing(
+        traceability,
+        markdown,
+    )
     if not traceability.get("log_json_exists"):
+        if trace_markdown_missing:
+            return JourneyStepResult(
+                status="fail",
+                evidence=step.evidence,
+                message=(
+                    "External L3 submission traceability Markdown 与 JSON "
+                    "不一致: "
+                    + ", ".join(trace_markdown_missing)
+                ),
+            )
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
@@ -1623,7 +1637,7 @@ def _external_l3_submission_log_summary_result(
     summary_detail_redacted = not any(
         token in last_step_detail for token in unsafe_detail_tokens
     )
-    missing = []
+    missing = list(trace_markdown_missing)
     if not summary.get("status"):
         missing.append("status")
     if "error" not in summary:
@@ -1666,6 +1680,51 @@ def _external_l3_submission_log_summary_result(
             "或复制了未脱敏的步骤详情: "
             + ", ".join(missing)
         ),
+    )
+
+
+def _external_l3_submission_traceability_markdown_missing(
+    traceability: dict[str, Any],
+    markdown: str,
+) -> list[str]:
+    missing = []
+    fragments = [
+        "## Submission Log 追溯",
+        (
+            "- Failed Checks: "
+            f"`{', '.join(traceability.get('failed_checks', []))}`"
+        ),
+    ]
+    missing.extend(
+        f"markdown:{fragment}" for fragment in fragments if fragment not in markdown
+    )
+    checks = traceability.get("checks") or []
+    if checks:
+        if "| 检查项 | 状态 | 说明 |" not in markdown:
+            missing.append("markdown:traceability_checks_table")
+        for check in checks:
+            if not isinstance(check, dict):
+                missing.append("checks.entry")
+                continue
+            row = _external_l3_submission_traceability_check_markdown_row(check)
+            if row not in markdown:
+                missing.append(f"{check.get('id', '')}.markdown_check_row")
+    return missing
+
+
+def _external_l3_submission_traceability_check_markdown_row(
+    check: dict[str, Any],
+) -> str:
+    return (
+        "| "
+        + " | ".join(
+            [
+                f"`{check.get('id', '')}`",
+                f"`{check.get('status', '')}`",
+                str(check.get("detail", "")),
+            ]
+        )
+        + " |"
     )
 
 
