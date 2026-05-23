@@ -310,7 +310,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须在 submission log 可解析时，把 status、error、mode 和已脱敏的 last step 摘要提升到 validation 与 live blocker 诊断；如果 last step detail 包含未脱敏 target_verify 观测值或 HTML snapshot 描述，validation 摘要必须改写为脱敏占位而不是复制原文。"
+        message: "External L3 验收必须在 submission log 可解析时，把 status、error、mode 和已脱敏的 last step 摘要提升到 validation、Markdown 与 live blocker 诊断；如果 last step detail 包含未脱敏 target_verify 观测值或 HTML snapshot 描述，validation 摘要必须改写为脱敏占位而不是复制原文。"
       - rule_id: "external_l3_submission_log_path_guarded"
         level: "L3"
         stage: "submissions"
