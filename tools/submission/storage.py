@@ -112,6 +112,7 @@ class SubmissionRecorder:
             job_url=job_url,
             resume_path=resume_path,
             profile_path=profile_path,
+            redact_file_names=redact_live_inputs,
         )
 
     def add_step(self, name: str, status: str, detail: str, screenshot: Path | None = None) -> None:
@@ -204,6 +205,7 @@ class SubmissionRecorder:
                 [
                     f"    - id: \"{_escape(str(item.get('id', '')))}\"",
                     f"      basename: \"{_escape(str(item.get('basename', '')))}\"",
+                    f"      basename_persisted: {'true' if item.get('basename_persisted') else 'false'}",
                     f"      suffix: \"{_escape(str(item.get('suffix', '')))}\"",
                     f"      exists: {'true' if item.get('exists') else 'false'}",
                     f"      is_file: {'true' if item.get('is_file') else 'false'}",
@@ -239,6 +241,7 @@ def _input_artifacts(
     job_url: str,
     resume_path: str,
     profile_path: str,
+    redact_file_names: bool = False,
 ) -> dict[str, object]:
     parsed_job_url = urlparse(job_url)
     return {
@@ -254,11 +257,13 @@ def _input_artifacts(
                 artifact_id="resume_pdf",
                 path_text=resume_path,
                 expected_suffixes={".pdf"},
+                redact_file_name=redact_file_names,
             ),
             _file_artifact(
                 artifact_id="profile_yaml",
                 path_text=profile_path,
                 expected_suffixes={".yaml", ".yml"},
+                redact_file_name=redact_file_names,
             ),
         ],
     }
@@ -269,16 +274,19 @@ def _file_artifact(
     artifact_id: str,
     path_text: str,
     expected_suffixes: set[str],
+    redact_file_name: bool = False,
 ) -> dict[str, object]:
     provided = bool(path_text)
     path = Path(path_text) if provided else Path("")
     suffix = path.suffix.lower() if provided else ""
     exists = provided and path.exists()
     is_file = exists and path.is_file()
+    basename = _REDACTED_LIVE_INPUT if provided and redact_file_name else path.name
     return {
         "id": artifact_id,
         "provided": provided,
-        "basename": path.name if provided else "",
+        "basename": basename if provided else "",
+        "basename_persisted": bool(provided and not redact_file_name),
         "suffix": suffix,
         "expected_suffixes": sorted(expected_suffixes),
         "suffix_valid": suffix in expected_suffixes,

@@ -466,6 +466,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert required_steps_rule["stage"] == "submissions"
     assert required_steps_rule["status"] == "pass"
     assert "未执行真实渠道命令" in required_steps_rule["message"]
+    basename_redaction_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_input_artifact_basenames_redacted"
+    )
+    assert basename_redaction_rule["level"] == "L3"
+    assert basename_redaction_rule["stage"] == "submissions"
+    assert basename_redaction_rule["status"] == "pass"
+    assert "文件名" in basename_redaction_rule["message"]
     log_redaction_rule = next(
         step
         for step in journey_payload["steps"]
@@ -873,7 +882,8 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
                     "files": [
                         {
                             "id": "resume_pdf",
-                            "basename": "resume.pdf",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".pdf",
                             "size_bytes": len(b"%PDF-1.4\n"),
                             "sha256": hashlib.sha256(b"%PDF-1.4\n").hexdigest(),
@@ -881,7 +891,8 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
                         },
                         {
                             "id": "profile_yaml",
-                            "basename": "profile.yaml",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".yaml",
                             "size_bytes": len(b"id: profile\n"),
                             "sha256": hashlib.sha256(
@@ -999,6 +1010,12 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
         is True
     )
     assert (
+        payload["submission_traceability"][
+            "submission_log_input_artifact_basenames_redacted"
+        ]
+        is True
+    )
+    assert (
         payload["submission_traceability"]["submission_log_raw_live_inputs_redacted"]
         is True
     )
@@ -1038,12 +1055,14 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert input_artifacts["confirmations"]["confirm_submit_job_id_present"] is True
     assert input_artifacts["confirmations"]["raw_values_persisted"] is False
     files = {item["id"]: item for item in input_artifacts["files"]}
-    assert files["resume_pdf"]["basename"] == "resume.pdf"
+    assert files["resume_pdf"]["basename"] == "<redacted>"
+    assert files["resume_pdf"]["basename_persisted"] is False
     assert files["resume_pdf"]["suffix_valid"] is True
     assert files["resume_pdf"]["sha256"] == hashlib.sha256(
         b"%PDF-1.4\n"
     ).hexdigest()
-    assert files["profile_yaml"]["basename"] == "profile.yaml"
+    assert files["profile_yaml"]["basename"] == "<redacted>"
+    assert files["profile_yaml"]["basename_persisted"] is False
     assert files["profile_yaml"]["suffix_valid"] is True
     assert files["profile_yaml"]["sha256"] == hashlib.sha256(
         b"id: profile\n"
@@ -1131,7 +1150,8 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_live_inputs(
                     "files": [
                         {
                             "id": "resume_pdf",
-                            "basename": "resume.pdf",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".pdf",
                             "size_bytes": len(resume_bytes),
                             "sha256": hashlib.sha256(resume_bytes).hexdigest(),
@@ -1139,7 +1159,8 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_live_inputs(
                         },
                         {
                             "id": "profile_yaml",
-                            "basename": "profile.yaml",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".yaml",
                             "size_bytes": len(profile_bytes),
                             "sha256": hashlib.sha256(profile_bytes).hexdigest(),
@@ -1237,7 +1258,8 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_step_details(
                     "files": [
                         {
                             "id": "resume_pdf",
-                            "basename": "resume.pdf",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".pdf",
                             "size_bytes": len(resume_bytes),
                             "sha256": hashlib.sha256(resume_bytes).hexdigest(),
@@ -1245,7 +1267,8 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_step_details(
                         },
                         {
                             "id": "profile_yaml",
-                            "basename": "profile.yaml",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".yaml",
                             "size_bytes": len(profile_bytes),
                             "sha256": hashlib.sha256(profile_bytes).hexdigest(),
@@ -1384,7 +1407,8 @@ def test_acceptance_runner_l3_blocks_legacy_target_verify_detail_shape(
                     "files": [
                         {
                             "id": "resume_pdf",
-                            "basename": "resume.pdf",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".pdf",
                             "size_bytes": len(resume_bytes),
                             "sha256": hashlib.sha256(resume_bytes).hexdigest(),
@@ -1392,7 +1416,8 @@ def test_acceptance_runner_l3_blocks_legacy_target_verify_detail_shape(
                         },
                         {
                             "id": "profile_yaml",
-                            "basename": "profile.yaml",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".yaml",
                             "size_bytes": len(profile_bytes),
                             "sha256": hashlib.sha256(profile_bytes).hexdigest(),
@@ -1499,7 +1524,8 @@ def test_acceptance_runner_l3_blocks_submission_log_with_browser_artifacts(
                     "files": [
                         {
                             "id": "resume_pdf",
-                            "basename": "resume.pdf",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".pdf",
                             "size_bytes": len(resume_bytes),
                             "sha256": hashlib.sha256(resume_bytes).hexdigest(),
@@ -1507,7 +1533,8 @@ def test_acceptance_runner_l3_blocks_submission_log_with_browser_artifacts(
                         },
                         {
                             "id": "profile_yaml",
-                            "basename": "profile.yaml",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".yaml",
                             "size_bytes": len(profile_bytes),
                             "sha256": hashlib.sha256(profile_bytes).hexdigest(),
@@ -1627,7 +1654,8 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
                     "files": [
                         {
                             "id": "resume_pdf",
-                            "basename": "resume.pdf",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".pdf",
                             "size_bytes": len(resume_bytes),
                             "sha256": hashlib.sha256(resume_bytes).hexdigest(),
@@ -1635,7 +1663,8 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
                         },
                         {
                             "id": "profile_yaml",
-                            "basename": "profile.yaml",
+                            "basename": "<redacted>",
+                            "basename_persisted": False,
                             "suffix": ".yaml",
                             "size_bytes": len(profile_bytes),
                             "sha256": hashlib.sha256(profile_bytes).hexdigest(),
@@ -1753,6 +1782,7 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
         "external_l3_validation_run_id_matches",
         "external_l3_validation_path_matches",
         "input_artifacts_match_validation",
+        "submission_log_input_artifact_basenames_redacted",
         "submission_log_raw_live_inputs_redacted",
         "submission_log_step_details_redacted",
         "submission_log_browser_artifacts_redacted",
@@ -1804,7 +1834,8 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
         "files": [
             {
                 "id": "resume_pdf",
-                "basename": "resume.pdf",
+                "basename": "<redacted>",
+                "basename_persisted": False,
                 "suffix": ".pdf",
                 "size_bytes": len(resume_bytes),
                 "sha256": hashlib.sha256(resume_bytes).hexdigest(),
@@ -1812,7 +1843,8 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
             },
             {
                 "id": "profile_yaml",
-                "basename": "profile.yaml",
+                "basename": "<redacted>",
+                "basename_persisted": False,
                 "suffix": ".yaml",
                 "size_bytes": len(profile_bytes),
                 "sha256": hashlib.sha256(profile_bytes).hexdigest(),
@@ -2046,7 +2078,7 @@ def test_acceptance_runner_l3_records_command_error_as_live_blocker(
     assert "启动错误已记录" in command_error_rule["message"]
 
 
-def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artifacts(
+def test_acceptance_runner_l3_blocks_submission_log_with_raw_input_artifact_basenames(
     tmp_path: Path,
 ) -> None:
     resume = tmp_path / "resume.pdf"
@@ -2070,6 +2102,54 @@ def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artif
                 "external_l3_validation_path": (
                     "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
                 ),
+                "input_artifacts": {
+                    "job_url": {
+                        "scheme": "https",
+                        "hostname": "www.liepin.com",
+                        "raw_value_persisted": False,
+                    },
+                    "files": [
+                        {
+                            "id": "resume_pdf",
+                            "basename": "resume.pdf",
+                            "basename_persisted": True,
+                            "suffix": ".pdf",
+                            "size_bytes": len(b"%PDF-1.4\n"),
+                            "sha256": hashlib.sha256(b"%PDF-1.4\n").hexdigest(),
+                            "raw_content_persisted": False,
+                        },
+                        {
+                            "id": "profile_yaml",
+                            "basename": "profile.yaml",
+                            "basename_persisted": True,
+                            "suffix": ".yaml",
+                            "size_bytes": len(b"id: profile\n"),
+                            "sha256": hashlib.sha256(
+                                b"id: profile\n"
+                            ).hexdigest(),
+                            "raw_content_persisted": False,
+                        },
+                    ],
+                },
+                "steps": [
+                    {"name": "rate_limit", "status": "success", "detail": "ok"},
+                    {"name": "login_check", "status": "success", "detail": "ok"},
+                    {
+                        "name": "target_verify",
+                        "status": "success",
+                        "detail": (
+                            "job_id_present=true; recruiter_present=true; "
+                            "raw_values_redacted=true"
+                        ),
+                    },
+                    {"name": "submit_safety", "status": "success", "detail": "ok"},
+                    {
+                        "name": "chat_send_resume",
+                        "status": "success",
+                        "detail": "ok",
+                    },
+                    {"name": "submit", "status": "success", "detail": "ok"},
+                ],
             }
         )
         + "\n",
@@ -2114,12 +2194,38 @@ def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artif
         is False
     )
     assert (
+        payload["submission_traceability"][
+            "submission_log_input_artifact_basenames_redacted"
+        ]
+        is False
+    )
+    assert (
+        payload["submission_traceability"]["submission_log_raw_live_inputs_redacted"]
+        is True
+    )
+    assert (
+        payload["submission_traceability"]["submission_log_step_details_redacted"]
+        is True
+    )
+    assert (
+        payload["submission_traceability"]["submission_log_required_steps"]["passed"]
+        is True
+    )
+    assert (
         "input_artifacts_match_validation"
+        in payload["submission_traceability"]["failed_checks"]
+    )
+    assert (
+        "submission_log_input_artifact_basenames_redacted"
         in payload["submission_traceability"]["failed_checks"]
     )
     assert payload["submission_traceability"]["linked_to_validation"] is False
     assert (
         "input_artifacts_match_validation"
+        in payload["live_blocker"]["failed_checks"]
+    )
+    assert (
+        "submission_log_input_artifact_basenames_redacted"
         in payload["live_blocker"]["failed_checks"]
     )
     assert payload["live_blocker"]["diagnostics"]["log_yaml_path"] == str(log_yaml)

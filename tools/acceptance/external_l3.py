@@ -463,6 +463,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- JSON 是否存在: `{submission_traceability.get('log_json_exists', False)}`",
                 f"- Submission log 是否反向链接: `{submission_traceability.get('log_links_back_to_validation', False)}`",
                 f"- Submission log 输入产物是否匹配: `{submission_traceability.get('submission_log_input_artifacts_match', False)}`",
+                f"- Submission log 输入产物文件名是否脱敏: `{submission_traceability.get('submission_log_input_artifact_basenames_redacted', False)}`",
                 f"- Submission log 原始 live 输入是否脱敏: `{submission_traceability.get('submission_log_raw_live_inputs_redacted', False)}`",
                 f"- Submission log 步骤详情是否脱敏: `{submission_traceability.get('submission_log_step_details_redacted', False)}`",
                 f"- 成功投递关键步骤是否齐备: `{required_steps.get('passed', False)}`",
@@ -914,6 +915,9 @@ def _submission_traceability(
         expected=expected_input_artifacts,
         actual=logged_input_artifacts if isinstance(logged_input_artifacts, dict) else {},
     )
+    input_artifact_basenames_redacted = _input_artifact_basenames_redacted(
+        logged_input_artifacts if isinstance(logged_input_artifacts, dict) else {}
+    )
     raw_live_inputs_redacted = _submission_log_raw_live_inputs_redacted(log_payload)
     step_details_redacted = _submission_log_step_details_redacted(
         log_payload,
@@ -932,6 +936,7 @@ def _submission_traceability(
         run_id_matches=logged_validation_run_id == expected_validation_run_id,
         path_matches=logged_validation_path == expected_validation_path,
         input_artifacts_match=input_artifacts_match,
+        input_artifact_basenames_redacted=input_artifact_basenames_redacted,
         raw_live_inputs_redacted=raw_live_inputs_redacted,
         step_details_redacted=step_details_redacted,
         browser_artifacts_redacted=browser_artifacts_redacted,
@@ -958,6 +963,9 @@ def _submission_traceability(
         "logged_external_l3_validation_path": logged_validation_path,
         "log_links_back_to_validation": log_links_back,
         "submission_log_input_artifacts_match": input_artifacts_match,
+        "submission_log_input_artifact_basenames_redacted": (
+            input_artifact_basenames_redacted
+        ),
         "submission_log_raw_live_inputs_redacted": raw_live_inputs_redacted,
         "submission_log_step_details_redacted": step_details_redacted,
         "submission_log_browser_artifacts_redacted": browser_artifacts_redacted,
@@ -979,6 +987,7 @@ def _submission_traceability(
             and log_path_allowed
             and log_links_back
             and input_artifacts_match
+            and input_artifact_basenames_redacted
             and raw_live_inputs_redacted
             and step_details_redacted
             and browser_artifacts_redacted
@@ -1149,6 +1158,7 @@ def _submission_traceability_checks(
     run_id_matches: bool,
     path_matches: bool,
     input_artifacts_match: bool,
+    input_artifact_basenames_redacted: bool,
     raw_live_inputs_redacted: bool,
     step_details_redacted: bool,
     browser_artifacts_redacted: bool,
@@ -1197,6 +1207,11 @@ def _submission_traceability_checks(
             check_id="input_artifacts_match_validation",
             passed=input_artifacts_match,
             detail="submission log 输入产物指纹匹配 validation record",
+        ),
+        _traceability_check(
+            check_id="submission_log_input_artifact_basenames_redacted",
+            passed=input_artifact_basenames_redacted,
+            detail="submission log 输入产物只保留扩展名、大小和 SHA256，不持久化 resume/profile 文件名",
         ),
         _traceability_check(
             check_id="submission_log_raw_live_inputs_redacted",
@@ -1254,12 +1269,28 @@ def _input_artifacts_match(
         actual_file = actual_files.get(artifact_id)
         if actual_file is None:
             return False
-        for field in ("basename", "suffix", "size_bytes", "sha256"):
+        for field in ("suffix", "size_bytes", "sha256"):
             if expected_file.get(field) != actual_file.get(field):
                 return False
+        if actual_file.get("basename") != _REDACTED_LIVE_INPUT:
+            return False
+        if actual_file.get("basename_persisted") is not False:
+            return False
         if actual_file.get("raw_content_persisted") is not False:
             return False
     return bool(expected_files)
+
+
+def _input_artifact_basenames_redacted(payload: dict[str, Any]) -> bool:
+    files = _artifact_files_by_id(payload)
+    if not files:
+        return False
+    for item in files.values():
+        if item.get("basename_persisted") is not False:
+            return False
+        if item.get("provided") is True and item.get("basename") != _REDACTED_LIVE_INPUT:
+            return False
+    return True
 
 
 def _artifact_files_by_id(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -1764,7 +1795,8 @@ def _file_artifact_evidence(
     return {
         "id": artifact_id,
         "provided": provided,
-        "basename": path.name if provided else "",
+        "basename": _REDACTED_LIVE_INPUT if provided else "",
+        "basename_persisted": False,
         "suffix": suffix,
         "expected_suffixes": sorted(expected_suffixes),
         "suffix_valid": suffix in expected_suffixes,

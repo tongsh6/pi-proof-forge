@@ -50,10 +50,14 @@ class SubmissionStorageTests(unittest.TestCase):
         self.assertEqual(input_artifacts["job_url"]["scheme"], "https")
         self.assertEqual(input_artifacts["job_url"]["hostname"], "www.liepin.com")
         files = {item["id"]: item for item in input_artifacts["files"]}
+        self.assertEqual(files["resume_pdf"]["basename"], "<redacted>")
+        self.assertFalse(files["resume_pdf"]["basename_persisted"])
         self.assertEqual(
             files["resume_pdf"]["sha256"],
             hashlib.sha256(b"%PDF-1.4\n").hexdigest(),
         )
+        self.assertEqual(files["profile_yaml"]["basename"], "<redacted>")
+        self.assertFalse(files["profile_yaml"]["basename_persisted"])
         self.assertEqual(
             files["profile_yaml"]["sha256"],
             hashlib.sha256(b"id: profile\n").hexdigest(),
@@ -65,6 +69,10 @@ class SubmissionStorageTests(unittest.TestCase):
         self.assertIn('profile_path: "<redacted>"', yaml_text)
         self.assertIn("live_inputs_redacted: true", yaml_text)
         self.assertIn("input_artifacts:", yaml_text)
+        self.assertIn('basename: "<redacted>"', yaml_text)
+        self.assertIn("basename_persisted: false", yaml_text)
+        self.assertNotIn("resume.pdf", yaml_text)
+        self.assertNotIn("profile.yaml", yaml_text)
         self.assertIn('sha256: "', yaml_text)
         self.assertIn(
             'external_l3_validation_run_id: "acceptance_external_l3"',
@@ -100,7 +108,15 @@ class SubmissionStorageTests(unittest.TestCase):
         self.assertEqual(payload["resume_path"], str(resume))
         self.assertEqual(payload["profile_path"], str(profile))
         self.assertFalse(payload["live_inputs_redacted"])
+        input_artifacts = payload["input_artifacts"]
+        files = {item["id"]: item for item in input_artifacts["files"]}
+        self.assertEqual(files["resume_pdf"]["basename"], "resume.pdf")
+        self.assertTrue(files["resume_pdf"]["basename_persisted"])
+        self.assertEqual(files["profile_yaml"]["basename"], "profile.yaml")
+        self.assertTrue(files["profile_yaml"]["basename_persisted"])
         self.assertIn('job_url: "https://www.liepin.com/job/123.shtml"', yaml_text)
+        self.assertIn('basename: "resume.pdf"', yaml_text)
+        self.assertIn("basename_persisted: true", yaml_text)
         self.assertIn("live_inputs_redacted: false", yaml_text)
 
     def test_recorder_redacts_external_l3_step_details_and_errors(self) -> None:

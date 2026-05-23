@@ -825,6 +825,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_live_input_artifacts_fingerprinted"] = (
             _external_l3_live_input_artifacts_result(external_l3_step)
         )
+        results["external_l3_input_artifact_basenames_redacted"] = (
+            _external_l3_input_artifact_basenames_redacted_result(external_l3_step)
+        )
         results["external_l3_rate_limit_policy_recorded"] = (
             _external_l3_rate_limit_policy_result(external_l3_step)
         )
@@ -1026,6 +1029,78 @@ def _external_l3_live_input_artifacts_result(step: AcceptanceStep) -> JourneySte
         evidence=step.evidence,
         message="External L3 真实输入产物审计缺失或原始值持久化约束不完整。",
     )
+
+
+def _external_l3_input_artifact_basenames_redacted_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 输入产物文件名脱敏证据不可读取: {exc}",
+        )
+
+    artifacts = payload.get("live_input_artifacts") or {}
+    validation_basenames_redacted = _input_artifact_basenames_redacted(artifacts)
+    if payload.get("external_submission_attempted") is not True:
+        return JourneyStepResult(
+            status="pass" if validation_basenames_redacted else "fail",
+            evidence=step.evidence,
+            message=(
+                "External L3 validation record 已脱敏 resume/profile 文件名；未执行真实渠道命令，因此没有 submission log 文件名脱敏要求。"
+                if validation_basenames_redacted
+                else "External L3 validation record 仍可能持久化 resume/profile 文件名。"
+            ),
+        )
+
+    traceability = payload.get("submission_traceability") or {}
+    if not traceability.get("log_json_exists"):
+        return JourneyStepResult(
+            status="pass" if validation_basenames_redacted else "fail",
+            evidence=step.evidence,
+            message=(
+                "External L3 validation record 已脱敏 resume/profile 文件名；submission log 缺失由 traceability failed_checks 记录。"
+                if validation_basenames_redacted
+                else "External L3 validation record 仍可能持久化 resume/profile 文件名。"
+            ),
+        )
+    if (
+        validation_basenames_redacted
+        and traceability.get("submission_log_input_artifact_basenames_redacted") is True
+    ):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 validation record 与 submission log 均未持久化 resume/profile 文件名。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 validation record 或 submission log 仍可能持久化 resume/profile 文件名。",
+    )
+
+
+def _input_artifact_basenames_redacted(artifacts: dict[str, Any]) -> bool:
+    files = artifacts.get("files") or []
+    if not isinstance(files, list) or not files:
+        return False
+    for item in files:
+        if not isinstance(item, dict):
+            return False
+        if item.get("basename_persisted") is not False:
+            return False
+        if item.get("provided") is True and item.get("basename") != "<redacted>":
+            return False
+    return True
 
 
 def _external_l3_rate_limit_policy_result(step: AcceptanceStep) -> JourneyStepResult:
