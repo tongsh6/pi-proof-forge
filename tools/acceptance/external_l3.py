@@ -1464,6 +1464,8 @@ def _input_artifacts_match(
         return False
     if expected_job_url.get("hostname", "") != actual_job_url.get("hostname", ""):
         return False
+    if actual_job_url.get("raw_value_persisted") is not False:
+        return False
 
     expected_files = _artifact_files_by_id(expected)
     actual_files = _artifact_files_by_id(actual)
