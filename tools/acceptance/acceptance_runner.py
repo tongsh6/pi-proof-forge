@@ -15,6 +15,7 @@ import yaml
 
 from tools.acceptance.external_l3 import (
     build_external_l3_validation,
+    submission_log_error_blocker_reason,
     write_external_l3_validation,
 )
 from tools.acceptance.journey_contract import load_journey_contract
@@ -1459,6 +1460,23 @@ def _external_l3_post_command_blocker_diagnostics_result(
         and isinstance(diagnostics.get("submission_traceability_checks"), list)
         and isinstance(diagnostics.get("submission_traceability_failed_checks"), list)
     ):
+        summary = diagnostics.get("submission_log_summary") or {}
+        expected_business_reason = (
+            submission_log_error_blocker_reason(summary)
+            if isinstance(summary, dict)
+            else ""
+        )
+        actual_reason = str(blocker.get("reason", ""))
+        if expected_business_reason and actual_reason != expected_business_reason:
+            return JourneyStepResult(
+                status="fail",
+                evidence=step.evidence,
+                message=(
+                    "External L3 post-command blocker 未使用 submission log "
+                    f"业务错误的精确归因: expected={expected_business_reason}, "
+                    f"actual={actual_reason}。"
+                ),
+            )
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,

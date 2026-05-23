@@ -1024,7 +1024,7 @@ def _post_command_blocker_reason(
     if submission_summary.get("error") in {"batch_cooldown", "daily_limit_exceeded"}:
         return "external_channel_rate_limited"
     if not command_succeeded:
-        submission_error_reason = _submission_log_error_blocker_reason(
+        submission_error_reason = submission_log_error_blocker_reason(
             submission_summary
         )
         if submission_error_reason:
@@ -1038,7 +1038,7 @@ def _post_command_blocker_reason(
     return ""
 
 
-def _submission_log_error_blocker_reason(submission_summary: dict[str, Any]) -> str:
+def submission_log_error_blocker_reason(submission_summary: dict[str, Any]) -> str:
     error = str(submission_summary.get("error") or "").strip()
     if not error:
         return ""
