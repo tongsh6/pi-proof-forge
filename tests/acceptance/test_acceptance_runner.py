@@ -16,6 +16,12 @@ from tools.acceptance.acceptance_runner import (
 from tools.acceptance.external_l3 import submission_log_error_blocker_reason
 
 
+def _external_l3_session_dir(root: Path) -> Path:
+    session_dir = root / ".sessions"
+    (session_dir / "liepin" / "session" / "liepin").mkdir(parents=True, exist_ok=True)
+    return session_dir
+
+
 def test_acceptance_runner_defaults_to_l1(tmp_path: Path) -> None:
     with patch("tools.acceptance.acceptance_runner.subprocess.run") as run_mock:
         run_mock.return_value = Mock(returncode=0, stdout="l1 ok", stderr="")
@@ -878,6 +884,7 @@ def test_acceptance_runner_l3_rejects_forbidden_secret_or_challenge_inputs(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_PASSWORD": "do-not-store",
         "PIPF_EXTERNAL_L3_CAPTCHA_CODE": "123456",
     }
@@ -942,6 +949,7 @@ def test_acceptance_runner_l3_blocks_confirm_job_id_mismatch_before_submit(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123456789.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1010,6 +1018,7 @@ def test_acceptance_runner_l3_records_invalid_live_input_gates(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1064,6 +1073,7 @@ def test_acceptance_runner_l3_records_invalid_job_url_gate(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "ftp://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1101,6 +1111,7 @@ def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1215,6 +1226,59 @@ def test_acceptance_runner_l3_requires_manual_session_ready_before_command(
     assert run_mock.call_count == 0
 
 
+def test_acceptance_runner_l3_requires_prepared_session_storage_before_command(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    missing_session_dir = tmp_path / "missing-session"
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(missing_session_dir),
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["live_blocker"]["reason"] == "manual_session_storage_not_ready"
+    assert "manual_session_storage_ready" in payload["live_blocker"]["failed_checks"]
+    assert payload["session_readiness"]["session_ready_confirmed"] is True
+    assert payload["session_readiness"]["session_dir_exists"] is False
+    assert payload["session_readiness"]["channel_session_dir_exists"] is False
+    assert payload["session_readiness"]["session_storage_ready"] is False
+    assert payload["live_run_readiness"]["submit_command_allowed"] is False
+    assert payload["external_submission_attempted"] is False
+    assert run_mock.call_count == 0
+
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    session_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_manual_session_ready_confirmed_before_command"
+    )
+    assert session_rule["status"] == "pass"
+    assert "人工会话准备" in session_rule["message"]
+
+
 def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     tmp_path: Path,
 ) -> None:
@@ -1299,6 +1363,7 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1594,6 +1659,7 @@ def test_acceptance_runner_l3_blocks_zero_returncode_when_submission_log_failed(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1729,6 +1795,7 @@ def test_acceptance_runner_l3_promotes_target_verify_submission_log_error(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1909,6 +1976,7 @@ def test_acceptance_runner_l3_promotes_send_resume_prefixed_error(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2033,6 +2101,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_live_inputs(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2141,6 +2210,7 @@ def test_acceptance_runner_l3_requires_submission_log_redaction_flag(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2269,6 +2339,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_step_details(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2410,6 +2481,7 @@ def test_acceptance_runner_l3_blocks_legacy_target_verify_detail_shape(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2521,6 +2593,7 @@ def test_acceptance_runner_l3_redacts_unsafe_submission_summary_detail(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2666,6 +2739,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_browser_artifacts(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2775,6 +2849,7 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2896,6 +2971,7 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -3065,6 +3141,7 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -3283,6 +3360,7 @@ def test_acceptance_runner_l3_records_timeout_as_live_blocker(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -3370,6 +3448,7 @@ def test_acceptance_runner_l3_records_command_error_as_live_blocker(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -3528,6 +3607,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_input_artifact_base
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -3679,6 +3759,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_job_url_artifact_fl
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -3752,6 +3833,7 @@ def test_acceptance_runner_l3_rejects_submission_log_outside_allowed_root(
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": str(_external_l3_session_dir(tmp_path)),
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),

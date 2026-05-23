@@ -2482,9 +2482,19 @@ def _external_l3_manual_session_readiness_result(
         missing.append("browser_automation_solves_challenge")
     if session_readiness.get("raw_credentials_persisted") is not False:
         missing.append("raw_credentials_persisted")
+    for field in (
+        "session_dir_exists",
+        "channel_session_dir_exists",
+        "session_storage_ready",
+    ):
+        if field not in session_readiness:
+            missing.append(field)
     session_gate = readiness_gates.get("manual_session_ready_confirmed") or {}
     if not session_gate:
         missing.append("manual_session_ready_confirmed")
+    storage_gate = readiness_gates.get("manual_session_storage_ready") or {}
+    if not storage_gate:
+        missing.append("manual_session_storage_ready")
     expected_status = (
         "pass"
         if session_readiness.get("session_ready_confirmed") is True
@@ -2492,6 +2502,13 @@ def _external_l3_manual_session_readiness_result(
     )
     if session_gate and session_gate.get("status") != expected_status:
         missing.append("manual_session_ready_confirmed.status")
+    expected_storage_status = (
+        "pass"
+        if session_readiness.get("session_storage_ready") is True
+        else "blocked"
+    )
+    if storage_gate and storage_gate.get("status") != expected_storage_status:
+        missing.append("manual_session_storage_ready.status")
     required_env = handoff_required_env.get("PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED")
     if not required_env:
         missing.append("PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED")
@@ -2501,13 +2518,22 @@ def _external_l3_manual_session_readiness_result(
         and session_readiness.get("session_ready_confirmed") is not True
     ):
         missing.append("external_submission_started_without_session_ready")
+    if (
+        payload.get("external_submission_attempted") is True
+        and session_readiness.get("session_storage_ready") is not True
+    ):
+        missing.append("external_submission_started_without_session_storage")
 
     markdown_fragments = [
         "## 人工会话准备",
         "- 已确认共享登录会话可用:",
+        "- 会话根目录是否存在:",
+        "- Liepin 持久化会话目录是否存在:",
+        "- 会话存储是否就绪:",
         "- 自动化是否输入凭据: `False`",
         "- 自动化是否处理验证码或短信码: `False`",
         "`manual_session_ready_confirmed`",
+        "`manual_session_storage_ready`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
