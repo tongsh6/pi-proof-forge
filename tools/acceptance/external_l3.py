@@ -1461,20 +1461,27 @@ def _operator_handoff(
             readiness=readiness,
             external_submission_attempted=external_submission_attempted,
         ),
-        "command_template": (
-            "PIPF_EXTERNAL_L3_AUTHORIZED=true "
-            "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true "
-            "PIPF_EXTERNAL_L3_JOB_URL=<https-url> "
-            "PIPF_EXTERNAL_L3_RESUME_PDF=<resume.pdf> "
-            "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml> "
-            "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id> "
-            "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter> "
-            "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH=5 "
-            "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS=900 "
-            "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT=30 "
-            "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
-        ),
+        "command_template": _operator_command_template(request),
     }
+
+
+def _operator_command_template(request: dict[str, Any]) -> str:
+    return (
+        "PIPF_EXTERNAL_L3_AUTHORIZED=true "
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true "
+        "PIPF_EXTERNAL_L3_JOB_URL=<https-url> "
+        "PIPF_EXTERNAL_L3_RESUME_PDF=<resume.pdf> "
+        "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml> "
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id> "
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter> "
+        "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH="
+        f"{int(request['rate_limit_max_per_batch'])} "
+        "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS="
+        f"{int(request['rate_limit_cooldown_seconds'])} "
+        "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT="
+        f"{int(request['rate_limit_daily_limit'])} "
+        "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
+    )
 
 
 def _operator_authorization_packet(

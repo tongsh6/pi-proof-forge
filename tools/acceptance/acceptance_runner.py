@@ -875,6 +875,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_authorization_packet_recorded"] = (
             _external_l3_authorization_packet_result(external_l3_step)
         )
+        results["external_l3_handoff_command_template_matches_effective_policy"] = (
+            _external_l3_handoff_command_template_result(external_l3_step)
+        )
         results["external_l3_pre_submit_blocker_diagnostics_recorded"] = (
             _external_l3_pre_submit_blocker_diagnostics_result(external_l3_step)
         )
@@ -1750,6 +1753,61 @@ def _external_l3_authorization_packet_result(
         status="fail",
         evidence=step.evidence,
         message="External L3 授权确认包缺失或不可证明最终提交前确认边界。",
+    )
+
+
+def _external_l3_handoff_command_template_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 授权交接命令模板证据不可读取: {exc}",
+        )
+
+    handoff = payload.get("operator_handoff") or {}
+    template = str(handoff.get("command_template", ""))
+    rate_limit_policy = payload.get("rate_limit_policy") or {}
+    required_fragments = [
+        "PIPF_EXTERNAL_L3_JOB_URL=<https-url>",
+        "PIPF_EXTERNAL_L3_RESUME_PDF=<resume.pdf>",
+        "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml>",
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id>",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter>",
+        (
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH="
+            f"{rate_limit_policy.get('max_per_batch', '')}"
+        ),
+        (
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS="
+            f"{rate_limit_policy.get('cooldown_seconds', '')}"
+        ),
+        (
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT="
+            f"{rate_limit_policy.get('daily_limit', '')}"
+        ),
+        "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3",
+    ]
+    missing = [fragment for fragment in required_fragments if fragment not in template]
+    if not missing:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 授权交接命令模板使用 live 输入占位符，并匹配当前有效频控策略。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message=f"External L3 授权交接命令模板缺少或不匹配: {', '.join(missing)}",
     )
 
 

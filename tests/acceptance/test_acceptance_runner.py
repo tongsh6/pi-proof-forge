@@ -284,6 +284,15 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "password" in handoff["forbidden_inputs"]
     assert "captcha_code" in handoff["forbidden_inputs"]
     assert "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH=5" in handoff["command_template"]
+    assert (
+        "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS=900"
+        in handoff["command_template"]
+    )
+    assert (
+        "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT=30"
+        in handoff["command_template"]
+    )
+    assert "PIPF_EXTERNAL_L3_JOB_URL=<https-url>" in handoff["command_template"]
     required_env = {item["name"]: item for item in handoff["required_env"]}
     assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
     assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
@@ -528,6 +537,18 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert authorization_rule["stage"] == "submissions"
     assert authorization_rule["status"] == "pass"
     assert "授权确认包" in authorization_rule["message"]
+    handoff_template_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_handoff_command_template_matches_effective_policy"
+        )
+    )
+    assert handoff_template_rule["level"] == "L3"
+    assert handoff_template_rule["stage"] == "submissions"
+    assert handoff_template_rule["status"] == "pass"
+    assert "命令模板" in handoff_template_rule["message"]
     pre_submit_diagnostics_rule = next(
         step
         for step in journey_payload["steps"]
@@ -852,6 +873,10 @@ def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
     assert payload["live_blocker"]["reason"] == "invalid_external_l3_rate_limit_policy"
     assert payload["rate_limit_policy"]["enabled"] is False
     assert payload["rate_limit_policy"]["max_per_batch"] == 0
+    assert (
+        "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH=0"
+        in payload["operator_handoff"]["command_template"]
+    )
     assert (
         payload["live_blocker"]["diagnostics"]["rate_limit_policy"]["enabled"]
         is False
