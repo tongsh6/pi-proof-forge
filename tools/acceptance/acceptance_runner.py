@@ -907,7 +907,9 @@ def _external_l3_live_command_redaction_result(step: AcceptanceStep) -> JourneyS
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -956,7 +958,9 @@ def _external_l3_live_output_redaction_result(step: AcceptanceStep) -> JourneySt
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -1004,7 +1008,9 @@ def _external_l3_live_input_artifacts_result(step: AcceptanceStep) -> JourneySte
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -1767,7 +1773,9 @@ def _external_l3_handoff_command_template_result(
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -1826,7 +1834,15 @@ def _external_l3_handoff_command_template_result(
         ),
         "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3",
     ]
+    markdown_fragments = [
+        "### 可复制命令模板",
+        "```bash",
+        template,
+    ]
     missing = [fragment for fragment in required_fragments if fragment not in template]
+    missing.extend(
+        fragment for fragment in markdown_fragments if fragment not in markdown
+    )
     if not missing:
         return JourneyStepResult(
             status="pass",

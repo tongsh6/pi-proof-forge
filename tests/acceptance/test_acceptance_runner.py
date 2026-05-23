@@ -355,6 +355,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "## 授权交接包" in markdown
     assert "### 运行配置" in markdown
     assert "| `timeout_seconds` | `10` |" in markdown
+    assert "### 可复制命令模板" in markdown
+    assert "```bash" in markdown
+    assert "PIPF_EXTERNAL_L3_JOB_URL='<https-url>'" in markdown
+    assert "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3" in markdown
     assert "### 授权确认包" in markdown
     assert "#### 必需确认声明" in markdown
     assert "#### 中止条件" in markdown

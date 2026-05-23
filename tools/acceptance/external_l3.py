@@ -567,6 +567,18 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 "headless",
             ):
                 lines.append(f"| `{key}` | `{runtime_options.get(key, '')}` |")
+        command_template = str(handoff.get("command_template", ""))
+        if command_template:
+            lines.extend(
+                [
+                    "",
+                    "### 可复制命令模板",
+                    "",
+                    "```bash",
+                    command_template,
+                    "```",
+                ]
+            )
         lines.extend(
             [
                 "",
