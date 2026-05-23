@@ -312,6 +312,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         evidence_entries["external_l3_live_run_runbook"]["location"]
         == "docs/runbooks/external-l3-live-run.md"
     )
+    assert evidence_entries["preflight_review_checklist"]["required"] is True
+    assert evidence_entries["preflight_review_checklist"]["present"] is True
+    assert (
+        evidence_entries["preflight_review_checklist"]["status"]
+        == "operator_review_required_before_authorized_template"
+    )
     assert evidence_entries["post_submit_feedback_traceability"]["present"] is True
     assert evidence_entries["live_blocker"]["required"] is True
     assert evidence_entries["live_blocker"]["present"] is True
@@ -398,6 +404,74 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert preflight_expectation["must_not_start_external_channel"] is True
     assert "evidence_manifest" in preflight_expectation["required_evidence_sections"]
+    preflight_review_checklist = handoff["preflight_review_checklist"]
+    assert (
+        preflight_review_checklist["status"]
+        == "operator_review_required_before_authorized_template"
+    )
+    assert (
+        preflight_review_checklist["required_before_authorized_template"] is True
+    )
+    assert preflight_review_checklist["raw_live_inputs_persisted"] is False
+    preflight_review_items = {
+        item["id"]: item for item in preflight_review_checklist["items"]
+    }
+    assert (
+        preflight_review_items["validation_status_is_live_blocker_recorded"][
+            "source_path"
+        ]
+        == "status"
+    )
+    assert (
+        preflight_review_items["validation_status_is_live_blocker_recorded"][
+            "expected"
+        ]
+        == "live_blocker_recorded"
+    )
+    assert (
+        preflight_review_items[
+            "blocker_reason_is_explicit_user_authorization_required"
+        ]["expected"]
+        == "explicit_user_authorization_required"
+    )
+    assert (
+        preflight_review_items["external_submission_attempted_false"]["expected"]
+        is False
+    )
+    assert (
+        preflight_review_items["submit_command_allowed_false"]["source_path"]
+        == "live_run_readiness.submit_command_allowed"
+    )
+    assert preflight_review_items["p0_017_complete_false"]["expected"] is False
+    assert (
+        preflight_review_items["live_input_artifacts_present_and_redacted"][
+            "expected"
+        ]
+        == "present_with_raw_live_inputs_persisted_false"
+    )
+    assert (
+        preflight_review_items["session_readiness_reviewed"]["expected"]
+        == "present_with_manual_login_boundary"
+    )
+    assert preflight_review_items["rate_limit_policy_enabled"]["expected"] is True
+    assert (
+        preflight_review_items["evidence_manifest_complete"]["source_path"]
+        == "evidence_manifest.status"
+    )
+    assert (
+        preflight_review_items["runbook_fingerprinted"]["expected"]
+        == "fingerprinted_and_sections_complete"
+    )
+    assert (
+        preflight_review_items[
+            "post_submit_feedback_traceability_points_to_live_blocker"
+        ]["source_path"]
+        == "post_submit_feedback_traceability.source_type"
+    )
+    assert all(
+        item["required"] is True and item["raw_live_inputs_persisted"] is False
+        for item in preflight_review_checklist["items"]
+    )
     command_template_review = handoff["command_template_review"]
     assert command_template_review["copy_paste_ready"] is False
     assert command_template_review["requires_placeholder_replacement"] is True
@@ -530,6 +604,20 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 预期 blocker reason: `explicit_user_authorization_required`" in markdown
     assert "- 操作者是否应视为预检正常: `True`" in markdown
     assert "#### 预检必需证据段" in markdown
+    assert "### 本地预检复核清单" in markdown
+    assert (
+        "- 状态: `operator_review_required_before_authorized_template`"
+        in markdown
+    )
+    assert "- 授权模板前必需: `True`" in markdown
+    assert "- 原始 live 输入是否持久化: `False`" in markdown
+    assert "| 复核项 | 来源 | 预期 | 必需 |" in markdown
+    assert "`validation_status_is_live_blocker_recorded`" in markdown
+    assert "`blocker_reason_is_explicit_user_authorization_required`" in markdown
+    assert "`external_submission_attempted_false`" in markdown
+    assert "`submit_command_allowed_false`" in markdown
+    assert "`p0_017_complete_false`" in markdown
+    assert "`runbook_fingerprinted`" in markdown
     assert "### 授权真实运行命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
     assert "```bash" in markdown
@@ -806,6 +894,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert handoff_template_review_rule["status"] == "pass"
     assert "必须先跑本地预检" in handoff_template_review_rule["message"]
     assert "授权 blocker" in handoff_template_review_rule["message"]
+    assert "预检复核清单" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step
         for step in journey_payload["steps"]

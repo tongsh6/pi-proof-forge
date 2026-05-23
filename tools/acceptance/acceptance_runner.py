@@ -2277,6 +2277,10 @@ def _external_l3_handoff_command_template_review_result(
         (payload.get("operator_handoff") or {}).get("preflight_result_expectation")
         or {}
     )
+    preflight_review_checklist = (
+        (payload.get("operator_handoff") or {}).get("preflight_review_checklist")
+        or {}
+    )
     expected_placeholders = {
         "<https-url>",
         "<resume.pdf>",
@@ -2342,6 +2346,75 @@ def _external_l3_handoff_command_template_review_result(
         set(preflight_expectation.get("required_evidence_sections") or [])
     ):
         missing.append("preflight_result_expectation.required_evidence_sections")
+    expected_review_items = {
+        "validation_status_is_live_blocker_recorded": (
+            "status",
+            "live_blocker_recorded",
+        ),
+        "blocker_reason_is_explicit_user_authorization_required": (
+            "live_blocker.reason",
+            "explicit_user_authorization_required",
+        ),
+        "external_submission_attempted_false": (
+            "external_submission_attempted",
+            False,
+        ),
+        "submit_command_allowed_false": (
+            "live_run_readiness.submit_command_allowed",
+            False,
+        ),
+        "p0_017_complete_false": (
+            "outcome_summary.p0_017_complete",
+            False,
+        ),
+        "live_input_artifacts_present_and_redacted": (
+            "live_input_artifacts",
+            "present_with_raw_live_inputs_persisted_false",
+        ),
+        "session_readiness_reviewed": (
+            "session_readiness",
+            "present_with_manual_login_boundary",
+        ),
+        "rate_limit_policy_enabled": ("rate_limit_policy.enabled", True),
+        "evidence_manifest_complete": ("evidence_manifest.status", "complete"),
+        "runbook_fingerprinted": (
+            "operator_handoff.runbook",
+            "fingerprinted_and_sections_complete",
+        ),
+        "post_submit_feedback_traceability_points_to_live_blocker": (
+            "post_submit_feedback_traceability.source_type",
+            "live_blocker",
+        ),
+    }
+    if (
+        preflight_review_checklist.get("status")
+        != "operator_review_required_before_authorized_template"
+    ):
+        missing.append("preflight_review_checklist.status")
+    if preflight_review_checklist.get("required_before_authorized_template") is not True:
+        missing.append("preflight_review_checklist.required_before_authorized_template")
+    if preflight_review_checklist.get("raw_live_inputs_persisted") is not False:
+        missing.append("preflight_review_checklist.raw_live_inputs_persisted")
+    review_items = {
+        str(item.get("id", "")): item
+        for item in preflight_review_checklist.get("items") or []
+        if isinstance(item, dict)
+    }
+    for item_id, (source_path, expected) in expected_review_items.items():
+        item = review_items.get(item_id)
+        if not item:
+            missing.append(f"preflight_review_checklist.items.{item_id}")
+            continue
+        if item.get("source_path") != source_path:
+            missing.append(f"preflight_review_checklist.items.{item_id}.source_path")
+        if item.get("expected") != expected:
+            missing.append(f"preflight_review_checklist.items.{item_id}.expected")
+        if item.get("required") is not True:
+            missing.append(f"preflight_review_checklist.items.{item_id}.required")
+        if item.get("raw_live_inputs_persisted") is not False:
+            missing.append(
+                f"preflight_review_checklist.items.{item_id}.raw_live_inputs_persisted"
+            )
 
     markdown_fragments = [
         "### 命令模板复核",
@@ -2367,6 +2440,16 @@ def _external_l3_handoff_command_template_review_result(
         "- 操作者是否应视为预检正常: `True`",
         "- 是否不得触碰外部渠道: `True`",
         "#### 预检必需证据段",
+        "### 本地预检复核清单",
+        "- 状态: `operator_review_required_before_authorized_template`",
+        "- 授权模板前必需: `True`",
+        "| 复核项 | 来源 | 预期 | 必需 |",
+        "`validation_status_is_live_blocker_recorded`",
+        "`blocker_reason_is_explicit_user_authorization_required`",
+        "`external_submission_attempted_false`",
+        "`submit_command_allowed_false`",
+        "`p0_017_complete_false`",
+        "`runbook_fingerprinted`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
@@ -2375,7 +2458,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须复核预检证据。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据。",
         )
     return JourneyStepResult(
         status="fail",
@@ -2420,6 +2503,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "target_confirmation_audit",
         "operator_handoff",
         "external_l3_live_run_runbook",
+        "preflight_review_checklist",
         "post_submit_feedback_traceability",
         "feedback_source_artifact",
     }

@@ -818,6 +818,36 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 lines.extend(["", "#### 预检必需证据段", ""])
                 for item in required_sections:
                     lines.append(f"- `{item}`")
+        preflight_review_checklist = (
+            handoff.get("preflight_review_checklist") or {}
+        )
+        if preflight_review_checklist:
+            lines.extend(
+                [
+                    "",
+                    "### 本地预检复核清单",
+                    "",
+                    f"- 状态: `{preflight_review_checklist.get('status', '')}`",
+                    f"- 授权模板前必需: `{preflight_review_checklist.get('required_before_authorized_template', False)}`",
+                    f"- 原始 live 输入是否持久化: `{preflight_review_checklist.get('raw_live_inputs_persisted', True)}`",
+                    "",
+                    "| 复核项 | 来源 | 预期 | 必需 |",
+                    "|---|---|---|---:|",
+                ]
+            )
+            for item in preflight_review_checklist.get("items") or []:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            f"`{item.get('id', '')}`",
+                            f"`{item.get('source_path', '')}`",
+                            f"`{item.get('expected', '')}`",
+                            f"`{item.get('required', False)}`",
+                        ]
+                    )
+                    + " |"
+                )
         if command_template:
             lines.extend(
                 [
@@ -1980,6 +2010,36 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
             ),
         )
     )
+    preflight_review_checklist = (
+        (validation.get("operator_handoff") or {}).get("preflight_review_checklist")
+        or {}
+    )
+    preflight_review_items = preflight_review_checklist.get("items") or []
+    preflight_review_present = (
+        preflight_review_checklist.get("required_before_authorized_template") is True
+        and preflight_review_checklist.get("raw_live_inputs_persisted") is False
+        and bool(preflight_review_items)
+        and all(
+            isinstance(item, dict)
+            and item.get("required") is True
+            and item.get("raw_live_inputs_persisted") is False
+            for item in preflight_review_items
+        )
+    )
+    entries.append(
+        _evidence_entry(
+            entry_id="preflight_review_checklist",
+            artifact_type="embedded_section",
+            location=f"{validation_json}#operator_handoff.preflight_review_checklist",
+            required=True,
+            present=preflight_review_present,
+            status=(
+                "operator_review_required_before_authorized_template"
+                if preflight_review_present
+                else "missing_or_incomplete"
+            ),
+        )
+    )
 
     live_blocker_required = validation.get("status") == "live_blocker_recorded"
     live_blocker_present = bool(validation.get("live_blocker"))
@@ -2216,6 +2276,7 @@ def _operator_handoff(
         ),
         "runbook": _operator_runbook_reference(),
         "preflight_result_expectation": _operator_preflight_result_expectation(),
+        "preflight_review_checklist": _operator_preflight_review_checklist(),
         "preflight_command_template": _operator_preflight_command_template(request),
         "command_template": _operator_command_template(request),
         "command_template_review": _operator_command_template_review(),
@@ -2378,6 +2439,98 @@ def _operator_preflight_result_expectation() -> dict[str, Any]:
             "evidence_manifest",
             "post_submit_feedback_traceability",
         ],
+    }
+
+
+def _operator_preflight_review_checklist() -> dict[str, Any]:
+    return {
+        "status": "operator_review_required_before_authorized_template",
+        "required_before_authorized_template": True,
+        "raw_live_inputs_persisted": False,
+        "items": [
+            _preflight_review_item(
+                "validation_status_is_live_blocker_recorded",
+                "status",
+                "live_blocker_recorded",
+                "预检 validation 顶层状态必须是授权前 blocker。",
+            ),
+            _preflight_review_item(
+                "blocker_reason_is_explicit_user_authorization_required",
+                "live_blocker.reason",
+                "explicit_user_authorization_required",
+                "预检 blocker reason 必须是缺少用户显式授权。",
+            ),
+            _preflight_review_item(
+                "external_submission_attempted_false",
+                "external_submission_attempted",
+                False,
+                "预检不得启动外部 submit 命令。",
+            ),
+            _preflight_review_item(
+                "submit_command_allowed_false",
+                "live_run_readiness.submit_command_allowed",
+                False,
+                "预检不得允许 submit 命令进入真实渠道。",
+            ),
+            _preflight_review_item(
+                "p0_017_complete_false",
+                "outcome_summary.p0_017_complete",
+                False,
+                "预检不得被解释为 P0-017 完成。",
+            ),
+            _preflight_review_item(
+                "live_input_artifacts_present_and_redacted",
+                "live_input_artifacts",
+                "present_with_raw_live_inputs_persisted_false",
+                "预检必须写出真实输入审计，并证明原始 live 输入未持久化。",
+            ),
+            _preflight_review_item(
+                "session_readiness_reviewed",
+                "session_readiness",
+                "present_with_manual_login_boundary",
+                "预检必须写出人工 session 准备状态和自动化不输入凭据边界。",
+            ),
+            _preflight_review_item(
+                "rate_limit_policy_enabled",
+                "rate_limit_policy.enabled",
+                True,
+                "预检必须证明真实渠道频控启用。",
+            ),
+            _preflight_review_item(
+                "evidence_manifest_complete",
+                "evidence_manifest.status",
+                "complete",
+                "预检必须写出完整证据清单。",
+            ),
+            _preflight_review_item(
+                "runbook_fingerprinted",
+                "operator_handoff.runbook",
+                "fingerprinted_and_sections_complete",
+                "预检必须绑定中文真实运行 runbook 的路径、SHA256 和必需章节。",
+            ),
+            _preflight_review_item(
+                "post_submit_feedback_traceability_points_to_live_blocker",
+                "post_submit_feedback_traceability.source_type",
+                "live_blocker",
+                "预检必须把后续处理入口指向 live blocker，而不进入 feedback iteration。",
+            ),
+        ],
+    }
+
+
+def _preflight_review_item(
+    item_id: str,
+    source_path: str,
+    expected: Any,
+    description: str,
+) -> dict[str, Any]:
+    return {
+        "id": item_id,
+        "source_path": source_path,
+        "expected": expected,
+        "required": True,
+        "raw_live_inputs_persisted": False,
+        "description": description,
     }
 
 
