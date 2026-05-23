@@ -2612,11 +2612,12 @@ def _channel_session_dir_path(request: dict[str, Any]) -> Path:
 def _session_state_markers(path: Path) -> list[str]:
     if not path.is_dir():
         return []
-    return [
-        marker
-        for marker in _SESSION_STATE_MARKER_PATHS
-        if (path / marker).is_file()
-    ]
+    markers = []
+    for marker in _SESSION_STATE_MARKER_PATHS:
+        marker_path = path / marker
+        if marker_path.is_file() and marker_path.stat().st_size > 0:
+            markers.append(marker)
+    return markers
 
 
 def _required_env_handoff(request: dict[str, Any]) -> list[dict[str, Any]]:

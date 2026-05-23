@@ -157,7 +157,7 @@
 - 即使所有 env 字符串都存在，真实 Job URL 不是 http/https、resume 不是存在的 `.pdf` 文件或 profile 不是存在的 `.yaml/.yml` 文件，也必须在启动 submit 命令前记录 live blocker。
 - L3 证据必须包含 `live_input_artifacts`：记录 Job URL 的 scheme/host、resume/profile 的扩展名、大小和 SHA256；不得持久化 Job URL 原值、确认值、文件原始内容或 resume/profile 文件名，Markdown 报告也必须展示这些未持久化结论。
 - L3 证据必须包含 `rate_limit_policy`：记录 max-per-batch、cooldown seconds、daily limit 和状态文件路径；频控被关闭时必须在 submit 命令启动前记录 live blocker。
-- L3 证据必须包含 `session_readiness`、`manual_session_ready_confirmed` 和 `manual_session_storage_ready` gate：真实渠道命令启动前必须由用户确认共享渠道 session 已经人工登录或刷新可用，且 session 根目录存在、Liepin 持久化会话目录存在并至少包含一个可识别浏览器状态标记；`.DS_Store` 等误放文件不得计为状态证据；未确认或 session 存储未准备好时必须以 `session_readiness` 分类阻断在 submit 命令启动前，并继续证明自动化不会输入凭据、验证码或短信码。
+- L3 证据必须包含 `session_readiness`、`manual_session_ready_confirmed` 和 `manual_session_storage_ready` gate：真实渠道命令启动前必须由用户确认共享渠道 session 已经人工登录或刷新可用，且 session 根目录存在、Liepin 持久化会话目录存在并至少包含一个非空可识别浏览器状态标记；空文件、`.DS_Store` 等误放文件不得计为状态证据；未确认或 session 存储未准备好时必须以 `session_readiness` 分类阻断在 submit 命令启动前，并继续证明自动化不会输入凭据、验证码或短信码。
 - L3 证据必须包含 `forbidden_input_audit`：runner 只记录密码、验证码、短信码和原始密钥类 forbidden env 是否出现，不持久化原值；任一 forbidden input 出现时必须阻断在 submit 命令启动前。
 - L3 证据必须包含 `target_confirmation_audit`：runner 只记录 Job URL 中岗位 ID 是否可解析、确认岗位 ID 是否已提供、二者是否一致、确认 recruiter 是否已提供，以及 recruiter 页面匹配必须由 `target_verify` 证明的边界；不持久化原始 ID 或 recruiter 原值；岗位 ID 不一致时必须阻断在 submit 命令启动前。
 - 如果真实渠道命令被执行，`external-l3-validation.json` 只能持久化脱敏后的 command 和 stdout/stderr 尾部；Job URL、resume/profile 路径、确认 job id 和确认 recruiter 必须以 `<redacted>` 形式保存。
