@@ -879,6 +879,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_handoff_command_template_matches_effective_policy"] = (
             _external_l3_handoff_command_template_result(external_l3_step)
         )
+        results["external_l3_handoff_command_template_review_recorded"] = (
+            _external_l3_handoff_command_template_review_result(external_l3_step)
+        )
         results["external_l3_pre_submit_blocker_diagnostics_recorded"] = (
             _external_l3_pre_submit_blocker_diagnostics_result(external_l3_step)
         )
@@ -1858,6 +1861,81 @@ def _external_l3_handoff_command_template_result(
 
 def _expected_env_assignment(name: str, value: object) -> str:
     return f"{name}={shlex.quote(str(value))}"
+
+
+def _external_l3_handoff_command_template_review_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 命令模板复核证据不可读取: {exc}",
+        )
+
+    review = (
+        (payload.get("operator_handoff") or {}).get("command_template_review") or {}
+    )
+    expected_placeholders = {
+        "<https-url>",
+        "<resume.pdf>",
+        "<profile.yaml>",
+        "<job-id>",
+        "<recruiter>",
+    }
+    placeholders = set(review.get("placeholders") or [])
+    required_fields = {
+        "copy_paste_ready": False,
+        "requires_placeholder_replacement": True,
+        "requires_separate_authorization": True,
+        "requires_separate_final_submit_confirmation": True,
+        "shell_safe_env_assignments": True,
+        "live_input_placeholders_present": True,
+        "raw_live_inputs_persisted": False,
+    }
+    missing = [
+        key
+        for key, expected in required_fields.items()
+        if review.get(key) is not expected
+    ]
+    if not expected_placeholders.issubset(placeholders):
+        missing.append("placeholders")
+    if not review.get("review_items"):
+        missing.append("review_items")
+
+    markdown_fragments = [
+        "### 命令模板复核",
+        "- 是否可直接复制运行: `False`",
+        "- 必须替换占位符: `True`",
+        "- 必须独立确认授权: `True`",
+        "- 必须独立确认最终提交: `True`",
+        "#### 需替换占位符",
+        "#### 复核项",
+    ]
+    missing.extend(
+        fragment for fragment in markdown_fragments if fragment not in markdown
+    )
+    if not missing:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 授权交接命令模板复核已记录：模板不可盲贴执行，必须替换占位符并独立确认授权与最终提交。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message=f"External L3 命令模板复核缺失或不完整: {', '.join(missing)}",
+    )
 
 
 def _external_l3_pre_submit_blocker_diagnostics_result(

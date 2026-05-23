@@ -579,6 +579,32 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     "```",
                 ]
             )
+        command_template_review = handoff.get("command_template_review") or {}
+        if command_template_review:
+            lines.extend(
+                [
+                    "",
+                    "### 命令模板复核",
+                    "",
+                    f"- 是否可直接复制运行: `{command_template_review.get('copy_paste_ready', True)}`",
+                    f"- 必须替换占位符: `{command_template_review.get('requires_placeholder_replacement', False)}`",
+                    f"- 必须独立确认授权: `{command_template_review.get('requires_separate_authorization', False)}`",
+                    f"- 必须独立确认最终提交: `{command_template_review.get('requires_separate_final_submit_confirmation', False)}`",
+                    f"- Shell-safe env 赋值: `{command_template_review.get('shell_safe_env_assignments', False)}`",
+                    f"- 原始 live 输入是否持久化: `{command_template_review.get('raw_live_inputs_persisted', True)}`",
+                    f"- 原因: `{command_template_review.get('reason', '')}`",
+                ]
+            )
+            placeholders = command_template_review.get("placeholders") or []
+            if placeholders:
+                lines.extend(["", "#### 需替换占位符", ""])
+                for item in placeholders:
+                    lines.append(f"- `{item}`")
+            review_items = command_template_review.get("review_items") or []
+            if review_items:
+                lines.extend(["", "#### 复核项", ""])
+                for item in review_items:
+                    lines.append(f"- {item}")
         lines.extend(
             [
                 "",
@@ -1496,6 +1522,7 @@ def _operator_handoff(
             external_submission_attempted=external_submission_attempted,
         ),
         "command_template": _operator_command_template(request),
+        "command_template_review": _operator_command_template_review(),
     }
 
 
@@ -1562,6 +1589,32 @@ def _operator_command_template(request: dict[str, Any]) -> str:
 
 def _shell_env_assignment(name: str, value: str) -> str:
     return f"{name}={shlex.quote(value)}"
+
+
+def _operator_command_template_review() -> dict[str, Any]:
+    return {
+        "copy_paste_ready": False,
+        "reason": "replace_placeholders_and_confirm_authorization_before_run",
+        "requires_placeholder_replacement": True,
+        "requires_separate_authorization": True,
+        "requires_separate_final_submit_confirmation": True,
+        "shell_safe_env_assignments": True,
+        "live_input_placeholders_present": True,
+        "raw_live_inputs_persisted": False,
+        "placeholders": [
+            "<https-url>",
+            "<resume.pdf>",
+            "<profile.yaml>",
+            "<job-id>",
+            "<recruiter>",
+        ],
+        "review_items": [
+            "替换所有 live 输入占位符后再运行命令。",
+            "确认 PIPF_EXTERNAL_L3_AUTHORIZED=true 只在用户显式授权后保留。",
+            "确认 PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true 只在独立最终提交确认后保留。",
+            "确认不会提供密码、验证码、短信码或原始密钥。",
+        ],
+    }
 
 
 def _operator_authorization_packet(

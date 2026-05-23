@@ -312,6 +312,19 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT=30"
         in handoff["command_template"]
     )
+    command_template_review = handoff["command_template_review"]
+    assert command_template_review["copy_paste_ready"] is False
+    assert command_template_review["requires_placeholder_replacement"] is True
+    assert command_template_review["requires_separate_authorization"] is True
+    assert (
+        command_template_review["requires_separate_final_submit_confirmation"]
+        is True
+    )
+    assert command_template_review["shell_safe_env_assignments"] is True
+    assert command_template_review["live_input_placeholders_present"] is True
+    assert command_template_review["raw_live_inputs_persisted"] is False
+    assert "<https-url>" in command_template_review["placeholders"]
+    assert any("占位符" in item for item in command_template_review["review_items"])
     required_env = {item["name"]: item for item in handoff["required_env"]}
     assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
     assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
@@ -359,6 +372,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "```bash" in markdown
     assert "PIPF_EXTERNAL_L3_JOB_URL='<https-url>'" in markdown
     assert "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3" in markdown
+    assert "### 命令模板复核" in markdown
+    assert "- 是否可直接复制运行: `False`" in markdown
+    assert "- 必须替换占位符: `True`" in markdown
+    assert "- 必须独立确认最终提交: `True`" in markdown
+    assert "#### 需替换占位符" in markdown
+    assert "#### 复核项" in markdown
     assert "### 授权确认包" in markdown
     assert "#### 必需确认声明" in markdown
     assert "#### 中止条件" in markdown
@@ -574,6 +593,18 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert handoff_template_rule["stage"] == "submissions"
     assert handoff_template_rule["status"] == "pass"
     assert "运行配置" in handoff_template_rule["message"]
+    handoff_template_review_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_handoff_command_template_review_recorded"
+        )
+    )
+    assert handoff_template_review_rule["level"] == "L3"
+    assert handoff_template_review_rule["stage"] == "submissions"
+    assert handoff_template_review_rule["status"] == "pass"
+    assert "模板不可盲贴执行" in handoff_template_review_rule["message"]
     pre_submit_diagnostics_rule = next(
         step
         for step in journey_payload["steps"]
