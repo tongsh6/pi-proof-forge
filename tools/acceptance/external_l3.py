@@ -529,6 +529,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 成功投递关键步骤是否齐备: `{required_steps.get('passed', False)}`",
                 f"- Submission Status: `{submission_summary.get('status', '')}`",
                 f"- Submission Error: `{submission_summary.get('error', '')}`",
+                f"- Submission Mode: `{submission_summary.get('mode', '')}`",
                 f"- Last Step: `{last_step.get('name', '')}/{last_step.get('status', '')}`",
                 f"- Failed Checks: `{', '.join(submission_traceability.get('failed_checks', []))}`",
                 f"- 预期 validation run id: `{submission_traceability.get('expected_external_l3_validation_run_id', '')}`",

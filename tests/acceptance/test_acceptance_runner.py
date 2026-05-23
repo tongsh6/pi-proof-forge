@@ -1396,6 +1396,14 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     )
     assert payload["submission_traceability"]["log_yaml_path"] == str(log_yaml)
     assert payload["submission_traceability"]["log_json_path"] == str(log_json)
+    assert (
+        payload["submission_traceability"]["submission_log_summary"]["mode"]
+        == "submit"
+    )
+    markdown = Path(report.steps[0].evidence).with_suffix(".md").read_text(
+        encoding="utf-8"
+    )
+    assert "- Submission Mode: `submit`" in markdown
     input_artifacts = payload["live_input_artifacts"]
     assert input_artifacts["job_url"]["scheme"] == "https"
     assert input_artifacts["job_url"]["hostname"] == "www.liepin.com"
@@ -1731,6 +1739,7 @@ def test_acceptance_runner_l3_promotes_target_verify_submission_log_error(
     summary = payload["submission_traceability"]["submission_log_summary"]
     assert summary["status"] == "failed"
     assert summary["error"] == "target_mismatch"
+    assert summary["mode"] == "submit"
     assert summary["last_step"]["name"] == "target_verify"
     assert (
         payload["live_blocker"]["diagnostics"]["submission_log_summary"]
@@ -1750,6 +1759,24 @@ def test_acceptance_runner_l3_promotes_target_verify_submission_log_error(
     )
     assert diagnostics_rule["status"] == "pass"
     assert "external_channel_target_verify_failed" in diagnostics_rule["message"]
+
+    missing_mode_payload = json.loads(json.dumps(payload))
+    del missing_mode_payload["submission_traceability"]["submission_log_summary"][
+        "mode"
+    ]
+    Path(report.steps[0].evidence).write_text(
+        json.dumps(missing_mode_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    summary_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submission_log_summary_recorded"
+    )
+    assert summary_rule["status"] == "fail"
+    assert "mode" in summary_rule["message"]
 
     payload["live_blocker"]["reason"] = "external_channel_command_returned_nonzero"
     Path(report.steps[0].evidence).write_text(

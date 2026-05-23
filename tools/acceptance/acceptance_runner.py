@@ -1586,7 +1586,9 @@ def _external_l3_submission_log_summary_result(
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -1621,24 +1623,49 @@ def _external_l3_submission_log_summary_result(
     summary_detail_redacted = not any(
         token in last_step_detail for token in unsafe_detail_tokens
     )
-    if (
-        summary.get("status")
-        and "error" in summary
-        and isinstance(last_step, dict)
-        and summary_detail_redacted
-    ):
+    missing = []
+    if not summary.get("status"):
+        missing.append("status")
+    if "error" not in summary:
+        missing.append("error")
+    if not summary.get("mode"):
+        missing.append("mode")
+    if not isinstance(last_step, dict):
+        missing.append("last_step")
+    elif not last_step.get("name") or "status" not in last_step:
+        missing.append("last_step.name_or_status")
+    if not summary_detail_redacted:
+        missing.append("last_step.detail_redacted")
+    markdown_fragments = [
+        "## Submission Log 追溯",
+        f"- Submission Status: `{summary.get('status', '')}`",
+        f"- Submission Error: `{summary.get('error', '')}`",
+        f"- Submission Mode: `{summary.get('mode', '')}`",
+        f"- Last Step: `{last_step.get('name', '')}/{last_step.get('status', '')}`",
+    ]
+    missing.extend(
+        f"markdown:{fragment}"
+        for fragment in markdown_fragments
+        if fragment not in markdown
+    )
+    if not missing:
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
             message=(
                 "External L3 submission log 摘要已记录: "
-                f"{summary.get('status', 'unknown')}/{summary.get('error', '')}。"
+                f"{summary.get('status', 'unknown')}/"
+                f"{summary.get('error', '')}/{summary.get('mode', '')}。"
             ),
         )
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
-        message="External L3 submission log 摘要缺失 status/error/last_step，或复制了未脱敏的步骤详情。",
+        message=(
+            "External L3 submission log 摘要缺失、不完整、Markdown 不一致，"
+            "或复制了未脱敏的步骤详情: "
+            + ", ".join(missing)
+        ),
     )
 
 
