@@ -558,6 +558,7 @@ steps:
         - "submission_log_raw_live_inputs_redacted"
         - "submission_log_step_details_redacted"
         - "submission_log_observed_target_values_redacted"
+        - "submission_log_raw_browser_artifacts_not_persisted"
         - "submission_traceability_failed_checks_recorded"
         - "successful_command_requires_submission_log"
         - "post_command_live_blocker_diagnostics_recorded"
