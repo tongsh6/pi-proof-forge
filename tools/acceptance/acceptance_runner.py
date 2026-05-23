@@ -2291,6 +2291,10 @@ def _external_l3_handoff_command_template_review_result(
         "shell_safe_env_assignments": True,
         "live_input_placeholders_present": True,
         "raw_live_inputs_persisted": False,
+        "preflight_must_run_before_authorized_template": True,
+        "preflight_template_authorization_enabled": False,
+        "preflight_template_final_submit_enabled": False,
+        "authorized_template_requires_preflight_evidence_review": True,
     }
     missing = [
         key
@@ -2301,6 +2305,11 @@ def _external_l3_handoff_command_template_review_result(
         missing.append("placeholders")
     if not review.get("review_items"):
         missing.append("review_items")
+    if review.get("execution_order") != [
+        "preflight_command_template",
+        "authorized_command_template",
+    ]:
+        missing.append("execution_order")
 
     markdown_fragments = [
         "### 命令模板复核",
@@ -2310,6 +2319,11 @@ def _external_l3_handoff_command_template_review_result(
         "- 必须独立确认最终提交: `True`",
         "- 必须确认人工会话可用: `True`",
         "- 必须确认 session 存储就绪: `True`",
+        "- 必须先跑本地预检: `True`",
+        "- 预检模板是否启用授权: `False`",
+        "- 预检模板是否启用最终提交: `False`",
+        "- 授权模板是否要求先复核预检证据: `True`",
+        "#### 执行顺序",
         "#### 需替换占位符",
         "#### 复核项",
     ]
@@ -2320,7 +2334,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：模板不可盲贴执行，必须替换占位符并独立确认授权与最终提交。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检模板不启用授权或最终提交，授权模板执行前必须复核预检证据。",
         )
     return JourneyStepResult(
         status="fail",

@@ -358,7 +358,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 授权交接包必须记录命令模板复核结论，证明模板不可盲贴执行；替换 live 输入占位符、显式授权、独立最终提交确认、人工会话可用确认和 session 存储就绪确认完成前，Markdown 报告必须保持 copy_paste_ready=false。"
+        message: "External L3 授权交接包必须记录命令模板复核结论，证明模板不可盲贴执行；复核结论必须要求先跑本地预检、预检模板不启用授权或最终提交、授权模板执行前必须复核预检证据；替换 live 输入占位符、显式授权、独立最终提交确认、人工会话可用确认和 session 存储就绪确认完成前，Markdown 报告必须保持 copy_paste_ready=false。"
       - rule_id: "external_l3_evidence_manifest_recorded"
         level: "L3"
         stage: "submissions"

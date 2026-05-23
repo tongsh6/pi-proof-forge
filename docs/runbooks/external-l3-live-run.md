@@ -23,7 +23,7 @@
 
 1. 复核 `outputs/acceptance/acceptance_external_l3/external-l3-validation.md` 中的 `授权交接包`。
 2. 确认命令模板中的 `<https-url>`、`<resume.pdf>`、`<profile.yaml>`、`<job-id>` 和 `<recruiter>` 已替换为本次真实输入。
-3. 先运行 `本地预检命令模板`，确认输入审计、session 存储、频控、runbook 指纹和 evidence manifest 均能写出；该模板必须保持 `PIPF_EXTERNAL_L3_AUTHORIZED=false` 与 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=false`。
+3. 先运行 `本地预检命令模板`，确认输入审计、session 存储、频控、runbook 指纹和 evidence manifest 均能写出；该模板必须保持 `PIPF_EXTERNAL_L3_AUTHORIZED=false` 与 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=false`，且复核结果必须显示授权模板执行前需要先复核预检证据。
 4. 确认 `PIPF_EXTERNAL_L3_AUTHORIZED=true` 只在用户明确授权后保留。
 5. 确认 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true` 只在用户独立确认允许最终提交路径后保留。
 6. 确认 `PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true` 只在人工登录或刷新确认 session 可用后保留。
@@ -32,7 +32,7 @@
 
 ## 执行命令
 
-从最新 `external-l3-validation.md` 先复制 `本地预检命令模板` 并替换所有 live 输入占位符；预检仍应记录 blocker，且不得触碰真实渠道。只有预检证据完整、用户显式授权并独立确认最终提交后，才复制 `授权真实运行命令模板`。模板中的 live 输入不应写回仓库、文档、测试或验收报告。
+从最新 `external-l3-validation.md` 先复制 `本地预检命令模板` 并替换所有 live 输入占位符；预检仍应记录 blocker，且不得触碰真实渠道。只有预检证据完整、命令模板复核显示 `preflight_must_run_before_authorized_template=true`、用户显式授权并独立确认最终提交后，才复制 `授权真实运行命令模板`。模板中的 live 输入不应写回仓库、文档、测试或验收报告。
 
 ```bash
 bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3

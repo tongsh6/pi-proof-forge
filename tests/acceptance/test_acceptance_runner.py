@@ -396,6 +396,22 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert command_template_review["shell_safe_env_assignments"] is True
     assert command_template_review["live_input_placeholders_present"] is True
     assert command_template_review["raw_live_inputs_persisted"] is False
+    assert command_template_review["execution_order"] == [
+        "preflight_command_template",
+        "authorized_command_template",
+    ]
+    assert (
+        command_template_review["preflight_must_run_before_authorized_template"]
+        is True
+    )
+    assert command_template_review["preflight_template_authorization_enabled"] is False
+    assert command_template_review["preflight_template_final_submit_enabled"] is False
+    assert (
+        command_template_review[
+            "authorized_template_requires_preflight_evidence_review"
+        ]
+        is True
+    )
     assert "<https-url>" in command_template_review["placeholders"]
     assert any("占位符" in item for item in command_template_review["review_items"])
     assert any(
@@ -503,6 +519,11 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 必须独立确认最终提交: `True`" in markdown
     assert "- 必须确认人工会话可用: `True`" in markdown
     assert "- 必须确认 session 存储就绪: `True`" in markdown
+    assert "- 必须先跑本地预检: `True`" in markdown
+    assert "- 预检模板是否启用授权: `False`" in markdown
+    assert "- 预检模板是否启用最终提交: `False`" in markdown
+    assert "- 授权模板是否要求先复核预检证据: `True`" in markdown
+    assert "#### 执行顺序" in markdown
     assert "#### 需替换占位符" in markdown
     assert "#### 复核项" in markdown
     assert "### 授权确认包" in markdown
@@ -761,7 +782,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert handoff_template_review_rule["level"] == "L3"
     assert handoff_template_review_rule["stage"] == "submissions"
     assert handoff_template_review_rule["status"] == "pass"
-    assert "模板不可盲贴执行" in handoff_template_review_rule["message"]
+    assert "必须先跑本地预检" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step
         for step in journey_payload["steps"]

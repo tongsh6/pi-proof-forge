@@ -819,9 +819,18 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     f"- 必须确认 session 存储就绪: `{command_template_review.get('requires_prepared_session_storage', False)}`",
                     f"- Shell-safe env 赋值: `{command_template_review.get('shell_safe_env_assignments', False)}`",
                     f"- 原始 live 输入是否持久化: `{command_template_review.get('raw_live_inputs_persisted', True)}`",
+                    f"- 必须先跑本地预检: `{command_template_review.get('preflight_must_run_before_authorized_template', False)}`",
+                    f"- 预检模板是否启用授权: `{command_template_review.get('preflight_template_authorization_enabled', True)}`",
+                    f"- 预检模板是否启用最终提交: `{command_template_review.get('preflight_template_final_submit_enabled', True)}`",
+                    f"- 授权模板是否要求先复核预检证据: `{command_template_review.get('authorized_template_requires_preflight_evidence_review', False)}`",
                     f"- 原因: `{command_template_review.get('reason', '')}`",
                 ]
             )
+            execution_order = command_template_review.get("execution_order") or []
+            if execution_order:
+                lines.extend(["", "#### 执行顺序", ""])
+                for item in execution_order:
+                    lines.append(f"- `{item}`")
             placeholders = command_template_review.get("placeholders") or []
             if placeholders:
                 lines.extend(["", "#### 需替换占位符", ""])
@@ -2295,6 +2304,14 @@ def _operator_command_template_review() -> dict[str, Any]:
         "shell_safe_env_assignments": True,
         "live_input_placeholders_present": True,
         "raw_live_inputs_persisted": False,
+        "execution_order": [
+            "preflight_command_template",
+            "authorized_command_template",
+        ],
+        "preflight_must_run_before_authorized_template": True,
+        "preflight_template_authorization_enabled": False,
+        "preflight_template_final_submit_enabled": False,
+        "authorized_template_requires_preflight_evidence_review": True,
         "placeholders": [
             "<https-url>",
             "<resume.pdf>",
