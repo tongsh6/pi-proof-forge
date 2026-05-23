@@ -939,7 +939,10 @@ def _submission_traceability(
         "submission_log_raw_live_inputs_redacted": raw_live_inputs_redacted,
         "submission_log_step_details_redacted": step_details_redacted,
         "submission_log_required_steps": required_steps_evidence,
-        "submission_log_summary": _submission_log_summary(log_payload),
+        "submission_log_summary": _submission_log_summary(
+            log_payload,
+            redaction_values,
+        ),
         "log_json_parse_error": parse_error,
         "checks": checks,
         "failed_checks": [
@@ -981,13 +984,33 @@ def _submission_log_step_details_redacted(
     for step in steps:
         if not isinstance(step, dict):
             continue
+        step_name = str(step.get("name", ""))
         detail = str(step.get("detail", ""))
         if any(value in detail for value in raw_values):
+            return False
+        if step_name == "target_verify" and not _target_verify_detail_redacted(detail):
             return False
     return True
 
 
-def _submission_log_summary(log_payload: dict[str, Any]) -> dict[str, Any]:
+def _target_verify_detail_redacted(detail: str) -> bool:
+    if not detail:
+        return True
+    legacy_raw_tokens = (
+        "url_job_id=",
+        "dom_jobid=",
+        "params_jobid=",
+        "recruiter=",
+    )
+    if any(token in detail for token in legacy_raw_tokens):
+        return False
+    return "raw_values_redacted=true" in detail
+
+
+def _submission_log_summary(
+    log_payload: dict[str, Any],
+    redaction_values: list[str],
+) -> dict[str, Any]:
     if not log_payload:
         return {}
     steps = log_payload.get("steps") or []
@@ -998,14 +1021,28 @@ def _submission_log_summary(log_payload: dict[str, Any]) -> dict[str, Any]:
             last_step = {
                 "name": str(candidate.get("name", "")),
                 "status": str(candidate.get("status", "")),
-                "detail": str(candidate.get("detail", "")),
+                "detail": _redact_live_text(
+                    str(candidate.get("detail", "")),
+                    redaction_values,
+                ),
             }
     return {
         "status": str(log_payload.get("status", "")),
-        "error": str(log_payload.get("error", "")),
+        "error": _redact_live_text(str(log_payload.get("error", "")), redaction_values),
         "mode": str(log_payload.get("mode", "")),
         "last_step": last_step,
     }
+
+
+def _redact_live_text(value: str, redaction_values: list[str]) -> str:
+    redacted = value
+    for raw_value in sorted(
+        {item for item in redaction_values if item},
+        key=len,
+        reverse=True,
+    ):
+        redacted = redacted.replace(raw_value, _REDACTED_LIVE_INPUT)
+    return redacted
 
 
 def _submission_log_required_steps_evidence(log_payload: dict[str, Any]) -> dict[str, Any]:
