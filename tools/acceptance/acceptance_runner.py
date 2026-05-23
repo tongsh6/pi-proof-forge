@@ -2281,6 +2281,10 @@ def _external_l3_handoff_command_template_review_result(
         (payload.get("operator_handoff") or {}).get("preflight_review_checklist")
         or {}
     )
+    preflight_review_result = (
+        (payload.get("operator_handoff") or {}).get("preflight_review_result")
+        or {}
+    )
     expected_placeholders = {
         "<https-url>",
         "<resume.pdf>",
@@ -2415,6 +2419,42 @@ def _external_l3_handoff_command_template_review_result(
             missing.append(
                 f"preflight_review_checklist.items.{item_id}.raw_live_inputs_persisted"
             )
+    expected_preflight_result_fields = {
+        "status": "preflight_evidence_review_passed",
+        "applies_to_current_run": True,
+        "all_required_items_passed": True,
+        "ready_for_authorization_decision": True,
+        "authorized_template_execution_allowed": False,
+        "authorization_decision_required": True,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_preflight_result_fields.items():
+        if preflight_review_result.get(key) != expected:
+            missing.append(f"preflight_review_result.{key}")
+    result_items = {
+        str(item.get("id", "")): item
+        for item in preflight_review_result.get("items") or []
+        if isinstance(item, dict)
+    }
+    for item_id, (source_path, expected) in expected_review_items.items():
+        item = result_items.get(item_id)
+        if not item:
+            missing.append(f"preflight_review_result.items.{item_id}")
+            continue
+        if item.get("source_path") != source_path:
+            missing.append(f"preflight_review_result.items.{item_id}.source_path")
+        if item.get("expected") != expected:
+            missing.append(f"preflight_review_result.items.{item_id}.expected")
+        if item.get("observed") != expected:
+            missing.append(f"preflight_review_result.items.{item_id}.observed")
+        if item.get("status") != "pass":
+            missing.append(f"preflight_review_result.items.{item_id}.status")
+        if item.get("required") is not True:
+            missing.append(f"preflight_review_result.items.{item_id}.required")
+        if item.get("raw_live_inputs_persisted") is not False:
+            missing.append(
+                f"preflight_review_result.items.{item_id}.raw_live_inputs_persisted"
+            )
 
     markdown_fragments = [
         "### 命令模板复核",
@@ -2450,6 +2490,14 @@ def _external_l3_handoff_command_template_review_result(
         "`submit_command_allowed_false`",
         "`p0_017_complete_false`",
         "`runbook_fingerprinted`",
+        "### 本地预检复核结果",
+        "- 状态: `preflight_evidence_review_passed`",
+        "- 适用于当前运行: `True`",
+        "- 必需项全部通过: `True`",
+        "- 可进入授权决策: `True`",
+        "- 是否允许执行授权模板: `False`",
+        "- 仍需用户授权: `True`",
+        "| 复核项 | 状态 | 来源 | 预期 | 观测 |",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
@@ -2458,7 +2506,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但仍不允许执行授权模板。",
         )
     return JourneyStepResult(
         status="fail",
@@ -2504,6 +2552,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "operator_handoff",
         "external_l3_live_run_runbook",
         "preflight_review_checklist",
+        "preflight_review_result",
         "post_submit_feedback_traceability",
         "feedback_source_artifact",
     }

@@ -559,6 +559,7 @@ steps:
         - "handoff_command_template_rendered_in_markdown_report"
         - "handoff_command_template_review_blocks_blind_copy_paste"
         - "handoff_preflight_review_checklist_required_before_authorized_template"
+        - "handoff_preflight_review_result_evaluates_current_evidence"
         - "external_l3_evidence_manifest_links_required_artifacts"
         - "external_l3_outcome_summary_disambiguates_acceptance_pass"
         - "manual_session_ready_confirmed_before_external_submit"

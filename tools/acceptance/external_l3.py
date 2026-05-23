@@ -318,6 +318,16 @@ def write_external_l3_validation(
     json_path = output_dir / "external-l3-validation.json"
     markdown_path = output_dir / "external-l3-validation.md"
     validation["evidence_manifest"] = _evidence_manifest(validation, run_id=run_id)
+    handoff = validation.get("operator_handoff") or {}
+    if handoff:
+        handoff["preflight_review_result"] = _operator_preflight_review_result(
+            validation
+        )
+        validation["operator_handoff"] = handoff
+        validation["evidence_manifest"] = _evidence_manifest(
+            validation,
+            run_id=run_id,
+        )
     json_path.write_text(
         json.dumps(validation, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -844,6 +854,39 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                             f"`{item.get('source_path', '')}`",
                             f"`{item.get('expected', '')}`",
                             f"`{item.get('required', False)}`",
+                        ]
+                    )
+                    + " |"
+                )
+        preflight_review_result = handoff.get("preflight_review_result") or {}
+        if preflight_review_result:
+            lines.extend(
+                [
+                    "",
+                    "### 本地预检复核结果",
+                    "",
+                    f"- 状态: `{preflight_review_result.get('status', '')}`",
+                    f"- 适用于当前运行: `{preflight_review_result.get('applies_to_current_run', False)}`",
+                    f"- 必需项全部通过: `{preflight_review_result.get('all_required_items_passed', False)}`",
+                    f"- 可进入授权决策: `{preflight_review_result.get('ready_for_authorization_decision', False)}`",
+                    f"- 是否允许执行授权模板: `{preflight_review_result.get('authorized_template_execution_allowed', True)}`",
+                    f"- 仍需用户授权: `{preflight_review_result.get('authorization_decision_required', False)}`",
+                    f"- 原始 live 输入是否持久化: `{preflight_review_result.get('raw_live_inputs_persisted', True)}`",
+                    "",
+                    "| 复核项 | 状态 | 来源 | 预期 | 观测 |",
+                    "|---|---:|---|---|---|",
+                ]
+            )
+            for item in preflight_review_result.get("items") or []:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            f"`{item.get('id', '')}`",
+                            f"`{item.get('status', '')}`",
+                            f"`{item.get('source_path', '')}`",
+                            f"`{item.get('expected', '')}`",
+                            f"`{item.get('observed', '')}`",
                         ]
                     )
                     + " |"
@@ -2040,6 +2083,37 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
             ),
         )
     )
+    preflight_review_result = (
+        (validation.get("operator_handoff") or {}).get("preflight_review_result")
+        or {}
+    )
+    if preflight_review_result:
+        result_items = preflight_review_result.get("items") or []
+        result_present = (
+            preflight_review_result.get("raw_live_inputs_persisted") is False
+            and bool(result_items)
+            and all(
+                isinstance(item, dict)
+                and item.get("required") is True
+                and item.get("raw_live_inputs_persisted") is False
+                for item in result_items
+            )
+        )
+        entries.append(
+            _evidence_entry(
+                entry_id="preflight_review_result",
+                artifact_type="embedded_section",
+                location=f"{validation_json}#operator_handoff.preflight_review_result",
+                required=(
+                    validation.get("status") == "live_blocker_recorded"
+                    and validation.get("external_submission_attempted") is False
+                ),
+                present=result_present,
+                status=str(
+                    preflight_review_result.get("status", "missing_or_incomplete")
+                ),
+            )
+        )
 
     live_blocker_required = validation.get("status") == "live_blocker_recorded"
     live_blocker_present = bool(validation.get("live_blocker"))
@@ -2516,6 +2590,129 @@ def _operator_preflight_review_checklist() -> dict[str, Any]:
             ),
         ],
     }
+
+
+def _operator_preflight_review_result(validation: dict[str, Any]) -> dict[str, Any]:
+    checklist = (
+        (validation.get("operator_handoff") or {}).get("preflight_review_checklist")
+        or {}
+    )
+    items = [
+        _preflight_review_result_item(validation, item)
+        for item in checklist.get("items") or []
+        if isinstance(item, dict)
+    ]
+    applies_to_current_run = (
+        validation.get("status") == "live_blocker_recorded"
+        and validation.get("external_submission_attempted") is False
+    )
+    all_required_items_passed = bool(items) and all(
+        item["status"] == "pass" for item in items if item.get("required") is True
+    )
+    ready_for_authorization_decision = (
+        applies_to_current_run and all_required_items_passed
+    )
+    if ready_for_authorization_decision:
+        status = "preflight_evidence_review_passed"
+    elif applies_to_current_run:
+        status = "preflight_evidence_review_failed"
+    else:
+        status = "not_applicable_after_external_submission"
+
+    return {
+        "status": status,
+        "applies_to_current_run": applies_to_current_run,
+        "all_required_items_passed": all_required_items_passed,
+        "ready_for_authorization_decision": ready_for_authorization_decision,
+        "authorized_template_execution_allowed": False,
+        "authorization_decision_required": ready_for_authorization_decision,
+        "raw_live_inputs_persisted": False,
+        "items": items,
+    }
+
+
+def _preflight_review_result_item(
+    validation: dict[str, Any],
+    checklist_item: dict[str, Any],
+) -> dict[str, Any]:
+    item_id = str(checklist_item.get("id", ""))
+    source_path = str(checklist_item.get("source_path", ""))
+    expected = checklist_item.get("expected")
+    observed = _preflight_review_observed_value(validation, source_path)
+    return {
+        "id": item_id,
+        "source_path": source_path,
+        "expected": expected,
+        "observed": observed,
+        "status": "pass" if observed == expected else "fail",
+        "required": checklist_item.get("required") is True,
+        "raw_live_inputs_persisted": False,
+    }
+
+
+def _preflight_review_observed_value(
+    validation: dict[str, Any],
+    source_path: str,
+) -> Any:
+    if source_path == "live_input_artifacts":
+        artifacts = validation.get("live_input_artifacts") or {}
+        files = artifacts.get("files") or []
+        job_url = artifacts.get("job_url") or {}
+        confirmations = artifacts.get("confirmations") or {}
+        redacted = (
+            bool(artifacts)
+            and job_url.get("raw_value_persisted") is False
+            and confirmations.get("raw_values_persisted") is False
+            and all(
+                isinstance(item, dict)
+                and item.get("basename_persisted") is False
+                and item.get("raw_content_persisted") is False
+                for item in files
+            )
+        )
+        return (
+            "present_with_raw_live_inputs_persisted_false"
+            if redacted
+            else "missing_or_raw_live_inputs_persisted"
+        )
+    if source_path == "session_readiness":
+        session = validation.get("session_readiness") or {}
+        reviewed = (
+            bool(session)
+            and session.get("manual_login_required") is True
+            and session.get("browser_automation_enters_credentials") is False
+            and session.get("browser_automation_solves_challenge") is False
+        )
+        return (
+            "present_with_manual_login_boundary"
+            if reviewed
+            else "missing_or_manual_login_boundary_absent"
+        )
+    if source_path == "operator_handoff.runbook":
+        runbook = (validation.get("operator_handoff") or {}).get("runbook") or {}
+        required_sections = runbook.get("required_sections") or []
+        sections_present = runbook.get("required_sections_present") or {}
+        complete = (
+            runbook.get("exists") is True
+            and bool(runbook.get("sha256"))
+            and bool(required_sections)
+            and all(sections_present.get(section) is True for section in required_sections)
+        )
+        return (
+            "fingerprinted_and_sections_complete"
+            if complete
+            else "missing_or_incomplete"
+        )
+    return _value_at_path(validation, source_path)
+
+
+def _value_at_path(payload: dict[str, Any], source_path: str) -> Any:
+    current: Any = payload
+    for part in source_path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
 
 
 def _preflight_review_item(
