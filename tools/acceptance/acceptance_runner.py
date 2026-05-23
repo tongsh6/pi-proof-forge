@@ -1776,13 +1776,26 @@ def _external_l3_handoff_command_template_result(
 
     handoff = payload.get("operator_handoff") or {}
     template = str(handoff.get("command_template", ""))
+    runtime_options = handoff.get("runtime_options") or {}
     rate_limit_policy = payload.get("rate_limit_policy") or {}
     required_fragments = [
+        f"PIPF_EXTERNAL_L3_CHANNEL={runtime_options.get('channel', '')}",
         "PIPF_EXTERNAL_L3_JOB_URL=<https-url>",
         "PIPF_EXTERNAL_L3_RESUME_PDF=<resume.pdf>",
         "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml>",
         "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id>",
         "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter>",
+        f"PIPF_EXTERNAL_L3_SESSION_DIR={runtime_options.get('session_dir', '')}",
+        f"PIPF_EXTERNAL_L3_OUTPUT_DIR={runtime_options.get('output_dir', '')}",
+        (
+            "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS="
+            f"{runtime_options.get('timeout_seconds', '')}"
+        ),
+        f"PIPF_EXTERNAL_L3_TIMEOUT_MS={runtime_options.get('timeout_ms', '')}",
+        (
+            "PIPF_EXTERNAL_L3_HEADLESS="
+            f"{str(runtime_options.get('headless', '')).lower()}"
+        ),
         (
             "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH="
             f"{rate_limit_policy.get('max_per_batch', '')}"
@@ -1802,7 +1815,7 @@ def _external_l3_handoff_command_template_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板使用 live 输入占位符，并匹配当前有效频控策略。",
+            message="External L3 授权交接命令模板使用 live 输入占位符，并匹配当前运行配置与有效频控策略。",
         )
     return JourneyStepResult(
         status="fail",

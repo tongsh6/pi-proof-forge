@@ -522,6 +522,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 lines.append(f"- `{item}`")
     if handoff:
         authorization_packet = handoff.get("authorization_packet") or {}
+        runtime_options = handoff.get("runtime_options") or {}
         lines.extend(
             [
                 "",
@@ -546,6 +547,25 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 )
                 + " |"
             )
+        if runtime_options:
+            lines.extend(
+                [
+                    "",
+                    "### 运行配置",
+                    "",
+                    "| 配置项 | 当前值 |",
+                    "|---|---|",
+                ]
+            )
+            for key in (
+                "channel",
+                "session_dir",
+                "output_dir",
+                "timeout_seconds",
+                "timeout_ms",
+                "headless",
+            ):
+                lines.append(f"| `{key}` | `{runtime_options.get(key, '')}` |")
         lines.extend(
             [
                 "",
@@ -1443,6 +1463,7 @@ def _operator_handoff(
         "required_env": _required_env_handoff(request),
         "forbidden_input_audit": request["forbidden_input_audit"],
         "target_confirmation_audit": request["target_confirmation_audit"],
+        "runtime_options": _operator_runtime_options(request),
         "pre_run_checklist": [
             "用户已明确授权接触真实外部渠道。",
             "用户已单独确认允许最终提交路径进入真实渠道命令。",
@@ -1465,8 +1486,21 @@ def _operator_handoff(
     }
 
 
+def _operator_runtime_options(request: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "channel": str(request["channel"]),
+        "session_dir": str(request["session_dir"]),
+        "output_dir": str(request["output_dir"]),
+        "timeout_seconds": int(request["timeout_seconds"]),
+        "timeout_ms": int(request["timeout_ms"]),
+        "headless": bool(request["headless"]),
+    }
+
+
 def _operator_command_template(request: dict[str, Any]) -> str:
     return (
+        "PIPF_EXTERNAL_L3_CHANNEL="
+        f"{request['channel']} "
         "PIPF_EXTERNAL_L3_AUTHORIZED=true "
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true "
         "PIPF_EXTERNAL_L3_JOB_URL=<https-url> "
@@ -1474,6 +1508,16 @@ def _operator_command_template(request: dict[str, Any]) -> str:
         "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml> "
         "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id> "
         "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter> "
+        "PIPF_EXTERNAL_L3_SESSION_DIR="
+        f"{request['session_dir']} "
+        "PIPF_EXTERNAL_L3_OUTPUT_DIR="
+        f"{request['output_dir']} "
+        "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS="
+        f"{int(request['timeout_seconds'])} "
+        "PIPF_EXTERNAL_L3_TIMEOUT_MS="
+        f"{int(request['timeout_ms'])} "
+        "PIPF_EXTERNAL_L3_HEADLESS="
+        f"{str(bool(request['headless'])).lower()} "
         "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH="
         f"{int(request['rate_limit_max_per_batch'])} "
         "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS="

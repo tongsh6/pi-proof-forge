@@ -283,6 +283,23 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "显式授权" in handoff["next_action"]
     assert "password" in handoff["forbidden_inputs"]
     assert "captcha_code" in handoff["forbidden_inputs"]
+    assert handoff["runtime_options"] == {
+        "channel": "liepin",
+        "session_dir": ".sessions",
+        "output_dir": "outputs/submissions",
+        "timeout_seconds": 10,
+        "timeout_ms": 45000,
+        "headless": False,
+    }
+    assert "PIPF_EXTERNAL_L3_CHANNEL=liepin" in handoff["command_template"]
+    assert "PIPF_EXTERNAL_L3_SESSION_DIR=.sessions" in handoff["command_template"]
+    assert (
+        "PIPF_EXTERNAL_L3_OUTPUT_DIR=outputs/submissions"
+        in handoff["command_template"]
+    )
+    assert "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS=10" in handoff["command_template"]
+    assert "PIPF_EXTERNAL_L3_TIMEOUT_MS=45000" in handoff["command_template"]
+    assert "PIPF_EXTERNAL_L3_HEADLESS=false" in handoff["command_template"]
     assert "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH=5" in handoff["command_template"]
     assert (
         "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS=900"
@@ -334,6 +351,8 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- URL 岗位 ID 与确认值是否一致: `False`" in markdown
     assert "| Gate | 状态 | 说明 |" in markdown
     assert "## 授权交接包" in markdown
+    assert "### 运行配置" in markdown
+    assert "| `timeout_seconds` | `10` |" in markdown
     assert "### 授权确认包" in markdown
     assert "#### 必需确认声明" in markdown
     assert "#### 中止条件" in markdown
@@ -548,7 +567,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert handoff_template_rule["level"] == "L3"
     assert handoff_template_rule["stage"] == "submissions"
     assert handoff_template_rule["status"] == "pass"
-    assert "命令模板" in handoff_template_rule["message"]
+    assert "运行配置" in handoff_template_rule["message"]
     pre_submit_diagnostics_rule = next(
         step
         for step in journey_payload["steps"]
@@ -854,6 +873,11 @@ def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
         "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
         "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
         "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH": "0",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": ".sessions-live",
+        "PIPF_EXTERNAL_L3_OUTPUT_DIR": "outputs/custom-submissions",
+        "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS": "30",
+        "PIPF_EXTERNAL_L3_TIMEOUT_MS": "120000",
+        "PIPF_EXTERNAL_L3_HEADLESS": "true",
     }
     with (
         patch.dict(os.environ, env, clear=True),
@@ -875,6 +899,32 @@ def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
     assert payload["rate_limit_policy"]["max_per_batch"] == 0
     assert (
         "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH=0"
+        in payload["operator_handoff"]["command_template"]
+    )
+    runtime_options = payload["operator_handoff"]["runtime_options"]
+    assert runtime_options["session_dir"] == ".sessions-live"
+    assert runtime_options["output_dir"] == "outputs/custom-submissions"
+    assert runtime_options["timeout_seconds"] == 30
+    assert runtime_options["timeout_ms"] == 120000
+    assert runtime_options["headless"] is True
+    assert (
+        "PIPF_EXTERNAL_L3_SESSION_DIR=.sessions-live"
+        in payload["operator_handoff"]["command_template"]
+    )
+    assert (
+        "PIPF_EXTERNAL_L3_OUTPUT_DIR=outputs/custom-submissions"
+        in payload["operator_handoff"]["command_template"]
+    )
+    assert (
+        "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS=30"
+        in payload["operator_handoff"]["command_template"]
+    )
+    assert (
+        "PIPF_EXTERNAL_L3_TIMEOUT_MS=120000"
+        in payload["operator_handoff"]["command_template"]
+    )
+    assert (
+        "PIPF_EXTERNAL_L3_HEADLESS=true"
         in payload["operator_handoff"]["command_template"]
     )
     assert (
