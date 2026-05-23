@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from tools.submission import liepin
 
@@ -52,6 +54,21 @@ class FakePage:
 
     def wait_for_timeout(self, timeout: int):
         self.waits.append(timeout)
+
+
+class ExternalL3ArtifactPage(FakePage):
+    def __init__(self) -> None:
+        super().__init__({})
+        self.screenshot_called = False
+        self.content_called = False
+
+    def screenshot(self, *args, **kwargs):
+        self.screenshot_called = True
+        raise AssertionError("External L3 must not capture raw screenshots")
+
+    def content(self):
+        self.content_called = True
+        raise AssertionError("External L3 must not persist raw HTML snapshots")
 
 
 class LiepinChatSendResumeTests(unittest.TestCase):
@@ -309,6 +326,51 @@ class LiepinChatSendResumeTests(unittest.TestCase):
             detail,
             "url_job_id=123456; dom_jobid=654321; params_jobid=777888; recruiter=Sun",
         )
+
+    def test_external_l3_mode_does_not_capture_raw_browser_artifacts(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            config = liepin.LiepinSubmissionConfig(
+                job_url="https://www.liepin.com/job/123456.shtml",
+                resume_path="outputs/resume.pdf",
+                profile_path="profiles/candidate_profile.yaml",
+                headless=True,
+                dry_run=False,
+                submit=True,
+                output_dir=temp_dir,
+                session_dir="outputs/submissions",
+                timeout_ms=45000,
+                external_l3_validation_run_id="acceptance_external_l3",
+                external_l3_validation_path=(
+                    "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+                ),
+            )
+            recorder = liepin.SubmissionRecorder(
+                output_root=Path(temp_dir),
+                platform="liepin",
+                mode="submit",
+            )
+            page = ExternalL3ArtifactPage()
+
+            screenshot = liepin._capture_browser_screenshot(
+                page,
+                recorder,
+                config,
+                "target_verify",
+            )
+            liepin._record_dom_snapshot_step(recorder, config, page)
+
+            self.assertIsNone(screenshot)
+            self.assertFalse(page.screenshot_called)
+            self.assertFalse(page.content_called)
+            self.assertEqual(len(recorder.record.steps), 1)
+            step = recorder.record.steps[0]
+            self.assertEqual(step.name, "dom_snapshot")
+            self.assertEqual(step.status, "skipped")
+            self.assertEqual(step.screenshot, "")
+            self.assertEqual(
+                step.detail,
+                "raw_browser_artifacts_persisted=false; reason=external_l3_redaction_policy",
+            )
 
 
 if __name__ == "__main__":
