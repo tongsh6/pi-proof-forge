@@ -1906,6 +1906,33 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
             )
         )
 
+    runbook = (validation.get("operator_handoff") or {}).get("runbook") or {}
+    runbook_sections = runbook.get("required_sections") or []
+    runbook_sections_present = runbook.get("required_sections_present") or {}
+    runbook_sections_complete = bool(runbook_sections) and all(
+        runbook_sections_present.get(section) is True
+        for section in runbook_sections
+    )
+    runbook_present = (
+        runbook.get("exists") is True
+        and bool(runbook.get("sha256"))
+        and runbook_sections_complete
+    )
+    entries.append(
+        _evidence_entry(
+            entry_id="external_l3_live_run_runbook",
+            artifact_type="file",
+            location=str(runbook.get("path", "")),
+            required=True,
+            present=runbook_present,
+            status=(
+                "fingerprinted_and_sections_complete"
+                if runbook_present
+                else "missing_or_incomplete"
+            ),
+        )
+    )
+
     live_blocker_required = validation.get("status") == "live_blocker_recorded"
     live_blocker_present = bool(validation.get("live_blocker"))
     entries.append(

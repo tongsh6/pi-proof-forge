@@ -302,6 +302,16 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert evidence_entries["external_l3_validation_markdown"]["present"] is True
     assert evidence_entries["live_run_readiness"]["present"] is True
     assert evidence_entries["operator_handoff"]["present"] is True
+    assert evidence_entries["external_l3_live_run_runbook"]["required"] is True
+    assert evidence_entries["external_l3_live_run_runbook"]["present"] is True
+    assert (
+        evidence_entries["external_l3_live_run_runbook"]["status"]
+        == "fingerprinted_and_sections_complete"
+    )
+    assert (
+        evidence_entries["external_l3_live_run_runbook"]["location"]
+        == "docs/runbooks/external-l3-live-run.md"
+    )
     assert evidence_entries["post_submit_feedback_traceability"]["present"] is True
     assert evidence_entries["live_blocker"]["required"] is True
     assert evidence_entries["live_blocker"]["present"] is True
@@ -750,6 +760,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert evidence_manifest_rule["stage"] == "submissions"
     assert evidence_manifest_rule["status"] == "pass"
     assert "证据清单" in evidence_manifest_rule["message"]
+    assert "runbook" in evidence_manifest_rule["message"]
     outcome_summary_rule = next(
         step
         for step in journey_payload["steps"]
@@ -1719,6 +1730,8 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert evidence_entries["submission_log_json"]["present"] is True
     assert evidence_entries["submission_log_json"]["location"] == str(log_json)
     assert evidence_entries["live_blocker"]["required"] is False
+    assert evidence_entries["external_l3_live_run_runbook"]["required"] is True
+    assert evidence_entries["external_l3_live_run_runbook"]["present"] is True
     assert evidence_entries["feedback_source_artifact"]["location"] == str(log_json)
     authorization_packet = payload["operator_handoff"]["authorization_packet"]
     assert authorization_packet["status"] == "executed"

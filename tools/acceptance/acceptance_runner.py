@@ -2335,6 +2335,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "forbidden_input_audit",
         "target_confirmation_audit",
         "operator_handoff",
+        "external_l3_live_run_runbook",
         "post_submit_feedback_traceability",
         "feedback_source_artifact",
     }
@@ -2359,6 +2360,25 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
             missing.append(f"{entry_id}.present")
         if entry.get("raw_live_inputs_persisted") is not False:
             missing.append(f"{entry_id}.raw_live_inputs_persisted")
+    runbook = (payload.get("operator_handoff") or {}).get("runbook") or {}
+    runbook_entry = entries.get("external_l3_live_run_runbook") or {}
+    runbook_path = str(runbook.get("path", ""))
+    runbook_file = Path(runbook_path)
+    required_sections = runbook.get("required_sections") or []
+    required_sections_present = runbook.get("required_sections_present") or {}
+    runbook_ready = (
+        runbook_entry.get("location") == runbook_path
+        and runbook_entry.get("status") == "fingerprinted_and_sections_complete"
+        and runbook_file.is_file()
+        and runbook.get("sha256") == _sha256_path(runbook_file)
+        and bool(required_sections)
+        and all(
+            required_sections_present.get(section) is True
+            for section in required_sections
+        )
+    )
+    if not runbook_ready:
+        missing.append("external_l3_live_run_runbook.fingerprint_or_sections")
     markdown_fragments = [
         "## 证据清单",
         f"- 状态: `{manifest.get('status', '')}`",
@@ -2379,7 +2399,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 证据清单已记录 validation、handoff、feedback source 和真实 submission log 期望状态，且 Markdown 与 JSON 清单一致。",
+            message="External L3 证据清单已记录 validation、handoff、live run runbook、feedback source 和真实 submission log 期望状态，且 Markdown 与 JSON 清单一致。",
         )
     return JourneyStepResult(
         status="fail",
