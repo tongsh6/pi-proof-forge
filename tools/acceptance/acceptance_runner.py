@@ -1691,6 +1691,18 @@ def _external_l3_submission_traceability_markdown_missing(
     fragments = [
         "## Submission Log 追溯",
         (
+            "- Submission log 路径在允许根目录内: "
+            f"`{traceability.get('log_path_within_allowed_root', False)}`"
+        ),
+        (
+            "- 允许 submission log 根目录: "
+            f"`{traceability.get('allowed_submission_log_root', '')}`"
+        ),
+        (
+            "- 拒绝 submission log 路径原因: "
+            f"`{traceability.get('rejected_log_yaml_path_reason', '')}`"
+        ),
+        (
             "- Failed Checks: "
             f"`{', '.join(traceability.get('failed_checks', []))}`"
         ),

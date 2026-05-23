@@ -3495,8 +3495,33 @@ def test_acceptance_runner_l3_rejects_submission_log_outside_allowed_root(
         "submission_log_path_within_allowed_root"
         in payload["live_blocker"]["failed_checks"]
     )
-    validation_text = Path(report.steps[0].evidence).read_text(encoding="utf-8")
+    evidence_path = Path(report.steps[0].evidence)
+    validation_text = evidence_path.read_text(encoding="utf-8")
     assert str(log_yaml) not in validation_text
+    markdown_path = evidence_path.with_suffix(".md")
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert "- Submission log 路径在允许根目录内: `False`" in markdown
+    allowed_root = tmp_path / "outputs" / "submissions" / "liepin"
+    assert f"- 允许 submission log 根目录: `{allowed_root}`" in markdown
+    assert "- 拒绝 submission log 路径原因: `outside_allowed_submission_root`" in markdown
+    assert str(log_yaml) not in markdown
+
+    markdown_path.write_text(
+        markdown.replace(
+            "- 拒绝 submission log 路径原因: `outside_allowed_submission_root`",
+            "- 拒绝 submission log 路径原因: ``",
+        ),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    summary_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submission_log_summary_recorded"
+    )
+    assert summary_rule["status"] == "fail"
+    assert "拒绝 submission log 路径原因" in summary_rule["message"]
 
 
 def test_acceptance_runner_failure_returns_fail(tmp_path: Path) -> None:
