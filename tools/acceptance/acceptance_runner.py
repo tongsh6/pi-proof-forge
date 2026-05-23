@@ -888,6 +888,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_outcome_summary_recorded"] = (
             _external_l3_outcome_summary_result(external_l3_step)
         )
+        results["external_l3_manual_session_ready_confirmed_before_command"] = (
+            _external_l3_manual_session_readiness_result(external_l3_step)
+        )
         results["external_l3_pre_submit_blocker_diagnostics_recorded"] = (
             _external_l3_pre_submit_blocker_diagnostics_result(external_l3_step)
         )
@@ -1801,6 +1804,7 @@ def _external_l3_handoff_command_template_result(
             "PIPF_EXTERNAL_L3_CHANNEL",
             runtime_options.get("channel", ""),
         ),
+        _expected_env_assignment("PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED", "true"),
         _expected_env_assignment("PIPF_EXTERNAL_L3_JOB_URL", "<https-url>"),
         _expected_env_assignment("PIPF_EXTERNAL_L3_RESUME_PDF", "<resume.pdf>"),
         _expected_env_assignment("PIPF_EXTERNAL_L3_PROFILE", "<profile.yaml>"),
@@ -1905,6 +1909,7 @@ def _external_l3_handoff_command_template_review_result(
         "requires_placeholder_replacement": True,
         "requires_separate_authorization": True,
         "requires_separate_final_submit_confirmation": True,
+        "requires_manual_session_ready_confirmation": True,
         "shell_safe_env_assignments": True,
         "live_input_placeholders_present": True,
         "raw_live_inputs_persisted": False,
@@ -1925,6 +1930,7 @@ def _external_l3_handoff_command_template_review_result(
         "- 必须替换占位符: `True`",
         "- 必须独立确认授权: `True`",
         "- 必须独立确认最终提交: `True`",
+        "- 必须确认人工会话可用: `True`",
         "#### 需替换占位符",
         "#### 复核项",
     ]
@@ -1975,6 +1981,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "submit_safety_decision",
         "live_input_artifacts",
         "rate_limit_policy",
+        "session_readiness",
         "forbidden_input_audit",
         "target_confirmation_audit",
         "operator_handoff",
@@ -2096,6 +2103,91 @@ def _external_l3_outcome_summary_result(step: AcceptanceStep) -> JourneyStepResu
         status="fail",
         evidence=step.evidence,
         message=f"External L3 结果分级缺失或不一致: {', '.join(missing)}",
+    )
+
+
+def _external_l3_manual_session_readiness_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 人工会话准备证据不可读取: {exc}",
+        )
+
+    session_readiness = payload.get("session_readiness") or {}
+    readiness_gates = {
+        str(gate.get("id", "")): gate
+        for gate in (payload.get("live_run_readiness") or {}).get("gates", [])
+        if isinstance(gate, dict)
+    }
+    handoff_required_env = {
+        str(item.get("name", "")): item
+        for item in (payload.get("operator_handoff") or {}).get("required_env", [])
+        if isinstance(item, dict)
+    }
+    missing = []
+    if not session_readiness:
+        missing.append("session_readiness")
+    if session_readiness.get("manual_login_required") is not True:
+        missing.append("manual_login_required")
+    if session_readiness.get("browser_automation_enters_credentials") is not False:
+        missing.append("browser_automation_enters_credentials")
+    if session_readiness.get("browser_automation_solves_challenge") is not False:
+        missing.append("browser_automation_solves_challenge")
+    if session_readiness.get("raw_credentials_persisted") is not False:
+        missing.append("raw_credentials_persisted")
+    session_gate = readiness_gates.get("manual_session_ready_confirmed") or {}
+    if not session_gate:
+        missing.append("manual_session_ready_confirmed")
+    expected_status = (
+        "pass"
+        if session_readiness.get("session_ready_confirmed") is True
+        else "blocked"
+    )
+    if session_gate and session_gate.get("status") != expected_status:
+        missing.append("manual_session_ready_confirmed.status")
+    required_env = handoff_required_env.get("PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED")
+    if not required_env:
+        missing.append("PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED")
+
+    if (
+        payload.get("external_submission_attempted") is True
+        and session_readiness.get("session_ready_confirmed") is not True
+    ):
+        missing.append("external_submission_started_without_session_ready")
+
+    markdown_fragments = [
+        "## 人工会话准备",
+        "- 已确认共享登录会话可用:",
+        "- 自动化是否输入凭据: `False`",
+        "- 自动化是否处理验证码或短信码: `False`",
+        "`manual_session_ready_confirmed`",
+    ]
+    missing.extend(
+        fragment for fragment in markdown_fragments if fragment not in markdown
+    )
+    if not missing:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 人工会话准备 gate 已记录；未确认共享登录会话前不会启动真实渠道命令。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message=f"External L3 人工会话准备 gate 缺失或不一致: {', '.join(missing)}",
     )
 
 

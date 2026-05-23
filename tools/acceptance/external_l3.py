@@ -63,9 +63,11 @@ def build_external_l3_validation(
             "profile_path_present": bool(request["profile_path"]),
             "confirm_submit_job_id_present": bool(request["confirm_submit_job_id"]),
             "confirm_submit_recruiter_present": bool(request["confirm_submit_recruiter"]),
+            "session_ready_confirmed": bool(request["session_ready_confirmed"]),
             "session_dir": request["session_dir"],
             "output_dir": request["output_dir"],
         },
+        "session_readiness": _session_readiness(request),
         "live_input_artifacts": _live_input_artifacts(request),
         "rate_limit_policy": _rate_limit_policy(request),
         "forbidden_input_audit": request["forbidden_input_audit"],
@@ -280,6 +282,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     submit_decision = validation.get("submit_safety_decision") or {}
     input_artifacts = validation.get("live_input_artifacts") or {}
     rate_limit_policy = validation.get("rate_limit_policy") or {}
+    session_readiness = validation.get("session_readiness") or {}
     output_redaction = validation.get("live_output_redaction") or {}
     submission_traceability = validation.get("submission_traceability") or {}
     feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
@@ -401,6 +404,19 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- Cooldown 秒数: `{rate_limit_policy.get('cooldown_seconds', '')}`",
                 f"- Daily Limit: `{rate_limit_policy.get('daily_limit', '')}`",
                 f"- 状态文件: `{rate_limit_policy.get('state_path', '')}`",
+            ]
+        )
+    if session_readiness:
+        lines.extend(
+            [
+                "",
+                "## 人工会话准备",
+                "",
+                f"- 已确认共享登录会话可用: `{session_readiness.get('session_ready_confirmed', False)}`",
+                f"- 会话目录: `{session_readiness.get('session_dir', '')}`",
+                f"- 必须人工登录: `{session_readiness.get('manual_login_required', True)}`",
+                f"- 自动化是否输入凭据: `{session_readiness.get('browser_automation_enters_credentials', True)}`",
+                f"- 自动化是否处理验证码或短信码: `{session_readiness.get('browser_automation_solves_challenge', True)}`",
             ]
         )
     forbidden_input_audit = validation.get("forbidden_input_audit") or {}
@@ -653,6 +669,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     f"- 必须替换占位符: `{command_template_review.get('requires_placeholder_replacement', False)}`",
                     f"- 必须独立确认授权: `{command_template_review.get('requires_separate_authorization', False)}`",
                     f"- 必须独立确认最终提交: `{command_template_review.get('requires_separate_final_submit_confirmation', False)}`",
+                    f"- 必须确认人工会话可用: `{command_template_review.get('requires_manual_session_ready_confirmation', False)}`",
                     f"- Shell-safe env 赋值: `{command_template_review.get('shell_safe_env_assignments', False)}`",
                     f"- 原始 live 输入是否持久化: `{command_template_review.get('raw_live_inputs_persisted', True)}`",
                     f"- 原因: `{command_template_review.get('reason', '')}`",
@@ -708,6 +725,9 @@ def _request_from_env(root: Path, default_timeout_seconds: int) -> dict[str, Any
     request = {
         "authorized": _env_bool("PIPF_EXTERNAL_L3_AUTHORIZED"),
         "final_submit_confirmed": _env_bool("PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED"),
+        "session_ready_confirmed": _env_bool(
+            "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED"
+        ),
         "channel": os.environ.get("PIPF_EXTERNAL_L3_CHANNEL", "liepin").strip()
         or "liepin",
         "job_url": os.environ.get("PIPF_EXTERNAL_L3_JOB_URL", "").strip(),
@@ -746,6 +766,7 @@ def _request_from_env(root: Path, default_timeout_seconds: int) -> dict[str, Any
         "headless": _env_bool("PIPF_EXTERNAL_L3_HEADLESS"),
         "root": str(root),
     }
+    request["session_readiness"] = _session_readiness(request)
     request["target_confirmation_audit"] = _target_confirmation_audit(request)
     return request
 
@@ -771,6 +792,19 @@ def _forbidden_input_audit() -> dict[str, Any]:
 def _forbidden_inputs_present(request: dict[str, Any]) -> bool:
     audit = request.get("forbidden_input_audit") or {}
     return bool(audit.get("forbidden_inputs_present", False))
+
+
+def _session_readiness(request: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "session_ready_confirmed": bool(request.get("session_ready_confirmed", False)),
+        "session_dir": str(request.get("session_dir", "")),
+        "manual_login_required": True,
+        "positive_login_signal_required": True,
+        "browser_automation_enters_credentials": False,
+        "browser_automation_solves_challenge": False,
+        "raw_credentials_persisted": False,
+        "captcha_or_sms_values_persisted": False,
+    }
 
 
 def _target_confirmation_audit(request: dict[str, Any]) -> dict[str, Any]:
@@ -808,6 +842,8 @@ def _blocker_reason(request: dict[str, Any]) -> str:
         return "unsupported_external_l3_channel"
     if not _rate_limit_enabled(request):
         return "invalid_external_l3_rate_limit_policy"
+    if not request["session_ready_confirmed"]:
+        return "manual_session_ready_confirmation_required"
     missing = [
         name
         for name in (
@@ -862,6 +898,11 @@ def _next_action(reason: str) -> str:
     if reason == "explicit_final_submit_confirmation_required":
         return (
             "在用户复核渠道、目标岗位、简历和账号后，要求单独最终提交确认。"
+        )
+    if reason == "manual_session_ready_confirmation_required":
+        return (
+            "先通过人工登录或刷新确认共享渠道 session 可用，并设置 "
+            "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true；未确认前不得启动真实渠道命令。"
         )
     if reason.startswith("missing_live_submission_inputs"):
         return (
@@ -1506,6 +1547,7 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
         "submit_safety_decision",
         "live_input_artifacts",
         "rate_limit_policy",
+        "session_readiness",
         "forbidden_input_audit",
         "target_confirmation_audit",
         "operator_handoff",
@@ -1732,12 +1774,14 @@ def _operator_handoff(
         "status": status,
         "next_action": next_action,
         "required_env": _required_env_handoff(request),
+        "session_readiness": request["session_readiness"],
         "forbidden_input_audit": request["forbidden_input_audit"],
         "target_confirmation_audit": request["target_confirmation_audit"],
         "runtime_options": _operator_runtime_options(request),
         "pre_run_checklist": [
             "用户已明确授权接触真实外部渠道。",
             "用户已单独确认允许最终提交路径进入真实渠道命令。",
+            "共享渠道 session 已由人工登录或刷新确认可用。",
             "岗位 URL、确认 job id、确认 recruiter 与页面目标一致。",
             "resume PDF 与 profile YAML 指向本地已审核产物。",
             "确认不会输入、保存或绕过密码、验证码、短信码。",
@@ -1774,6 +1818,7 @@ def _operator_command_template(request: dict[str, Any]) -> str:
         _shell_env_assignment("PIPF_EXTERNAL_L3_CHANNEL", str(request["channel"])),
         _shell_env_assignment("PIPF_EXTERNAL_L3_AUTHORIZED", "true"),
         _shell_env_assignment("PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED", "true"),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED", "true"),
         _shell_env_assignment("PIPF_EXTERNAL_L3_JOB_URL", "<https-url>"),
         _shell_env_assignment("PIPF_EXTERNAL_L3_RESUME_PDF", "<resume.pdf>"),
         _shell_env_assignment("PIPF_EXTERNAL_L3_PROFILE", "<profile.yaml>"),
@@ -1830,6 +1875,7 @@ def _operator_command_template_review() -> dict[str, Any]:
         "requires_placeholder_replacement": True,
         "requires_separate_authorization": True,
         "requires_separate_final_submit_confirmation": True,
+        "requires_manual_session_ready_confirmation": True,
         "shell_safe_env_assignments": True,
         "live_input_placeholders_present": True,
         "raw_live_inputs_persisted": False,
@@ -1844,6 +1890,7 @@ def _operator_command_template_review() -> dict[str, Any]:
             "替换所有 live 输入占位符后再运行命令。",
             "确认 PIPF_EXTERNAL_L3_AUTHORIZED=true 只在用户显式授权后保留。",
             "确认 PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true 只在独立最终提交确认后保留。",
+            "确认 PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true 只在共享渠道 session 已由人工登录或刷新确认可用后保留。",
             "确认不会提供密码、验证码、短信码或原始密钥。",
         ],
     }
@@ -1867,6 +1914,7 @@ def _operator_authorization_packet(
         "required_confirmation_statements": [
             "我明确授权本次 External L3 接触真实外部渠道，但不会提供密码、验证码或短信码。",
             "我已单独确认允许最终提交路径在目标岗位与招聘方一致时执行。",
+            "我已通过人工登录或刷新确认共享渠道 session 可用。",
             "我已人工复核 Job URL、确认 job id、确认 recruiter、resume PDF 和 profile YAML。",
         ],
         "required_evidence": [
@@ -1874,6 +1922,7 @@ def _operator_authorization_packet(
             "submit_safety_decision",
             "live_input_artifacts",
             "rate_limit_policy",
+            "session_readiness",
             "forbidden_input_audit",
             "target_confirmation_audit",
             "command_redaction",
@@ -1904,6 +1953,7 @@ def _operator_authorization_packet(
 def _operator_abort_conditions(missing_gates: list[str]) -> list[str]:
     abort_conditions = [
         "任一 live_run_readiness gate 未通过时中止。",
+        "共享渠道 session 未经人工登录或刷新确认可用时中止。",
         "页面目标岗位、确认 job id 或确认 recruiter 不一致时中止。",
         "渠道要求密码、验证码、短信码或账号恢复流程时中止。",
         "命令输出或 submission log 无法保持脱敏和可追溯时中止。",
@@ -1935,6 +1985,11 @@ def _live_run_readiness(
             gate_id="final_submit_confirmation",
             passed=bool(request["final_submit_confirmed"]),
             detail="用户单独确认最终提交路径",
+        ),
+        _readiness_gate(
+            gate_id="manual_session_ready_confirmed",
+            passed=bool(request["session_ready_confirmed"]),
+            detail="共享渠道 session 已由人工登录或刷新确认可用",
         ),
         _readiness_gate(
             gate_id="supported_channel",
@@ -2041,6 +2096,7 @@ def _submit_safety_decision(
         "confirm_job_id_present",
         "confirm_recruiter_present",
         "rate_limit_policy_enabled",
+        "manual_session_ready_confirmed",
         "forbidden_sensitive_inputs_absent",
         "target_job_id_extractable",
         "target_job_id_matches_confirmation",
@@ -2064,6 +2120,7 @@ def _submit_safety_decision(
         "external_submission_attempted": external_submission_attempted,
         "authorization_confirmed": bool(request["authorized"]),
         "final_submit_confirmed": bool(request["final_submit_confirmed"]),
+        "session_ready_confirmed": bool(request["session_ready_confirmed"]),
         "supported_channel_confirmed": request["channel"] == "liepin",
         "live_inputs_ready": live_inputs_ready,
         "missing_gates": list(readiness.get("missing_gates") or []),
@@ -2079,6 +2136,7 @@ def _submit_safety_decision(
         "confirmation_scope": [
             "用户显式授权接触真实外部渠道",
             "用户单独确认允许最终提交路径进入真实渠道命令",
+            "共享渠道 session 已由人工登录或刷新确认可用",
             "确认岗位 ID 与页面目标一致",
             "确认招聘方与页面目标一致",
             "resume PDF 与 profile YAML 已审核",
@@ -2220,6 +2278,12 @@ def _required_env_handoff(request: dict[str, Any]) -> list[dict[str, Any]]:
             request["final_submit_confirmed"],
             False,
             "最终提交确认",
+        ),
+        (
+            "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED",
+            request["session_ready_confirmed"],
+            False,
+            "共享渠道 session 已人工确认可用",
         ),
         ("PIPF_EXTERNAL_L3_JOB_URL", bool(request["job_url"]), False, "目标岗位 URL"),
         (

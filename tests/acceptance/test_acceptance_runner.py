@@ -305,6 +305,7 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert readiness["submit_command_allowed"] is False
     assert readiness["blocking_reason"] == "explicit_user_authorization_required"
     assert "user_authorization" in readiness["missing_gates"]
+    assert "manual_session_ready_confirmed" in readiness["missing_gates"]
     assert "job_url_present" in readiness["missing_gates"]
     assert "job_url_valid" in readiness["missing_gates"]
     assert "resume_pdf_file_ready" in readiness["missing_gates"]
@@ -314,6 +315,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "显式授权" in handoff["next_action"]
     assert "password" in handoff["forbidden_inputs"]
     assert "captcha_code" in handoff["forbidden_inputs"]
+    assert handoff["session_readiness"]["session_ready_confirmed"] is False
+    assert handoff["session_readiness"]["manual_login_required"] is True
+    assert handoff["session_readiness"]["browser_automation_enters_credentials"] is False
     assert handoff["runtime_options"] == {
         "channel": "liepin",
         "session_dir": ".sessions",
@@ -323,6 +327,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "headless": False,
     }
     assert "PIPF_EXTERNAL_L3_CHANNEL=liepin" in handoff["command_template"]
+    assert (
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true"
+        in handoff["command_template"]
+    )
     assert "PIPF_EXTERNAL_L3_JOB_URL='<https-url>'" in handoff["command_template"]
     assert "PIPF_EXTERNAL_L3_RESUME_PDF='<resume.pdf>'" in handoff["command_template"]
     assert "PIPF_EXTERNAL_L3_PROFILE='<profile.yaml>'" in handoff["command_template"]
@@ -351,6 +359,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         command_template_review["requires_separate_final_submit_confirmation"]
         is True
     )
+    assert (
+        command_template_review["requires_manual_session_ready_confirmation"] is True
+    )
     assert command_template_review["shell_safe_env_assignments"] is True
     assert command_template_review["live_input_placeholders_present"] is True
     assert command_template_review["raw_live_inputs_persisted"] is False
@@ -358,6 +369,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert any("占位符" in item for item in command_template_review["review_items"])
     required_env = {item["name"]: item for item in handoff["required_env"]}
     assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
+    assert (
+        required_env["PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED"]["present"] is False
+    )
     assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
     assert handoff["forbidden_input_audit"]["forbidden_inputs_present"] is False
     assert all("value" not in item for item in handoff["required_env"])
@@ -367,6 +381,7 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert len(authorization_packet["required_confirmation_statements"]) >= 3
     assert "live_run_readiness" in authorization_packet["required_evidence"]
     assert "submit_safety_decision" in authorization_packet["required_evidence"]
+    assert "session_readiness" in authorization_packet["required_evidence"]
     assert "password" in authorization_packet["operator_must_not_provide"]
     assert "captcha_code" in authorization_packet["operator_must_not_provide"]
     assert any(
@@ -399,6 +414,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "| `resume_pdf` | `False` | `False` | `False` | `False` | `` | 0 | `` |" in markdown
     assert "## 频控策略" in markdown
     assert "- 是否启用: `True`" in markdown
+    assert "## 人工会话准备" in markdown
+    assert "- 已确认共享登录会话可用: `False`" in markdown
+    assert "- 自动化是否输入凭据: `False`" in markdown
     assert "## 禁止输入审计" in markdown
     assert "- 禁止输入是否出现: `False`" in markdown
     assert "## 目标确认审计" in markdown
@@ -415,6 +433,7 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 是否可直接复制运行: `False`" in markdown
     assert "- 必须替换占位符: `True`" in markdown
     assert "- 必须独立确认最终提交: `True`" in markdown
+    assert "- 必须确认人工会话可用: `True`" in markdown
     assert "#### 需替换占位符" in markdown
     assert "#### 复核项" in markdown
     assert "### 授权确认包" in markdown
@@ -666,6 +685,18 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert outcome_summary_rule["stage"] == "submissions"
     assert outcome_summary_rule["status"] == "pass"
     assert "结果分级" in outcome_summary_rule["message"]
+    session_ready_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_manual_session_ready_confirmed_before_command"
+        )
+    )
+    assert session_ready_rule["level"] == "L3"
+    assert session_ready_rule["stage"] == "submissions"
+    assert session_ready_rule["status"] == "pass"
+    assert "人工会话准备" in session_ready_rule["message"]
     pre_submit_diagnostics_rule = next(
         step
         for step in journey_payload["steps"]
@@ -750,6 +781,7 @@ def test_acceptance_runner_l3_rejects_forbidden_secret_or_challenge_inputs(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_PASSWORD": "do-not-store",
         "PIPF_EXTERNAL_L3_CAPTCHA_CODE": "123456",
     }
@@ -813,6 +845,7 @@ def test_acceptance_runner_l3_blocks_confirm_job_id_mismatch_before_submit(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123456789.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -876,6 +909,7 @@ def test_acceptance_runner_l3_records_invalid_live_input_gates(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -929,6 +963,7 @@ def test_acceptance_runner_l3_records_invalid_job_url_gate(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "ftp://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -965,6 +1000,7 @@ def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1031,6 +1067,51 @@ def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
     )
     assert "rate_limit_policy_enabled" in payload["live_run_readiness"]["missing_gates"]
     assert "rate_limit_policy_enabled" in payload["live_blocker"]["failed_checks"]
+    assert run_mock.call_count == 0
+
+
+def test_acceptance_runner_l3_requires_manual_session_ready_before_command(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert payload["status"] == "live_blocker_recorded"
+    assert (
+        payload["live_blocker"]["reason"]
+        == "manual_session_ready_confirmation_required"
+    )
+    assert (
+        "manual_session_ready_confirmed"
+        in payload["live_run_readiness"]["missing_gates"]
+    )
+    assert payload["session_readiness"]["session_ready_confirmed"] is False
+    assert payload["session_readiness"]["manual_login_required"] is True
+    assert payload["session_readiness"]["browser_automation_enters_credentials"] is False
+    assert payload["submit_safety_decision"]["session_ready_confirmed"] is False
+    assert payload["external_submission_attempted"] is False
     assert run_mock.call_count == 0
 
 
@@ -1117,6 +1198,7 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1383,6 +1465,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_live_inputs(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1519,6 +1602,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_step_details(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1659,6 +1743,7 @@ def test_acceptance_runner_l3_blocks_legacy_target_verify_detail_shape(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1783,6 +1868,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_browser_artifacts(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1891,6 +1977,7 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -1955,6 +2042,7 @@ def test_acceptance_runner_l3_blocks_success_without_submission_log(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2091,6 +2179,7 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2167,6 +2256,7 @@ def test_acceptance_runner_l3_records_timeout_as_live_blocker(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2234,6 +2324,7 @@ def test_acceptance_runner_l3_records_command_error_as_live_blocker(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2367,6 +2458,7 @@ def test_acceptance_runner_l3_blocks_submission_log_with_raw_input_artifact_base
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
@@ -2473,6 +2565,7 @@ def test_acceptance_runner_l3_rejects_submission_log_outside_allowed_root(
     env = {
         "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
         "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED": "true",
         "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
         "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
         "PIPF_EXTERNAL_L3_PROFILE": str(profile),
