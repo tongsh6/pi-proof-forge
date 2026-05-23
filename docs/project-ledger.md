@@ -30,7 +30,7 @@ Last updated: 2026-05-23
 - External L3 forbidden input audit: validation records include `forbidden_input_audit`；密码、验证码、短信码和原始密钥类 env 值永不持久化，且一旦出现就阻断在任何真实 submit 命令启动前。
 - External L3 target confirmation audit: validation records include `target_confirmation_audit`；只记录 URL 岗位 ID 是否可解析、确认岗位 ID 是否提供和二者是否一致、确认 recruiter 是否提供，以及 recruiter 页面匹配必须由 `target_verify` 证明的边界；不持久化原始 ID 或 recruiter 原值，且岗位 ID 不一致时阻断在 submit 命令启动前。
 - External L3 command/output audit: validation records only persist redacted live submission command and redacted stdout/stderr tails；原始 Job URL、resume/profile 路径、确认 job id 和 recruiter 不写入 command 或 output tail 证据。
-- External L3 submit safety: validation records include `submit_safety_decision`；真实渠道命令是否阻断、允许待执行或已执行，必须在信任结果前成为显式可审计状态。
+- External L3 submit safety: validation records include `submit_safety_decision`；真实渠道命令是否阻断、允许待执行或已执行，必须在信任结果前成为显式可审计状态；`blocking_reason`/`post_run_blocker_reason` 必须与 `live_blocker.reason` 保持一致。
 - External L3 handoff runtime policy: `operator_handoff.runtime_options` 记录当前 channel、session/output 目录、timeout 和 headless 配置；`operator_handoff.command_template` 使用 shell-safe 的 live 输入占位符，并写入当前运行配置与有效频控参数；Markdown 报告同步展示可复制命令模板，避免操作者覆盖 env 后交接模板回退成旧默认值或被 shell 误解析。
 - External L3 handoff command review: `operator_handoff.command_template_review` 记录 `copy_paste_ready=false`、占位符替换、显式授权、独立最终提交确认和人工会话可用确认要求；Markdown 报告同步展示命令模板复核，避免带 `AUTHORIZED=true`、`FINAL_SUBMIT_CONFIRMED=true` 与 `SESSION_READY_CONFIRMED=true` 的模板被盲贴执行。
 - External L3 evidence manifest: validation records include `evidence_manifest`，统一列出 validation JSON/Markdown、关键嵌入段、live blocker 或 submission log、feedback source 的必需性、存在状态和脱敏边界；Markdown 报告同步展示证据清单，避免人工复核时跨段拼接证据。
@@ -43,7 +43,7 @@ Last updated: 2026-05-23
 - External L3 blocker diagnostics: post-command live blockers directly include failed traceability checks, returncode, and related submission log paths so the blocker record is actionable without deep JSON lookup.
 - External L3 timeout handling: timed-out live commands are recorded as `external_channel_command_timed_out` blockers with timeout seconds, redacted output tails, and feedback traceability instead of failing before evidence is written.
 - External L3 command launch errors: browser/driver/permission launch failures are recorded as `external_channel_command_launch_failed` blockers with redacted error evidence instead of failing before validation evidence is written.
-- External L3 feedback trace: validation records now write `post_submit_feedback_traceability`; 真实投递结果或 live blocker 都必须成为下一步反馈动作的可追溯来源产物。
+- External L3 feedback trace: validation records now write `post_submit_feedback_traceability`; 真实投递结果或 live blocker 都必须成为下一步反馈动作的可追溯来源产物；blocker source reason 必须与 `live_blocker.reason` 一致。
 
 ## Verification Anchors
 

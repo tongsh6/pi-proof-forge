@@ -161,7 +161,7 @@
 - L3 证据必须包含 `forbidden_input_audit`：runner 只记录密码、验证码、短信码和原始密钥类 forbidden env 是否出现，不持久化原值；任一 forbidden input 出现时必须阻断在 submit 命令启动前。
 - L3 证据必须包含 `target_confirmation_audit`：runner 只记录 Job URL 中岗位 ID 是否可解析、确认岗位 ID 是否已提供、二者是否一致、确认 recruiter 是否已提供，以及 recruiter 页面匹配必须由 `target_verify` 证明的边界；不持久化原始 ID 或 recruiter 原值；岗位 ID 不一致时必须阻断在 submit 命令启动前。
 - 如果真实渠道命令被执行，`external-l3-validation.json` 只能持久化脱敏后的 command 和 stdout/stderr 尾部；Job URL、resume/profile 路径、确认 job id 和确认 recruiter 必须以 `<redacted>` 形式保存。
-- L3 证据必须包含 `submit_safety_decision`，明确最终提交命令是 `blocked_before_command`、`allowed_pending_execution` 还是 `allowed_and_executed`，并证明显式授权、独立最终确认和真实输入齐备才允许 submit。
+- L3 证据必须包含 `submit_safety_decision`，明确最终提交命令是 `blocked_before_command`、`allowed_pending_execution` 还是 `allowed_and_executed`，并证明显式授权、独立最终确认和真实输入齐备才允许 submit；如果产生 live blocker，`blocking_reason` 或 `post_run_blocker_reason` 必须与 `live_blocker.reason` 一致。
 - blocker 或真实渠道结果必须包含 `operator_handoff`：列出 required env 是否存在、最终提交前 checklist、禁止输入项、当前运行配置和不含真实值的命令模板；命令模板必须使用 shell-safe 的 live 输入占位符，并与当前 channel、session/output 目录、timeout/headless 和有效频控参数一致；Markdown 报告必须展示同一条可复制命令模板。`operator_handoff.command_template_review` 必须同步记录 `copy_paste_ready=false`、占位符替换、显式授权、独立最终提交确认和人工会话可用确认要求，防止操作者把交接模板盲贴成真实运行命令。
 - `operator_handoff` 必须包含结构化 `authorization_packet`：记录必需确认声明、必需证据、中止条件、脱敏策略和禁止输入项；不得持久化 Job URL、文件路径、确认 job id 或 recruiter 原值。
 - L3 证据必须包含 `evidence_manifest`：统一列出 validation JSON/Markdown、关键嵌入段、live blocker 或 submission log、feedback source 的位置、必需性和存在状态；每一项都必须标记 `raw_live_inputs_persisted=false`，Markdown 报告必须同步展示该清单。
@@ -173,7 +173,7 @@
 - `submission_traceability` 必须记录逐项 `checks` 与 `failed_checks`，区分缺少 log hint、YAML/JSON 不存在、JSON 不可解析、run id/path 不匹配和输入产物指纹不匹配。
 - 真实渠道命令执行后产生 live blocker 时，`live_blocker` 必须直接包含 `failed_checks` 和 `diagnostics`，包括 returncode、submission log 路径和逐项 traceability checks，避免用户为理解 blocker 再反查深层字段。
 - 当 submission log JSON 可解析且 `error` 属于已知渠道业务失败时，post-command blocker 必须把 `batch_cooldown`/`daily_limit_exceeded`、`target_mismatch`/`target_verify_failed`、`login_required`、`security_redirect`、`job_page_unavailable`、`submit_confirmation_*`、`send_resume_*`、`submission_uncertain`、`timeout` 等错误提升为精确 `external_channel_*` blocker；只有未知错误才回落到通用非零退出码 blocker。journey report 必须验证该映射，避免 validation record 只携带摘要却仍把已知业务失败归成泛化 returncode。
-- 无论真实渠道成功还是记录 live blocker，L3 证据都必须包含 `post_submit_feedback_traceability`：成功时以 submission log 作为反馈来源，blocker 时以 `external-l3-validation.json` 作为反馈来源，并明确下一步反馈/阻断处理路径。
+- 无论真实渠道成功还是记录 live blocker，L3 证据都必须包含 `post_submit_feedback_traceability`：成功时以 submission log 作为反馈来源，blocker 时以 `external-l3-validation.json` 作为反馈来源，并明确下一步反馈/阻断处理路径；blocker 场景的 `source_reason` 必须与 `live_blocker.reason` 一致。
 - 真实渠道命令返回非零时不得伪装成功；必须保留 stdout/stderr tail 和 log hint，作为 exact live blocker。
 - 真实渠道命令超时时也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_timed_out` live blocker、timeout 秒数、脱敏 stdout/stderr tail 和后续处理路径。
 - 真实渠道命令启动错误也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_launch_failed` live blocker，并保存脱敏后的错误类型/信息。
