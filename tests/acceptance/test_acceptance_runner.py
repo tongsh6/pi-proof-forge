@@ -13,6 +13,7 @@ from tools.acceptance.acceptance_runner import (
     run_acceptance,
     write_acceptance_report,
 )
+from tools.acceptance.external_l3 import submission_log_error_blocker_reason
 
 
 def test_acceptance_runner_defaults_to_l1(tmp_path: Path) -> None:
@@ -1953,6 +1954,20 @@ def test_acceptance_runner_l3_promotes_send_resume_prefixed_error(
     )
     assert diagnostics_rule["status"] == "pass"
     assert "external_channel_send_resume_failed" in diagnostics_rule["message"]
+
+
+def test_external_l3_maps_real_liepin_send_resume_errors() -> None:
+    for error in (
+        "main_chat_click_failed:TimeoutError",
+        "send_resume_click_failed:TimeoutError",
+        "confirm_send_button_not_found",
+        "upload input not found after phases: direct, upload_trigger, apply_dialog",
+        "phase=apply_dialog; chooser=phase=apply_dialog; trigger failed",
+    ):
+        assert (
+            submission_log_error_blocker_reason({"error": error})
+            == "external_channel_send_resume_failed"
+        )
 
 
 def test_acceptance_runner_l3_blocks_submission_log_with_raw_live_inputs(

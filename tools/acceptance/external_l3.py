@@ -1123,6 +1123,7 @@ def submission_log_error_blocker_reason(submission_summary: dict[str, Any]) -> s
         or error.startswith("upload input not found")
         or error.startswith("phase=")
         or error in {
+            "confirm_send_button_not_found",
             "main_chat_click_failed",
             "upload_input_not_found",
             "submit_button_not_found",
