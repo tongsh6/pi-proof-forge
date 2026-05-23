@@ -68,6 +68,7 @@ _SESSION_STATE_MARKER_PATHS = (
     "Cookies",
     "storage-state.json",
 )
+_EXTERNAL_L3_LIVE_RUN_RUNBOOK = "docs/runbooks/external-l3-live-run.md"
 
 
 def build_external_l3_validation(
@@ -698,6 +699,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     if handoff:
         authorization_packet = handoff.get("authorization_packet") or {}
         runtime_options = handoff.get("runtime_options") or {}
+        runbook = handoff.get("runbook") or {}
         lines.extend(
             [
                 "",
@@ -741,6 +743,24 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 "headless",
             ):
                 lines.append(f"| `{key}` | `{runtime_options.get(key, '')}` |")
+        if runbook:
+            lines.extend(
+                [
+                    "",
+                    "### 真实运行 Runbook",
+                    "",
+                    f"- 路径: `{runbook.get('path', '')}`",
+                    f"- 语言: `{runbook.get('language', '')}`",
+                    f"- 运行前必须复核: `{runbook.get('operator_review_required', False)}`",
+                    f"- 复制命令前必须替换 live 输入: `{runbook.get('copy_paste_requires_live_value_replacement', True)}`",
+                    f"- 原始 live 输入是否持久化: `{runbook.get('raw_live_inputs_persisted', True)}`",
+                ]
+            )
+            covers = runbook.get("covers") or []
+            if covers:
+                lines.extend(["", "#### Runbook 覆盖边界", ""])
+                for item in covers:
+                    lines.append(f"- `{item}`")
         command_template = str(handoff.get("command_template", ""))
         if command_template:
             lines.extend(
@@ -2102,6 +2122,7 @@ def _operator_handoff(
             readiness=readiness,
             external_submission_attempted=external_submission_attempted,
         ),
+        "runbook": _operator_runbook_reference(),
         "command_template": _operator_command_template(request),
         "command_template_review": _operator_command_template_review(),
     }
@@ -2199,6 +2220,24 @@ def _operator_command_template_review() -> dict[str, Any]:
             "确认 PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true 只在共享渠道 session 已由人工登录或刷新确认可用后保留。",
             "确认 PIPF_EXTERNAL_L3_SESSION_DIR 指向已存在的共享 session 根目录，且 Liepin 持久化会话目录已存在。",
             "确认不会提供密码、验证码、短信码或原始密钥。",
+        ],
+    }
+
+
+def _operator_runbook_reference() -> dict[str, Any]:
+    return {
+        "path": _EXTERNAL_L3_LIVE_RUN_RUNBOOK,
+        "language": "zh-CN",
+        "operator_review_required": True,
+        "copy_paste_requires_live_value_replacement": True,
+        "raw_live_inputs_persisted": False,
+        "covers": [
+            "authorization_boundary",
+            "manual_session_preflight",
+            "live_input_preflight",
+            "rate_limit_preflight",
+            "blocker_triage",
+            "post_run_evidence_review",
         ],
     }
 

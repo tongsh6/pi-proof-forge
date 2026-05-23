@@ -392,6 +392,14 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
     assert handoff["forbidden_input_audit"]["forbidden_inputs_present"] is False
     assert all("value" not in item for item in handoff["required_env"])
+    runbook = handoff["runbook"]
+    assert runbook["path"] == "docs/runbooks/external-l3-live-run.md"
+    assert runbook["language"] == "zh-CN"
+    assert runbook["operator_review_required"] is True
+    assert runbook["copy_paste_requires_live_value_replacement"] is True
+    assert runbook["raw_live_inputs_persisted"] is False
+    assert "authorization_boundary" in runbook["covers"]
+    assert "post_run_evidence_review" in runbook["covers"]
     authorization_packet = handoff["authorization_packet"]
     assert authorization_packet["status"] == "blocked_until_missing_gates_resolved"
     assert authorization_packet["raw_confirmation_values_persisted"] is False
@@ -451,6 +459,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "## 授权交接包" in markdown
     assert "### 运行配置" in markdown
     assert "| `timeout_seconds` | `10` |" in markdown
+    assert "### 真实运行 Runbook" in markdown
+    assert "- 路径: `docs/runbooks/external-l3-live-run.md`" in markdown
+    assert "- 运行前必须复核: `True`" in markdown
+    assert "#### Runbook 覆盖边界" in markdown
     assert "### 可复制命令模板" in markdown
     assert "```bash" in markdown
     assert "PIPF_EXTERNAL_L3_JOB_URL='<https-url>'" in markdown

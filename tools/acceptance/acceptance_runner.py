@@ -2042,18 +2042,41 @@ def _external_l3_authorization_packet_result(
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
             evidence=step.evidence,
             message=f"External L3 授权确认包证据不可读取: {exc}",
         )
-    packet = (payload.get("operator_handoff") or {}).get("authorization_packet") or {}
+    handoff = payload.get("operator_handoff") or {}
+    packet = handoff.get("authorization_packet") or {}
+    runbook = handoff.get("runbook") or {}
     required_statements = packet.get("required_confirmation_statements") or []
     required_evidence = set(packet.get("required_evidence") or [])
     abort_conditions = packet.get("abort_conditions") or []
     prohibited_inputs = set(packet.get("operator_must_not_provide") or [])
+    runbook_path = str(runbook.get("path", ""))
+    runbook_covers = set(runbook.get("covers") or [])
+    runbook_ok = (
+        runbook_path == "docs/runbooks/external-l3-live-run.md"
+        and Path(runbook_path).is_file()
+        and runbook.get("language") == "zh-CN"
+        and runbook.get("operator_review_required") is True
+        and runbook.get("copy_paste_requires_live_value_replacement") is True
+        and runbook.get("raw_live_inputs_persisted") is False
+        and {
+            "authorization_boundary",
+            "manual_session_preflight",
+            "live_input_preflight",
+            "blocker_triage",
+            "post_run_evidence_review",
+        }.issubset(runbook_covers)
+        and "### 真实运行 Runbook" in markdown
+        and f"- 路径: `{runbook_path}`" in markdown
+    )
     if (
         packet.get("raw_confirmation_values_persisted") is False
         and len(required_statements) >= 3
@@ -2062,16 +2085,17 @@ def _external_l3_authorization_packet_result(
         )
         and abort_conditions
         and {"password", "captcha_code", "sms_code"}.issubset(prohibited_inputs)
+        and runbook_ok
     ):
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权确认包已记录必需声明、证据清单、中止条件和禁止输入项。",
+            message="External L3 授权确认包已记录必需声明、证据清单、中止条件、禁止输入项和中文真实运行 runbook。",
         )
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
-        message="External L3 授权确认包缺失或不可证明最终提交前确认边界。",
+        message="External L3 授权确认包缺失或不可证明最终提交前确认边界与中文真实运行 runbook。",
     )
 
 
