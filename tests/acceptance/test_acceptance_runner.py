@@ -239,8 +239,11 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     target_audit = payload["target_confirmation_audit"]
     assert target_audit["job_url_has_parseable_job_id"] is False
     assert target_audit["confirm_submit_job_id_present"] is False
+    assert target_audit["confirm_submit_recruiter_present"] is False
     assert target_audit["job_id_matches_confirmation"] is False
+    assert target_audit["recruiter_page_match_requires_target_verify"] is True
     assert target_audit["raw_values_persisted"] is False
+    assert target_audit["raw_recruiter_value_persisted"] is False
     input_artifacts = payload["live_input_artifacts"]
     assert input_artifacts["job_url"]["present"] is False
     assert input_artifacts["job_url"]["raw_value_persisted"] is False
@@ -420,7 +423,13 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "## 禁止输入审计" in markdown
     assert "- 禁止输入是否出现: `False`" in markdown
     assert "## 目标确认审计" in markdown
+    assert "- 确认 recruiter 是否已提供: `False`" in markdown
     assert "- URL 岗位 ID 与确认值是否一致: `False`" in markdown
+    assert (
+        "- recruiter 页面匹配是否必须由 target_verify 证明: `True`"
+        in markdown
+    )
+    assert "- recruiter 原始确认值是否持久化: `False`" in markdown
     assert "| Gate | 状态 | 说明 |" in markdown
     assert "## 授权交接包" in markdown
     assert "### 运行配置" in markdown
@@ -875,8 +884,11 @@ def test_acceptance_runner_l3_blocks_confirm_job_id_mismatch_before_submit(
     target_audit = payload["target_confirmation_audit"]
     assert target_audit["job_url_has_parseable_job_id"] is True
     assert target_audit["confirm_submit_job_id_present"] is True
+    assert target_audit["confirm_submit_recruiter_present"] is True
     assert target_audit["job_id_matches_confirmation"] is False
+    assert target_audit["recruiter_page_match_requires_target_verify"] is True
     assert target_audit["raw_values_persisted"] is False
+    assert target_audit["raw_recruiter_value_persisted"] is False
     assert (
         payload["submit_safety_decision"]["target_confirmation_audit"]
         == target_audit
@@ -897,6 +909,7 @@ def test_acceptance_runner_l3_blocks_confirm_job_id_mismatch_before_submit(
     )
     assert target_rule["status"] == "pass"
     assert "阻断 URL 岗位 ID 与确认岗位 ID 不一致" in target_rule["message"]
+    assert "recruiter 页面匹配由 target_verify 证明" in target_rule["message"]
 
 
 def test_acceptance_runner_l3_records_invalid_live_input_gates(
@@ -1270,8 +1283,11 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     target_audit = payload["target_confirmation_audit"]
     assert target_audit["job_url_has_parseable_job_id"] is True
     assert target_audit["confirm_submit_job_id_present"] is True
+    assert target_audit["confirm_submit_recruiter_present"] is True
     assert target_audit["job_id_matches_confirmation"] is True
+    assert target_audit["recruiter_page_match_requires_target_verify"] is True
     assert target_audit["raw_values_persisted"] is False
+    assert target_audit["raw_recruiter_value_persisted"] is False
     assert payload["submission_traceability"]["linked_to_validation"] is True
     assert payload["submission_traceability"]["log_links_back_to_validation"] is True
     assert (

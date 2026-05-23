@@ -450,8 +450,11 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 "",
                 f"- Job URL 是否可解析岗位 ID: `{target_confirmation_audit.get('job_url_has_parseable_job_id', False)}`",
                 f"- 确认岗位 ID 是否已提供: `{target_confirmation_audit.get('confirm_submit_job_id_present', False)}`",
+                f"- 确认 recruiter 是否已提供: `{target_confirmation_audit.get('confirm_submit_recruiter_present', False)}`",
                 f"- URL 岗位 ID 与确认值是否一致: `{target_confirmation_audit.get('job_id_matches_confirmation', False)}`",
+                f"- recruiter 页面匹配是否必须由 target_verify 证明: `{target_confirmation_audit.get('recruiter_page_match_requires_target_verify', False)}`",
                 f"- 原始确认值是否持久化: `{target_confirmation_audit.get('raw_values_persisted', True)}`",
+                f"- recruiter 原始确认值是否持久化: `{target_confirmation_audit.get('raw_recruiter_value_persisted', True)}`",
             ]
         )
     if output_redaction:
@@ -810,14 +813,18 @@ def _session_readiness(request: dict[str, Any]) -> dict[str, Any]:
 def _target_confirmation_audit(request: dict[str, Any]) -> dict[str, Any]:
     url_job_id = _extract_liepin_job_id(str(request.get("job_url", "")))
     confirm_job_id = str(request.get("confirm_submit_job_id", "")).strip()
+    confirm_recruiter = str(request.get("confirm_submit_recruiter", "")).strip()
     return {
         "source": "job_url_path",
         "job_url_has_parseable_job_id": bool(url_job_id),
         "confirm_submit_job_id_present": bool(confirm_job_id),
+        "confirm_submit_recruiter_present": bool(confirm_recruiter),
         "job_id_matches_confirmation": bool(url_job_id)
         and bool(confirm_job_id)
         and url_job_id == confirm_job_id,
+        "recruiter_page_match_requires_target_verify": True,
         "raw_values_persisted": False,
+        "raw_recruiter_value_persisted": False,
     }
 
 

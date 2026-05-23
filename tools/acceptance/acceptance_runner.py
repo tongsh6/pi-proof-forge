@@ -1291,44 +1291,52 @@ def _external_l3_target_confirmation_result(step: AcceptanceStep) -> JourneyStep
         )
     audit = payload.get("target_confirmation_audit") or {}
     raw_values_not_persisted = audit.get("raw_values_persisted") is False
+    recruiter_boundary_recorded = (
+        isinstance(audit.get("confirm_submit_recruiter_present"), bool)
+        and audit.get("recruiter_page_match_requires_target_verify") is True
+        and audit.get("raw_recruiter_value_persisted") is False
+    )
     blocker_reason = (payload.get("live_blocker") or {}).get("reason", "")
     safety_decision = payload.get("submit_safety_decision") or {}
     safety_audit = safety_decision.get("target_confirmation_audit", {})
     if (
         audit.get("confirm_submit_job_id_present") is False
         and raw_values_not_persisted
+        and recruiter_boundary_recorded
         and payload.get("external_submission_attempted") is False
     ):
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 目标确认审计已记录；本次缺少确认岗位 ID，已由 readiness blocker 覆盖。",
+            message="External L3 目标确认审计已记录；本次缺少确认岗位 ID，已由 readiness blocker 覆盖，recruiter 页面匹配边界由 target_verify 承担。",
         )
     if (
         blocker_reason == "target_confirmation_mismatch"
         and raw_values_not_persisted
+        and recruiter_boundary_recorded
         and payload.get("external_submission_attempted") is False
         and safety_audit.get("job_id_matches_confirmation") is False
     ):
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 已在 submit 命令前阻断 URL 岗位 ID 与确认岗位 ID 不一致。",
+            message="External L3 已在 submit 命令前阻断 URL 岗位 ID 与确认岗位 ID 不一致，并记录 recruiter 页面匹配由 target_verify 证明。",
         )
     if (
         audit.get("job_url_has_parseable_job_id") is True
         and audit.get("job_id_matches_confirmation") is True
         and raw_values_not_persisted
+        and recruiter_boundary_recorded
     ):
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 目标确认审计已证明 URL 岗位 ID 与确认岗位 ID 一致，且未持久化原值。",
+            message="External L3 目标确认审计已证明 URL 岗位 ID 与确认岗位 ID 一致，且未持久化原值；recruiter 页面匹配由 target_verify 证明。",
         )
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
-        message="External L3 目标确认审计缺失、持久化原值，或未阻断 URL/确认岗位 ID 不一致。",
+        message="External L3 目标确认审计缺失、持久化原值，未阻断 URL/确认岗位 ID 不一致，或未记录 recruiter 页面匹配边界。",
     )
 
 
