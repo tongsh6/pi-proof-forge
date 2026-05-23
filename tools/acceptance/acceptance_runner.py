@@ -2196,14 +2196,23 @@ def _external_l3_outcome_summary_result(step: AcceptanceStep) -> JourneyStepResu
 
     markdown_fragments = [
         "## 结果分级",
-        "- Outcome:",
-        "- Acceptance pass 含义:",
-        "- 是否已真实验证成功:",
-        "- P0-017 是否完成:",
+        f"- Outcome: `{outcome.get('outcome', '')}`",
+        f"- Acceptance pass 含义: `{outcome.get('acceptance_status_meaning', '')}`",
+        f"- 是否已真实验证成功: `{outcome.get('external_l3_success', False)}`",
+        f"- 是否已尝试外部提交: `{outcome.get('external_submission_attempted', False)}`",
+        f"- 是否需要阻断处理: `{outcome.get('blocker_resolution_required', False)}`",
+        f"- P0-017 是否完成: `{outcome.get('p0_017_complete', False)}`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
     )
+    if blocker_reason:
+        markdown_blocker_reason = f"- 阻断原因: `{blocker_reason}`"
+        if markdown_blocker_reason not in markdown:
+            missing.append("markdown_blocker_reason")
+        markdown_next_action = f"- 下一步: {blocker.get('next_action', '')}"
+        if markdown_next_action not in markdown:
+            missing.append("markdown_next_action")
     if not missing:
         return JourneyStepResult(
             status="pass",

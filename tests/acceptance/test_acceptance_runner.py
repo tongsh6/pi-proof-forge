@@ -2762,6 +2762,12 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
 
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    outcome_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_outcome_summary_recorded"
+    )
+    assert outcome_rule["status"] == "pass"
     diagnostics_rule = next(
         step
         for step in journey_payload["steps"]
@@ -2776,6 +2782,27 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     )
     assert summary_rule["status"] == "pass"
     assert "blocked/batch_cooldown" in summary_rule["message"]
+
+    markdown_path = Path(report.steps[0].evidence).with_suffix(".md")
+    original_markdown = markdown_path.read_text(encoding="utf-8")
+    markdown_path.write_text(
+        original_markdown.replace(
+            "- 下一步: 真实渠道频控已阻断本次 submit；等待 submission log 中记录的 "
+            "wait_seconds 或调整下一次验证窗口后再重试。",
+            "- 下一步: 处理另一个 blocker",
+        ),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    outcome_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_outcome_summary_recorded"
+    )
+    assert outcome_rule["status"] == "fail"
+    assert "markdown_next_action" in outcome_rule["message"]
+    markdown_path.write_text(original_markdown, encoding="utf-8")
 
     inconsistent_submit_decision = json.loads(json.dumps(payload))
     inconsistent_submit_decision["submit_safety_decision"][
