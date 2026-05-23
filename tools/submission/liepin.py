@@ -152,23 +152,29 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
             # Dismiss initial blockers (like app download prompts)
             _close_modals(page)
 
-            shot_open = recorder.screenshot_path("open_job_page")
-            _ = page.screenshot(path=str(shot_open), full_page=True)
+            shot_open = _capture_browser_screenshot(
+                page,
+                recorder,
+                config,
+                "open_job_page",
+            )
             recorder.add_step("open_job_page", "success", "job page opened", shot_open)
 
             if _is_error_page(page):
-                snapshot_paths = _dump_dom_snapshots(page, recorder.run_dir / "html")
-                snapshot_text = ",".join(snapshot_paths) if snapshot_paths else "none"
                 recorder.add_step("page_health", "failed", "job page is unavailable or invalid")
-                recorder.add_step("dom_snapshot", "success", f"saved html snapshots: {snapshot_text}")
+                _record_dom_snapshot_step(recorder, config, page)
                 recorder.finish(status="blocked", error="job_page_unavailable")
                 print("[ERROR] job page unavailable. Please verify --job-url points to a valid, accessible job detail page.")
                 print(f"[INFO] log: {recorder.log_yaml}")
                 return 10
 
             if not _is_logged_in(page):
-                shot_login = recorder.screenshot_path("login_required")
-                _ = page.screenshot(path=str(shot_login), full_page=True)
+                shot_login = _capture_browser_screenshot(
+                    page,
+                    recorder,
+                    config,
+                    "login_required",
+                )
                 recorder.add_step("login_check", "failed", "login required", shot_login)
                 recorder.finish(status="blocked", error="login_required")
                 print("[ERROR] login required. Please login once with the same session dir and retry.")
@@ -178,12 +184,14 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
 
             verification = _verify_main_chat_target(page, config.job_url)
             if not verification.ok:
-                snapshot_paths = _dump_dom_snapshots(page, recorder.run_dir / "html")
-                snapshot_text = ",".join(snapshot_paths) if snapshot_paths else "none"
-                shot_target = recorder.screenshot_path("target_verify")
-                _ = page.screenshot(path=str(shot_target), full_page=True)
+                shot_target = _capture_browser_screenshot(
+                    page,
+                    recorder,
+                    config,
+                    "target_verify",
+                )
                 recorder.add_step("target_verify", "failed", verification.reason, shot_target)
-                recorder.add_step("dom_snapshot", "success", f"saved html snapshots: {snapshot_text}")
+                _record_dom_snapshot_step(recorder, config, page)
                 recorder.finish(status="failed", error=verification.reason or "target_verify_failed")
                 print(f"[INFO] log: {recorder.log_yaml}")
                 return 12
@@ -208,13 +216,15 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
                 config.timeout_ms,
                 submit=config.submit,
             )
-            shot_chat = recorder.screenshot_path("chat_send_resume")
-            _ = page.screenshot(path=str(shot_chat), full_page=True)
+            shot_chat = _capture_browser_screenshot(
+                page,
+                recorder,
+                config,
+                "chat_send_resume",
+            )
             if not chat_ok:
-                snapshot_paths = _dump_dom_snapshots(page, recorder.run_dir / "html")
-                snapshot_text = ",".join(snapshot_paths) if snapshot_paths else "none"
                 recorder.add_step("chat_send_resume", "failed", chat_detail, shot_chat)
-                recorder.add_step("dom_snapshot", "success", f"saved html snapshots: {snapshot_text}")
+                _record_dom_snapshot_step(recorder, config, page)
                 recorder.finish(status="failed", error=chat_detail)
                 print(f"[INFO] log: {recorder.log_yaml}")
                 return 13
@@ -739,6 +749,46 @@ def _dump_dom_snapshots(page: Page, html_dir: Path) -> list[str]:
         saved.append(str(file_path))
 
     return saved
+
+
+def _external_l3_mode(config: LiepinSubmissionConfig) -> bool:
+    return bool(
+        config.external_l3_validation_run_id or config.external_l3_validation_path
+    )
+
+
+def _capture_browser_screenshot(
+    page: Page,
+    recorder: SubmissionRecorder,
+    config: LiepinSubmissionConfig,
+    step_name: str,
+) -> Path | None:
+    if _external_l3_mode(config):
+        return None
+    screenshot = recorder.screenshot_path(step_name)
+    _ = page.screenshot(path=str(screenshot), full_page=True)
+    return screenshot
+
+
+def _record_dom_snapshot_step(
+    recorder: SubmissionRecorder,
+    config: LiepinSubmissionConfig,
+    page: Page,
+) -> None:
+    if _external_l3_mode(config):
+        recorder.add_step(
+            "dom_snapshot",
+            "skipped",
+            "raw_browser_artifacts_persisted=false; reason=external_l3_redaction_policy",
+        )
+        return
+    snapshot_paths = _dump_dom_snapshots(page, recorder.run_dir / "html")
+    snapshot_text = ",".join(snapshot_paths) if snapshot_paths else "none"
+    recorder.add_step(
+        "dom_snapshot",
+        "success",
+        f"saved html snapshots: {snapshot_text}",
+    )
 
 
 def _open_apply_dialog(page: Page, timeout_ms: int) -> None:

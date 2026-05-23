@@ -861,6 +861,11 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_submission_log_step_details_redacted"] = (
             _external_l3_submission_log_step_details_redacted_result(external_l3_step)
         )
+        results["external_l3_submission_log_browser_artifacts_redacted"] = (
+            _external_l3_submission_log_browser_artifacts_redacted_result(
+                external_l3_step
+            )
+        )
         results["external_l3_authorization_packet_recorded"] = (
             _external_l3_authorization_packet_result(external_l3_step)
         )
@@ -1534,6 +1539,49 @@ def _external_l3_submission_log_step_details_redacted_result(
         status="fail",
         evidence=step.evidence,
         message="External L3 submission log steps.detail 仍可能持久化 Job URL、文件路径或确认值原文。",
+    )
+
+
+def _external_l3_submission_log_browser_artifacts_redacted_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 submission log 浏览器诊断产物证据不可读取: {exc}",
+        )
+    if payload.get("external_submission_attempted") is not True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未执行真实渠道命令，因此没有原始浏览器诊断产物脱敏要求。",
+        )
+    traceability = payload.get("submission_traceability") or {}
+    if not traceability.get("log_json_exists"):
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未产生可解析 submission log，浏览器诊断产物缺失由 traceability failed_checks 记录。",
+        )
+    if traceability.get("submission_log_browser_artifacts_redacted") is True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 submission log 未引用原始截图或 HTML snapshot。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 submission log 仍引用原始截图或 HTML snapshot。",
     )
 
 

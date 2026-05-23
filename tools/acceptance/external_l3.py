@@ -919,6 +919,7 @@ def _submission_traceability(
         log_payload,
         redaction_values,
     )
+    browser_artifacts_redacted = _submission_log_browser_artifacts_redacted(log_payload)
     required_steps_evidence = _submission_log_required_steps_evidence(log_payload)
     checks = _submission_traceability_checks(
         yaml_path=yaml_path,
@@ -933,6 +934,7 @@ def _submission_traceability(
         input_artifacts_match=input_artifacts_match,
         raw_live_inputs_redacted=raw_live_inputs_redacted,
         step_details_redacted=step_details_redacted,
+        browser_artifacts_redacted=browser_artifacts_redacted,
         required_steps_present=bool(required_steps_evidence.get("passed")),
     )
     return {
@@ -958,6 +960,7 @@ def _submission_traceability(
         "submission_log_input_artifacts_match": input_artifacts_match,
         "submission_log_raw_live_inputs_redacted": raw_live_inputs_redacted,
         "submission_log_step_details_redacted": step_details_redacted,
+        "submission_log_browser_artifacts_redacted": browser_artifacts_redacted,
         "submission_log_required_steps": required_steps_evidence,
         "submission_log_summary": _submission_log_summary(
             log_payload,
@@ -978,6 +981,7 @@ def _submission_traceability(
             and input_artifacts_match
             and raw_live_inputs_redacted
             and step_details_redacted
+            and browser_artifacts_redacted
             and required_steps_evidence.get("passed") is True
         ),
     }
@@ -1010,6 +1014,23 @@ def _submission_log_step_details_redacted(
         if any(value in detail for value in raw_values):
             return False
         if step_name == "target_verify" and not _target_verify_detail_redacted(detail):
+            return False
+    return True
+
+
+def _submission_log_browser_artifacts_redacted(log_payload: dict[str, Any]) -> bool:
+    if not log_payload:
+        return False
+    steps = log_payload.get("steps") or []
+    if not isinstance(steps, list):
+        return False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if str(step.get("screenshot", "")):
+            return False
+        detail = str(step.get("detail", ""))
+        if "saved html snapshots" in detail:
             return False
     return True
 
@@ -1130,6 +1151,7 @@ def _submission_traceability_checks(
     input_artifacts_match: bool,
     raw_live_inputs_redacted: bool,
     step_details_redacted: bool,
+    browser_artifacts_redacted: bool,
     required_steps_present: bool,
 ) -> list[dict[str, str]]:
     return [
@@ -1185,6 +1207,11 @@ def _submission_traceability_checks(
             check_id="submission_log_step_details_redacted",
             passed=step_details_redacted,
             detail="submission log steps.detail 未持久化 Job URL、文件路径或确认值原文",
+        ),
+        _traceability_check(
+            check_id="submission_log_browser_artifacts_redacted",
+            passed=browser_artifacts_redacted,
+            detail="External L3 submission log 未引用原始截图或 HTML snapshot",
         ),
         _traceability_check(
             check_id="successful_submission_required_steps_present",
