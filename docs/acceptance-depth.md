@@ -159,7 +159,7 @@
 - L3 证据必须包含 `rate_limit_policy`：记录 max-per-batch、cooldown seconds、daily limit 和状态文件路径；频控被关闭时必须在 submit 命令启动前记录 live blocker。
 - L3 证据必须包含 `session_readiness` 和 `manual_session_ready_confirmed` gate：真实渠道命令启动前必须由用户确认共享渠道 session 已经人工登录或刷新可用；未确认时必须阻断在 submit 命令启动前，并继续证明自动化不会输入凭据、验证码或短信码。
 - L3 证据必须包含 `forbidden_input_audit`：runner 只记录密码、验证码、短信码和原始密钥类 forbidden env 是否出现，不持久化原值；任一 forbidden input 出现时必须阻断在 submit 命令启动前。
-- L3 证据必须包含 `target_confirmation_audit`：runner 只记录 Job URL 中岗位 ID 是否可解析、确认岗位 ID 是否已提供、二者是否一致，不持久化原始 ID；不一致时必须阻断在 submit 命令启动前。
+- L3 证据必须包含 `target_confirmation_audit`：runner 只记录 Job URL 中岗位 ID 是否可解析、确认岗位 ID 是否已提供、二者是否一致、确认 recruiter 是否已提供，以及 recruiter 页面匹配必须由 `target_verify` 证明的边界；不持久化原始 ID 或 recruiter 原值；岗位 ID 不一致时必须阻断在 submit 命令启动前。
 - 如果真实渠道命令被执行，`external-l3-validation.json` 只能持久化脱敏后的 command 和 stdout/stderr 尾部；Job URL、resume/profile 路径、确认 job id 和确认 recruiter 必须以 `<redacted>` 形式保存。
 - L3 证据必须包含 `submit_safety_decision`，明确最终提交命令是 `blocked_before_command`、`allowed_pending_execution` 还是 `allowed_and_executed`，并证明显式授权、独立最终确认和真实输入齐备才允许 submit。
 - blocker 或真实渠道结果必须包含 `operator_handoff`：列出 required env 是否存在、最终提交前 checklist、禁止输入项、当前运行配置和不含真实值的命令模板；命令模板必须使用 shell-safe 的 live 输入占位符，并与当前 channel、session/output 目录、timeout/headless 和有效频控参数一致；Markdown 报告必须展示同一条可复制命令模板。`operator_handoff.command_template_review` 必须同步记录 `copy_paste_ready=false`、占位符替换、显式授权、独立最终提交确认和人工会话可用确认要求，防止操作者把交接模板盲贴成真实运行命令。

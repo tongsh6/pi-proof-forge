@@ -28,7 +28,7 @@ Last updated: 2026-05-23
 - External L3 rate limiting: validation records include `rate_limit_policy` and pass explicit rate-limit arguments to live submit commands; disabled rate limits are blocked before any external command starts.
 - External L3 session readiness: validation records include `session_readiness` and `manual_session_ready_confirmed` gate；共享渠道 session 未经人工登录或刷新确认可用时，真实 submit 命令不会启动，且自动化仍不得接收或保存密码、验证码或短信码。
 - External L3 forbidden input audit: validation records include `forbidden_input_audit`；密码、验证码、短信码和原始密钥类 env 值永不持久化，且一旦出现就阻断在任何真实 submit 命令启动前。
-- External L3 target confirmation audit: validation records include `target_confirmation_audit`；只记录 URL 岗位 ID 是否可解析、确认岗位 ID 是否提供和二者是否一致，不持久化原始 ID，且不一致时阻断在 submit 命令启动前。
+- External L3 target confirmation audit: validation records include `target_confirmation_audit`；只记录 URL 岗位 ID 是否可解析、确认岗位 ID 是否提供和二者是否一致、确认 recruiter 是否提供，以及 recruiter 页面匹配必须由 `target_verify` 证明的边界；不持久化原始 ID 或 recruiter 原值，且岗位 ID 不一致时阻断在 submit 命令启动前。
 - External L3 command/output audit: validation records only persist redacted live submission command and redacted stdout/stderr tails；原始 Job URL、resume/profile 路径、确认 job id 和 recruiter 不写入 command 或 output tail 证据。
 - External L3 submit safety: validation records include `submit_safety_decision`；真实渠道命令是否阻断、允许待执行或已执行，必须在信任结果前成为显式可审计状态。
 - External L3 handoff runtime policy: `operator_handoff.runtime_options` 记录当前 channel、session/output 目录、timeout 和 headless 配置；`operator_handoff.command_template` 使用 shell-safe 的 live 输入占位符，并写入当前运行配置与有效频控参数；Markdown 报告同步展示可复制命令模板，避免操作者覆盖 env 后交接模板回退成旧默认值或被 shell 误解析。

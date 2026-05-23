@@ -547,6 +547,7 @@ steps:
         - "rate_limit_policy_recorded_and_enforced_before_submit"
         - "forbidden_secret_and_challenge_inputs_blocked_before_submit"
         - "target_confirmation_job_id_matches_url_before_submit"
+        - "target_confirmation_recruiter_boundary_requires_target_verify"
         - "live_submission_command_redacted_in_validation_record"
         - "live_submission_output_tails_redacted_in_validation_record"
         - "submit_safety_decision_recorded"

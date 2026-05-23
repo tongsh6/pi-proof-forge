@@ -280,7 +280,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须在 submit 命令启动前审计 Job URL 中的岗位 ID 是否可解析且与确认岗位 ID 一致；不一致时必须记录 blocker，且不持久化原始确认值。"
+        message: "External L3 验收必须在 submit 命令启动前审计 Job URL 中的岗位 ID 是否可解析且与确认岗位 ID 一致；不一致时必须记录 blocker，且不持久化原始确认值。确认 recruiter 的预检只证明已提供且不持久化原值，页面招聘方一致性必须由 target_verify 证明。"
       - rule_id: "external_l3_live_command_redacted"
         level: "L3"
         stage: "submissions"
