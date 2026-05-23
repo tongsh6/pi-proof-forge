@@ -26,7 +26,7 @@
 3. 先运行 `本地预检命令模板`，确认输入审计、session 存储、频控、runbook 指纹和 evidence manifest 均能写出；该模板必须保持 `PIPF_EXTERNAL_L3_AUTHORIZED=false` 与 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=false`，且复核结果必须显示授权模板执行前需要先复核预检证据。
 4. 确认 `本地预检预期结果` 显示预检正常结果是 `live_blocker_recorded` / `explicit_user_authorization_required`，并且 `external_submission_attempted=false`、`submit_command_allowed=false`、`p0_017_complete=false`。
 5. 确认 `本地预检复核清单` 中所有 required 项均存在，重点复核 validation 状态、blocker reason、外部提交未启动、submit 命令未允许、P0-017 未完成、输入审计脱敏、session、频控、证据清单、runbook 指纹和反馈追溯。
-6. 确认 `本地预检复核结果` 显示所有 required 项 `status=pass`、`ready_for_authorization_decision=true`，同时 `authorized_template_execution_allowed=false`。
+6. 确认 `本地预检复核结果` 显示所有 required 项 `status=pass`；如果 `authorization_decision_blockers` 非空或 `ready_for_authorization_decision=false`，先补齐真实输入、人工 session 和目标确认，不得请求授权或复制授权模板。
 7. 确认 `PIPF_EXTERNAL_L3_AUTHORIZED=true` 只在用户明确授权后保留。
 8. 确认 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true` 只在用户独立确认允许最终提交路径后保留。
 9. 确认 `PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true` 只在人工登录或刷新确认 session 可用后保留。
@@ -35,7 +35,7 @@
 
 ## 执行命令
 
-从最新 `external-l3-validation.md` 先复制 `本地预检命令模板` 并替换所有 live 输入占位符；预检仍应记录 blocker，且不得触碰真实渠道。只有预检证据完整、命令模板复核显示 `preflight_must_run_before_authorized_template=true`、预检结果符合 `本地预检预期结果`、`本地预检复核清单` 全部 required 项已人工复核、`本地预检复核结果` 全部 required 项已通过、用户显式授权并独立确认最终提交后，才复制 `授权真实运行命令模板`。模板中的 live 输入不应写回仓库、文档、测试或验收报告。
+从最新 `external-l3-validation.md` 先复制 `本地预检命令模板` 并替换所有 live 输入占位符；预检仍应记录 blocker，且不得触碰真实渠道。只有预检证据完整、命令模板复核显示 `preflight_must_run_before_authorized_template=true`、预检结果符合 `本地预检预期结果`、`本地预检复核清单` 全部 required 项已人工复核、`本地预检复核结果` 全部 required 项已通过且 `authorization_decision_blockers` 为空、用户显式授权并独立确认最终提交后，才复制 `授权真实运行命令模板`。模板中的 live 输入不应写回仓库、文档、测试或验收报告。
 
 ```bash
 bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3

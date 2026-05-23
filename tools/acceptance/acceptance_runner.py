@@ -2420,17 +2420,37 @@ def _external_l3_handoff_command_template_review_result(
                 f"preflight_review_checklist.items.{item_id}.raw_live_inputs_persisted"
             )
     expected_preflight_result_fields = {
-        "status": "preflight_evidence_review_passed",
+        "status": "preflight_evidence_review_passed_with_live_readiness_blockers",
         "applies_to_current_run": True,
         "all_required_items_passed": True,
-        "ready_for_authorization_decision": True,
+        "live_readiness_for_authorization": False,
+        "ready_for_authorization_decision": False,
         "authorized_template_execution_allowed": False,
-        "authorization_decision_required": True,
+        "authorization_decision_required": False,
         "raw_live_inputs_persisted": False,
     }
     for key, expected in expected_preflight_result_fields.items():
         if preflight_review_result.get(key) != expected:
             missing.append(f"preflight_review_result.{key}")
+    expected_decision_blockers = {
+        "manual_session_ready_confirmed",
+        "manual_session_storage_ready",
+        "job_url_present",
+        "job_url_valid",
+        "target_job_id_extractable",
+        "target_job_id_matches_confirmation",
+        "resume_pdf_present",
+        "resume_pdf_file_ready",
+        "profile_yaml_present",
+        "profile_yaml_file_ready",
+        "confirm_job_id_present",
+        "confirm_recruiter_present",
+    }
+    decision_blockers = set(
+        preflight_review_result.get("authorization_decision_blockers") or []
+    )
+    if not expected_decision_blockers.issubset(decision_blockers):
+        missing.append("preflight_review_result.authorization_decision_blockers")
     result_items = {
         str(item.get("id", "")): item
         for item in preflight_review_result.get("items") or []
@@ -2491,12 +2511,14 @@ def _external_l3_handoff_command_template_review_result(
         "`p0_017_complete_false`",
         "`runbook_fingerprinted`",
         "### 本地预检复核结果",
-        "- 状态: `preflight_evidence_review_passed`",
+        "- 状态: `preflight_evidence_review_passed_with_live_readiness_blockers`",
         "- 适用于当前运行: `True`",
         "- 必需项全部通过: `True`",
-        "- 可进入授权决策: `True`",
+        "- 授权决策前真实运行就绪: `False`",
+        "- 授权决策阻断项: `manual_session_ready_confirmed",
+        "- 可进入授权决策: `False`",
         "- 是否允许执行授权模板: `False`",
-        "- 仍需用户授权: `True`",
+        "- 仍需用户授权: `False`",
         "| 复核项 | 状态 | 来源 | 预期 | 观测 |",
     ]
     missing.extend(
@@ -2506,7 +2528,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但仍不允许执行授权模板。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板。",
         )
     return JourneyStepResult(
         status="fail",

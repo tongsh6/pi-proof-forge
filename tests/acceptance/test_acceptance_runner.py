@@ -322,7 +322,7 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert evidence_entries["preflight_review_result"]["present"] is True
     assert (
         evidence_entries["preflight_review_result"]["status"]
-        == "preflight_evidence_review_passed"
+        == "preflight_evidence_review_passed_with_live_readiness_blockers"
     )
     assert evidence_entries["post_submit_feedback_traceability"]["present"] is True
     assert evidence_entries["live_blocker"]["required"] is True
@@ -480,13 +480,36 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     preflight_review_result = handoff["preflight_review_result"]
     assert (
-        preflight_review_result["status"] == "preflight_evidence_review_passed"
+        preflight_review_result["status"]
+        == "preflight_evidence_review_passed_with_live_readiness_blockers"
     )
     assert preflight_review_result["applies_to_current_run"] is True
     assert preflight_review_result["all_required_items_passed"] is True
-    assert preflight_review_result["ready_for_authorization_decision"] is True
+    assert preflight_review_result["live_readiness_for_authorization"] is False
+    assert "manual_session_ready_confirmed" in preflight_review_result[
+        "authorization_decision_blockers"
+    ]
+    assert "job_url_present" in preflight_review_result[
+        "authorization_decision_blockers"
+    ]
+    assert "resume_pdf_file_ready" in preflight_review_result[
+        "authorization_decision_blockers"
+    ]
+    assert "profile_yaml_file_ready" in preflight_review_result[
+        "authorization_decision_blockers"
+    ]
+    assert "confirm_job_id_present" in preflight_review_result[
+        "authorization_decision_blockers"
+    ]
+    assert "user_authorization" not in preflight_review_result[
+        "authorization_decision_blockers"
+    ]
+    assert "final_submit_confirmation" not in preflight_review_result[
+        "authorization_decision_blockers"
+    ]
+    assert preflight_review_result["ready_for_authorization_decision"] is False
     assert preflight_review_result["authorized_template_execution_allowed"] is False
-    assert preflight_review_result["authorization_decision_required"] is True
+    assert preflight_review_result["authorization_decision_required"] is False
     assert preflight_review_result["raw_live_inputs_persisted"] is False
     preflight_result_items = {
         item["id"]: item for item in preflight_review_result["items"]
@@ -689,12 +712,17 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "`p0_017_complete_false`" in markdown
     assert "`runbook_fingerprinted`" in markdown
     assert "### 本地预检复核结果" in markdown
-    assert "- 状态: `preflight_evidence_review_passed`" in markdown
+    assert (
+        "- 状态: `preflight_evidence_review_passed_with_live_readiness_blockers`"
+        in markdown
+    )
     assert "- 适用于当前运行: `True`" in markdown
     assert "- 必需项全部通过: `True`" in markdown
-    assert "- 可进入授权决策: `True`" in markdown
+    assert "- 授权决策前真实运行就绪: `False`" in markdown
+    assert "- 授权决策阻断项: `manual_session_ready_confirmed" in markdown
+    assert "- 可进入授权决策: `False`" in markdown
     assert "- 是否允许执行授权模板: `False`" in markdown
-    assert "- 仍需用户授权: `True`" in markdown
+    assert "- 仍需用户授权: `False`" in markdown
     assert "| 复核项 | 状态 | 来源 | 预期 | 观测 |" in markdown
     assert (
         "| `validation_status_is_live_blocker_recorded` | `pass` | `status` | "
@@ -978,6 +1006,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert "授权 blocker" in handoff_template_review_rule["message"]
     assert "预检复核清单" in handoff_template_review_rule["message"]
     assert "预检复核结果已逐项通过" in handoff_template_review_rule["message"]
+    assert "不能进入授权决策" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step
         for step in journey_payload["steps"]

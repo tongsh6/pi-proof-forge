@@ -868,6 +868,8 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     f"- 状态: `{preflight_review_result.get('status', '')}`",
                     f"- 适用于当前运行: `{preflight_review_result.get('applies_to_current_run', False)}`",
                     f"- 必需项全部通过: `{preflight_review_result.get('all_required_items_passed', False)}`",
+                    f"- 授权决策前真实运行就绪: `{preflight_review_result.get('live_readiness_for_authorization', False)}`",
+                    f"- 授权决策阻断项: `{', '.join(preflight_review_result.get('authorization_decision_blockers') or [])}`",
                     f"- 可进入授权决策: `{preflight_review_result.get('ready_for_authorization_decision', False)}`",
                     f"- 是否允许执行授权模板: `{preflight_review_result.get('authorized_template_execution_allowed', True)}`",
                     f"- 仍需用户授权: `{preflight_review_result.get('authorization_decision_required', False)}`",
@@ -2609,11 +2611,17 @@ def _operator_preflight_review_result(validation: dict[str, Any]) -> dict[str, A
     all_required_items_passed = bool(items) and all(
         item["status"] == "pass" for item in items if item.get("required") is True
     )
+    authorization_decision_blockers = _authorization_decision_blockers(validation)
+    live_readiness_for_authorization = not authorization_decision_blockers
     ready_for_authorization_decision = (
-        applies_to_current_run and all_required_items_passed
+        applies_to_current_run
+        and all_required_items_passed
+        and live_readiness_for_authorization
     )
     if ready_for_authorization_decision:
         status = "preflight_evidence_review_passed"
+    elif applies_to_current_run and all_required_items_passed:
+        status = "preflight_evidence_review_passed_with_live_readiness_blockers"
     elif applies_to_current_run:
         status = "preflight_evidence_review_failed"
     else:
@@ -2623,12 +2631,25 @@ def _operator_preflight_review_result(validation: dict[str, Any]) -> dict[str, A
         "status": status,
         "applies_to_current_run": applies_to_current_run,
         "all_required_items_passed": all_required_items_passed,
+        "live_readiness_for_authorization": live_readiness_for_authorization,
+        "authorization_decision_blockers": authorization_decision_blockers,
         "ready_for_authorization_decision": ready_for_authorization_decision,
         "authorized_template_execution_allowed": False,
         "authorization_decision_required": ready_for_authorization_decision,
         "raw_live_inputs_persisted": False,
         "items": items,
     }
+
+
+def _authorization_decision_blockers(validation: dict[str, Any]) -> list[str]:
+    missing_gates = list(
+        (validation.get("live_run_readiness") or {}).get("missing_gates") or []
+    )
+    decision_only_gates = {
+        "user_authorization",
+        "final_submit_confirmation",
+    }
+    return [gate for gate in missing_gates if gate not in decision_only_gates]
 
 
 def _preflight_review_result_item(
