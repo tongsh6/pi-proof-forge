@@ -882,6 +882,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_handoff_command_template_review_recorded"] = (
             _external_l3_handoff_command_template_review_result(external_l3_step)
         )
+        results["external_l3_evidence_manifest_recorded"] = (
+            _external_l3_evidence_manifest_result(external_l3_step)
+        )
         results["external_l3_pre_submit_blocker_diagnostics_recorded"] = (
             _external_l3_pre_submit_blocker_diagnostics_result(external_l3_step)
         )
@@ -1935,6 +1938,87 @@ def _external_l3_handoff_command_template_review_result(
         status="fail",
         evidence=step.evidence,
         message=f"External L3 命令模板复核缺失或不完整: {', '.join(missing)}",
+    )
+
+
+def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 证据清单不可读取: {exc}",
+        )
+
+    manifest = payload.get("evidence_manifest") or {}
+    entries = {
+        str(item.get("id", "")): item
+        for item in manifest.get("entries") or []
+        if isinstance(item, dict)
+    }
+    required_entry_ids = {
+        "external_l3_validation_json",
+        "external_l3_validation_markdown",
+        "live_run_readiness",
+        "submit_safety_decision",
+        "live_input_artifacts",
+        "rate_limit_policy",
+        "forbidden_input_audit",
+        "target_confirmation_audit",
+        "operator_handoff",
+        "post_submit_feedback_traceability",
+        "feedback_source_artifact",
+    }
+    if payload.get("status") == "live_blocker_recorded":
+        required_entry_ids.add("live_blocker")
+    if payload.get("status") == "external_validated":
+        required_entry_ids.update({"submission_log_yaml", "submission_log_json"})
+
+    missing = []
+    if manifest.get("status") != "complete":
+        missing.append("status")
+    if manifest.get("raw_live_inputs_persisted") is not False:
+        missing.append("raw_live_inputs_persisted")
+    for entry_id in sorted(required_entry_ids):
+        entry = entries.get(entry_id)
+        if not entry:
+            missing.append(entry_id)
+            continue
+        if entry.get("required") is not True:
+            missing.append(f"{entry_id}.required")
+        if entry.get("present") is not True:
+            missing.append(f"{entry_id}.present")
+        if entry.get("raw_live_inputs_persisted") is not False:
+            missing.append(f"{entry_id}.raw_live_inputs_persisted")
+    markdown_fragments = [
+        "## 证据清单",
+        "| 证据 | 类型 | 必需 | 存在 | 状态 | 位置 |",
+        "`external_l3_validation_json`",
+        "`post_submit_feedback_traceability`",
+        "`feedback_source_artifact`",
+    ]
+    missing.extend(
+        fragment for fragment in markdown_fragments if fragment not in markdown
+    )
+    if not missing:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 证据清单已记录 validation、handoff、feedback source 和真实 submission log 期望状态。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message=f"External L3 证据清单缺失或不完整: {', '.join(missing)}",
     )
 
 

@@ -269,6 +269,26 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         feedback_trace["feedback_iteration_route"]
         == "resolve_live_blocker_before_feedback_iteration"
     )
+    evidence_manifest = payload["evidence_manifest"]
+    assert evidence_manifest["status"] == "complete"
+    assert evidence_manifest["raw_live_inputs_persisted"] is False
+    evidence_entries = {
+        item["id"]: item for item in evidence_manifest["entries"]
+    }
+    assert evidence_entries["external_l3_validation_json"]["present"] is True
+    assert evidence_entries["external_l3_validation_markdown"]["present"] is True
+    assert evidence_entries["live_run_readiness"]["present"] is True
+    assert evidence_entries["operator_handoff"]["present"] is True
+    assert evidence_entries["post_submit_feedback_traceability"]["present"] is True
+    assert evidence_entries["live_blocker"]["required"] is True
+    assert evidence_entries["live_blocker"]["present"] is True
+    assert evidence_entries["submission_log_yaml"]["required"] is False
+    assert evidence_entries["submission_log_yaml"]["present"] is False
+    assert evidence_entries["feedback_source_artifact"]["present"] is True
+    assert all(
+        item["raw_live_inputs_persisted"] is False
+        for item in evidence_manifest["entries"]
+    )
     readiness = payload["live_run_readiness"]
     assert readiness["ready"] is False
     assert readiness["submit_command_allowed"] is False
@@ -384,6 +404,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "| 必需环境变量 | 是否存在 | 是否敏感 |" in markdown
     assert "## 提交后反馈追溯" in markdown
     assert "- 来源类型: `live_blocker`" in markdown
+    assert "## 证据清单" in markdown
+    assert "| 证据 | 类型 | 必需 | 存在 | 状态 | 位置 |" in markdown
+    assert "`external_l3_validation_json`" in markdown
+    assert "`feedback_source_artifact`" in markdown
 
 
 def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
@@ -605,6 +629,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert handoff_template_review_rule["stage"] == "submissions"
     assert handoff_template_review_rule["status"] == "pass"
     assert "模板不可盲贴执行" in handoff_template_review_rule["message"]
+    evidence_manifest_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_evidence_manifest_recorded"
+    )
+    assert evidence_manifest_rule["level"] == "L3"
+    assert evidence_manifest_rule["stage"] == "submissions"
+    assert evidence_manifest_rule["status"] == "pass"
+    assert "证据清单" in evidence_manifest_rule["message"]
     pre_submit_diagnostics_rule = next(
         step
         for step in journey_payload["steps"]
@@ -1213,6 +1246,18 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["live_run_readiness"]["submit_command_allowed"] is True
     assert payload["live_run_readiness"]["missing_gates"] == []
     assert payload["operator_handoff"]["status"] == "executed_with_guarded_live_result"
+    evidence_entries = {
+        item["id"]: item for item in payload["evidence_manifest"]["entries"]
+    }
+    assert payload["evidence_manifest"]["status"] == "complete"
+    assert evidence_entries["submission_log_yaml"]["required"] is True
+    assert evidence_entries["submission_log_yaml"]["present"] is True
+    assert evidence_entries["submission_log_yaml"]["location"] == str(log_yaml)
+    assert evidence_entries["submission_log_json"]["required"] is True
+    assert evidence_entries["submission_log_json"]["present"] is True
+    assert evidence_entries["submission_log_json"]["location"] == str(log_json)
+    assert evidence_entries["live_blocker"]["required"] is False
+    assert evidence_entries["feedback_source_artifact"]["location"] == str(log_json)
     authorization_packet = payload["operator_handoff"]["authorization_packet"]
     assert authorization_packet["status"] == "executed"
     assert authorization_packet["raw_confirmation_values_persisted"] is False

@@ -245,6 +245,7 @@ def write_external_l3_validation(
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "external-l3-validation.json"
     markdown_path = output_dir / "external-l3-validation.md"
+    validation["evidence_manifest"] = _evidence_manifest(validation, run_id=run_id)
     json_path.write_text(
         json.dumps(validation, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -267,6 +268,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     submission_traceability = validation.get("submission_traceability") or {}
     feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
     handoff = validation.get("operator_handoff") or {}
+    evidence_manifest = validation.get("evidence_manifest") or {}
     lines = [
         "# External L3 投递验证",
         "",
@@ -521,6 +523,34 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             lines.extend(["", "### 后续必需证据", ""])
             for item in required_evidence:
                 lines.append(f"- `{item}`")
+    if evidence_manifest:
+        lines.extend(
+            [
+                "",
+                "## 证据清单",
+                "",
+                f"- 状态: `{evidence_manifest.get('status', '')}`",
+                f"- 原始 live 输入是否持久化: `{evidence_manifest.get('raw_live_inputs_persisted', True)}`",
+                "",
+                "| 证据 | 类型 | 必需 | 存在 | 状态 | 位置 |",
+                "|---|---|---:|---:|---|---|",
+            ]
+        )
+        for item in evidence_manifest.get("entries") or []:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{item.get('id', '')}`",
+                        f"`{item.get('artifact_type', '')}`",
+                        f"`{item.get('required', False)}`",
+                        f"`{item.get('present', False)}`",
+                        f"`{item.get('status', '')}`",
+                        f"`{item.get('location', '')}`",
+                    ]
+                )
+                + " |"
+            )
     if handoff:
         authorization_packet = handoff.get("authorization_packet") or {}
         runtime_options = handoff.get("runtime_options") or {}
@@ -1379,6 +1409,143 @@ def _read_submission_json(json_path: Path | None) -> tuple[dict[str, Any], str]:
     if not isinstance(payload, dict):
         return {}, "submission_log.json root is not an object"
     return payload, ""
+
+
+def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, Any]:
+    validation_json = str(
+        Path("outputs") / "acceptance" / run_id / "external-l3-validation.json"
+    )
+    validation_markdown = str(
+        Path("outputs") / "acceptance" / run_id / "external-l3-validation.md"
+    )
+    entries: list[dict[str, Any]] = [
+        _evidence_entry(
+            entry_id="external_l3_validation_json",
+            artifact_type="file",
+            location=validation_json,
+            required=True,
+            present=True,
+            status="declared_output",
+        ),
+        _evidence_entry(
+            entry_id="external_l3_validation_markdown",
+            artifact_type="file",
+            location=validation_markdown,
+            required=True,
+            present=True,
+            status="declared_output",
+        ),
+    ]
+    for section in (
+        "live_run_readiness",
+        "submit_safety_decision",
+        "live_input_artifacts",
+        "rate_limit_policy",
+        "forbidden_input_audit",
+        "target_confirmation_audit",
+        "operator_handoff",
+        "post_submit_feedback_traceability",
+    ):
+        present = bool(validation.get(section))
+        entries.append(
+            _evidence_entry(
+                entry_id=section,
+                artifact_type="embedded_section",
+                location=f"{validation_json}#{section}",
+                required=True,
+                present=present,
+                status="present" if present else "missing",
+            )
+        )
+
+    live_blocker_required = validation.get("status") == "live_blocker_recorded"
+    live_blocker_present = bool(validation.get("live_blocker"))
+    entries.append(
+        _evidence_entry(
+            entry_id="live_blocker",
+            artifact_type="embedded_section",
+            location=f"{validation_json}#live_blocker",
+            required=live_blocker_required,
+            present=live_blocker_present,
+            status=(
+                "present"
+                if live_blocker_present
+                else (
+                    "not_required_for_external_validated"
+                    if not live_blocker_required
+                    else "missing"
+                )
+            ),
+        )
+    )
+
+    submission_traceability = validation.get("submission_traceability") or {}
+    external_validated = validation.get("status") == "external_validated"
+    for entry_id, path_key, exists_key in (
+        ("submission_log_yaml", "log_yaml_path", "log_yaml_exists"),
+        ("submission_log_json", "log_json_path", "log_json_exists"),
+    ):
+        required = external_validated
+        present = bool(submission_traceability.get(exists_key))
+        entries.append(
+            _evidence_entry(
+                entry_id=entry_id,
+                artifact_type="file",
+                location=str(submission_traceability.get(path_key, "")),
+                required=required,
+                present=present,
+                status=(
+                    "present"
+                    if present
+                    else (
+                        "not_required_for_current_blocker"
+                        if not required
+                        else "missing"
+                    )
+                ),
+            )
+        )
+
+    feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
+    source_artifact = str(feedback_traceability.get("source_artifact_path", ""))
+    entries.append(
+        _evidence_entry(
+            entry_id="feedback_source_artifact",
+            artifact_type="file",
+            location=source_artifact,
+            required=True,
+            present=bool(source_artifact),
+            status="declared_source" if source_artifact else "missing",
+        )
+    )
+
+    required_entries = [entry for entry in entries if entry["required"]]
+    complete = all(entry["present"] for entry in required_entries)
+    return {
+        "status": "complete" if complete else "incomplete",
+        "raw_live_inputs_persisted": False,
+        "entries": entries,
+    }
+
+
+def _evidence_entry(
+    *,
+    entry_id: str,
+    artifact_type: str,
+    location: str,
+    required: bool,
+    present: bool,
+    status: str,
+) -> dict[str, Any]:
+    return {
+        "id": entry_id,
+        "artifact_type": artifact_type,
+        "location": location,
+        "required": required,
+        "present": present,
+        "status": status,
+        "raw_live_inputs_persisted": False,
+    }
 
 
 def _post_submit_feedback_traceability(
