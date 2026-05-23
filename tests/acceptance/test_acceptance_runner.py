@@ -2762,6 +2762,13 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
 
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    diagnostics_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_post_command_blocker_diagnostics_recorded"
+    )
+    assert diagnostics_rule["status"] == "pass"
+    assert "external_channel_rate_limited" in diagnostics_rule["message"]
     summary_rule = next(
         step
         for step in journey_payload["steps"]
@@ -2769,6 +2776,21 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     )
     assert summary_rule["status"] == "pass"
     assert "blocked/batch_cooldown" in summary_rule["message"]
+
+    payload["live_blocker"]["reason"] = "external_channel_command_returned_nonzero"
+    Path(report.steps[0].evidence).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    diagnostics_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_post_command_blocker_diagnostics_recorded"
+    )
+    assert diagnostics_rule["status"] == "fail"
+    assert "expected=external_channel_rate_limited" in diagnostics_rule["message"]
 
 
 def test_acceptance_runner_l3_records_timeout_as_live_blocker(

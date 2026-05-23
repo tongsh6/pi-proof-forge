@@ -1021,14 +1021,11 @@ def _post_command_blocker_reason(
     if command_timed_out:
         return "external_channel_command_timed_out"
     submission_summary = submission_traceability.get("submission_log_summary") or {}
-    if submission_summary.get("error") in {"batch_cooldown", "daily_limit_exceeded"}:
+    submission_error_reason = submission_log_error_blocker_reason(submission_summary)
+    if submission_error_reason == "external_channel_rate_limited":
         return "external_channel_rate_limited"
-    if not command_succeeded:
-        submission_error_reason = submission_log_error_blocker_reason(
-            submission_summary
-        )
-        if submission_error_reason:
-            return submission_error_reason
+    if not command_succeeded and submission_error_reason:
+        return submission_error_reason
     if not command_succeeded:
         return "external_channel_command_returned_nonzero"
     if not submission_traceability["linked_to_validation"]:
@@ -1042,6 +1039,8 @@ def submission_log_error_blocker_reason(submission_summary: dict[str, Any]) -> s
     error = str(submission_summary.get("error") or "").strip()
     if not error:
         return ""
+    if error in {"batch_cooldown", "daily_limit_exceeded"}:
+        return "external_channel_rate_limited"
     if error in {"login_required"}:
         return "external_channel_login_required"
     if error in {"security_redirect"}:
