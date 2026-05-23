@@ -340,7 +340,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须保证提交器在 External L3 模式下不捕获或引用原始浏览器截图、HTML snapshot；SubmissionRecorder 必须在记录层忽略 screenshot 引用，真实渠道诊断只能保留结构化 blocker 与脱敏摘要。"
+        message: "External L3 验收必须保证提交器在 External L3 模式下不捕获或引用原始浏览器截图、HTML snapshot；SubmissionRecorder 必须在记录层忽略 screenshot 引用，validation 必须递归拒绝 submission log 中的截图/HTML snapshot 字段、嵌套诊断字段或路径片段，真实渠道诊断只能保留结构化 blocker 与脱敏摘要。"
       - rule_id: "external_l3_authorization_packet_recorded"
         level: "L3"
         stage: "submissions"

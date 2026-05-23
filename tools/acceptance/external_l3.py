@@ -27,6 +27,39 @@ _SUCCESS_SUBMISSION_REQUIRED_STEPS = (
     "chat_send_resume",
     "submit",
 )
+_BROWSER_ARTIFACT_REFERENCE_FIELDS = {
+    "browser_artifact_path",
+    "browser_artifact_paths",
+    "dom_snapshot_path",
+    "dom_snapshot_paths",
+    "html_path",
+    "html_paths",
+    "html_snapshot",
+    "html_snapshot_path",
+    "html_snapshot_paths",
+    "html_snapshots",
+    "page_html_path",
+    "page_html_paths",
+    "raw_html_path",
+    "raw_html_paths",
+    "screenshot",
+    "screenshot_path",
+    "screenshot_paths",
+    "screenshots",
+}
+_BROWSER_ARTIFACT_PATH_MARKERS = (
+    "saved html snapshots",
+    "screenshots/",
+    "screenshots\\",
+    "/screenshots/",
+    "\\screenshots\\",
+    "html/",
+    "html\\",
+    "/html/",
+    "\\html\\",
+    ".html",
+    ".htm",
+)
 
 
 def build_external_l3_validation(
@@ -1363,18 +1396,48 @@ def _submission_log_step_details_redacted(
 def _submission_log_browser_artifacts_redacted(log_payload: dict[str, Any]) -> bool:
     if not log_payload:
         return False
-    steps = log_payload.get("steps") or []
-    if not isinstance(steps, list):
+    return not _has_browser_artifact_reference(log_payload)
+
+
+def _has_browser_artifact_reference(value: Any, field_name: str = "") -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            normalized_key = str(key).lower()
+            if (
+                normalized_key in _BROWSER_ARTIFACT_REFERENCE_FIELDS
+                and _artifact_reference_value_present(item)
+            ):
+                return True
+            if _has_browser_artifact_reference(item, normalized_key):
+                return True
         return False
-    for step in steps:
-        if not isinstance(step, dict):
-            continue
-        if str(step.get("screenshot", "")):
-            return False
-        detail = str(step.get("detail", ""))
-        if "saved html snapshots" in detail:
-            return False
-    return True
+    if isinstance(value, list):
+        if (
+            field_name in _BROWSER_ARTIFACT_REFERENCE_FIELDS
+            and _artifact_reference_value_present(value)
+        ):
+            return True
+        return any(_has_browser_artifact_reference(item, field_name) for item in value)
+    if isinstance(value, str):
+        if field_name in _BROWSER_ARTIFACT_REFERENCE_FIELDS and value.strip():
+            return True
+        lowered = value.lower()
+        return any(marker in lowered for marker in _BROWSER_ARTIFACT_PATH_MARKERS)
+    if field_name in _BROWSER_ARTIFACT_REFERENCE_FIELDS:
+        return bool(value)
+    return False
+
+
+def _artifact_reference_value_present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list):
+        return any(_artifact_reference_value_present(item) for item in value)
+    if isinstance(value, dict):
+        return any(_artifact_reference_value_present(item) for item in value.values())
+    return bool(value)
 
 
 def _target_verify_detail_redacted(detail: str) -> bool:

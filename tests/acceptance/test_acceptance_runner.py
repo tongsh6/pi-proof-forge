@@ -2636,12 +2636,18 @@ def test_acceptance_runner_l3_blocks_submission_log_with_browser_artifacts(
                             "params_jobid_present=True; recruiter_present=True; "
                             "matched_count=1; raw_values_redacted=true"
                         ),
-                        "screenshot": "screenshots/03_target_verify.png",
                     },
                     {
                         "name": "dom_snapshot",
                         "status": "success",
-                        "detail": "saved html snapshots: html/01_main_page.html",
+                        "detail": (
+                            "raw_browser_artifacts_persisted=false; "
+                            "reason=external_l3_redaction_policy"
+                        ),
+                        "diagnostics": {
+                            "screenshot_path": "screenshots/03_target_verify.png",
+                            "html_snapshot_path": "html/01_main_page.html",
+                        },
                     },
                     {
                         "name": "submit_safety",
