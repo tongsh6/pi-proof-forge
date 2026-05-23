@@ -1530,6 +1530,10 @@ def test_acceptance_runner_l3_blocks_zero_returncode_when_submission_log_failed(
         payload["live_blocker"]["reason"]
         == "external_channel_submission_not_success"
     )
+    assert (
+        "external submit was attempted and blocked after command"
+        in report.steps[0].message
+    )
     assert payload["submission_traceability"]["linked_to_validation"] is True
     assert payload["submission_traceability"]["submission_log_status_success"] is False
     assert (

@@ -442,9 +442,15 @@ def _run_l3_external_validation_step(
         message = "External L3 validation recorded a real guarded channel result."
     else:
         blocker = validation.get("live_blocker") or {}
+        attempted = validation.get("external_submission_attempted") is True
+        execution_scope = (
+            "external submit was attempted and blocked after command"
+            if attempted
+            else "no external submit was attempted"
+        )
         message = (
             "External L3 validation recorded live blocker "
-            f"`{blocker.get('reason', 'unknown')}`; no external submit was attempted."
+            f"`{blocker.get('reason', 'unknown')}`; {execution_scope}."
         )
     return AcceptanceStep(
         level="L3",
