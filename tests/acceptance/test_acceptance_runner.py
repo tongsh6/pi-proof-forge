@@ -324,6 +324,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         evidence_entries["preflight_review_result"]["status"]
         == "preflight_evidence_review_passed_with_live_readiness_blockers"
     )
+    assert evidence_entries["authorization_readiness_action_plan"]["required"] is True
+    assert evidence_entries["authorization_readiness_action_plan"]["present"] is True
+    assert (
+        evidence_entries["authorization_readiness_action_plan"]["status"]
+        == "blocked_until_live_inputs_and_session_ready"
+    )
     assert evidence_entries["post_submit_feedback_traceability"]["present"] is True
     assert evidence_entries["live_blocker"]["required"] is True
     assert evidence_entries["live_blocker"]["present"] is True
@@ -565,6 +571,36 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         and item["raw_live_inputs_persisted"] is False
         for item in preflight_review_result["items"]
     )
+    action_plan = handoff["authorization_readiness_action_plan"]
+    assert action_plan["status"] == "blocked_until_live_inputs_and_session_ready"
+    assert action_plan["ready_for_authorization_decision"] is False
+    assert action_plan["authorized_template_execution_allowed"] is False
+    assert action_plan["pending_action_count"] == 5
+    assert action_plan["raw_live_inputs_persisted"] is False
+    action_items = {item["id"]: item for item in action_plan["actions"]}
+    assert "manual_session_ready_confirmed" in action_items[
+        "prepare_manual_session"
+    ]["blocks_gates"]
+    assert "job_url_present" in action_items["provide_job_url"]["blocks_gates"]
+    assert "resume_pdf_file_ready" in action_items[
+        "provide_reviewed_resume_pdf"
+    ]["blocks_gates"]
+    assert "profile_yaml_file_ready" in action_items[
+        "provide_reviewed_profile_yaml"
+    ]["blocks_gates"]
+    assert "confirm_job_id_present" in action_items[
+        "confirm_target_identity"
+    ]["blocks_gates"]
+    assert any(
+        "session_readiness.session_storage_ready=true" in item
+        for item in action_items["prepare_manual_session"]["required_evidence"]
+    )
+    assert all(
+        item["required"] is True
+        and item["raw_live_inputs_persisted"] is False
+        and item["blocks_authorization_decision"] is True
+        for item in action_plan["actions"]
+    )
     command_template_review = handoff["command_template_review"]
     assert command_template_review["copy_paste_ready"] is False
     assert command_template_review["requires_placeholder_replacement"] is True
@@ -728,6 +764,15 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "| `validation_status_is_live_blocker_recorded` | `pass` | `status` | "
         "`live_blocker_recorded` | `live_blocker_recorded` |"
     ) in markdown
+    assert "### 授权就绪行动计划" in markdown
+    assert "- 状态: `blocked_until_live_inputs_and_session_ready`" in markdown
+    assert "- 待补行动数: `5`" in markdown
+    assert "| 行动 | 类别 | 阻断 Gate | 需要补齐 | 必需证据 | 原值落盘 |" in markdown
+    assert "`prepare_manual_session`" in markdown
+    assert "`provide_job_url`" in markdown
+    assert "`provide_reviewed_resume_pdf`" in markdown
+    assert "`provide_reviewed_profile_yaml`" in markdown
+    assert "`confirm_target_identity`" in markdown
     assert "### 授权真实运行命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
     assert "```bash" in markdown
@@ -1007,6 +1052,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert "预检复核清单" in handoff_template_review_rule["message"]
     assert "预检复核结果已逐项通过" in handoff_template_review_rule["message"]
     assert "不能进入授权决策" in handoff_template_review_rule["message"]
+    assert "授权就绪行动计划" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step
         for step in journey_payload["steps"]

@@ -2285,6 +2285,12 @@ def _external_l3_handoff_command_template_review_result(
         (payload.get("operator_handoff") or {}).get("preflight_review_result")
         or {}
     )
+    authorization_action_plan = (
+        (payload.get("operator_handoff") or {}).get(
+            "authorization_readiness_action_plan"
+        )
+        or {}
+    )
     expected_placeholders = {
         "<https-url>",
         "<resume.pdf>",
@@ -2475,6 +2481,60 @@ def _external_l3_handoff_command_template_review_result(
             missing.append(
                 f"preflight_review_result.items.{item_id}.raw_live_inputs_persisted"
             )
+    expected_action_plan_fields = {
+        "status": "blocked_until_live_inputs_and_session_ready",
+        "ready_for_authorization_decision": False,
+        "authorized_template_execution_allowed": False,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_action_plan_fields.items():
+        if authorization_action_plan.get(key) != expected:
+            missing.append(f"authorization_readiness_action_plan.{key}")
+    expected_action_ids = {
+        "prepare_manual_session",
+        "provide_job_url",
+        "provide_reviewed_resume_pdf",
+        "provide_reviewed_profile_yaml",
+        "confirm_target_identity",
+    }
+    action_items = {
+        str(item.get("id", "")): item
+        for item in authorization_action_plan.get("actions") or []
+        if isinstance(item, dict)
+    }
+    if authorization_action_plan.get("pending_action_count") != len(
+        expected_action_ids
+    ):
+        missing.append("authorization_readiness_action_plan.pending_action_count")
+    for action_id in expected_action_ids:
+        item = action_items.get(action_id)
+        if not item:
+            missing.append(f"authorization_readiness_action_plan.actions.{action_id}")
+            continue
+        if not item.get("blocks_gates"):
+            missing.append(
+                f"authorization_readiness_action_plan.actions.{action_id}.blocks_gates"
+            )
+        if not item.get("operator_action"):
+            missing.append(
+                f"authorization_readiness_action_plan.actions.{action_id}.operator_action"
+            )
+        if not item.get("required_evidence"):
+            missing.append(
+                f"authorization_readiness_action_plan.actions.{action_id}.required_evidence"
+            )
+        if item.get("required") is not True:
+            missing.append(
+                f"authorization_readiness_action_plan.actions.{action_id}.required"
+            )
+        if item.get("raw_live_inputs_persisted") is not False:
+            missing.append(
+                f"authorization_readiness_action_plan.actions.{action_id}.raw_live_inputs_persisted"
+            )
+        if item.get("blocks_authorization_decision") is not True:
+            missing.append(
+                f"authorization_readiness_action_plan.actions.{action_id}.blocks_authorization_decision"
+            )
 
     markdown_fragments = [
         "### 命令模板复核",
@@ -2520,6 +2580,17 @@ def _external_l3_handoff_command_template_review_result(
         "- 是否允许执行授权模板: `False`",
         "- 仍需用户授权: `False`",
         "| 复核项 | 状态 | 来源 | 预期 | 观测 |",
+        "### 授权就绪行动计划",
+        "- 状态: `blocked_until_live_inputs_and_session_ready`",
+        "- 可进入授权决策: `False`",
+        "- 是否允许执行授权模板: `False`",
+        "- 待补行动数: `5`",
+        "| 行动 | 类别 | 阻断 Gate | 需要补齐 | 必需证据 | 原值落盘 |",
+        "`prepare_manual_session`",
+        "`provide_job_url`",
+        "`provide_reviewed_resume_pdf`",
+        "`provide_reviewed_profile_yaml`",
+        "`confirm_target_identity`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
@@ -2528,7 +2599,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划已列出待补行动。",
         )
     return JourneyStepResult(
         status="fail",
@@ -2575,6 +2646,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "external_l3_live_run_runbook",
         "preflight_review_checklist",
         "preflight_review_result",
+        "authorization_readiness_action_plan",
         "post_submit_feedback_traceability",
         "feedback_source_artifact",
     }

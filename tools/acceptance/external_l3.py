@@ -324,6 +324,10 @@ def write_external_l3_validation(
             validation
         )
         validation["operator_handoff"] = handoff
+        handoff["authorization_readiness_action_plan"] = (
+            _operator_authorization_readiness_action_plan(validation)
+        )
+        validation["operator_handoff"] = handoff
         validation["evidence_manifest"] = _evidence_manifest(
             validation,
             run_id=run_id,
@@ -889,6 +893,40 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                             f"`{item.get('source_path', '')}`",
                             f"`{item.get('expected', '')}`",
                             f"`{item.get('observed', '')}`",
+                        ]
+                    )
+                    + " |"
+                )
+        authorization_action_plan = (
+            handoff.get("authorization_readiness_action_plan") or {}
+        )
+        if authorization_action_plan:
+            lines.extend(
+                [
+                    "",
+                    "### 授权就绪行动计划",
+                    "",
+                    f"- 状态: `{authorization_action_plan.get('status', '')}`",
+                    f"- 可进入授权决策: `{authorization_action_plan.get('ready_for_authorization_decision', False)}`",
+                    f"- 是否允许执行授权模板: `{authorization_action_plan.get('authorized_template_execution_allowed', True)}`",
+                    f"- 待补行动数: `{authorization_action_plan.get('pending_action_count', 0)}`",
+                    f"- 原始 live 输入是否持久化: `{authorization_action_plan.get('raw_live_inputs_persisted', True)}`",
+                    "",
+                    "| 行动 | 类别 | 阻断 Gate | 需要补齐 | 必需证据 | 原值落盘 |",
+                    "|---|---|---|---|---|---:|",
+                ]
+            )
+            for item in authorization_action_plan.get("actions") or []:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            f"`{item.get('id', '')}`",
+                            f"`{item.get('category', '')}`",
+                            f"`{', '.join(item.get('blocks_gates') or [])}`",
+                            str(item.get("operator_action", "")),
+                            f"`{', '.join(item.get('required_evidence') or [])}`",
+                            f"`{item.get('raw_live_inputs_persisted', True)}`",
                         ]
                     )
                     + " |"
@@ -2116,6 +2154,41 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 ),
             )
         )
+    authorization_action_plan = (
+        (validation.get("operator_handoff") or {}).get(
+            "authorization_readiness_action_plan"
+        )
+        or {}
+    )
+    if authorization_action_plan:
+        action_items = authorization_action_plan.get("actions") or []
+        action_plan_present = (
+            authorization_action_plan.get("raw_live_inputs_persisted") is False
+            and authorization_action_plan.get("authorized_template_execution_allowed")
+            is False
+            and bool(action_items)
+            and all(
+                isinstance(item, dict)
+                and item.get("required") is True
+                and item.get("raw_live_inputs_persisted") is False
+                for item in action_items
+            )
+        )
+        entries.append(
+            _evidence_entry(
+                entry_id="authorization_readiness_action_plan",
+                artifact_type="embedded_section",
+                location=f"{validation_json}#operator_handoff.authorization_readiness_action_plan",
+                required=(
+                    validation.get("status") == "live_blocker_recorded"
+                    and validation.get("external_submission_attempted") is False
+                ),
+                present=action_plan_present,
+                status=str(
+                    authorization_action_plan.get("status", "missing_or_incomplete")
+                ),
+            )
+        )
 
     live_blocker_required = validation.get("status") == "live_blocker_recorded"
     live_blocker_present = bool(validation.get("live_blocker"))
@@ -2650,6 +2723,113 @@ def _authorization_decision_blockers(validation: dict[str, Any]) -> list[str]:
         "final_submit_confirmation",
     }
     return [gate for gate in missing_gates if gate not in decision_only_gates]
+
+
+def _operator_authorization_readiness_action_plan(
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    preflight_result = (
+        (validation.get("operator_handoff") or {}).get("preflight_review_result")
+        or {}
+    )
+    blockers = list(preflight_result.get("authorization_decision_blockers") or [])
+    actions = _authorization_readiness_actions(blockers)
+    ready = not actions and preflight_result.get("all_required_items_passed") is True
+    return {
+        "status": (
+            "blocked_until_live_inputs_and_session_ready"
+            if actions
+            else "ready_for_explicit_authorization_decision"
+        ),
+        "ready_for_authorization_decision": ready,
+        "authorized_template_execution_allowed": False,
+        "pending_action_count": len(actions),
+        "raw_live_inputs_persisted": False,
+        "actions": actions,
+    }
+
+
+def _authorization_readiness_actions(blockers: list[str]) -> list[dict[str, Any]]:
+    blocker_set = set(blockers)
+    action_specs = [
+        (
+            "prepare_manual_session",
+            "session",
+            {"manual_session_ready_confirmed", "manual_session_storage_ready"},
+            "人工登录或刷新 Liepin 共享渠道 session，并确认 session 根目录与 Liepin 持久化会话状态文件存在。",
+            [
+                "session_readiness.session_ready_confirmed=true",
+                "session_readiness.session_storage_ready=true",
+                "session_readiness.channel_session_state_markers 非空",
+            ],
+        ),
+        (
+            "provide_job_url",
+            "target",
+            {"job_url_present", "job_url_valid", "target_job_id_extractable"},
+            "提供真实岗位 URL；URL 必须使用 http/https，且可解析出岗位 ID。",
+            [
+                "live_input_artifacts.job_url.present=true",
+                "live_input_artifacts.job_url.supported_scheme=true",
+                "target_confirmation_audit.job_url_has_parseable_job_id=true",
+            ],
+        ),
+        (
+            "provide_reviewed_resume_pdf",
+            "resume",
+            {"resume_pdf_present", "resume_pdf_file_ready"},
+            "提供已审核 resume PDF 的本地路径；验收只记录扩展名、大小和 SHA256，不记录文件名或内容。",
+            [
+                "live_input_artifacts.files[resume_pdf].provided=true",
+                "live_input_artifacts.files[resume_pdf].is_file=true",
+                "live_input_artifacts.files[resume_pdf].suffix_valid=true",
+            ],
+        ),
+        (
+            "provide_reviewed_profile_yaml",
+            "profile",
+            {"profile_yaml_present", "profile_yaml_file_ready"},
+            "提供已审核 profile YAML 的本地路径；验收只记录扩展名、大小和 SHA256，不记录文件名或内容。",
+            [
+                "live_input_artifacts.files[profile_yaml].provided=true",
+                "live_input_artifacts.files[profile_yaml].is_file=true",
+                "live_input_artifacts.files[profile_yaml].suffix_valid=true",
+            ],
+        ),
+        (
+            "confirm_target_identity",
+            "target_confirmation",
+            {
+                "confirm_job_id_present",
+                "target_job_id_matches_confirmation",
+                "confirm_recruiter_present",
+            },
+            "人工确认岗位 ID 与招聘方；确认值只用于比对，不得把原始确认值写入验收报告。",
+            [
+                "target_confirmation_audit.confirm_submit_job_id_present=true",
+                "target_confirmation_audit.job_id_matches_confirmation=true",
+                "target_confirmation_audit.confirm_submit_recruiter_present=true",
+            ],
+        ),
+    ]
+    actions: list[dict[str, Any]] = []
+    for action_id, category, gates, operator_action, evidence in action_specs:
+        blocking_gates = [gate for gate in blockers if gate in gates]
+        if not blocking_gates and not (blocker_set & gates):
+            continue
+        actions.append(
+            {
+                "id": action_id,
+                "category": category,
+                "blocks_gates": blocking_gates,
+                "operator_action": operator_action,
+                "required_evidence": evidence,
+                "required": True,
+                "raw_live_inputs_persisted": False,
+                "blocks_authorization_decision": True,
+            }
+        )
+    return actions
 
 
 def _preflight_review_result_item(
