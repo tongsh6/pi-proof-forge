@@ -2273,6 +2273,10 @@ def _external_l3_handoff_command_template_review_result(
     review = (
         (payload.get("operator_handoff") or {}).get("command_template_review") or {}
     )
+    preflight_expectation = (
+        (payload.get("operator_handoff") or {}).get("preflight_result_expectation")
+        or {}
+    )
     expected_placeholders = {
         "<https-url>",
         "<resume.pdf>",
@@ -2310,6 +2314,34 @@ def _external_l3_handoff_command_template_review_result(
         "authorized_command_template",
     ]:
         missing.append("execution_order")
+    expected_preflight_fields = {
+        "template": "preflight_command_template",
+        "expected_status": "live_blocker_recorded",
+        "expected_outcome": "pre_submit_blocker_recorded",
+        "expected_blocker_reason": "explicit_user_authorization_required",
+        "expected_blocker_category": "authorization",
+        "expected_external_submission_attempted": False,
+        "expected_submit_command_allowed": False,
+        "expected_p0_017_complete": False,
+        "operator_should_treat_as_successful_preflight": True,
+        "must_not_start_external_channel": True,
+    }
+    for key, expected in expected_preflight_fields.items():
+        if preflight_expectation.get(key) != expected:
+            missing.append(f"preflight_result_expectation.{key}")
+    required_preflight_sections = {
+        "live_run_readiness",
+        "live_input_artifacts",
+        "rate_limit_policy",
+        "session_readiness",
+        "operator_handoff",
+        "evidence_manifest",
+        "post_submit_feedback_traceability",
+    }
+    if not required_preflight_sections.issubset(
+        set(preflight_expectation.get("required_evidence_sections") or [])
+    ):
+        missing.append("preflight_result_expectation.required_evidence_sections")
 
     markdown_fragments = [
         "### 命令模板复核",
@@ -2326,6 +2358,15 @@ def _external_l3_handoff_command_template_review_result(
         "#### 执行顺序",
         "#### 需替换占位符",
         "#### 复核项",
+        "### 本地预检预期结果",
+        "- 预期状态: `live_blocker_recorded`",
+        "- 预期结果分级: `pre_submit_blocker_recorded`",
+        "- 预期 blocker reason: `explicit_user_authorization_required`",
+        "- 是否应启动外部提交: `False`",
+        "- P0-017 是否应完成: `False`",
+        "- 操作者是否应视为预检正常: `True`",
+        "- 是否不得触碰外部渠道: `True`",
+        "#### 预检必需证据段",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
@@ -2334,7 +2375,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检模板不启用授权或最终提交，授权模板执行前必须复核预检证据。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须复核预检证据。",
         )
     return JourneyStepResult(
         status="fail",

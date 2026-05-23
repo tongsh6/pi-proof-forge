@@ -381,6 +381,23 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true" not in preflight_template
     assert "PIPF_EXTERNAL_L3_JOB_URL='<https-url>'" in preflight_template
     assert "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3" in preflight_template
+    preflight_expectation = handoff["preflight_result_expectation"]
+    assert preflight_expectation["template"] == "preflight_command_template"
+    assert preflight_expectation["expected_status"] == "live_blocker_recorded"
+    assert preflight_expectation["expected_outcome"] == "pre_submit_blocker_recorded"
+    assert (
+        preflight_expectation["expected_blocker_reason"]
+        == "explicit_user_authorization_required"
+    )
+    assert preflight_expectation["expected_external_submission_attempted"] is False
+    assert preflight_expectation["expected_submit_command_allowed"] is False
+    assert preflight_expectation["expected_p0_017_complete"] is False
+    assert (
+        preflight_expectation["operator_should_treat_as_successful_preflight"]
+        is True
+    )
+    assert preflight_expectation["must_not_start_external_channel"] is True
+    assert "evidence_manifest" in preflight_expectation["required_evidence_sections"]
     command_template_review = handoff["command_template_review"]
     assert command_template_review["copy_paste_ready"] is False
     assert command_template_review["requires_placeholder_replacement"] is True
@@ -508,6 +525,11 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "#### Runbook 覆盖边界" in markdown
     assert "### 本地预检命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=false" in markdown
+    assert "### 本地预检预期结果" in markdown
+    assert "- 预期状态: `live_blocker_recorded`" in markdown
+    assert "- 预期 blocker reason: `explicit_user_authorization_required`" in markdown
+    assert "- 操作者是否应视为预检正常: `True`" in markdown
+    assert "#### 预检必需证据段" in markdown
     assert "### 授权真实运行命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
     assert "```bash" in markdown
@@ -783,6 +805,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert handoff_template_review_rule["stage"] == "submissions"
     assert handoff_template_review_rule["status"] == "pass"
     assert "必须先跑本地预检" in handoff_template_review_rule["message"]
+    assert "授权 blocker" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step
         for step in journey_payload["steps"]

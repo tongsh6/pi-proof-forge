@@ -793,6 +793,31 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     "```",
                 ]
             )
+        preflight_expectation = handoff.get("preflight_result_expectation") or {}
+        if preflight_expectation:
+            lines.extend(
+                [
+                    "",
+                    "### 本地预检预期结果",
+                    "",
+                    f"- 预期状态: `{preflight_expectation.get('expected_status', '')}`",
+                    f"- 预期结果分级: `{preflight_expectation.get('expected_outcome', '')}`",
+                    f"- 预期 blocker reason: `{preflight_expectation.get('expected_blocker_reason', '')}`",
+                    f"- 预期 blocker 分类: `{preflight_expectation.get('expected_blocker_category', '')}`",
+                    f"- 是否应启动外部提交: `{preflight_expectation.get('expected_external_submission_attempted', True)}`",
+                    f"- 是否允许 submit 命令: `{preflight_expectation.get('expected_submit_command_allowed', True)}`",
+                    f"- P0-017 是否应完成: `{preflight_expectation.get('expected_p0_017_complete', True)}`",
+                    f"- 操作者是否应视为预检正常: `{preflight_expectation.get('operator_should_treat_as_successful_preflight', False)}`",
+                    f"- 是否不得触碰外部渠道: `{preflight_expectation.get('must_not_start_external_channel', False)}`",
+                ]
+            )
+            required_sections = (
+                preflight_expectation.get("required_evidence_sections") or []
+            )
+            if required_sections:
+                lines.extend(["", "#### 预检必需证据段", ""])
+                for item in required_sections:
+                    lines.append(f"- `{item}`")
         if command_template:
             lines.extend(
                 [
@@ -2190,6 +2215,7 @@ def _operator_handoff(
             external_submission_attempted=external_submission_attempted,
         ),
         "runbook": _operator_runbook_reference(),
+        "preflight_result_expectation": _operator_preflight_result_expectation(),
         "preflight_command_template": _operator_preflight_command_template(request),
         "command_template": _operator_command_template(request),
         "command_template_review": _operator_command_template_review(),
@@ -2327,6 +2353,30 @@ def _operator_command_template_review() -> dict[str, Any]:
             "确认 PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true 只在共享渠道 session 已由人工登录或刷新确认可用后保留。",
             "确认 PIPF_EXTERNAL_L3_SESSION_DIR 指向已存在的共享 session 根目录，且 Liepin 持久化会话目录已存在。",
             "确认不会提供密码、验证码、短信码或原始密钥。",
+        ],
+    }
+
+
+def _operator_preflight_result_expectation() -> dict[str, Any]:
+    return {
+        "template": "preflight_command_template",
+        "expected_status": "live_blocker_recorded",
+        "expected_outcome": "pre_submit_blocker_recorded",
+        "expected_blocker_reason": "explicit_user_authorization_required",
+        "expected_blocker_category": "authorization",
+        "expected_external_submission_attempted": False,
+        "expected_submit_command_allowed": False,
+        "expected_p0_017_complete": False,
+        "operator_should_treat_as_successful_preflight": True,
+        "must_not_start_external_channel": True,
+        "required_evidence_sections": [
+            "live_run_readiness",
+            "live_input_artifacts",
+            "rate_limit_policy",
+            "session_readiness",
+            "operator_handoff",
+            "evidence_manifest",
+            "post_submit_feedback_traceability",
         ],
     }
 
