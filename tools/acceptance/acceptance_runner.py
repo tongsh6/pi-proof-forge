@@ -2145,24 +2145,47 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
             missing.append(f"{entry_id}.raw_live_inputs_persisted")
     markdown_fragments = [
         "## 证据清单",
+        f"- 状态: `{manifest.get('status', '')}`",
+        (
+            "- 原始 live 输入是否持久化: "
+            f"`{manifest.get('raw_live_inputs_persisted', True)}`"
+        ),
         "| 证据 | 类型 | 必需 | 存在 | 状态 | 位置 |",
-        "`external_l3_validation_json`",
-        "`post_submit_feedback_traceability`",
-        "`feedback_source_artifact`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
     )
+    for entry_id, entry in sorted(entries.items()):
+        row = _external_l3_evidence_manifest_markdown_row(entry)
+        if row not in markdown:
+            missing.append(f"{entry_id}.markdown_row")
     if not missing:
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 证据清单已记录 validation、handoff、feedback source 和真实 submission log 期望状态。",
+            message="External L3 证据清单已记录 validation、handoff、feedback source 和真实 submission log 期望状态，且 Markdown 与 JSON 清单一致。",
         )
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
         message=f"External L3 证据清单缺失或不完整: {', '.join(missing)}",
+    )
+
+
+def _external_l3_evidence_manifest_markdown_row(entry: dict[str, Any]) -> str:
+    return (
+        "| "
+        + " | ".join(
+            [
+                f"`{entry.get('id', '')}`",
+                f"`{entry.get('artifact_type', '')}`",
+                f"`{entry.get('required', False)}`",
+                f"`{entry.get('present', False)}`",
+                f"`{entry.get('status', '')}`",
+                f"`{entry.get('location', '')}`",
+            ]
+        )
+        + " |"
     )
 
 

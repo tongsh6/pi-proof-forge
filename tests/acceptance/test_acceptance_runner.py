@@ -743,6 +743,67 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert "启动错误" in command_error_rule["message"]
 
 
+def test_acceptance_runner_l3_journey_report_rejects_stale_evidence_manifest_markdown(
+    tmp_path: Path,
+) -> None:
+    with patch.dict(os.environ, {}, clear=True):
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    external_step = next(
+        step
+        for step in report.steps
+        if step.name == "external_l3_submission_validation"
+    )
+    evidence_path = Path(external_step.evidence)
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    manifest_entry = next(
+        item
+        for item in payload["evidence_manifest"]["entries"]
+        if item["id"] == "feedback_source_artifact"
+    )
+    expected_row = (
+        "| "
+        + " | ".join(
+            [
+                f"`{manifest_entry.get('id', '')}`",
+                f"`{manifest_entry.get('artifact_type', '')}`",
+                f"`{manifest_entry.get('required', False)}`",
+                f"`{manifest_entry.get('present', False)}`",
+                f"`{manifest_entry.get('status', '')}`",
+                f"`{manifest_entry.get('location', '')}`",
+            ]
+        )
+        + " |"
+    )
+    stale_row = expected_row.replace("`declared_source`", "`stale_source`")
+    assert stale_row != expected_row
+    markdown_path = evidence_path.with_suffix(".md")
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert expected_row in markdown
+    markdown_path.write_text(
+        markdown.replace(expected_row, stale_row),
+        encoding="utf-8",
+    )
+
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    evidence_manifest_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_evidence_manifest_recorded"
+    )
+    assert evidence_manifest_rule["status"] == "fail"
+    assert (
+        "feedback_source_artifact.markdown_row"
+        in evidence_manifest_rule["message"]
+    )
+
+
 def test_acceptance_runner_l3_requires_separate_final_submit_confirmation(
     tmp_path: Path,
 ) -> None:
