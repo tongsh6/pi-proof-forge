@@ -1,6 +1,6 @@
 # Project Ledger
 
-Last updated: 2026-05-22
+Last updated: 2026-05-23
 
 ## Current Acceptance Policy
 
@@ -24,14 +24,14 @@ Last updated: 2026-05-22
 - External L3 pre-submit blocker diagnostics: pre-submit live blockers directly include missing readiness gates, full readiness gate results, and live input audit summaries.
 - External L3 readiness: validation records include `live_run_readiness` gates and keep `submit_command_allowed=false` until every authorization gate and real-input validation gate passes, including URL format and local resume/profile file type checks.
 - External L3 readiness semantics: post-command traceability blockers do not rewrite pre-run readiness; they are recorded in `submit_safety_decision.post_run_blocker_reason` and `live_blocker`.
-- External L3 input audit: validation records include `live_input_artifacts`，用 Job URL scheme/host 与 resume/profile SHA256 指纹绑定输入产物，同时不持久化原始 URL、确认值或文件内容。
+- External L3 input audit: validation records include `live_input_artifacts`，用 Job URL scheme/host、文件扩展名、大小与 resume/profile SHA256 指纹绑定输入产物，同时不持久化原始 URL、确认值、文件内容或 resume/profile 文件名；人读 Markdown 报告也展示 `basename_persisted=false` 与 `raw_content_persisted=false`。
 - External L3 rate limiting: validation records include `rate_limit_policy` and pass explicit rate-limit arguments to live submit commands; disabled rate limits are blocked before any external command starts.
 - External L3 forbidden input audit: validation records include `forbidden_input_audit`；密码、验证码、短信码和原始密钥类 env 值永不持久化，且一旦出现就阻断在任何真实 submit 命令启动前。
 - External L3 target confirmation audit: validation records include `target_confirmation_audit`；只记录 URL 岗位 ID 是否可解析、确认岗位 ID 是否提供和二者是否一致，不持久化原始 ID，且不一致时阻断在 submit 命令启动前。
 - External L3 command/output audit: validation records only persist redacted live submission command and redacted stdout/stderr tails；原始 Job URL、resume/profile 路径、确认 job id 和 recruiter 不写入 command 或 output tail 证据。
 - External L3 submit safety: validation records include `submit_safety_decision`；真实渠道命令是否阻断、允许待执行或已执行，必须在信任结果前成为显式可审计状态。
 - External L3 traceability: successful external commands must link `external-l3-validation.json` to persisted `submission_log.yaml/json`, and submission logs must write back `external_l3_validation_run_id/path`; missing or one-way-only links are recorded as `submission_log_not_linked`.
-- External L3 submission log audit: submission log 会写入自身 `input_artifacts`；L3 成功要求这些指纹与 validation record 匹配，且 External L3 关联日志中的原始 Job URL、resume/profile 路径字段必须写成 `<redacted>`。
+- External L3 submission log audit: submission log 会写入自身 `input_artifacts`；L3 成功要求这些指纹与 validation record 匹配，且 External L3 关联日志中的原始 Job URL、resume/profile 路径字段、resume/profile 文件名、steps.detail 原文、截图路径和 HTML snapshot 引用都必须脱敏或不落盘。
 - External L3 trace diagnostics: `submission_traceability` 写入逐项检查结果和 `failed_checks`，让 `submission_log_not_linked` 指向具体缺失或不匹配的证据。
 - External L3 submission log summary: parsed submission logs promote status, error, mode, and last step into validation and post-command blocker diagnostics so business blockers are actionable.
 - External L3 submission log required steps: 成功 submission log 必须包含并通过 `rate_limit`、`login_check`、`target_verify`、`submit_safety`、`chat_send_resume` 和 `submit` 步骤；否则 validation 记录 traceability blocker，而不是信任 returncode 0。

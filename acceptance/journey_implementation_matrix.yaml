@@ -534,6 +534,7 @@ steps:
       depth: "deep_required"
       evidence:
         - "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.md"
         - "outputs/submissions/liepin/*/submission_log.yaml"
       covers:
         - "live_run_readiness_gates_recorded"
@@ -542,6 +543,7 @@ steps:
         - "live_input_file_and_url_validation_recorded"
         - "live_input_artifact_fingerprints_recorded_without_raw_values"
         - "live_input_artifact_basenames_redacted"
+        - "human_readable_external_l3_redaction_evidence_recorded"
         - "rate_limit_policy_recorded_and_enforced_before_submit"
         - "forbidden_secret_and_challenge_inputs_blocked_before_submit"
         - "target_confirmation_job_id_matches_url_before_submit"
