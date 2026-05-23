@@ -1510,7 +1510,9 @@ def _external_l3_post_command_blocker_diagnostics_result(
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -1559,6 +1561,30 @@ def _external_l3_post_command_blocker_diagnostics_result(
                     "External L3 post-command blocker 未使用 submission log "
                     f"业务错误的精确归因: expected={expected_business_reason}, "
                     f"actual={actual_reason}。"
+                ),
+            )
+        markdown_fragments = [
+            "## Live Blocker",
+            f"- Reason: `{blocker.get('reason', '')}`",
+            f"- Failed Checks: `{', '.join(failed_checks)}`",
+            f"- Returncode: `{diagnostics.get('returncode', '')}`",
+            f"- Log Hint: `{diagnostics.get('log_hint', '')}`",
+            f"- YAML: `{diagnostics.get('log_yaml_path', '')}`",
+            f"- JSON: `{diagnostics.get('log_json_path', '')}`",
+        ]
+        markdown_missing = [
+            f"markdown:{fragment}"
+            for fragment in markdown_fragments
+            if fragment not in markdown
+        ]
+        if markdown_missing:
+            return JourneyStepResult(
+                status="fail",
+                evidence=step.evidence,
+                message=(
+                    "External L3 post-command blocker 诊断 Markdown 与 JSON "
+                    "不一致: "
+                    + ", ".join(markdown_missing)
                 ),
             )
         return JourneyStepResult(

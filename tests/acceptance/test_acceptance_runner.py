@@ -2934,6 +2934,24 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     original_markdown = markdown_path.read_text(encoding="utf-8")
     markdown_path.write_text(
         original_markdown.replace(
+            "- Returncode: `14`",
+            "- Returncode: `0`",
+        ),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    diagnostics_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_post_command_blocker_diagnostics_recorded"
+    )
+    assert diagnostics_rule["status"] == "fail"
+    assert "markdown:- Returncode: `14`" in diagnostics_rule["message"]
+    markdown_path.write_text(original_markdown, encoding="utf-8")
+
+    markdown_path.write_text(
+        original_markdown.replace(
             "- 下一步: 真实渠道频控已阻断本次 submit；等待 submission log 中记录的 "
             "wait_seconds 或调整下一次验证窗口后再重试。",
             "- 下一步: 处理另一个 blocker",
