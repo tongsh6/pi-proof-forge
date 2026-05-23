@@ -163,6 +163,44 @@ class SubmissionStorageTests(unittest.TestCase):
         self.assertIn("<redacted>", detail)
         self.assertNotIn("Verifier", yaml_text)
 
+    def test_recorder_omits_external_l3_screenshot_references(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            resume = root / "resume.pdf"
+            profile = root / "profile.yaml"
+            resume.write_bytes(b"%PDF-1.4\n")
+            profile.write_text("id: profile\n", encoding="utf-8")
+            recorder = SubmissionRecorder(Path(tmp), platform="liepin", mode="submit")
+            recorder.set_meta(
+                job_url="https://www.liepin.com/job/123.shtml",
+                resume_path=str(resume),
+                profile_path=str(profile),
+                headless=True,
+                external_l3_validation_run_id="acceptance_external_l3",
+                external_l3_validation_path=(
+                    "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+                ),
+            )
+            screenshot = recorder.screenshot_path("target_verify")
+            screenshot.parent.mkdir(parents=True, exist_ok=True)
+            screenshot.write_bytes(b"raw png")
+
+            recorder.add_step(
+                "target_verify",
+                "failed",
+                "raw_browser_artifacts_persisted=false",
+                screenshot=screenshot,
+            )
+            recorder.finish("failed", error="target_verify_failed")
+
+            payload = json.loads(recorder.log_json.read_text(encoding="utf-8"))
+            yaml_text = recorder.log_yaml.read_text(encoding="utf-8")
+
+        self.assertTrue(payload["live_inputs_redacted"])
+        self.assertEqual(payload["steps"][0]["screenshot"], "")
+        self.assertIn('screenshot: ""', yaml_text)
+        self.assertNotIn("screenshots/", yaml_text)
+
 
 if __name__ == "__main__":
     unittest.main()

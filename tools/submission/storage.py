@@ -117,7 +117,7 @@ class SubmissionRecorder:
 
     def add_step(self, name: str, status: str, detail: str, screenshot: Path | None = None) -> None:
         screenshot_rel = ""
-        if screenshot is not None:
+        if screenshot is not None and not self.record.live_inputs_redacted:
             screenshot_rel = str(screenshot.relative_to(self.run_dir))
         self.record.steps.append(
             SubmissionStep(
