@@ -950,6 +950,40 @@ def _next_action(reason: str) -> str:
             "检查 stdout_tail、stderr_tail 和持久化 submission log，确认 live "
             "blocker 已修复后再重试。"
         )
+    if reason == "external_channel_login_required":
+        return (
+            "共享渠道 session 已失效或缺失；先人工登录/刷新并重新确认 session 可用后再重试。"
+        )
+    if reason == "external_channel_security_redirect":
+        return (
+            "真实渠道触发安全校验或风控跳转；先由人工处理渠道页面状态，确认可用后再重试。"
+        )
+    if reason == "external_channel_job_unavailable":
+        return (
+            "目标岗位页面不可用或已失效；更换或复核真实 Job URL 后再重试。"
+        )
+    if reason == "external_channel_target_verify_failed":
+        return (
+            "渠道页面观测到的岗位或招聘方未通过 target verify；复核 Job URL、确认岗位 ID "
+            "和确认 recruiter 后再重试。"
+        )
+    if reason == "external_channel_submit_safety_failed":
+        return (
+            "最终提交安全校验未通过；复核确认岗位 ID、确认 recruiter 和简历格式后再重试。"
+        )
+    if reason == "external_channel_send_resume_failed":
+        return (
+            "渠道发简历路径失败；检查聊天页、发简历入口和附件上传状态后再重试。"
+        )
+    if reason == "external_channel_submission_uncertain":
+        return (
+            "渠道点击后结果不确定；人工复核 submission log 对应会话与页面状态，再决定是否重试。"
+        )
+    if reason == "external_channel_runtime_failed":
+        return (
+            "真实渠道页面运行中失败；检查 submission_log_summary.last_step、stdout/stderr "
+            "和本地浏览器状态后再重试。"
+        )
     if reason == "external_channel_rate_limited":
         return (
             "真实渠道频控已阻断本次 submit；等待 submission log 中记录的 "
@@ -990,11 +1024,51 @@ def _post_command_blocker_reason(
     if submission_summary.get("error") in {"batch_cooldown", "daily_limit_exceeded"}:
         return "external_channel_rate_limited"
     if not command_succeeded:
+        submission_error_reason = _submission_log_error_blocker_reason(
+            submission_summary
+        )
+        if submission_error_reason:
+            return submission_error_reason
+    if not command_succeeded:
         return "external_channel_command_returned_nonzero"
     if not submission_traceability["linked_to_validation"]:
         return "submission_log_not_linked"
     if not submission_traceability.get("submission_log_status_success"):
         return "external_channel_submission_not_success"
+    return ""
+
+
+def _submission_log_error_blocker_reason(submission_summary: dict[str, Any]) -> str:
+    error = str(submission_summary.get("error") or "").strip()
+    if not error:
+        return ""
+    if error in {"login_required"}:
+        return "external_channel_login_required"
+    if error in {"security_redirect"}:
+        return "external_channel_security_redirect"
+    if error in {"job_page_unavailable"}:
+        return "external_channel_job_unavailable"
+    if error in {"target_mismatch", "target_verify_failed"}:
+        return "external_channel_target_verify_failed"
+    if (
+        error.startswith("submit_confirmation_")
+        or error in {"submit_resume_must_be_pdf", "submit_safety_blocked"}
+    ):
+        return "external_channel_submit_safety_failed"
+    if (
+        error.startswith("send_resume_")
+        or error.startswith("chat_send_resume")
+        or error in {
+            "main_chat_click_failed",
+            "upload_input_not_found",
+            "submit_button_not_found",
+        }
+    ):
+        return "external_channel_send_resume_failed"
+    if error == "submission_uncertain":
+        return "external_channel_submission_uncertain"
+    if error in {"playwright_missing", "timeout", "unexpected_error"}:
+        return "external_channel_runtime_failed"
     return ""
 
 
