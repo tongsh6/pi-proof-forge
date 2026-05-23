@@ -1172,7 +1172,7 @@ def _submission_traceability(
 def _submission_log_raw_live_inputs_redacted(log_payload: dict[str, Any]) -> bool:
     if not log_payload:
         return False
-    return all(
+    return log_payload.get("live_inputs_redacted") is True and all(
         str(log_payload.get(field, "")) == _REDACTED_LIVE_INPUT
         for field in ("job_url", "resume_path", "profile_path")
     )
