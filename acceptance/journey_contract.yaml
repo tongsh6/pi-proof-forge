@@ -238,7 +238,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须记录受控真实渠道结果或精确 live blocker，并保留显式授权、最终提交门禁以及无 secret/captcha 绕过证据。"
+        message: "External L3 验收必须记录受控真实渠道结果或精确 live blocker，并保留显式授权、最终提交门禁以及无 secret/captcha 绕过证据；顶层报告消息必须区分 submit 命令未启动的 pre-submit blocker 与命令后产生的 post-command blocker。"
       - rule_id: "external_l3_submit_safety_decision_recorded"
         level: "L3"
         stage: "submissions"
