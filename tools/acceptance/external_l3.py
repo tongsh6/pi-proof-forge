@@ -343,6 +343,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     f"- 是否超时: `{blocker_diagnostics.get('command_timed_out', False)}`",
                     f"- Timeout 秒数: `{blocker_diagnostics.get('timeout_seconds', '')}`",
                     f"- Command Error: `{(blocker_diagnostics.get('command_error') or {}).get('type', '')}`",
+                    f"- Command Error Message: `{(blocker_diagnostics.get('command_error') or {}).get('message', '')}`",
                     f"- Log Hint: `{blocker_diagnostics.get('log_hint', '')}`",
                     f"- YAML: `{blocker_diagnostics.get('log_yaml_path', '')}`",
                     f"- JSON: `{blocker_diagnostics.get('log_json_path', '')}`",

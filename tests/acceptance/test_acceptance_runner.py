@@ -3095,6 +3095,11 @@ def test_acceptance_runner_l3_records_timeout_as_live_blocker(
     assert feedback_trace["source_type"] == "live_blocker"
     assert feedback_trace["source_status"] == "external_submission_attempted_blocked"
     assert feedback_trace["source_reason"] == "external_channel_command_timed_out"
+    markdown_path = Path(report.steps[0].evidence).with_suffix(".md")
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert "- Reason: `external_channel_command_timed_out`" in markdown
+    assert "- 是否超时: `True`" in markdown
+    assert "- Timeout 秒数: `10`" in markdown
 
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
@@ -3105,6 +3110,20 @@ def test_acceptance_runner_l3_records_timeout_as_live_blocker(
     )
     assert timeout_rule["status"] == "pass"
     assert "超时已记录" in timeout_rule["message"]
+
+    markdown_path.write_text(
+        markdown.replace("- Timeout 秒数: `10`", "- Timeout 秒数: ``"),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    timeout_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_timeout_recorded_as_live_blocker"
+    )
+    assert timeout_rule["status"] == "fail"
+    assert "Timeout 秒数" in timeout_rule["message"]
 
 
 def test_acceptance_runner_l3_records_command_error_as_live_blocker(
@@ -3156,6 +3175,13 @@ def test_acceptance_runner_l3_records_command_error_as_live_blocker(
     assert payload["submit_safety_decision"]["post_run_blocker_reason"] == (
         "external_channel_command_launch_failed"
     )
+    markdown_path = Path(report.steps[0].evidence).with_suffix(".md")
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert "- Reason: `external_channel_command_launch_failed`" in markdown
+    assert "- Command Error: `OSError`" in markdown
+    assert f"- Command Error Message: `{command_error['message']}`" in markdown
+    assert "https://www.liepin.com/job/123.shtml" not in markdown
+    assert str(resume) not in markdown
 
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
@@ -3169,6 +3195,23 @@ def test_acceptance_runner_l3_records_command_error_as_live_blocker(
     )
     assert command_error_rule["status"] == "pass"
     assert "启动错误已记录" in command_error_rule["message"]
+
+    markdown_path.write_text(
+        markdown.replace("- Command Error: `OSError`", "- Command Error: ``"),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    command_error_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_command_error_recorded_as_live_blocker"
+        )
+    )
+    assert command_error_rule["status"] == "fail"
+    assert "Command Error" in command_error_rule["message"]
 
 
 def test_acceptance_runner_l3_blocks_submission_log_with_raw_input_artifact_basenames(

@@ -2537,7 +2537,9 @@ def _external_l3_timeout_blocker_result(step: AcceptanceStep) -> JourneyStepResu
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -2552,11 +2554,23 @@ def _external_l3_timeout_blocker_result(step: AcceptanceStep) -> JourneyStepResu
         )
     blocker = payload.get("live_blocker") or {}
     diagnostics = blocker.get("diagnostics") or {}
+    markdown_fragments = [
+        "## Live Blocker",
+        "- Reason: `external_channel_command_timed_out`",
+        "- 是否超时: `True`",
+        f"- Timeout 秒数: `{diagnostics.get('timeout_seconds', '')}`",
+    ]
+    missing = [
+        f"markdown:{fragment}"
+        for fragment in markdown_fragments
+        if fragment not in markdown
+    ]
     if (
         payload.get("status") == "live_blocker_recorded"
         and blocker.get("reason") == "external_channel_command_timed_out"
         and diagnostics.get("command_timed_out") is True
         and diagnostics.get("timeout_seconds") is not None
+        and not missing
     ):
         return JourneyStepResult(
             status="pass",
@@ -2566,7 +2580,11 @@ def _external_l3_timeout_blocker_result(step: AcceptanceStep) -> JourneyStepResu
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
-        message="External L3 真实渠道命令超时未记录为精确 live blocker。",
+        message=(
+            "External L3 真实渠道命令超时未记录为精确 live blocker，"
+            "或 Markdown 与 JSON 不一致: "
+            + ", ".join(missing)
+        ),
     )
 
 
@@ -2580,7 +2598,9 @@ def _external_l3_command_error_blocker_result(
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -2596,11 +2616,23 @@ def _external_l3_command_error_blocker_result(
     blocker = payload.get("live_blocker") or {}
     diagnostics = blocker.get("diagnostics") or {}
     command_error = diagnostics.get("command_error") or {}
+    markdown_fragments = [
+        "## Live Blocker",
+        "- Reason: `external_channel_command_launch_failed`",
+        f"- Command Error: `{command_error.get('type', '')}`",
+        f"- Command Error Message: `{command_error.get('message', '')}`",
+    ]
+    missing = [
+        f"markdown:{fragment}"
+        for fragment in markdown_fragments
+        if fragment not in markdown
+    ]
     if (
         payload.get("status") == "live_blocker_recorded"
         and blocker.get("reason") == "external_channel_command_launch_failed"
         and command_error.get("type")
         and command_error.get("message") is not None
+        and not missing
     ):
         return JourneyStepResult(
             status="pass",
@@ -2610,7 +2642,11 @@ def _external_l3_command_error_blocker_result(
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
-        message="External L3 真实渠道命令启动错误未记录为精确 live blocker。",
+        message=(
+            "External L3 真实渠道命令启动错误未记录为精确 live blocker，"
+            "或 Markdown 与 JSON 不一致: "
+            + ", ".join(missing)
+        ),
     )
 
 
