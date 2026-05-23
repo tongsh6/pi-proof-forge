@@ -382,7 +382,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须在 submit 命令启动前产生 blocker 时，把 missing gates、readiness gates 和真实输入审计摘要直接记录到 live blocker。"
+        message: "External L3 验收必须在 submit 命令启动前产生 blocker 时，把 missing gates、readiness gates 和真实输入审计摘要直接记录到 live blocker；Markdown 报告必须同步展示 submit 是否允许启动、missing gates 和输入审计摘要，避免操作者只能深挖 JSON 才能理解阻断原因。"
       - rule_id: "external_l3_timeout_recorded_as_live_blocker"
         level: "L3"
         stage: "submissions"
