@@ -1500,7 +1500,25 @@ def _external_l3_submission_log_summary_result(
         )
     summary = traceability.get("submission_log_summary") or {}
     last_step = summary.get("last_step") or {}
-    if summary.get("status") and "error" in summary and isinstance(last_step, dict):
+    unsafe_detail_tokens = (
+        "url_job_id=",
+        "dom_jobid=",
+        "params_jobid=",
+        "recruiter=",
+        "saved html snapshots",
+    )
+    last_step_detail = (
+        str(last_step.get("detail", "")) if isinstance(last_step, dict) else ""
+    )
+    summary_detail_redacted = not any(
+        token in last_step_detail for token in unsafe_detail_tokens
+    )
+    if (
+        summary.get("status")
+        and "error" in summary
+        and isinstance(last_step, dict)
+        and summary_detail_redacted
+    ):
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
@@ -1512,7 +1530,7 @@ def _external_l3_submission_log_summary_result(
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
-        message="External L3 submission log 摘要缺失 status/error/last_step。",
+        message="External L3 submission log 摘要缺失 status/error/last_step，或复制了未脱敏的步骤详情。",
     )
 
 

@@ -1242,12 +1242,19 @@ def _submission_log_summary(
     if isinstance(steps, list) and steps:
         candidate = steps[-1]
         if isinstance(candidate, dict):
+            step_name = str(candidate.get("name", ""))
+            raw_detail = str(candidate.get("detail", ""))
+            summary_detail = _submission_step_detail_summary(
+                step_name,
+                raw_detail,
+                redaction_values,
+            )
             last_step = {
-                "name": str(candidate.get("name", "")),
+                "name": step_name,
                 "status": str(candidate.get("status", "")),
-                "detail": _redact_live_text(
-                    str(candidate.get("detail", "")),
-                    redaction_values,
+                "detail": summary_detail,
+                "detail_redacted_due_to_unsafe_content": (
+                    summary_detail != _redact_live_text(raw_detail, redaction_values)
                 ),
             }
     return {
@@ -1256,6 +1263,28 @@ def _submission_log_summary(
         "mode": str(log_payload.get("mode", "")),
         "last_step": last_step,
     }
+
+
+def _submission_step_detail_summary(
+    step_name: str,
+    detail: str,
+    redaction_values: list[str],
+) -> str:
+    redacted = _redact_live_text(detail, redaction_values)
+    if not _submission_step_detail_safe_for_validation_summary(step_name, redacted):
+        return _REDACTED_LIVE_INPUT
+    return redacted
+
+
+def _submission_step_detail_safe_for_validation_summary(
+    step_name: str,
+    detail: str,
+) -> bool:
+    if step_name == "target_verify" and not _target_verify_detail_redacted(detail):
+        return False
+    if "saved html snapshots" in detail:
+        return False
+    return True
 
 
 def _redact_live_text(value: str, redaction_values: list[str]) -> str:
