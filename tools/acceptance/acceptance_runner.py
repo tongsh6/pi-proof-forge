@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -1779,34 +1780,49 @@ def _external_l3_handoff_command_template_result(
     runtime_options = handoff.get("runtime_options") or {}
     rate_limit_policy = payload.get("rate_limit_policy") or {}
     required_fragments = [
-        f"PIPF_EXTERNAL_L3_CHANNEL={runtime_options.get('channel', '')}",
-        "PIPF_EXTERNAL_L3_JOB_URL=<https-url>",
-        "PIPF_EXTERNAL_L3_RESUME_PDF=<resume.pdf>",
-        "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml>",
-        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id>",
-        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter>",
-        f"PIPF_EXTERNAL_L3_SESSION_DIR={runtime_options.get('session_dir', '')}",
-        f"PIPF_EXTERNAL_L3_OUTPUT_DIR={runtime_options.get('output_dir', '')}",
-        (
-            "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS="
-            f"{runtime_options.get('timeout_seconds', '')}"
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_CHANNEL",
+            runtime_options.get("channel", ""),
         ),
-        f"PIPF_EXTERNAL_L3_TIMEOUT_MS={runtime_options.get('timeout_ms', '')}",
-        (
-            "PIPF_EXTERNAL_L3_HEADLESS="
-            f"{str(runtime_options.get('headless', '')).lower()}"
+        _expected_env_assignment("PIPF_EXTERNAL_L3_JOB_URL", "<https-url>"),
+        _expected_env_assignment("PIPF_EXTERNAL_L3_RESUME_PDF", "<resume.pdf>"),
+        _expected_env_assignment("PIPF_EXTERNAL_L3_PROFILE", "<profile.yaml>"),
+        _expected_env_assignment("PIPF_EXTERNAL_L3_CONFIRM_JOB_ID", "<job-id>"),
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER",
+            "<recruiter>",
         ),
-        (
-            "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH="
-            f"{rate_limit_policy.get('max_per_batch', '')}"
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_SESSION_DIR",
+            runtime_options.get("session_dir", ""),
         ),
-        (
-            "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS="
-            f"{rate_limit_policy.get('cooldown_seconds', '')}"
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_OUTPUT_DIR",
+            runtime_options.get("output_dir", ""),
         ),
-        (
-            "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT="
-            f"{rate_limit_policy.get('daily_limit', '')}"
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS",
+            runtime_options.get("timeout_seconds", ""),
+        ),
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_TIMEOUT_MS",
+            runtime_options.get("timeout_ms", ""),
+        ),
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_HEADLESS",
+            str(runtime_options.get("headless", "")).lower(),
+        ),
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH",
+            rate_limit_policy.get("max_per_batch", ""),
+        ),
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS",
+            rate_limit_policy.get("cooldown_seconds", ""),
+        ),
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT",
+            rate_limit_policy.get("daily_limit", ""),
         ),
         "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3",
     ]
@@ -1815,13 +1831,17 @@ def _external_l3_handoff_command_template_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板使用 live 输入占位符，并匹配当前运行配置与有效频控策略。",
+            message="External L3 授权交接命令模板使用 shell-safe 的 live 输入占位符，并匹配当前运行配置与有效频控策略。",
         )
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
         message=f"External L3 授权交接命令模板缺少或不匹配: {', '.join(missing)}",
     )
+
+
+def _expected_env_assignment(name: str, value: object) -> str:
+    return f"{name}={shlex.quote(str(value))}"
 
 
 def _external_l3_pre_submit_blocker_diagnostics_result(

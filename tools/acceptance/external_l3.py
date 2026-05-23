@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import hashlib
@@ -1498,34 +1499,57 @@ def _operator_runtime_options(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def _operator_command_template(request: dict[str, Any]) -> str:
+    env_assignments = [
+        _shell_env_assignment("PIPF_EXTERNAL_L3_CHANNEL", str(request["channel"])),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_AUTHORIZED", "true"),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED", "true"),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_JOB_URL", "<https-url>"),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_RESUME_PDF", "<resume.pdf>"),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_PROFILE", "<profile.yaml>"),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_CONFIRM_JOB_ID", "<job-id>"),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_CONFIRM_RECRUITER", "<recruiter>"),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_SESSION_DIR",
+            str(request["session_dir"]),
+        ),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_OUTPUT_DIR",
+            str(request["output_dir"]),
+        ),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS",
+            str(int(request["timeout_seconds"])),
+        ),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_TIMEOUT_MS",
+            str(int(request["timeout_ms"])),
+        ),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_HEADLESS",
+            str(bool(request["headless"])).lower(),
+        ),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH",
+            str(int(request["rate_limit_max_per_batch"])),
+        ),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS",
+            str(int(request["rate_limit_cooldown_seconds"])),
+        ),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT",
+            str(int(request["rate_limit_daily_limit"])),
+        ),
+    ]
     return (
-        "PIPF_EXTERNAL_L3_CHANNEL="
-        f"{request['channel']} "
-        "PIPF_EXTERNAL_L3_AUTHORIZED=true "
-        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true "
-        "PIPF_EXTERNAL_L3_JOB_URL=<https-url> "
-        "PIPF_EXTERNAL_L3_RESUME_PDF=<resume.pdf> "
-        "PIPF_EXTERNAL_L3_PROFILE=<profile.yaml> "
-        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=<job-id> "
-        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=<recruiter> "
-        "PIPF_EXTERNAL_L3_SESSION_DIR="
-        f"{request['session_dir']} "
-        "PIPF_EXTERNAL_L3_OUTPUT_DIR="
-        f"{request['output_dir']} "
-        "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS="
-        f"{int(request['timeout_seconds'])} "
-        "PIPF_EXTERNAL_L3_TIMEOUT_MS="
-        f"{int(request['timeout_ms'])} "
-        "PIPF_EXTERNAL_L3_HEADLESS="
-        f"{str(bool(request['headless'])).lower()} "
-        "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH="
-        f"{int(request['rate_limit_max_per_batch'])} "
-        "PIPF_EXTERNAL_L3_RATE_LIMIT_COOLDOWN_SECONDS="
-        f"{int(request['rate_limit_cooldown_seconds'])} "
-        "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT="
-        f"{int(request['rate_limit_daily_limit'])} "
-        "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
+        " ".join(env_assignments)
+        + " "
+        + "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
     )
+
+
+def _shell_env_assignment(name: str, value: str) -> str:
+    return f"{name}={shlex.quote(value)}"
 
 
 def _operator_authorization_packet(

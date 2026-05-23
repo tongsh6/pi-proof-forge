@@ -292,6 +292,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "headless": False,
     }
     assert "PIPF_EXTERNAL_L3_CHANNEL=liepin" in handoff["command_template"]
+    assert "PIPF_EXTERNAL_L3_JOB_URL='<https-url>'" in handoff["command_template"]
+    assert "PIPF_EXTERNAL_L3_RESUME_PDF='<resume.pdf>'" in handoff["command_template"]
+    assert "PIPF_EXTERNAL_L3_PROFILE='<profile.yaml>'" in handoff["command_template"]
     assert "PIPF_EXTERNAL_L3_SESSION_DIR=.sessions" in handoff["command_template"]
     assert (
         "PIPF_EXTERNAL_L3_OUTPUT_DIR=outputs/submissions"
@@ -309,7 +312,6 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT=30"
         in handoff["command_template"]
     )
-    assert "PIPF_EXTERNAL_L3_JOB_URL=<https-url>" in handoff["command_template"]
     required_env = {item["name"]: item for item in handoff["required_env"]}
     assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
     assert required_env["PIPF_EXTERNAL_L3_JOB_URL"]["present"] is False
@@ -873,8 +875,8 @@ def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
         "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
         "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
         "PIPF_EXTERNAL_L3_RATE_LIMIT_MAX_PER_BATCH": "0",
-        "PIPF_EXTERNAL_L3_SESSION_DIR": ".sessions-live",
-        "PIPF_EXTERNAL_L3_OUTPUT_DIR": "outputs/custom-submissions",
+        "PIPF_EXTERNAL_L3_SESSION_DIR": ".sessions live",
+        "PIPF_EXTERNAL_L3_OUTPUT_DIR": "outputs/custom submissions",
         "PIPF_EXTERNAL_L3_TIMEOUT_SECONDS": "30",
         "PIPF_EXTERNAL_L3_TIMEOUT_MS": "120000",
         "PIPF_EXTERNAL_L3_HEADLESS": "true",
@@ -902,17 +904,17 @@ def test_acceptance_runner_l3_blocks_disabled_rate_limit_policy(
         in payload["operator_handoff"]["command_template"]
     )
     runtime_options = payload["operator_handoff"]["runtime_options"]
-    assert runtime_options["session_dir"] == ".sessions-live"
-    assert runtime_options["output_dir"] == "outputs/custom-submissions"
+    assert runtime_options["session_dir"] == ".sessions live"
+    assert runtime_options["output_dir"] == "outputs/custom submissions"
     assert runtime_options["timeout_seconds"] == 30
     assert runtime_options["timeout_ms"] == 120000
     assert runtime_options["headless"] is True
     assert (
-        "PIPF_EXTERNAL_L3_SESSION_DIR=.sessions-live"
+        "PIPF_EXTERNAL_L3_SESSION_DIR='.sessions live'"
         in payload["operator_handoff"]["command_template"]
     )
     assert (
-        "PIPF_EXTERNAL_L3_OUTPUT_DIR=outputs/custom-submissions"
+        "PIPF_EXTERNAL_L3_OUTPUT_DIR='outputs/custom submissions'"
         in payload["operator_handoff"]["command_template"]
     )
     assert (
