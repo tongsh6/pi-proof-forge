@@ -164,8 +164,10 @@ def build_external_l3_validation(
         redaction_values=_live_output_redaction_values(request),
     )
     command_succeeded = command_returncode == 0 and not command_timed_out
-    external_validated = command_succeeded and bool(
-        submission_traceability["linked_to_validation"]
+    external_validated = (
+        command_succeeded
+        and bool(submission_traceability["linked_to_validation"])
+        and bool(submission_traceability["submission_log_status_success"])
     )
     blocker_after_run = _post_command_blocker_reason(
         command_error=command_error,
@@ -953,6 +955,11 @@ def _next_action(reason: str) -> str:
             "真实渠道频控已阻断本次 submit；等待 submission log 中记录的 "
             "wait_seconds 或调整下一次验证窗口后再重试。"
         )
+    if reason == "external_channel_submission_not_success":
+        return (
+            "真实渠道命令已返回成功并写出可追溯 submission log，但业务状态不是 success；"
+            "先按 submission_log_summary.error 和最后步骤修复渠道 blocker。"
+        )
     if reason == "external_channel_command_timed_out":
         return (
             "真实渠道命令超时；检查脱敏 stdout_tail、stderr_tail、页面状态和 "
@@ -986,6 +993,8 @@ def _post_command_blocker_reason(
         return "external_channel_command_returned_nonzero"
     if not submission_traceability["linked_to_validation"]:
         return "submission_log_not_linked"
+    if not submission_traceability.get("submission_log_status_success"):
+        return "external_channel_submission_not_success"
     return ""
 
 
@@ -1098,6 +1107,7 @@ def _submission_traceability(
     )
     browser_artifacts_redacted = _submission_log_browser_artifacts_redacted(log_payload)
     required_steps_evidence = _submission_log_required_steps_evidence(log_payload)
+    submission_log_status_success = _submission_log_status_success(log_payload)
     checks = _submission_traceability_checks(
         yaml_path=yaml_path,
         json_path=json_path,
@@ -1113,6 +1123,7 @@ def _submission_traceability(
         raw_live_inputs_redacted=raw_live_inputs_redacted,
         step_details_redacted=step_details_redacted,
         browser_artifacts_redacted=browser_artifacts_redacted,
+        submission_log_status_success=submission_log_status_success,
         required_steps_present=bool(required_steps_evidence.get("passed")),
     )
     return {
@@ -1142,6 +1153,7 @@ def _submission_traceability(
         "submission_log_raw_live_inputs_redacted": raw_live_inputs_redacted,
         "submission_log_step_details_redacted": step_details_redacted,
         "submission_log_browser_artifacts_redacted": browser_artifacts_redacted,
+        "submission_log_status_success": submission_log_status_success,
         "submission_log_required_steps": required_steps_evidence,
         "submission_log_summary": _submission_log_summary(
             log_payload,
@@ -1176,6 +1188,12 @@ def _submission_log_raw_live_inputs_redacted(log_payload: dict[str, Any]) -> boo
         str(log_payload.get(field, "")) == _REDACTED_LIVE_INPUT
         for field in ("job_url", "resume_path", "profile_path")
     )
+
+
+def _submission_log_status_success(log_payload: dict[str, Any]) -> bool:
+    if not log_payload:
+        return False
+    return str(log_payload.get("status", "")) == "success"
 
 
 def _submission_log_step_details_redacted(
@@ -1364,6 +1382,7 @@ def _submission_traceability_checks(
     raw_live_inputs_redacted: bool,
     step_details_redacted: bool,
     browser_artifacts_redacted: bool,
+    submission_log_status_success: bool,
     required_steps_present: bool,
 ) -> list[dict[str, str]]:
     return [
@@ -1429,6 +1448,11 @@ def _submission_traceability_checks(
             check_id="submission_log_browser_artifacts_redacted",
             passed=browser_artifacts_redacted,
             detail="External L3 submission log 未引用原始截图或 HTML snapshot",
+        ),
+        _traceability_check(
+            check_id="submission_log_status_success",
+            passed=not log_payload or submission_log_status_success,
+            detail="submission log status 必须为 success 才能计为真实外部验证成功",
         ),
         _traceability_check(
             check_id="successful_submission_required_steps_present",
