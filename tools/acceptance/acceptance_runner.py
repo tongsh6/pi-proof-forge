@@ -1368,6 +1368,30 @@ def _external_l3_submit_safety_result(step: AcceptanceStep) -> JourneyStepResult
         and decision.get("requires_separate_final_submit_confirmation") is True
         and decision.get("credentials_or_challenge_inputs_accepted") is False
     )
+    blocker = payload.get("live_blocker") or {}
+    blocker_reason = str(blocker.get("reason", ""))
+    if blocker_reason and payload.get("external_submission_attempted") is True:
+        if decision.get("post_run_blocker_reason") != blocker_reason:
+            return JourneyStepResult(
+                status="fail",
+                evidence=step.evidence,
+                message=(
+                    "External L3 最终提交安全决策与 live blocker 不一致: "
+                    f"post_run_blocker_reason={decision.get('post_run_blocker_reason', '')}, "
+                    f"live_blocker={blocker_reason}。"
+                ),
+            )
+    if blocker_reason and payload.get("external_submission_attempted") is not True:
+        if decision.get("blocking_reason") != blocker_reason:
+            return JourneyStepResult(
+                status="fail",
+                evidence=step.evidence,
+                message=(
+                    "External L3 submit 前安全决策与 live blocker 不一致: "
+                    f"blocking_reason={decision.get('blocking_reason', '')}, "
+                    f"live_blocker={blocker_reason}。"
+                ),
+            )
     if decision.get("decision") and required_flags:
         return JourneyStepResult(
             status="pass",
@@ -1400,6 +1424,41 @@ def _external_l3_feedback_trace_result(step: AcceptanceStep) -> JourneyStepResul
             message=f"External L3 提交后反馈追溯证据不可读取: {exc}",
         )
     trace = payload.get("post_submit_feedback_traceability") or {}
+    blocker = payload.get("live_blocker") or {}
+    blocker_reason = str(blocker.get("reason", ""))
+    if blocker_reason:
+        expected_source_status = (
+            "external_submission_attempted_blocked"
+            if payload.get("external_submission_attempted") is True
+            else "pre_submit_blocked"
+        )
+        if (
+            trace.get("source_type") != "live_blocker"
+            or trace.get("source_reason") != blocker_reason
+            or trace.get("source_status") != expected_source_status
+        ):
+            return JourneyStepResult(
+                status="fail",
+                evidence=step.evidence,
+                message=(
+                    "External L3 提交后反馈追溯与 live blocker 不一致: "
+                    f"source_type={trace.get('source_type', '')}, "
+                    f"source_status={trace.get('source_status', '')}, "
+                    f"source_reason={trace.get('source_reason', '')}, "
+                    f"live_blocker={blocker_reason}。"
+                ),
+            )
+    if payload.get("status") == "external_validated":
+        if (
+            trace.get("source_type") != "submission_log"
+            or trace.get("source_status") != "external_validated"
+            or trace.get("source_reason", "") != ""
+        ):
+            return JourneyStepResult(
+                status="fail",
+                evidence=step.evidence,
+                message="External L3 成功结果的反馈追溯来源必须指向 submission log。",
+            )
     if trace.get("traceable") is True and trace.get("source_artifact_path"):
         return JourneyStepResult(
             status="pass",

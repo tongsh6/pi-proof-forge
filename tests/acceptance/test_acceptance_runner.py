@@ -2777,6 +2777,42 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     assert summary_rule["status"] == "pass"
     assert "blocked/batch_cooldown" in summary_rule["message"]
 
+    inconsistent_submit_decision = json.loads(json.dumps(payload))
+    inconsistent_submit_decision["submit_safety_decision"][
+        "post_run_blocker_reason"
+    ] = "external_channel_command_returned_nonzero"
+    Path(report.steps[0].evidence).write_text(
+        json.dumps(inconsistent_submit_decision, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    submit_safety_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submit_safety_decision_recorded"
+    )
+    assert submit_safety_rule["status"] == "fail"
+    assert "post_run_blocker_reason" in submit_safety_rule["message"]
+
+    inconsistent_feedback_trace = json.loads(json.dumps(payload))
+    inconsistent_feedback_trace["post_submit_feedback_traceability"][
+        "source_reason"
+    ] = "external_channel_command_returned_nonzero"
+    Path(report.steps[0].evidence).write_text(
+        json.dumps(inconsistent_feedback_trace, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    feedback_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_post_submit_feedback_traceable"
+    )
+    assert feedback_rule["status"] == "fail"
+    assert "source_reason" in feedback_rule["message"]
+
     payload["live_blocker"]["reason"] = "external_channel_command_returned_nonzero"
     Path(report.steps[0].evidence).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
