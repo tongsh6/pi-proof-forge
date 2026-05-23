@@ -1416,7 +1416,9 @@ def _external_l3_feedback_trace_result(step: AcceptanceStep) -> JourneyStepResul
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -1448,6 +1450,29 @@ def _external_l3_feedback_trace_result(step: AcceptanceStep) -> JourneyStepResul
                     f"live_blocker={blocker_reason}。"
                 ),
             )
+    markdown_fragments = [
+        "## 提交后反馈追溯",
+        f"- 是否可追溯: `{trace.get('traceable', False)}`",
+        f"- 状态: `{trace.get('status', '')}`",
+        f"- 来源类型: `{trace.get('source_type', '')}`",
+        f"- 来源状态: `{trace.get('source_status', '')}`",
+        f"- 来源原因: `{trace.get('source_reason', '')}`",
+        f"- 来源产物: `{trace.get('source_artifact_path', '')}`",
+        f"- 下一步反馈路径: `{trace.get('feedback_iteration_route', '')}`",
+        f"- 下一步: {trace.get('next_action', '')}",
+    ]
+    missing_markdown = [
+        fragment for fragment in markdown_fragments if fragment not in markdown
+    ]
+    if missing_markdown:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=(
+                "External L3 提交后反馈追溯 Markdown 与 JSON 不一致: "
+                + ", ".join(missing_markdown)
+            ),
+        )
     if payload.get("status") == "external_validated":
         if (
             trace.get("source_type") != "submission_log"

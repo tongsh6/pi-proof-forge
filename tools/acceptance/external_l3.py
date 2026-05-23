@@ -567,6 +567,8 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 是否可追溯: `{feedback_traceability.get('traceable', False)}`",
                 f"- 状态: `{feedback_traceability.get('status', '')}`",
                 f"- 来源类型: `{feedback_traceability.get('source_type', '')}`",
+                f"- 来源状态: `{feedback_traceability.get('source_status', '')}`",
+                f"- 来源原因: `{feedback_traceability.get('source_reason', '')}`",
                 f"- 来源产物: `{feedback_traceability.get('source_artifact_path', '')}`",
                 f"- 下一步反馈路径: `{feedback_traceability.get('feedback_iteration_route', '')}`",
                 f"- 下一步: {feedback_traceability.get('next_action', '')}",

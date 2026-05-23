@@ -451,6 +451,8 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "| 必需环境变量 | 是否存在 | 是否敏感 |" in markdown
     assert "## 提交后反馈追溯" in markdown
     assert "- 来源类型: `live_blocker`" in markdown
+    assert "- 来源状态: `pre_submit_blocked`" in markdown
+    assert "- 来源原因: `explicit_user_authorization_required`" in markdown
     assert "## 证据清单" in markdown
     assert "| 证据 | 类型 | 必需 | 存在 | 状态 | 位置 |" in markdown
     assert "`external_l3_validation_json`" in markdown
@@ -2757,6 +2759,8 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     assert "- Submission Status: `blocked`" in markdown
     assert "- Submission Error: `batch_cooldown`" in markdown
     assert "- Last Step: `rate_limit/blocked`" in markdown
+    assert "- 来源状态: `external_submission_attempted_blocked`" in markdown
+    assert "- 来源原因: `external_channel_rate_limited`" in markdown
     assert "- Submission log 输入产物文件名是否脱敏: `True`" in markdown
     assert "- Submission log 原始浏览器产物是否脱敏: `True`" in markdown
 
@@ -2802,6 +2806,24 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     )
     assert outcome_rule["status"] == "fail"
     assert "markdown_next_action" in outcome_rule["message"]
+    markdown_path.write_text(original_markdown, encoding="utf-8")
+
+    markdown_path.write_text(
+        original_markdown.replace(
+            "- 来源原因: `external_channel_rate_limited`",
+            "- 来源原因: `external_channel_command_returned_nonzero`",
+        ),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    feedback_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_post_submit_feedback_traceable"
+    )
+    assert feedback_rule["status"] == "fail"
+    assert "来源原因" in feedback_rule["message"]
     markdown_path.write_text(original_markdown, encoding="utf-8")
 
     inconsistent_submit_decision = json.loads(json.dumps(payload))
