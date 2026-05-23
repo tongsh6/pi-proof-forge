@@ -2813,6 +2813,24 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     assert feedback_rule["status"] == "fail"
     assert "source_reason" in feedback_rule["message"]
 
+    inconsistent_outcome_summary = json.loads(json.dumps(payload))
+    inconsistent_outcome_summary["outcome_summary"][
+        "next_action"
+    ] = "处理另一个 blocker"
+    Path(report.steps[0].evidence).write_text(
+        json.dumps(inconsistent_outcome_summary, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    outcome_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_outcome_summary_recorded"
+    )
+    assert outcome_rule["status"] == "fail"
+    assert "next_action_matches_live_blocker" in outcome_rule["message"]
+
     payload["live_blocker"]["reason"] = "external_channel_command_returned_nonzero"
     Path(report.steps[0].evidence).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),

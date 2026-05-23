@@ -2191,6 +2191,8 @@ def _external_l3_outcome_summary_result(step: AcceptanceStep) -> JourneyStepResu
         missing.append("acceptance_status_meaning")
     if not outcome.get("next_action"):
         missing.append("next_action")
+    if blocker_reason and outcome.get("next_action") != blocker.get("next_action"):
+        missing.append("next_action_matches_live_blocker")
 
     markdown_fragments = [
         "## 结果分级",
