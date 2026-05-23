@@ -352,7 +352,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 授权交接包中的命令模板必须使用 live 输入占位符，并与当前有效频控策略保持一致，避免下一次真实运行复制过期默认值。"
+        message: "External L3 授权交接包必须记录当前运行配置；命令模板必须使用 live 输入占位符，并与当前 channel、session/output 目录、timeout/headless 和有效频控策略保持一致，避免下一次真实运行复制过期默认值。"
       - rule_id: "external_l3_pre_submit_blocker_diagnostics_recorded"
         level: "L3"
         stage: "submissions"
