@@ -755,6 +755,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     f"- 必须独立确认授权: `{command_template_review.get('requires_separate_authorization', False)}`",
                     f"- 必须独立确认最终提交: `{command_template_review.get('requires_separate_final_submit_confirmation', False)}`",
                     f"- 必须确认人工会话可用: `{command_template_review.get('requires_manual_session_ready_confirmation', False)}`",
+                    f"- 必须确认 session 存储就绪: `{command_template_review.get('requires_prepared_session_storage', False)}`",
                     f"- Shell-safe env 赋值: `{command_template_review.get('shell_safe_env_assignments', False)}`",
                     f"- 原始 live 输入是否持久化: `{command_template_review.get('raw_live_inputs_persisted', True)}`",
                     f"- 原因: `{command_template_review.get('reason', '')}`",
@@ -2065,6 +2066,7 @@ def _operator_handoff(
             "用户已明确授权接触真实外部渠道。",
             "用户已单独确认允许最终提交路径进入真实渠道命令。",
             "共享渠道 session 已由人工登录或刷新确认可用。",
+            "PIPF_EXTERNAL_L3_SESSION_DIR 指向已存在的共享 session 根目录，且 Liepin 持久化会话目录已存在。",
             "岗位 URL、确认 job id、确认 recruiter 与页面目标一致。",
             "resume PDF 与 profile YAML 指向本地已审核产物。",
             "确认不会输入、保存或绕过密码、验证码、短信码。",
@@ -2159,6 +2161,7 @@ def _operator_command_template_review() -> dict[str, Any]:
         "requires_separate_authorization": True,
         "requires_separate_final_submit_confirmation": True,
         "requires_manual_session_ready_confirmation": True,
+        "requires_prepared_session_storage": True,
         "shell_safe_env_assignments": True,
         "live_input_placeholders_present": True,
         "raw_live_inputs_persisted": False,
@@ -2174,6 +2177,7 @@ def _operator_command_template_review() -> dict[str, Any]:
             "确认 PIPF_EXTERNAL_L3_AUTHORIZED=true 只在用户显式授权后保留。",
             "确认 PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true 只在独立最终提交确认后保留。",
             "确认 PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true 只在共享渠道 session 已由人工登录或刷新确认可用后保留。",
+            "确认 PIPF_EXTERNAL_L3_SESSION_DIR 指向已存在的共享 session 根目录，且 Liepin 持久化会话目录已存在。",
             "确认不会提供密码、验证码、短信码或原始密钥。",
         ],
     }
@@ -2198,6 +2202,7 @@ def _operator_authorization_packet(
             "我明确授权本次 External L3 接触真实外部渠道，但不会提供密码、验证码或短信码。",
             "我已单独确认允许最终提交路径在目标岗位与招聘方一致时执行。",
             "我已通过人工登录或刷新确认共享渠道 session 可用。",
+            "我已确认 PIPF_EXTERNAL_L3_SESSION_DIR 指向已存在的共享 session 根目录，且 Liepin 持久化会话目录已存在。",
             "我已人工复核 Job URL、确认 job id、确认 recruiter、resume PDF 和 profile YAML。",
         ],
         "required_evidence": [
@@ -2237,6 +2242,7 @@ def _operator_abort_conditions(missing_gates: list[str]) -> list[str]:
     abort_conditions = [
         "任一 live_run_readiness gate 未通过时中止。",
         "共享渠道 session 未经人工登录或刷新确认可用时中止。",
+        "PIPF_EXTERNAL_L3_SESSION_DIR 指向的 session 根目录或 Liepin 持久化会话目录不存在时中止。",
         "页面目标岗位、确认 job id 或确认 recruiter 不一致时中止。",
         "渠道要求密码、验证码、短信码或账号恢复流程时中止。",
         "命令输出或 submission log 无法保持脱敏和可追溯时中止。",

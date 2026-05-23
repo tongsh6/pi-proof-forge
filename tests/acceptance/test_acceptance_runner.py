@@ -372,11 +372,16 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert (
         command_template_review["requires_manual_session_ready_confirmation"] is True
     )
+    assert command_template_review["requires_prepared_session_storage"] is True
     assert command_template_review["shell_safe_env_assignments"] is True
     assert command_template_review["live_input_placeholders_present"] is True
     assert command_template_review["raw_live_inputs_persisted"] is False
     assert "<https-url>" in command_template_review["placeholders"]
     assert any("占位符" in item for item in command_template_review["review_items"])
+    assert any(
+        "Liepin 持久化会话目录" in item
+        for item in command_template_review["review_items"]
+    )
     required_env = {item["name"]: item for item in handoff["required_env"]}
     assert required_env["PIPF_EXTERNAL_L3_AUTHORIZED"]["present"] is False
     assert (
@@ -389,6 +394,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert authorization_packet["status"] == "blocked_until_missing_gates_resolved"
     assert authorization_packet["raw_confirmation_values_persisted"] is False
     assert len(authorization_packet["required_confirmation_statements"]) >= 3
+    assert any(
+        "Liepin 持久化会话目录" in item
+        for item in authorization_packet["required_confirmation_statements"]
+    )
     assert "live_run_readiness" in authorization_packet["required_evidence"]
     assert "submit_safety_decision" in authorization_packet["required_evidence"]
     assert "session_readiness" in authorization_packet["required_evidence"]
@@ -449,6 +458,7 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 必须替换占位符: `True`" in markdown
     assert "- 必须独立确认最终提交: `True`" in markdown
     assert "- 必须确认人工会话可用: `True`" in markdown
+    assert "- 必须确认 session 存储就绪: `True`" in markdown
     assert "#### 需替换占位符" in markdown
     assert "#### 复核项" in markdown
     assert "### 授权确认包" in markdown

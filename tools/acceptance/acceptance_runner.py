@@ -2210,6 +2210,7 @@ def _external_l3_handoff_command_template_review_result(
         "requires_separate_authorization": True,
         "requires_separate_final_submit_confirmation": True,
         "requires_manual_session_ready_confirmation": True,
+        "requires_prepared_session_storage": True,
         "shell_safe_env_assignments": True,
         "live_input_placeholders_present": True,
         "raw_live_inputs_persisted": False,
@@ -2231,6 +2232,7 @@ def _external_l3_handoff_command_template_review_result(
         "- 必须独立确认授权: `True`",
         "- 必须独立确认最终提交: `True`",
         "- 必须确认人工会话可用: `True`",
+        "- 必须确认 session 存储就绪: `True`",
         "#### 需替换占位符",
         "#### 复核项",
     ]
