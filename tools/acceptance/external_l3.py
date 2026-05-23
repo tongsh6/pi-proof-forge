@@ -359,6 +359,17 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                         f"- Missing Gates: `{', '.join(blocker_diagnostics.get('missing_gates', []))}`",
                     ]
                 )
+            diagnostic_required_steps = blocker_diagnostics.get(
+                "submission_log_required_steps"
+            ) or {}
+            if diagnostic_required_steps:
+                lines.extend(
+                    [
+                        f"- 诊断成功投递关键步骤是否齐备: `{diagnostic_required_steps.get('passed', False)}`",
+                        f"- 诊断缺失投递步骤: `{', '.join(diagnostic_required_steps.get('missing_steps', []))}`",
+                        f"- 诊断失败投递步骤: `{', '.join(diagnostic_required_steps.get('failed_steps', []))}`",
+                    ]
+                )
             diagnostic_input_artifacts = blocker_diagnostics.get(
                 "live_input_artifacts"
             ) or {}
@@ -1173,6 +1184,9 @@ def _post_command_live_blocker(
             "submission_traceability_failed_checks": failed_checks,
             "submission_log_summary": dict(
                 submission_traceability.get("submission_log_summary") or {}
+            ),
+            "submission_log_required_steps": dict(
+                submission_traceability.get("submission_log_required_steps") or {}
             ),
         },
     }

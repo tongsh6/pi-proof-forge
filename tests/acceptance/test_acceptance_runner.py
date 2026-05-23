@@ -2658,6 +2658,10 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
         "successful_submission_required_steps_present"
         in payload["live_blocker"]["failed_checks"]
     )
+    diagnostic_steps = payload["live_blocker"]["diagnostics"][
+        "submission_log_required_steps"
+    ]
+    assert diagnostic_steps["missing_steps"] == required_steps["missing_steps"]
     markdown_path = Path(report.steps[0].evidence).with_suffix(".md")
     markdown = markdown_path.read_text(encoding="utf-8")
     assert (
@@ -2670,6 +2674,10 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
         in markdown
     )
     assert "- 失败投递步骤: ``" in markdown
+    assert (
+        "- 诊断缺失投递步骤: `target_verify, submit_safety, chat_send_resume, submit`"
+        in markdown
+    )
 
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
@@ -2680,6 +2688,24 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
     )
     assert required_steps_rule["status"] == "pass"
     assert "关键步骤缺失记录为 traceability blocker" in required_steps_rule["message"]
+
+    markdown_path.write_text(
+        markdown.replace(
+            "- 诊断缺失投递步骤: `target_verify, submit_safety, chat_send_resume, submit`",
+            "- 诊断缺失投递步骤: `submit`",
+        ),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    diagnostics_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_post_command_blocker_diagnostics_recorded"
+    )
+    assert diagnostics_rule["status"] == "fail"
+    assert "markdown:- 诊断缺失投递步骤" in diagnostics_rule["message"]
+    markdown_path.write_text(markdown, encoding="utf-8")
 
     markdown_path.write_text(
         markdown.replace(

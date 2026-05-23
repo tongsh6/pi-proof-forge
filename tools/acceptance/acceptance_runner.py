@@ -1545,6 +1545,7 @@ def _external_l3_post_command_blocker_diagnostics_result(
         and has_command_outcome
         and isinstance(diagnostics.get("submission_traceability_checks"), list)
         and isinstance(diagnostics.get("submission_traceability_failed_checks"), list)
+        and isinstance(diagnostics.get("submission_log_required_steps"), dict)
     ):
         summary = diagnostics.get("submission_log_summary") or {}
         expected_business_reason = (
@@ -1563,6 +1564,7 @@ def _external_l3_post_command_blocker_diagnostics_result(
                     f"actual={actual_reason}。"
                 ),
             )
+        required_steps = diagnostics.get("submission_log_required_steps") or {}
         markdown_fragments = [
             "## Live Blocker",
             f"- Reason: `{blocker.get('reason', '')}`",
@@ -1571,6 +1573,9 @@ def _external_l3_post_command_blocker_diagnostics_result(
             f"- Log Hint: `{diagnostics.get('log_hint', '')}`",
             f"- YAML: `{diagnostics.get('log_yaml_path', '')}`",
             f"- JSON: `{diagnostics.get('log_json_path', '')}`",
+            f"- 诊断成功投递关键步骤是否齐备: `{required_steps.get('passed', False)}`",
+            f"- 诊断缺失投递步骤: `{', '.join(required_steps.get('missing_steps', []))}`",
+            f"- 诊断失败投递步骤: `{', '.join(required_steps.get('failed_steps', []))}`",
         ]
         markdown_missing = [
             f"markdown:{fragment}"
