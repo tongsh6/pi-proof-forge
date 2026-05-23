@@ -1224,6 +1224,7 @@ def test_acceptance_runner_l3_requires_manual_session_ready_before_command(
         payload["live_blocker"]["reason"]
         == "manual_session_ready_confirmation_required"
     )
+    assert payload["live_blocker"]["category"] == "session_readiness"
     assert (
         "manual_session_ready_confirmed"
         in payload["live_run_readiness"]["missing_gates"]
@@ -1269,6 +1270,7 @@ def test_acceptance_runner_l3_requires_prepared_session_storage_before_command(
     payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
     assert payload["status"] == "live_blocker_recorded"
     assert payload["live_blocker"]["reason"] == "manual_session_storage_not_ready"
+    assert payload["live_blocker"]["category"] == "session_readiness"
     assert "manual_session_storage_ready" in payload["live_blocker"]["failed_checks"]
     assert payload["session_readiness"]["session_ready_confirmed"] is True
     assert payload["session_readiness"]["session_dir_exists"] is False

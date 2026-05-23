@@ -987,6 +987,8 @@ def _blocker_category(reason: str) -> str:
         return "safety"
     if reason.startswith("explicit_"):
         return "authorization"
+    if reason.startswith("manual_session_"):
+        return "session_readiness"
     if reason.startswith("missing_") or reason.startswith("invalid_"):
         return "input_readiness"
     if reason.startswith("unsupported_"):
