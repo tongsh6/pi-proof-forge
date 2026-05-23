@@ -162,6 +162,7 @@
 - L3 证据必须包含 `submit_safety_decision`，明确最终提交命令是 `blocked_before_command`、`allowed_pending_execution` 还是 `allowed_and_executed`，并证明显式授权、独立最终确认和真实输入齐备才允许 submit。
 - blocker 或真实渠道结果必须包含 `operator_handoff`：列出 required env 是否存在、最终提交前 checklist、禁止输入项、当前运行配置和不含真实值的命令模板；命令模板必须使用 shell-safe 的 live 输入占位符，并与当前 channel、session/output 目录、timeout/headless 和有效频控参数一致；Markdown 报告必须展示同一条可复制命令模板。`operator_handoff.command_template_review` 必须同步记录 `copy_paste_ready=false`、占位符替换、显式授权和独立最终提交确认要求，防止操作者把交接模板盲贴成真实运行命令。
 - `operator_handoff` 必须包含结构化 `authorization_packet`：记录必需确认声明、必需证据、中止条件、脱敏策略和禁止输入项；不得持久化 Job URL、文件路径、确认 job id 或 recruiter 原值。
+- L3 证据必须包含 `evidence_manifest`：统一列出 validation JSON/Markdown、关键嵌入段、live blocker 或 submission log、feedback source 的位置、必需性和存在状态；每一项都必须标记 `raw_live_inputs_persisted=false`，Markdown 报告必须同步展示该清单。
 - 真实渠道命令返回成功也不等于 L3 成功；必须解析并确认 `submission_log.yaml` 与同目录 `submission_log.json` 均存在，且 submission log 必须写回 `external_l3_validation_run_id`、`external_l3_validation_path` 和匹配本次 validation 的 `input_artifacts`，同时把原始 Job URL、resume/profile 路径字段写成 `<redacted>`，共同写入 `submission_traceability.linked_to_validation=true`。
 - 如果 submission log 存在但没有反向指向本次 L3 validation record，必须记录为 `submission_log_not_linked` blocker，不得把单向日志路径解析视为真实验收通过。
 - 如果 submission log JSON 可解析，`submission_traceability` 必须写入 `submission_log_summary`，包含 status、error、mode 和 last step；post-command live blocker diagnostics 也必须携带该摘要，让 rate limit、login required、target verify 等业务 blocker 可直接诊断。

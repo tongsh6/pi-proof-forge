@@ -32,6 +32,7 @@ Last updated: 2026-05-23
 - External L3 submit safety: validation records include `submit_safety_decision`；真实渠道命令是否阻断、允许待执行或已执行，必须在信任结果前成为显式可审计状态。
 - External L3 handoff runtime policy: `operator_handoff.runtime_options` 记录当前 channel、session/output 目录、timeout 和 headless 配置；`operator_handoff.command_template` 使用 shell-safe 的 live 输入占位符，并写入当前运行配置与有效频控参数；Markdown 报告同步展示可复制命令模板，避免操作者覆盖 env 后交接模板回退成旧默认值或被 shell 误解析。
 - External L3 handoff command review: `operator_handoff.command_template_review` 记录 `copy_paste_ready=false`、占位符替换、显式授权和独立最终提交确认要求；Markdown 报告同步展示命令模板复核，避免带 `AUTHORIZED=true` 与 `FINAL_SUBMIT_CONFIRMED=true` 的模板被盲贴执行。
+- External L3 evidence manifest: validation records include `evidence_manifest`，统一列出 validation JSON/Markdown、关键嵌入段、live blocker 或 submission log、feedback source 的必需性、存在状态和脱敏边界；Markdown 报告同步展示证据清单，避免人工复核时跨段拼接证据。
 - External L3 traceability: successful external commands must link `external-l3-validation.json` to persisted `submission_log.yaml/json`, and submission logs must write back `external_l3_validation_run_id/path`; missing or one-way-only links are recorded as `submission_log_not_linked`.
 - External L3 submission log audit: submission log 会写入自身 `input_artifacts`；L3 成功要求这些指纹与 validation record 匹配，且 External L3 关联日志中的原始 Job URL、resume/profile 路径字段、resume/profile 文件名、steps.detail 原文、截图路径和 HTML snapshot 引用都必须脱敏或不落盘。
 - External L3 trace diagnostics: `submission_traceability` 写入逐项检查结果和 `failed_checks`，让 `submission_log_not_linked` 指向具体缺失或不匹配的证据。
