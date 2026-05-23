@@ -173,7 +173,7 @@
 - `submission_traceability` 必须记录逐项 `checks` 与 `failed_checks`，区分缺少 log hint、YAML/JSON 不存在、JSON 不可解析、run id/path 不匹配和输入产物指纹不匹配。
 - 真实渠道命令执行后产生 live blocker 时，`live_blocker` 必须直接包含 `failed_checks` 和 `diagnostics`，包括 returncode、submission log 路径和逐项 traceability checks，避免用户为理解 blocker 再反查深层字段。
 - 当 submission log JSON 可解析且 `error` 属于已知渠道业务失败时，post-command blocker 必须把 `batch_cooldown`/`daily_limit_exceeded`、`target_mismatch`/`target_verify_failed`、`login_required`、`security_redirect`、`job_page_unavailable`、`submit_confirmation_*`、`send_resume_*`、`submission_uncertain`、`timeout` 等错误提升为精确 `external_channel_*` blocker；只有未知错误才回落到通用非零退出码 blocker。journey report 必须验证该映射，避免 validation record 只携带摘要却仍把已知业务失败归成泛化 returncode。
-- 无论真实渠道成功还是记录 live blocker，L3 证据都必须包含 `post_submit_feedback_traceability`：成功时以 submission log 作为反馈来源，blocker 时以 `external-l3-validation.json` 作为反馈来源，并明确下一步反馈/阻断处理路径；blocker 场景的 `source_reason` 必须与 `live_blocker.reason` 一致。
+- 无论真实渠道成功还是记录 live blocker，L3 证据都必须包含 `post_submit_feedback_traceability`：成功时以 submission log 作为反馈来源，blocker 时以 `external-l3-validation.json` 作为反馈来源，并明确下一步反馈/阻断处理路径；blocker 场景的 `source_reason` 必须与 `live_blocker.reason` 一致，Markdown 报告必须展示与 JSON 一致的来源状态、来源原因和下一步。
 - 真实渠道命令返回非零时不得伪装成功；必须保留 stdout/stderr tail 和 log hint，作为 exact live blocker。
 - 真实渠道命令超时时也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_timed_out` live blocker、timeout 秒数、脱敏 stdout/stderr tail 和后续处理路径。
 - 真实渠道命令启动错误也不得让 validation 失败在写 evidence 之前；必须记录 `external_channel_command_launch_failed` live blocker，并保存脱敏后的错误类型/信息。

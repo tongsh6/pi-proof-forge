@@ -298,7 +298,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须把真实渠道结果或 live blocker 转成可追溯的提交后反馈来源和下一步处理路径；blocker 场景中的 feedback source_reason 必须与 live_blocker.reason 一致。"
+        message: "External L3 验收必须把真实渠道结果或 live blocker 转成可追溯的提交后反馈来源和下一步处理路径；blocker 场景中的 feedback source_reason 必须与 live_blocker.reason 一致；Markdown 报告必须展示与 JSON 一致的反馈来源状态、来源原因和下一步。"
       - rule_id: "external_l3_post_command_blocker_diagnostics_recorded"
         level: "L3"
         stage: "submissions"
