@@ -148,6 +148,7 @@ def build_external_l3_validation(
     submission_traceability = _submission_traceability(
         root=root,
         output=completed_stdout + completed_stderr,
+        allowed_submission_root=_submission_log_allowed_root(request),
         expected_validation_run_id=run_id,
         expected_validation_path=str(request["external_l3_validation_path"]),
         expected_input_artifacts=base["live_input_artifacts"],
@@ -881,15 +882,22 @@ def _submission_traceability(
     *,
     root: Path,
     output: str,
+    allowed_submission_root: Path,
     expected_validation_run_id: str,
     expected_validation_path: str,
     expected_input_artifacts: dict[str, Any],
     redaction_values: list[str],
 ) -> dict[str, Any]:
-    log_hint = _extract_submission_log_hint(output)
-    yaml_path = _extract_submission_yaml_path(root=root, output=output)
+    raw_log_hint = _extract_submission_log_hint(output)
+    candidate_yaml_path = _extract_submission_yaml_path(root=root, output=output)
+    log_path_allowed = bool(
+        candidate_yaml_path
+        and _path_is_within(candidate_yaml_path, allowed_submission_root)
+    )
+    yaml_path = candidate_yaml_path if log_path_allowed else None
     json_path = yaml_path.with_name("submission_log.json") if yaml_path else None
     log_payload, parse_error = _read_submission_json(json_path)
+    log_hint = raw_log_hint if log_path_allowed or not candidate_yaml_path else ""
     logged_validation_run_id = str(
         log_payload.get("external_l3_validation_run_id", "")
     ) if log_payload else ""
@@ -917,6 +925,9 @@ def _submission_traceability(
         json_path=json_path,
         parse_error=parse_error,
         log_payload=log_payload,
+        candidate_yaml_path=candidate_yaml_path,
+        log_path_allowed=log_path_allowed,
+        allowed_submission_root=allowed_submission_root,
         run_id_matches=logged_validation_run_id == expected_validation_run_id,
         path_matches=logged_validation_path == expected_validation_path,
         input_artifacts_match=input_artifacts_match,
@@ -926,6 +937,15 @@ def _submission_traceability(
     )
     return {
         "log_hint": log_hint,
+        "log_path_within_allowed_root": (
+            candidate_yaml_path is None or log_path_allowed
+        ),
+        "allowed_submission_log_root": str(allowed_submission_root),
+        "rejected_log_yaml_path_reason": (
+            "outside_allowed_submission_root"
+            if candidate_yaml_path and not log_path_allowed
+            else ""
+        ),
         "log_yaml_path": str(yaml_path) if yaml_path else "",
         "log_json_path": str(json_path) if json_path else "",
         "log_yaml_exists": bool(yaml_path and yaml_path.exists()),
@@ -953,6 +973,7 @@ def _submission_traceability(
             and json_path
             and yaml_path.exists()
             and json_path.exists()
+            and log_path_allowed
             and log_links_back
             and input_artifacts_match
             and raw_live_inputs_redacted
@@ -1101,6 +1122,9 @@ def _submission_traceability_checks(
     json_path: Path | None,
     parse_error: str,
     log_payload: dict[str, Any],
+    candidate_yaml_path: Path | None,
+    log_path_allowed: bool,
+    allowed_submission_root: Path,
     run_id_matches: bool,
     path_matches: bool,
     input_artifacts_match: bool,
@@ -1111,8 +1135,16 @@ def _submission_traceability_checks(
     return [
         _traceability_check(
             check_id="submission_log_hint_found",
-            passed=yaml_path is not None,
+            passed=candidate_yaml_path is not None,
             detail="命令输出包含 submission_log.yaml 路径",
+        ),
+        _traceability_check(
+            check_id="submission_log_path_within_allowed_root",
+            passed=candidate_yaml_path is None or log_path_allowed,
+            detail=(
+                "submission log 路径必须位于允许输出根目录: "
+                f"{allowed_submission_root}"
+            ),
         ),
         _traceability_check(
             check_id="submission_log_yaml_exists",
@@ -1310,6 +1342,21 @@ def _extract_submission_yaml_path(*, root: Path, output: str) -> Path | None:
             path = root / path
         return path
     return None
+
+
+def _submission_log_allowed_root(request: dict[str, Any]) -> Path:
+    output_dir = Path(str(request["output_dir"]))
+    if not output_dir.is_absolute():
+        output_dir = Path(str(request["root"])) / output_dir
+    return (output_dir / str(request["channel"])).resolve()
+
+
+def _path_is_within(path: Path, allowed_root: Path) -> bool:
+    try:
+        path.resolve().relative_to(allowed_root.resolve())
+    except ValueError:
+        return False
+    return True
 
 
 def _operator_handoff(
@@ -1871,9 +1918,27 @@ def _command_error_evidence(exc: OSError, request: dict[str, Any]) -> dict[str, 
 
 def _redact_live_output(output: str, request: dict[str, Any]) -> str:
     redacted = output
-    for value in _live_output_redaction_values(request):
+    for value in [
+        *_live_output_redaction_values(request),
+        *_submission_log_path_redaction_values(output),
+    ]:
         redacted = redacted.replace(value, "<redacted>")
     return redacted
+
+
+def _submission_log_path_redaction_values(output: str) -> list[str]:
+    values: list[str] = []
+    for line in output.splitlines():
+        if "submission_log.yaml" not in line:
+            continue
+        candidate = line.split("log:", 1)[-1].strip()
+        if "submission_log.yaml" in candidate:
+            candidate = candidate[
+                : candidate.index("submission_log.yaml") + len("submission_log.yaml")
+            ]
+        if candidate:
+            values.append(candidate)
+    return sorted(set(values), key=len, reverse=True)
 
 
 def _live_output_redaction_values(request: dict[str, Any]) -> list[str]:

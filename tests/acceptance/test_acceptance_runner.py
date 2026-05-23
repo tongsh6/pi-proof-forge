@@ -448,6 +448,15 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert summary_rule["stage"] == "submissions"
     assert summary_rule["status"] == "pass"
     assert "submission log" in summary_rule["message"]
+    path_guard_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submission_log_path_guarded"
+    )
+    assert path_guard_rule["level"] == "L3"
+    assert path_guard_rule["stage"] == "submissions"
+    assert path_guard_rule["status"] == "pass"
+    assert "未执行真实渠道命令" in path_guard_rule["message"]
     required_steps_rule = next(
         step
         for step in journey_payload["steps"]
@@ -1970,6 +1979,84 @@ def test_acceptance_runner_l3_blocks_submission_log_without_matching_input_artif
     )
     assert payload["live_blocker"]["diagnostics"]["log_yaml_path"] == str(log_yaml)
     assert payload["live_blocker"]["diagnostics"]["log_json_path"] == str(log_json)
+
+
+def test_acceptance_runner_l3_rejects_submission_log_outside_allowed_root(
+    tmp_path: Path,
+) -> None:
+    resume = tmp_path / "resume.pdf"
+    profile = tmp_path / "profile.yaml"
+    outside_log_dir = tmp_path / "outside-submissions"
+    outside_log_dir.mkdir()
+    log_yaml = outside_log_dir / "submission_log.yaml"
+    log_json = outside_log_dir / "submission_log.json"
+    resume.write_bytes(b"%PDF-1.4\n")
+    profile.write_text("id: profile\n", encoding="utf-8")
+    log_yaml.write_text('status: "success"\n', encoding="utf-8")
+    log_json.write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "job_url": "<redacted>",
+                "resume_path": "<redacted>",
+                "profile_path": "<redacted>",
+                "live_inputs_redacted": True,
+                "external_l3_validation_run_id": "acceptance_external_l3",
+                "external_l3_validation_path": (
+                    "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
+                ),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env = {
+        "PIPF_EXTERNAL_L3_AUTHORIZED": "true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED": "true",
+        "PIPF_EXTERNAL_L3_JOB_URL": "https://www.liepin.com/job/123.shtml",
+        "PIPF_EXTERNAL_L3_RESUME_PDF": str(resume),
+        "PIPF_EXTERNAL_L3_PROFILE": str(profile),
+        "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID": "123",
+        "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER": "Verifier",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("tools.acceptance.external_l3.subprocess.run") as run_mock,
+    ):
+        run_mock.return_value = Mock(
+            returncode=0,
+            stdout=f"[DONE] submit log: {log_yaml}\n",
+            stderr="",
+        )
+
+        report = run_acceptance(
+            root=tmp_path,
+            run_id="acceptance_external_l3",
+            levels=("L3",),
+            timeout_seconds=10,
+        )
+
+    payload = json.loads(Path(report.steps[0].evidence).read_text(encoding="utf-8"))
+    assert payload["status"] == "live_blocker_recorded"
+    assert payload["live_blocker"]["reason"] == "submission_log_not_linked"
+    traceability = payload["submission_traceability"]
+    assert traceability["log_path_within_allowed_root"] is False
+    assert traceability["log_yaml_path"] == ""
+    assert traceability["log_json_path"] == ""
+    assert traceability["log_json_exists"] is False
+    assert traceability["rejected_log_yaml_path_reason"] == (
+        "outside_allowed_submission_root"
+    )
+    assert (
+        "submission_log_path_within_allowed_root"
+        in traceability["failed_checks"]
+    )
+    assert (
+        "submission_log_path_within_allowed_root"
+        in payload["live_blocker"]["failed_checks"]
+    )
+    validation_text = Path(report.steps[0].evidence).read_text(encoding="utf-8")
+    assert str(log_yaml) not in validation_text
 
 
 def test_acceptance_runner_failure_returns_fail(tmp_path: Path) -> None:

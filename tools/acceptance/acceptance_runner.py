@@ -849,6 +849,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_submission_log_summary_recorded"] = (
             _external_l3_submission_log_summary_result(external_l3_step)
         )
+        results["external_l3_submission_log_path_guarded"] = (
+            _external_l3_submission_log_path_guard_result(external_l3_step)
+        )
         results["external_l3_submission_log_required_steps_recorded"] = (
             _external_l3_submission_log_required_steps_result(external_l3_step)
         )
@@ -1350,6 +1353,50 @@ def _external_l3_submission_log_summary_result(
         status="fail",
         evidence=step.evidence,
         message="External L3 submission log 摘要缺失 status/error/last_step。",
+    )
+
+
+def _external_l3_submission_log_path_guard_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    try:
+        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=f"External L3 submission log 路径边界证据不可读取: {exc}",
+        )
+    if payload.get("external_submission_attempted") is not True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 未执行真实渠道命令，因此没有 submission log 路径边界要求。",
+        )
+    traceability = payload.get("submission_traceability") or {}
+    if traceability.get("log_path_within_allowed_root") is True:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 submission log 路径未越过允许输出根目录。",
+        )
+    failed_checks = set(traceability.get("failed_checks") or [])
+    if "submission_log_path_within_allowed_root" in failed_checks:
+        return JourneyStepResult(
+            status="pass",
+            evidence=step.evidence,
+            message="External L3 已把越界 submission log 路径记录为 traceability blocker。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=step.evidence,
+        message="External L3 submission log 路径边界缺少审计结果。",
     )
 
 
