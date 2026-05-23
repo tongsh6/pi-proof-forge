@@ -828,6 +828,9 @@ def _journey_results(report: AcceptanceReport) -> dict[str, JourneyStepResult]:
         results["external_l3_input_artifact_basenames_redacted"] = (
             _external_l3_input_artifact_basenames_redacted_result(external_l3_step)
         )
+        results["external_l3_human_readable_redaction_evidence_recorded"] = (
+            _external_l3_human_readable_redaction_evidence_result(external_l3_step)
+        )
         results["external_l3_rate_limit_policy_recorded"] = (
             _external_l3_rate_limit_policy_result(external_l3_step)
         )
@@ -1101,6 +1104,53 @@ def _input_artifact_basenames_redacted(artifacts: dict[str, Any]) -> bool:
         if item.get("provided") is True and item.get("basename") != "<redacted>":
             return False
     return True
+
+
+def _external_l3_human_readable_redaction_evidence_result(
+    step: AcceptanceStep,
+) -> JourneyStepResult:
+    if step.status != "pass":
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=step.message,
+        )
+    evidence_path = Path(step.evidence)
+    markdown_path = evidence_path.with_suffix(".md")
+    try:
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = markdown_path.read_text(encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        return JourneyStepResult(
+            status="fail",
+            evidence=str(markdown_path),
+            message=f"External L3 Markdown 脱敏证据不可读取: {exc}",
+        )
+
+    required_fragments = [
+        "## 真实输入产物审计",
+        "文件名是否持久化",
+        "原内容是否持久化",
+    ]
+    if payload.get("external_submission_attempted") is True:
+        required_fragments.extend(
+            [
+                "Submission log 输入产物文件名是否脱敏",
+                "Submission log 原始浏览器产物是否脱敏",
+            ]
+        )
+    missing = [fragment for fragment in required_fragments if fragment not in markdown]
+    if not missing:
+        return JourneyStepResult(
+            status="pass",
+            evidence=str(markdown_path),
+            message="External L3 Markdown 报告已展示输入产物与 submission log 脱敏结论。",
+        )
+    return JourneyStepResult(
+        status="fail",
+        evidence=str(markdown_path),
+        message=f"External L3 Markdown 报告缺少脱敏证据: {', '.join(missing)}",
+    )
 
 
 def _external_l3_rate_limit_policy_result(step: AcceptanceStep) -> JourneyStepResult:

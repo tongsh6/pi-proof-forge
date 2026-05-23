@@ -428,8 +428,8 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 确认 job id 已提供: `{confirmations.get('confirm_submit_job_id_present', False)}`",
                 f"- 确认 recruiter 已提供: `{confirmations.get('confirm_submit_recruiter_present', False)}`",
                 "",
-                "| 产物 | 已提供 | 存在文件 | 扩展名 | 大小 | SHA256 |",
-                "|---|---:|---:|---|---:|---|",
+                "| 产物 | 已提供 | 存在文件 | 文件名是否持久化 | 原内容是否持久化 | 扩展名 | 大小 | SHA256 |",
+                "|---|---:|---:|---:|---:|---|---:|---|",
             ]
         )
         for item in files:
@@ -440,6 +440,8 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                         f"`{item.get('id', '')}`",
                         f"`{item.get('provided', False)}`",
                         f"`{item.get('is_file', False)}`",
+                        f"`{item.get('basename_persisted', False)}`",
+                        f"`{item.get('raw_content_persisted', False)}`",
                         f"`{item.get('suffix', '')}`",
                         str(item.get("size_bytes", 0)),
                         f"`{item.get('sha256', '')}`",
@@ -466,6 +468,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- Submission log 输入产物文件名是否脱敏: `{submission_traceability.get('submission_log_input_artifact_basenames_redacted', False)}`",
                 f"- Submission log 原始 live 输入是否脱敏: `{submission_traceability.get('submission_log_raw_live_inputs_redacted', False)}`",
                 f"- Submission log 步骤详情是否脱敏: `{submission_traceability.get('submission_log_step_details_redacted', False)}`",
+                f"- Submission log 原始浏览器产物是否脱敏: `{submission_traceability.get('submission_log_browser_artifacts_redacted', False)}`",
                 f"- 成功投递关键步骤是否齐备: `{required_steps.get('passed', False)}`",
                 f"- Submission Status: `{submission_summary.get('status', '')}`",
                 f"- Submission Error: `{submission_summary.get('error', '')}`",

@@ -315,6 +315,8 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 决策: `blocked_before_command`" in markdown
     assert "## 真实输入产物审计" in markdown
     assert "- Job URL 原值是否持久化: `False`" in markdown
+    assert "| 产物 | 已提供 | 存在文件 | 文件名是否持久化 | 原内容是否持久化 | 扩展名 | 大小 | SHA256 |" in markdown
+    assert "| `resume_pdf` | `False` | `False` | `False` | `False` | `` | 0 | `` |" in markdown
     assert "## 频控策略" in markdown
     assert "- 是否启用: `True`" in markdown
     assert "## 禁止输入审计" in markdown
@@ -475,6 +477,18 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert basename_redaction_rule["stage"] == "submissions"
     assert basename_redaction_rule["status"] == "pass"
     assert "文件名" in basename_redaction_rule["message"]
+    markdown_redaction_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_human_readable_redaction_evidence_recorded"
+        )
+    )
+    assert markdown_redaction_rule["level"] == "L3"
+    assert markdown_redaction_rule["stage"] == "submissions"
+    assert markdown_redaction_rule["status"] == "pass"
+    assert "Markdown" in markdown_redaction_rule["message"]
     log_redaction_rule = next(
         step
         for step in journey_payload["steps"]
@@ -1936,6 +1950,8 @@ def test_acceptance_runner_l3_promotes_rate_limit_submission_log_summary(
     assert "- Submission Status: `blocked`" in markdown
     assert "- Submission Error: `batch_cooldown`" in markdown
     assert "- Last Step: `rate_limit/blocked`" in markdown
+    assert "- Submission log 输入产物文件名是否脱敏: `True`" in markdown
+    assert "- Submission log 原始浏览器产物是否脱敏: `True`" in markdown
 
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
