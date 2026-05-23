@@ -575,6 +575,7 @@ steps:
         - "submission_traceability_failed_checks_recorded"
         - "successful_command_requires_submission_log"
         - "post_command_live_blocker_diagnostics_recorded"
+        - "post_command_business_error_promoted_to_exact_blocker"
         - "submission_log_business_summary_recorded"
         - "submission_log_summary_detail_redacted"
         - "successful_submission_log_required_steps_recorded"

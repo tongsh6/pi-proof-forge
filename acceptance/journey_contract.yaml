@@ -304,7 +304,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须在真实渠道命令执行后产生 blocker 时，把 returncode、submission log 路径和 traceability failed checks 直接记录到 live blocker。"
+        message: "External L3 验收必须在真实渠道命令执行后产生 blocker 时，把 returncode、submission log 路径和 traceability failed checks 直接记录到 live blocker；如果 submission log error 可解析且属于已知渠道业务失败，blocker reason 必须优先使用精确 external_channel_* 归因，而不是只记录通用非零退出码。"
       - rule_id: "external_l3_submission_log_summary_recorded"
         level: "L3"
         stage: "submissions"
