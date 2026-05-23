@@ -328,7 +328,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须保证关联 submission log 中的原始 Job URL、resume/profile 路径字段已脱敏，只保留 input_artifacts 指纹用于追溯。"
+        message: "External L3 验收必须保证关联 submission log 声明 live_inputs_redacted=true，且原始 Job URL、resume/profile 路径字段已脱敏，只保留 input_artifacts 指纹用于追溯。"
       - rule_id: "external_l3_submission_log_step_details_redacted"
         level: "L3"
         stage: "submissions"
