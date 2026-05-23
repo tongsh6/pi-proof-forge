@@ -69,6 +69,16 @@ _SESSION_STATE_MARKER_PATHS = (
     "storage-state.json",
 )
 _EXTERNAL_L3_LIVE_RUN_RUNBOOK = "docs/runbooks/external-l3-live-run.md"
+_EXTERNAL_L3_LIVE_RUN_RUNBOOK_SECTIONS = (
+    "# External L3 真实运行 Runbook",
+    "## 适用边界",
+    "## 前置产物",
+    "## 运行前检查",
+    "## 执行命令",
+    "## Blocker 处理",
+    "## 运行后审计",
+    "## 完成口径",
+)
 
 
 def build_external_l3_validation(
@@ -751,11 +761,18 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     "",
                     f"- 路径: `{runbook.get('path', '')}`",
                     f"- 语言: `{runbook.get('language', '')}`",
+                    f"- 文件存在: `{runbook.get('exists', False)}`",
+                    f"- SHA256: `{runbook.get('sha256', '')}`",
                     f"- 运行前必须复核: `{runbook.get('operator_review_required', False)}`",
                     f"- 复制命令前必须替换 live 输入: `{runbook.get('copy_paste_requires_live_value_replacement', True)}`",
                     f"- 原始 live 输入是否持久化: `{runbook.get('raw_live_inputs_persisted', True)}`",
                 ]
             )
+            sections_present = runbook.get("required_sections_present") or {}
+            if sections_present:
+                lines.extend(["", "#### Runbook 必需章节", ""])
+                for section, present in sections_present.items():
+                    lines.append(f"- `{section}`: `{present}`")
             covers = runbook.get("covers") or []
             if covers:
                 lines.extend(["", "#### Runbook 覆盖边界", ""])
@@ -2225,9 +2242,22 @@ def _operator_command_template_review() -> dict[str, Any]:
 
 
 def _operator_runbook_reference() -> dict[str, Any]:
+    runbook_path = Path(_EXTERNAL_L3_LIVE_RUN_RUNBOOK)
+    runbook_exists = runbook_path.is_file()
+    runbook_text = (
+        runbook_path.read_text(encoding="utf-8") if runbook_exists else ""
+    )
+    sections_present = {
+        section: section in runbook_text
+        for section in _EXTERNAL_L3_LIVE_RUN_RUNBOOK_SECTIONS
+    }
     return {
         "path": _EXTERNAL_L3_LIVE_RUN_RUNBOOK,
         "language": "zh-CN",
+        "exists": runbook_exists,
+        "sha256": _sha256_file(runbook_path) if runbook_exists else "",
+        "required_sections": list(_EXTERNAL_L3_LIVE_RUN_RUNBOOK_SECTIONS),
+        "required_sections_present": sections_present,
         "operator_review_required": True,
         "copy_paste_requires_live_value_replacement": True,
         "raw_live_inputs_persisted": False,

@@ -346,7 +346,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须记录结构化授权确认包，包含必需确认声明、证据清单、中止条件、脱敏策略、禁止输入项和中文真实运行 runbook 引用，且不持久化原始确认值。"
+        message: "External L3 验收必须记录结构化授权确认包，包含必需确认声明、证据清单、中止条件、脱敏策略、禁止输入项和中文真实运行 runbook 引用；runbook 引用必须记录存在状态、SHA256 指纹和必需章节完整性，且不持久化原始确认值。"
       - rule_id: "external_l3_handoff_command_template_matches_effective_policy"
         level: "L3"
         stage: "submissions"

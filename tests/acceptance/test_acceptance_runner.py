@@ -393,8 +393,15 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert handoff["forbidden_input_audit"]["forbidden_inputs_present"] is False
     assert all("value" not in item for item in handoff["required_env"])
     runbook = handoff["runbook"]
+    runbook_path = Path("docs/runbooks/external-l3-live-run.md")
     assert runbook["path"] == "docs/runbooks/external-l3-live-run.md"
     assert runbook["language"] == "zh-CN"
+    assert runbook["exists"] is True
+    assert runbook["sha256"] == hashlib.sha256(runbook_path.read_bytes()).hexdigest()
+    assert all(
+        runbook["required_sections_present"][section] is True
+        for section in runbook["required_sections"]
+    )
     assert runbook["operator_review_required"] is True
     assert runbook["copy_paste_requires_live_value_replacement"] is True
     assert runbook["raw_live_inputs_persisted"] is False
@@ -461,7 +468,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "| `timeout_seconds` | `10` |" in markdown
     assert "### 真实运行 Runbook" in markdown
     assert "- 路径: `docs/runbooks/external-l3-live-run.md`" in markdown
+    assert f"- SHA256: `{runbook['sha256']}`" in markdown
     assert "- 运行前必须复核: `True`" in markdown
+    assert "#### Runbook 必需章节" in markdown
     assert "#### Runbook 覆盖边界" in markdown
     assert "### 可复制命令模板" in markdown
     assert "```bash" in markdown

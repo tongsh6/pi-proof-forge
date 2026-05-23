@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import shlex
 import subprocess
@@ -2059,11 +2060,24 @@ def _external_l3_authorization_packet_result(
     abort_conditions = packet.get("abort_conditions") or []
     prohibited_inputs = set(packet.get("operator_must_not_provide") or [])
     runbook_path = str(runbook.get("path", ""))
+    runbook_file = Path(runbook_path)
     runbook_covers = set(runbook.get("covers") or [])
+    required_sections = runbook.get("required_sections") or []
+    required_sections_present = runbook.get("required_sections_present") or {}
+    runbook_sha256_matches = (
+        runbook_file.is_file()
+        and runbook.get("sha256") == _sha256_path(runbook_file)
+    )
     runbook_ok = (
         runbook_path == "docs/runbooks/external-l3-live-run.md"
-        and Path(runbook_path).is_file()
+        and runbook.get("exists") is True
+        and runbook_sha256_matches
         and runbook.get("language") == "zh-CN"
+        and len(required_sections) >= 8
+        and all(
+            required_sections_present.get(section) is True
+            for section in required_sections
+        )
         and runbook.get("operator_review_required") is True
         and runbook.get("copy_paste_requires_live_value_replacement") is True
         and runbook.get("raw_live_inputs_persisted") is False
@@ -2076,6 +2090,8 @@ def _external_l3_authorization_packet_result(
         }.issubset(runbook_covers)
         and "### 真实运行 Runbook" in markdown
         and f"- 路径: `{runbook_path}`" in markdown
+        and f"- SHA256: `{runbook.get('sha256', '')}`" in markdown
+        and "#### Runbook 必需章节" in markdown
     )
     if (
         packet.get("raw_confirmation_values_persisted") is False
@@ -2090,7 +2106,7 @@ def _external_l3_authorization_packet_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权确认包已记录必需声明、证据清单、中止条件、禁止输入项和中文真实运行 runbook。",
+            message="External L3 授权确认包已记录必需声明、证据清单、中止条件、禁止输入项、中文真实运行 runbook 指纹和章节完整性。",
         )
     return JourneyStepResult(
         status="fail",
@@ -2195,6 +2211,14 @@ def _external_l3_handoff_command_template_result(
 
 def _expected_env_assignment(name: str, value: object) -> str:
     return f"{name}={shlex.quote(str(value))}"
+
+
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _external_l3_handoff_command_template_review_result(
