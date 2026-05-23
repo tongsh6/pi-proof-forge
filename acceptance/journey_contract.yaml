@@ -352,7 +352,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 授权交接包必须记录当前运行配置；命令模板必须使用 shell-safe 的 live 输入占位符，并与当前 channel、session/output 目录、timeout/headless 和有效频控策略保持一致；Markdown 报告必须展示可复制命令模板，避免下一次真实运行复制过期默认值或被 shell 误解析。"
+        message: "External L3 授权交接包必须记录当前运行配置；必须同时提供无授权本地预检模板和授权真实运行模板，两者都必须使用 shell-safe 的 live 输入占位符，并与当前 channel、session/output 目录、timeout/headless 和有效频控策略保持一致；Markdown 报告必须分开展示两阶段命令模板，避免下一次真实运行复制过期默认值或被 shell 误解析。"
       - rule_id: "external_l3_handoff_command_template_review_recorded"
         level: "L3"
         stage: "submissions"

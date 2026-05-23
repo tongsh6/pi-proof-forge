@@ -779,11 +779,25 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 for item in covers:
                     lines.append(f"- `{item}`")
         command_template = str(handoff.get("command_template", ""))
+        preflight_command_template = str(
+            handoff.get("preflight_command_template", "")
+        )
+        if preflight_command_template:
+            lines.extend(
+                [
+                    "",
+                    "### 本地预检命令模板",
+                    "",
+                    "```bash",
+                    preflight_command_template,
+                    "```",
+                ]
+            )
         if command_template:
             lines.extend(
                 [
                     "",
-                    "### 可复制命令模板",
+                    "### 授权真实运行命令模板",
                     "",
                     "```bash",
                     command_template,
@@ -2167,6 +2181,7 @@ def _operator_handoff(
             external_submission_attempted=external_submission_attempted,
         ),
         "runbook": _operator_runbook_reference(),
+        "preflight_command_template": _operator_preflight_command_template(request),
         "command_template": _operator_command_template(request),
         "command_template_review": _operator_command_template_review(),
     }
@@ -2184,11 +2199,41 @@ def _operator_runtime_options(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def _operator_command_template(request: dict[str, Any]) -> str:
+    return _operator_command_template_for_confirmation_state(
+        request=request,
+        authorized="true",
+        final_submit_confirmed="true",
+        session_ready_confirmed="true",
+    )
+
+
+def _operator_preflight_command_template(request: dict[str, Any]) -> str:
+    return _operator_command_template_for_confirmation_state(
+        request=request,
+        authorized="false",
+        final_submit_confirmed="false",
+        session_ready_confirmed="false",
+    )
+
+
+def _operator_command_template_for_confirmation_state(
+    *,
+    request: dict[str, Any],
+    authorized: str,
+    final_submit_confirmed: str,
+    session_ready_confirmed: str,
+) -> str:
     env_assignments = [
         _shell_env_assignment("PIPF_EXTERNAL_L3_CHANNEL", str(request["channel"])),
-        _shell_env_assignment("PIPF_EXTERNAL_L3_AUTHORIZED", "true"),
-        _shell_env_assignment("PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED", "true"),
-        _shell_env_assignment("PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED", "true"),
+        _shell_env_assignment("PIPF_EXTERNAL_L3_AUTHORIZED", authorized),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED",
+            final_submit_confirmed,
+        ),
+        _shell_env_assignment(
+            "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED",
+            session_ready_confirmed,
+        ),
         _shell_env_assignment("PIPF_EXTERNAL_L3_JOB_URL", "<https-url>"),
         _shell_env_assignment("PIPF_EXTERNAL_L3_RESUME_PDF", "<resume.pdf>"),
         _shell_env_assignment("PIPF_EXTERNAL_L3_PROFILE", "<profile.yaml>"),
@@ -2258,6 +2303,7 @@ def _operator_command_template_review() -> dict[str, Any]:
             "<recruiter>",
         ],
         "review_items": [
+            "先运行本地预检命令模板，确认输入审计、session 存储、频控和 runbook 证据完整，再考虑授权真实运行命令模板。",
             "替换所有 live 输入占位符后再运行命令。",
             "确认 PIPF_EXTERNAL_L3_AUTHORIZED=true 只在用户显式授权后保留。",
             "确认 PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true 只在独立最终提交确认后保留。",

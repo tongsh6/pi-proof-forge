@@ -373,6 +373,14 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "PIPF_EXTERNAL_L3_RATE_LIMIT_DAILY_LIMIT=30"
         in handoff["command_template"]
     )
+    preflight_template = handoff["preflight_command_template"]
+    assert "PIPF_EXTERNAL_L3_AUTHORIZED=false" in preflight_template
+    assert "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=false" in preflight_template
+    assert "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=false" in preflight_template
+    assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" not in preflight_template
+    assert "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true" not in preflight_template
+    assert "PIPF_EXTERNAL_L3_JOB_URL='<https-url>'" in preflight_template
+    assert "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3" in preflight_template
     command_template_review = handoff["command_template_review"]
     assert command_template_review["copy_paste_ready"] is False
     assert command_template_review["requires_placeholder_replacement"] is True
@@ -482,7 +490,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 运行前必须复核: `True`" in markdown
     assert "#### Runbook 必需章节" in markdown
     assert "#### Runbook 覆盖边界" in markdown
-    assert "### 可复制命令模板" in markdown
+    assert "### 本地预检命令模板" in markdown
+    assert "PIPF_EXTERNAL_L3_AUTHORIZED=false" in markdown
+    assert "### 授权真实运行命令模板" in markdown
+    assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
     assert "```bash" in markdown
     assert "PIPF_EXTERNAL_L3_JOB_URL='<https-url>'" in markdown
     assert "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3" in markdown
@@ -738,7 +749,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert handoff_template_rule["level"] == "L3"
     assert handoff_template_rule["stage"] == "submissions"
     assert handoff_template_rule["status"] == "pass"
-    assert "运行配置" in handoff_template_rule["message"]
+    assert "两阶段模板" in handoff_template_rule["message"]
     handoff_template_review_rule = next(
         step
         for step in journey_payload["steps"]

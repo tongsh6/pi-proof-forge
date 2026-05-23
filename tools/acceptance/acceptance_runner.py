@@ -2137,6 +2137,7 @@ def _external_l3_handoff_command_template_result(
 
     handoff = payload.get("operator_handoff") or {}
     template = str(handoff.get("command_template", ""))
+    preflight_template = str(handoff.get("preflight_command_template", ""))
     runtime_options = handoff.get("runtime_options") or {}
     rate_limit_policy = payload.get("rate_limit_policy") or {}
     required_fragments = [
@@ -2187,12 +2188,40 @@ def _external_l3_handoff_command_template_result(
         ),
         "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3",
     ]
+    preflight_fragments = [
+        _expected_env_assignment("PIPF_EXTERNAL_L3_AUTHORIZED", "false"),
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED",
+            "false",
+        ),
+        _expected_env_assignment(
+            "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED",
+            "false",
+        ),
+        _expected_env_assignment("PIPF_EXTERNAL_L3_JOB_URL", "<https-url>"),
+        "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3",
+    ]
     markdown_fragments = [
-        "### 可复制命令模板",
+        "### 本地预检命令模板",
+        "```bash",
+        preflight_template,
+        "### 授权真实运行命令模板",
         "```bash",
         template,
     ]
     missing = [fragment for fragment in required_fragments if fragment not in template]
+    missing.extend(
+        fragment
+        for fragment in preflight_fragments
+        if fragment not in preflight_template
+    )
+    if _expected_env_assignment("PIPF_EXTERNAL_L3_AUTHORIZED", "true") in preflight_template:
+        missing.append("preflight_template.authorized_must_be_false")
+    if (
+        _expected_env_assignment("PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED", "true")
+        in preflight_template
+    ):
+        missing.append("preflight_template.final_submit_must_be_false")
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
     )
@@ -2200,7 +2229,7 @@ def _external_l3_handoff_command_template_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板使用 shell-safe 的 live 输入占位符，并匹配当前运行配置与有效频控策略。",
+            message="External L3 授权交接命令模板包含无授权本地预检和授权真实运行两阶段模板，均使用 shell-safe 的 live 输入占位符，并匹配当前运行配置与有效频控策略。",
         )
     return JourneyStepResult(
         status="fail",
