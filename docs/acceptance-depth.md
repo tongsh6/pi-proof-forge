@@ -168,7 +168,7 @@
 - L3 证据必须包含 `outcome_summary`：把 acceptance runner 的 `pass` 解释为“证据写出与规则通过”，并明确区分 pre-submit blocker、post-command blocker 和真实外部验证成功；只要未达到 `external_validated`，`p0_017_complete` 必须为 `false`。
 - 真实渠道命令返回成功也不等于 L3 成功；必须解析并确认 `submission_log.yaml` 与同目录 `submission_log.json` 均存在，且 submission log 必须写回 `external_l3_validation_run_id`、`external_l3_validation_path` 和匹配本次 validation 的 `input_artifacts`，同时把原始 Job URL、resume/profile 路径字段写成 `<redacted>`，共同写入 `submission_traceability.linked_to_validation=true`。
 - 如果 submission log 存在但没有反向指向本次 L3 validation record，必须记录为 `submission_log_not_linked` blocker，不得把单向日志路径解析视为真实验收通过。
-- 如果 submission log JSON 可解析，`submission_traceability` 必须写入 `submission_log_summary`，包含 status、error、mode 和 last step；post-command live blocker diagnostics 也必须携带该摘要，让 rate limit、login required、target verify 等业务 blocker 可直接诊断。
+- 如果 submission log JSON 可解析，`submission_traceability` 必须写入 `submission_log_summary`，包含 status、error、mode 和已脱敏的 last step；post-command live blocker diagnostics 也必须携带该摘要，让 rate limit、login required、target verify 等业务 blocker 可直接诊断。如果 last step detail 包含未脱敏 target_verify 观测值或 HTML snapshot 描述，validation 摘要必须改写为脱敏占位，而不是复制原始 detail。
 - 如果 submission log status 为 `success`，`submission_traceability` 必须证明 `rate_limit`、`login_check`、`target_verify`、`submit_safety`、`chat_send_resume` 和 `submit` 六个关键步骤均存在且为 `success`；缺失或失败时必须记录 `successful_submission_required_steps_present` failed check。
 - `submission_traceability` 必须记录逐项 `checks` 与 `failed_checks`，区分缺少 log hint、YAML/JSON 不存在、JSON 不可解析、run id/path 不匹配和输入产物指纹不匹配。
 - 真实渠道命令执行后产生 live blocker 时，`live_blocker` 必须直接包含 `failed_checks` 和 `diagnostics`，包括 returncode、submission log 路径和逐项 traceability checks，避免用户为理解 blocker 再反查深层字段。
