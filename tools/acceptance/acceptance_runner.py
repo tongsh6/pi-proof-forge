@@ -1820,7 +1820,9 @@ def _external_l3_submission_log_required_steps_result(
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -1841,6 +1843,30 @@ def _external_l3_submission_log_required_steps_result(
             message="External L3 未产生可解析 submission log，关键步骤缺失由 traceability failed_checks 记录。",
         )
     required_steps = traceability.get("submission_log_required_steps") or {}
+    markdown_fragments = [
+        "## Submission Log 追溯",
+        f"- 成功投递关键步骤是否齐备: `{required_steps.get('passed', False)}`",
+        f"- 成功投递必需步骤: `{', '.join(required_steps.get('required_for_successful_submit', []))}`",
+        f"- 已记录投递步骤: `{_submission_required_steps_markdown_summary(required_steps.get('recorded_steps', []))}`",
+        f"- 缺失投递步骤: `{', '.join(required_steps.get('missing_steps', []))}`",
+        f"- 失败投递步骤: `{', '.join(required_steps.get('failed_steps', []))}`",
+        f"- 非成功日志免完整步骤原因: `{required_steps.get('not_required_reason', '')}`",
+    ]
+    markdown_missing = [
+        f"markdown:{fragment}"
+        for fragment in markdown_fragments
+        if fragment not in markdown
+    ]
+    if markdown_missing:
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=(
+                "External L3 submission log 关键步骤 Markdown 与 JSON "
+                "不一致: "
+                + ", ".join(markdown_missing)
+            ),
+        )
     if required_steps.get("passed") is True:
         return JourneyStepResult(
             status="pass",
@@ -1859,6 +1885,17 @@ def _external_l3_submission_log_required_steps_result(
         evidence=step.evidence,
         message="External L3 submission log 缺少成功投递关键步骤审计。",
     )
+
+
+def _submission_required_steps_markdown_summary(steps: Any) -> str:
+    if not isinstance(steps, list):
+        return ""
+    rendered = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        rendered.append(f"{step.get('name', '')}:{step.get('status', '')}")
+    return ", ".join(rendered)
 
 
 def _external_l3_submission_log_raw_inputs_redacted_result(

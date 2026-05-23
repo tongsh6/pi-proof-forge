@@ -322,7 +322,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须在成功投递的 submission log 中证明 rate_limit、login_check、target_verify、submit_safety、chat_send_resume 和 submit 关键步骤均已记录且通过；缺失时必须转为 traceability blocker。只有 submission log status=success 才能计为 external_validated；returncode 为 0 但 log status 不是 success 时必须记录业务 blocker。"
+        message: "External L3 验收必须在成功投递的 submission log 中证明 rate_limit、login_check、target_verify、submit_safety、chat_send_resume 和 submit 关键步骤均已记录且通过，并在 Markdown 报告同步展示必需步骤、已记录步骤、缺失步骤和失败步骤；缺失时必须转为 traceability blocker。只有 submission log status=success 才能计为 external_validated；returncode 为 0 但 log status 不是 success 时必须记录业务 blocker。"
       - rule_id: "external_l3_submission_log_raw_inputs_redacted"
         level: "L3"
         stage: "submissions"

@@ -2658,6 +2658,18 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
         "successful_submission_required_steps_present"
         in payload["live_blocker"]["failed_checks"]
     )
+    markdown_path = Path(report.steps[0].evidence).with_suffix(".md")
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert (
+        "- 成功投递必需步骤: "
+        "`rate_limit, login_check, target_verify, submit_safety, chat_send_resume, submit`"
+    ) in markdown
+    assert "- 已记录投递步骤: `rate_limit:success, login_check:success`" in markdown
+    assert (
+        "- 缺失投递步骤: `target_verify, submit_safety, chat_send_resume, submit`"
+        in markdown
+    )
+    assert "- 失败投递步骤: ``" in markdown
 
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
@@ -2668,6 +2680,24 @@ def test_acceptance_runner_l3_blocks_success_log_without_required_steps(
     )
     assert required_steps_rule["status"] == "pass"
     assert "关键步骤缺失记录为 traceability blocker" in required_steps_rule["message"]
+
+    markdown_path.write_text(
+        markdown.replace(
+            "- 缺失投递步骤: `target_verify, submit_safety, chat_send_resume, submit`",
+            "- 缺失投递步骤: `submit`",
+        ),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    required_steps_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_submission_log_required_steps_recorded"
+    )
+    assert required_steps_rule["status"] == "fail"
+    assert "markdown:- 缺失投递步骤" in required_steps_rule["message"]
+    markdown_path.write_text(markdown, encoding="utf-8")
 
 
 def test_acceptance_runner_l3_blocks_success_without_submission_log(

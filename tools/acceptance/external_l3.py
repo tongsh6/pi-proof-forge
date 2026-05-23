@@ -552,6 +552,11 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- Submission log 步骤详情是否脱敏: `{submission_traceability.get('submission_log_step_details_redacted', False)}`",
                 f"- Submission log 原始浏览器产物是否脱敏: `{submission_traceability.get('submission_log_browser_artifacts_redacted', False)}`",
                 f"- 成功投递关键步骤是否齐备: `{required_steps.get('passed', False)}`",
+                f"- 成功投递必需步骤: `{', '.join(required_steps.get('required_for_successful_submit', []))}`",
+                f"- 已记录投递步骤: `{_submission_required_steps_markdown_summary(required_steps.get('recorded_steps', []))}`",
+                f"- 缺失投递步骤: `{', '.join(required_steps.get('missing_steps', []))}`",
+                f"- 失败投递步骤: `{', '.join(required_steps.get('failed_steps', []))}`",
+                f"- 非成功日志免完整步骤原因: `{required_steps.get('not_required_reason', '')}`",
                 f"- Submission Status: `{submission_summary.get('status', '')}`",
                 f"- Submission Error: `{submission_summary.get('error', '')}`",
                 f"- Submission Mode: `{submission_summary.get('mode', '')}`",
@@ -752,6 +757,17 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 lines.append(f"- {item}")
     lines.append("")
     return "\n".join(lines)
+
+
+def _submission_required_steps_markdown_summary(steps: Any) -> str:
+    if not isinstance(steps, list):
+        return ""
+    rendered = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        rendered.append(f"{step.get('name', '')}:{step.get('status', '')}")
+    return ", ".join(rendered)
 
 
 def _request_from_env(root: Path, default_timeout_seconds: int) -> dict[str, Any]:
