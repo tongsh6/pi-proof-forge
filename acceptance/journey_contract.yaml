@@ -316,7 +316,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收只能读取预期输出根目录下的 submission log；命令输出指向允许根目录外时必须记录 traceability blocker，不能读取相邻 JSON 或链接为成功证据。"
+        message: "External L3 验收只能读取预期输出根目录下的 submission log；命令输出指向允许根目录外时必须记录 traceability blocker，不能读取相邻 JSON 或链接为成功证据；Markdown 报告必须同步展示允许根目录、路径边界结论和拒绝原因，且不得泄露被拒绝的原始越界路径。"
       - rule_id: "external_l3_submission_log_required_steps_recorded"
         level: "L3"
         stage: "submissions"
