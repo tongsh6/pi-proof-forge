@@ -395,9 +395,8 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "https://www.liepin.com/job/123.shtml" not in item
         for item in authorization_packet["required_confirmation_statements"]
     )
-    markdown = (evidence_path.parent / "external-l3-validation.md").read_text(
-        encoding="utf-8"
-    )
+    markdown_path = evidence_path.parent / "external-l3-validation.md"
+    markdown = markdown_path.read_text(encoding="utf-8")
     assert "# External L3 投递验证" in markdown
     assert "## 结果分级" in markdown
     assert "- Outcome: `pre_submit_blocker_recorded`" in markdown
@@ -453,10 +452,34 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "- 来源类型: `live_blocker`" in markdown
     assert "- 来源状态: `pre_submit_blocked`" in markdown
     assert "- 来源原因: `explicit_user_authorization_required`" in markdown
+    assert "- Submit 命令允许启动: `False`" in markdown
+    assert "- Missing Gates: `user_authorization" in markdown
+    assert "- 诊断 Job URL 已提供: `False`" in markdown
+    assert "- 诊断 Job URL 原值是否持久化: `False`" in markdown
     assert "## 证据清单" in markdown
     assert "| 证据 | 类型 | 必需 | 存在 | 状态 | 位置 |" in markdown
     assert "`external_l3_validation_json`" in markdown
     assert "`feedback_source_artifact`" in markdown
+
+    markdown_path.write_text(
+        markdown.replace(
+            "- Missing Gates: `user_authorization",
+            "- Missing Gates: `stale_user_authorization",
+        ),
+        encoding="utf-8",
+    )
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    pre_submit_diagnostics_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_pre_submit_blocker_diagnostics_recorded"
+        )
+    )
+    assert pre_submit_diagnostics_rule["status"] == "fail"
+    assert "Missing Gates" in pre_submit_diagnostics_rule["message"]
 
 
 def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(

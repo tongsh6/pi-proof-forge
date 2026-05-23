@@ -2467,7 +2467,9 @@ def _external_l3_pre_submit_blocker_diagnostics_result(
             message=step.message,
         )
     try:
-        payload = json.loads(Path(step.evidence).read_text(encoding="utf-8"))
+        evidence_path = Path(step.evidence)
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        markdown = evidence_path.with_suffix(".md").read_text(encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
         return JourneyStepResult(
             status="fail",
@@ -2483,6 +2485,22 @@ def _external_l3_pre_submit_blocker_diagnostics_result(
     blocker = payload.get("live_blocker") or {}
     diagnostics = blocker.get("diagnostics") or {}
     failed_checks = blocker.get("failed_checks") or []
+    input_artifacts = diagnostics.get("live_input_artifacts") or {}
+    job_url = input_artifacts.get("job_url") or {}
+    missing = []
+    markdown_fragments = [
+        "## Live Blocker",
+        f"- Failed Checks: `{', '.join(failed_checks)}`",
+        f"- Submit 命令允许启动: `{diagnostics.get('submit_command_allowed', '')}`",
+        f"- Missing Gates: `{', '.join(diagnostics.get('missing_gates', []))}`",
+        f"- 诊断 Job URL 已提供: `{job_url.get('present', False)}`",
+        f"- 诊断 Job URL 原值是否持久化: `{job_url.get('raw_value_persisted', True)}`",
+    ]
+    missing.extend(
+        f"markdown:{fragment}"
+        for fragment in markdown_fragments
+        if fragment not in markdown
+    )
     if (
         payload.get("status") == "live_blocker_recorded"
         and isinstance(failed_checks, list)
@@ -2490,6 +2508,7 @@ def _external_l3_pre_submit_blocker_diagnostics_result(
         and isinstance(diagnostics.get("missing_gates"), list)
         and isinstance(diagnostics.get("readiness_gates"), list)
         and isinstance(diagnostics.get("live_input_artifacts"), dict)
+        and not missing
     ):
         return JourneyStepResult(
             status="pass",
@@ -2502,7 +2521,11 @@ def _external_l3_pre_submit_blocker_diagnostics_result(
     return JourneyStepResult(
         status="fail",
         evidence=step.evidence,
-        message="External L3 pre-submit blocker 缺少 missing gates 或输入审计诊断。",
+        message=(
+            "External L3 pre-submit blocker 缺少 missing gates、输入审计诊断，"
+            "或 Markdown 与 JSON 不一致: "
+            + ", ".join(missing)
+        ),
     )
 
 

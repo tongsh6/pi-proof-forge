@@ -348,6 +348,27 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     f"- JSON: `{blocker_diagnostics.get('log_json_path', '')}`",
                 ]
             )
+            if (
+                "submit_command_allowed" in blocker_diagnostics
+                or "missing_gates" in blocker_diagnostics
+            ):
+                lines.extend(
+                    [
+                        f"- Submit 命令允许启动: `{blocker_diagnostics.get('submit_command_allowed', '')}`",
+                        f"- Missing Gates: `{', '.join(blocker_diagnostics.get('missing_gates', []))}`",
+                    ]
+                )
+            diagnostic_input_artifacts = blocker_diagnostics.get(
+                "live_input_artifacts"
+            ) or {}
+            diagnostic_job_url = diagnostic_input_artifacts.get("job_url") or {}
+            if diagnostic_input_artifacts:
+                lines.extend(
+                    [
+                        f"- 诊断 Job URL 已提供: `{diagnostic_job_url.get('present', False)}`",
+                        f"- 诊断 Job URL 原值是否持久化: `{diagnostic_job_url.get('raw_value_persisted', True)}`",
+                    ]
+                )
     if readiness:
         lines.extend(
             [
