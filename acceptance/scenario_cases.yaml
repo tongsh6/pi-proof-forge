@@ -660,7 +660,8 @@ cases:
       用户选择一个已完成的岗位目标和一组已进入候选池的 Evidence Cards，
       使用已配置且可连接的本地 LLM，在 Quick Run 中完成一次单岗位、单轮的
       匹配、简历生成和质量评测，
-      获得可追溯的匹配报告、定制简历、Scorecard 和补证据建议。
+      获得面向目标公司/岗位簇的候选人简历、独立追溯记录、Scorecard 和补证据建议。
+      同一简历版本可以复用于同类岗位簇，但不能被视为所有公司/岗位通投版本。
 
     scope:
       includes:
@@ -702,6 +703,16 @@ cases:
         required: true
         source: "saved_lm_studio_settings"
         missing_result: "missing_provider_config"
+      personal_profile:
+        required: true
+        source: "personal_profile"
+        required_fields:
+          - "name"
+          - "phone"
+          - "email"
+          - "city"
+          - "current_position"
+        missing_result: "missing_personal_profile"
 
     resume_positioning_policy:
       required: true
@@ -793,9 +804,22 @@ cases:
         required_artifact: "resume_output"
         required_fields:
           - "resume_version_id"
+          - "target_company_or_job_cluster"
           - "selected_positioning"
           - "content"
           - "source_evidence_card_ids"
+        candidate_visible_forbidden_content:
+          - "Evidence trace"
+          - "local_raw_source_path"
+          - "source_report"
+          - "internal_evidence_id"
+          - "system_version_title"
+        required_candidate_sections:
+          - "personal_profile"
+          - "target_summary"
+          - "core_skills"
+          - "structured_experience"
+        audit_trace_required_outside_resume: true
       export:
         required_artifact: "resume_pdf"
         required_fields:
@@ -818,6 +842,7 @@ cases:
     fact_preservation_policy:
       resume_claims_must_trace_to_evidence: true
       source_evidence_card_ids_required: true
+      traceability_storage: "run_record_or_resume_trace_not_candidate_pdf_body"
       generated_content_must_not_add_new_metrics: true
       violation_result: "fact_preservation_failed"
 

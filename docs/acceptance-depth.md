@@ -49,7 +49,9 @@
 - 本次 pipeline 使用独立 evidence 目录，匹配阶段只消费 staging 后的 selected eligible Evidence Cards。
 - Quick Run record 保留 `material_source`、`raw_path`、`evidence_dir`、Matching Report、Resume、PDF、Scorecard、gap tasks、resume positioning 和 masked LLM 摘要。
 - Matching Report 中的 `evidence_card_ids` 必须是本次 selected eligible Evidence Cards 的子集。
-- Resume 输出包含对应 Evidence Card 的 `Evidence trace`，能从简历回溯到材料来源，并记录 fact-preserving traceability。
+- 候选人可见 Resume/PDF 必须面向目标公司和岗位要求生成，包含 Personal Profile、目标岗位定位、核心技能和结构化经历；同一版本可以复用于同类岗位簇，但不得作为所有公司/岗位通用简历。
+- Resume claim 必须能通过 run record / `resume_trace` / scorecard 回溯到对应 Evidence Cards；`Evidence trace`、本机路径、source report、内部 evidence id 和系统版本标题不得出现在候选人可见简历正文或 PDF 中。
+- Scorecard 低于可投递阈值、缺少 Personal Profile 必需字段或仍有必需 gap tasks 时，Quick Run 必须把简历标记为 `NEEDS_REVIEW` / `NEEDS_EVIDENCE`，不能把 PDF 呈现为合格投递版本。
 - 外部自动化必须证明 LLM required 路径被调用，不能静默 fallback 到非 LLM 路径。
 - 明文 API key 和 policy secret storage 字段不得出现在 Quick Run record 中。
 

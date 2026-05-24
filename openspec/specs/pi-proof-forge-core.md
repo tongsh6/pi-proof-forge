@@ -11,6 +11,8 @@
 
 PiProofForge 是一个 evidence-first 框架，将原始工作材料（日志、PR、报告、截图等）转为结构化证据（Evidence Cards），再通过可解释匹配生成事实保真的目标文档（简历等）。
 
+系统目标不是维护一份所有岗位通用的静态简历，而是基于用户真实个人资料、工作经历和 Evidence Cards，结合目标公司、岗位 JD、must-have、seniority signal、业务场景和简历定位，生成可投递的候选人简历版本。同一版本可以复用于同类岗位或同一目标岗位簇，但不得被定义为“一份简历投所有公司/岗位”。
+
 ---
 
 ## 核心实体规范
@@ -83,11 +85,15 @@ required_fields:
 
 ### 阶段 3：文档生成（Generation）
 
-**输入**: Matching Report + 选定的 Evidence Cards  
-**输出**: 目标文档（markdown/pdf）  
+**输入**: Personal Profile + Matching Report + Job Profile/JD + 选定的 Evidence Cards + resume positioning
+**输出**: 候选人简历文档（markdown/pdf）+ 独立追溯记录
 **约束**:
 - 严禁生成无证据支撑的内容
 - 语气调整不改变事实
+- 候选人可见简历必须包含姓名、联系方式、城市、当前定位、目标岗位定位、核心技能和结构化经历；缺少 Personal Profile 或经历结构时不得标记为可投递
+- 简历内容必须围绕目标公司/岗位要求组织，覆盖 Job Profile/JD 中的 must-have、关键词、seniority signal 和业务场景；允许同一版本复用于同类目标岗位簇，但必须记录适用范围
+- 审计追溯信息必须写入 `resume_trace` / run record / scorecard，不得把 `Evidence trace`、本机路径、source report、内部 evidence id 或系统版本标题写入候选人 PDF 正文
+- Scorecard 未达可投递阈值或仍有必需 gap tasks 时，生成结果必须进入 `NEEDS_REVIEW` / `NEEDS_EVIDENCE` 状态，而不是作为可投递简历
 
 ### 阶段 4：质量评估（Evaluation）
 

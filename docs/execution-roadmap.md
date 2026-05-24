@@ -248,7 +248,9 @@ Depends on:
 Vision link:
 
 - 完成单岗位主链路：eligible Evidence Cards -> explainable matching -> fact-preserving resume/PDF -> scorecard/gap feedback。
-- 必须验证 complete job profile 与 saved eligible evidence 的选择、resume positioning 记录、匹配报告、简历、PDF、Scorecard、gap tasks 和事实追溯。
+- 必须验证 complete job profile/JD、Personal Profile、saved eligible evidence 的选择、resume positioning 记录、匹配报告、候选人可见简历、PDF、Scorecard、gap tasks 和独立事实追溯。
+- 简历生成目标是“针对目标公司/岗位簇的可投递版本”，不是一份简历投所有公司/岗位；候选人 PDF 不得包含 `Evidence trace`、本机路径、source report、内部 evidence id 或系统版本标题，这些追溯信息必须进入 run record / `resume_trace` / scorecard。
+- Scorecard 未达可投递阈值、Personal Profile 缺必需字段或仍有必需 gap tasks 时，Quick Run 必须输出 `NEEDS_REVIEW` / `NEEDS_EVIDENCE`，不得把 PDF 标为合格投递版本。
 
 Expected evidence:
 
