@@ -2136,16 +2136,42 @@ def _external_l3_authorization_packet_result(
             "satisfied",
         ),
     }
+    packet_status = str(packet.get("status", ""))
+    if packet_status == "blocked_until_missing_gates_resolved":
+        expected_pending_count = 5
+        expected_satisfied_count = 1
+        expected_acknowledgement_statuses = {
+            item_id: status
+            for item_id, (_, _, _, status) in expected_acknowledgements.items()
+        }
+        state_message = "无授权 no-go 态"
+    elif packet_status in {"ready_for_operator_confirmation", "executed"}:
+        expected_pending_count = 0
+        expected_satisfied_count = len(expected_acknowledgements)
+        expected_acknowledgement_statuses = {
+            item_id: "satisfied" for item_id in expected_acknowledgements
+        }
+        state_message = (
+            "授权执行态"
+            if packet_status == "executed"
+            else "授权待执行态"
+        )
+    else:
+        expected_pending_count = -1
+        expected_satisfied_count = -1
+        expected_acknowledgement_statuses = {}
+        state_message = "未知态"
     acknowledgement_ok = True
-    for item_id, (env_var, gate, source_path, status) in (
+    for item_id, (env_var, gate, source_path, _) in (
         expected_acknowledgements.items()
     ):
         item = acknowledgement_items.get(item_id) or {}
+        expected_status = expected_acknowledgement_statuses.get(item_id)
         acknowledgement_ok = acknowledgement_ok and (
             env_var in (item.get("env_vars") or [])
             and gate in (item.get("gates") or [])
             and item.get("source_path") == source_path
-            and item.get("status") == status
+            and item.get("status") == expected_status
             and item.get("required_before_template_release") is True
             and item.get("required_before_authorized_template") is True
             and item.get("raw_live_inputs_persisted") is False
@@ -2153,8 +2179,9 @@ def _external_l3_authorization_packet_result(
         )
     acknowledgement_markdown_ok = (
         "#### 授权签核清单" in markdown
-        and "- 授权签核待补数: `5`" in markdown
-        and "- 授权签核已满足数: `1`" in markdown
+        and f"- 状态: `{packet_status}`" in markdown
+        and f"- 授权签核待补数: `{expected_pending_count}`" in markdown
+        and f"- 授权签核已满足数: `{expected_satisfied_count}`" in markdown
         and "- 模板发布前必需: `True`" in markdown
         and "| 签核项 | 状态 | Env | Gate | 来源 | 原值落盘 |" in markdown
         and "`acknowledge_external_channel_authorization`" in markdown
@@ -2165,8 +2192,9 @@ def _external_l3_authorization_packet_result(
     if (
         packet.get("raw_confirmation_values_persisted") is False
         and packet.get("required_before_template_release") is True
-        and packet.get("pending_acknowledgement_count") == 5
-        and packet.get("satisfied_acknowledgement_count") == 1
+        and packet.get("pending_acknowledgement_count") == expected_pending_count
+        and packet.get("satisfied_acknowledgement_count")
+        == expected_satisfied_count
         and len(required_statements) >= 3
         and {"live_run_readiness", "submit_safety_decision"}.issubset(
             required_evidence
@@ -2180,7 +2208,11 @@ def _external_l3_authorization_packet_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权确认包已记录必需声明、结构化授权签核清单、证据清单、中止条件、禁止输入项、中文真实运行 runbook 指纹和章节完整性。",
+            message=(
+                "External L3 授权确认包已记录必需声明、结构化授权签核清单、"
+                "证据清单、中止条件、禁止输入项、中文真实运行 runbook "
+                f"指纹和章节完整性，并覆盖{state_message}。"
+            ),
         )
     return JourneyStepResult(
         status="fail",

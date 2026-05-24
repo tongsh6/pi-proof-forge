@@ -2653,6 +2653,13 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert evidence_entries["feedback_source_artifact"]["location"] == str(log_json)
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    authorization_packet_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_authorization_packet_recorded"
+    )
+    assert authorization_packet_rule["status"] == "pass"
+    assert "授权执行态" in authorization_packet_rule["message"]
     handoff_template_review_rule = next(
         step
         for step in journey_payload["steps"]
@@ -2856,6 +2863,13 @@ def test_acceptance_runner_l3_blocks_zero_returncode_when_submission_log_failed(
     assert evidence_entries["live_run_execution_sequence"]["present"] is True
     _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
     journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    authorization_packet_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if step["rule_id"] == "external_l3_authorization_packet_recorded"
+    )
+    assert authorization_packet_rule["status"] == "pass"
+    assert "授权执行态" in authorization_packet_rule["message"]
     handoff_template_review_rule = next(
         step
         for step in journey_payload["steps"]
