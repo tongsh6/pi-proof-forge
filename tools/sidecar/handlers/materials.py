@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +15,25 @@ _UPLOADED_RESUMES_DIR = Path("uploaded_resumes")
 _PROFILE_PATH = Path("personal_profile.yaml")
 _ALLOWED_MATERIAL_SUFFIXES = {".md", ".txt"}
 _PROFILE_REQUIRED_FIELDS = ("name", "phone", "email", "city", "current_position")
+
+
+def _decode_uploaded_file(params: dict[str, Any]) -> tuple[str, bytes] | None:
+    payload = params.get("file")
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        raise ValueError("file must be an object")
+    filename = Path(str(payload.get("filename", ""))).name.strip()
+    content_base64 = str(payload.get("content_base64", "")).strip()
+    if not filename:
+        raise ValueError("file.filename is required")
+    if not content_base64:
+        raise ValueError("file.content_base64 is required")
+    try:
+        content = base64.b64decode(content_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("file.content_base64 must be valid base64") from exc
+    return filename, content
 
 
 def _utcnow_iso() -> str:
@@ -107,26 +128,43 @@ def list_material_source_items() -> list[dict[str, Any]]:
 
 def handle_material_upload(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
+    uploaded_file = _decode_uploaded_file(params)
     source_paths = params.get("source_paths", [])
-    if not isinstance(source_paths, list) or len(source_paths) != 1:
+    if uploaded_file is None and (
+        not isinstance(source_paths, list) or len(source_paths) != 1
+    ):
         raise ValueError("source_paths must contain exactly one file")
 
-    source = Path(str(source_paths[0]))
-    if not source.exists():
-        raise FileNotFoundError(f"material source not found: {source}")
-    if not source.is_file() and not source.is_dir():
-        raise ValueError(f"material source must be a file or directory: {source}")
-    files = _material_files_from_source(source)
-    if not files:
-        raise ValueError("unsupported material file type; expected .md or .txt")
-    if source.is_file() and source.suffix.lower() not in _ALLOWED_MATERIAL_SUFFIXES:
-        raise ValueError("unsupported material file type; expected .md or .txt")
+    if uploaded_file is not None:
+        source_name, source_content = uploaded_file
+        source_stem = Path(source_name).stem
+        suffix = Path(source_name).suffix.lower()
+        if suffix not in _ALLOWED_MATERIAL_SUFFIXES:
+            raise ValueError("unsupported material file type; expected .md or .txt")
+        is_directory = False
+        file_count = 1
+        raw_text = source_content.decode("utf-8", errors="replace")
+        source_path_for_meta = f"uploaded_file:{source_name}"
+    else:
+        source = Path(str(source_paths[0]))
+        if not source.exists():
+            raise FileNotFoundError(f"material source not found: {source}")
+        if not source.is_file() and not source.is_dir():
+            raise ValueError(f"material source must be a file or directory: {source}")
+        files = _material_files_from_source(source)
+        if not files:
+            raise ValueError("unsupported material file type; expected .md or .txt")
+        if source.is_file() and source.suffix.lower() not in _ALLOWED_MATERIAL_SUFFIXES:
+            raise ValueError("unsupported material file type; expected .md or .txt")
 
-    is_directory = source.is_dir()
-    suffix = ".txt" if is_directory else source.suffix.lower()
-    raw_text = _read_material_source(source, files)
+        is_directory = source.is_dir()
+        suffix = ".txt" if is_directory else source.suffix.lower()
+        raw_text = _read_material_source(source, files)
+        source_stem = source.stem
+        source_path_for_meta = str(source)
+        file_count = len(files)
 
-    label = str(params.get("label", source.stem) or source.stem).strip()
+    label = str(params.get("label", source_stem) or source_stem).strip()
     if len(label) > 100:
         raise ValueError("label must not exceed 100 characters")
 
@@ -137,7 +175,7 @@ def handle_material_upload(params: dict[str, Any]) -> dict[str, Any]:
 
     _MATERIALS_DIR.mkdir(parents=True, exist_ok=True)
     destination = _MATERIALS_DIR / f"{material_id}{suffix}"
-    if is_directory:
+    if is_directory or uploaded_file is not None:
         destination.write_text(raw_text, encoding="utf-8")
     else:
         shutil.copy2(source, destination)
@@ -152,8 +190,8 @@ def handle_material_upload(params: dict[str, Any]) -> dict[str, Any]:
             "extension": suffix,
             "uploaded_at": uploaded_at,
             "preview": preview,
-            "source_path": str(source),
-            "source_file_count": str(len(files)),
+            "source_path": source_path_for_meta,
+            "source_file_count": str(file_count),
         },
     )
     return {

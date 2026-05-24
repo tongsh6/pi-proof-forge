@@ -1,3 +1,4 @@
+import base64
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -53,6 +54,34 @@ class MaterialHandlerTests(unittest.TestCase):
                             "source_paths": [str(source)],
                         }
                     )
+
+    def test_upload_selected_file_payload_persists_material(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            materials_dir = root / "materials"
+            with patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir):
+                uploaded = handle_material_upload(
+                    {
+                        "meta": {"correlation_id": "corr_mat_file_upload"},
+                        "file": {
+                            "filename": "selected-work.md",
+                            "content_base64": base64.b64encode(
+                                "# Selected\n\nReduced incidents by 42%.".encode("utf-8")
+                            ).decode("ascii"),
+                        },
+                    }
+                )
+                stored = (materials_dir / f"{uploaded['material_id']}.md").read_text(
+                    encoding="utf-8"
+                )
+                meta = (
+                    materials_dir / f"{uploaded['material_id']}.meta.yaml"
+                ).read_text(encoding="utf-8")
+
+        self.assertEqual(uploaded["label"], "selected-work")
+        self.assertIn("Reduced incidents", uploaded["preview"])
+        self.assertIn("Reduced incidents", stored)
+        self.assertIn('source_path: "uploaded_file:selected-work.md"', meta)
 
     def test_upload_directory_combines_supported_material_files(self) -> None:
         with TemporaryDirectory() as tmp_dir:

@@ -368,6 +368,11 @@ export interface ResumeUploadResult extends RpcResultBase {
   uploaded_at: string;
 }
 
+export interface UploadFilePayload {
+  filename: string;
+  content_base64: string;
+}
+
 export interface ResumePreview {
   name: string;
   contact: { phone: string; email: string; city: string };

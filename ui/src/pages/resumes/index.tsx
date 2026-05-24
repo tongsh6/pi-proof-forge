@@ -44,12 +44,14 @@ type ProfileForm = {
 
 type UploadForm = {
   sourcePath: string;
+  sourceFile: File | null;
   language: string;
   label: string;
 };
 
 type MaterialUploadForm = {
   sourcePath: string;
+  sourceFile: File | null;
   label: string;
 };
 
@@ -83,6 +85,22 @@ function statusTone(status: string): string {
   return "border-border bg-bg-hover text-text-secondary";
 }
 
+async function toUploadFilePayload(file: File): Promise<{
+  filename: string;
+  content_base64: string;
+}> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return {
+    filename: file.name,
+    content_base64: btoa(binary),
+  };
+}
+
 export function ResumesPage() {
   const { t, i18n } = useTranslation();
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
@@ -96,12 +114,14 @@ export function ResumesPage() {
   const [previewStatus, setPreviewStatus] = useState<string | null>(null);
   const [uploadForm, setUploadForm] = useState<UploadForm>({
     sourcePath: "",
+    sourceFile: null,
     language: "zh",
     label: "",
   });
   const [materialUploadForm, setMaterialUploadForm] =
     useState<MaterialUploadForm>({
       sourcePath: "",
+      sourceFile: null,
       label: "",
     });
   const [showUploadForm, setShowUploadForm] = useState(false);
@@ -115,6 +135,8 @@ export function ResumesPage() {
   const [uploadingMaterial, setUploadingMaterial] = useState(false);
   const [exporting, setExporting] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
+  const resumeFileInputRef = useRef<HTMLInputElement | null>(null);
+  const materialFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const uploadedResumes = useMemo(
     () => items.filter((item) => item.status === "uploaded"),
@@ -207,19 +229,22 @@ export function ResumesPage() {
   }, [loadData, profileForm]);
 
   const handleUpload = useCallback(async () => {
-    if (!uploadForm.sourcePath.trim()) {
+    if (!uploadForm.sourceFile && !uploadForm.sourcePath.trim()) {
       setError(t("pages.resumes.errors.sourcePathRequired"));
       return;
     }
     setUploading(true);
     setError(null);
     try {
+      const file = uploadForm.sourceFile;
       await uploadResume({
-        source_paths: [uploadForm.sourcePath.trim()],
+        ...(file
+          ? { file: await toUploadFilePayload(file) }
+          : { source_paths: [uploadForm.sourcePath.trim()] }),
         language: uploadForm.language || undefined,
         label: uploadForm.label.trim() || undefined,
       });
-      setUploadForm({ sourcePath: "", language: "zh", label: "" });
+      setUploadForm({ sourcePath: "", sourceFile: null, language: "zh", label: "" });
       setShowUploadForm(false);
       await loadData();
     } catch (nextError) {
@@ -230,18 +255,21 @@ export function ResumesPage() {
   }, [loadData, t, uploadForm]);
 
   const handleMaterialUpload = useCallback(async () => {
-    if (!materialUploadForm.sourcePath.trim()) {
+    if (!materialUploadForm.sourceFile && !materialUploadForm.sourcePath.trim()) {
       setError(t("pages.resumes.errors.materialSourcePathRequired"));
       return;
     }
     setUploadingMaterial(true);
     setError(null);
     try {
+      const file = materialUploadForm.sourceFile;
       await uploadMaterial({
-        source_paths: [materialUploadForm.sourcePath.trim()],
+        ...(file
+          ? { file: await toUploadFilePayload(file) }
+          : { source_paths: [materialUploadForm.sourcePath.trim()] }),
         label: materialUploadForm.label.trim() || undefined,
       });
-      setMaterialUploadForm({ sourcePath: "", label: "" });
+      setMaterialUploadForm({ sourcePath: "", sourceFile: null, label: "" });
       setShowMaterialUploadForm(false);
       await loadData();
     } catch (nextError) {
@@ -436,9 +464,43 @@ export function ResumesPage() {
             {showUploadForm ? (
               <div className="space-y-3 rounded-card border border-accent/30 bg-accent/5 p-4">
                 <input
+                  ref={resumeFileInputRef}
+                  accept=".pdf,.docx,.md,.txt"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setUploadForm((current) => ({
+                      ...current,
+                      sourceFile: file,
+                      sourcePath: file ? "" : current.sourcePath,
+                    }));
+                    event.target.value = "";
+                  }}
+                  type="file"
+                />
+                <button
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-card border border-border bg-bg-primary px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover"
+                  onClick={() => resumeFileInputRef.current?.click()}
+                  type="button"
+                >
+                  <Upload size={16} />
+                  {t("pages.resumes.uploaded.chooseFile")}
+                </button>
+                {uploadForm.sourceFile ? (
+                  <p className="truncate text-xs text-text-secondary">
+                    {t("pages.resumes.uploaded.selectedFile", {
+                      name: uploadForm.sourceFile.name,
+                    })}
+                  </p>
+                ) : null}
+                <input
                   className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
                   onChange={(event) =>
-                    setUploadForm((current) => ({ ...current, sourcePath: event.target.value }))
+                    setUploadForm((current) => ({
+                      ...current,
+                      sourceFile: null,
+                      sourcePath: event.target.value,
+                    }))
                   }
                   placeholder={t("pages.resumes.uploaded.sourcePlaceholder")}
                   value={uploadForm.sourcePath}
@@ -561,10 +623,41 @@ export function ResumesPage() {
               {showMaterialUploadForm ? (
                 <div className="mt-3 space-y-3 rounded-card border border-accent/30 bg-accent/5 p-4">
                   <input
+                    ref={materialFileInputRef}
+                    accept=".md,.txt"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      setMaterialUploadForm((current) => ({
+                        ...current,
+                        sourceFile: file,
+                        sourcePath: file ? "" : current.sourcePath,
+                      }));
+                      event.target.value = "";
+                    }}
+                    type="file"
+                  />
+                  <button
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-card border border-border bg-bg-primary px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover"
+                    onClick={() => materialFileInputRef.current?.click()}
+                    type="button"
+                  >
+                    <Upload size={16} />
+                    {t("pages.resumes.materials.chooseFile")}
+                  </button>
+                  {materialUploadForm.sourceFile ? (
+                    <p className="truncate text-xs text-text-secondary">
+                      {t("pages.resumes.materials.selectedFile", {
+                        name: materialUploadForm.sourceFile.name,
+                      })}
+                    </p>
+                  ) : null}
+                  <input
                     className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
                     onChange={(event) =>
                       setMaterialUploadForm((current) => ({
                         ...current,
+                        sourceFile: null,
                         sourcePath: event.target.value,
                       }))
                     }

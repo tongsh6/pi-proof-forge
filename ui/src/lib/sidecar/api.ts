@@ -56,6 +56,7 @@ import type {
   SubmissionListResult,
   SubmissionRetryResult,
   SubmitReviewResult,
+  UploadFilePayload,
 } from "./types";
 
 const UI_VERSION = "0.1.0";
@@ -346,7 +347,8 @@ export async function listResumes(): Promise<ResumeListResult> {
 }
 
 export async function uploadResume(payload: {
-  source_paths: string[];
+  source_paths?: string[];
+  file?: UploadFilePayload;
   language?: string;
   label?: string;
 }): Promise<ResumeUploadResult> {
@@ -369,7 +371,8 @@ export async function exportResumePdf(payload: {
 }
 
 export async function uploadMaterial(payload: {
-  source_paths: string[];
+  source_paths?: string[];
+  file?: UploadFilePayload;
   label?: string;
 }): Promise<MaterialUploadResult> {
   return client.call<MaterialUploadResult>("material.upload", payload);

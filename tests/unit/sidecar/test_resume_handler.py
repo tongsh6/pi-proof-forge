@@ -1,3 +1,4 @@
+import base64
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -292,6 +293,32 @@ class ResumeUploadTests(unittest.TestCase):
 
         self.assertEqual(result["label"], "Markdown Resume")
         self.assertTrue(stored_exists)
+
+    def test_upload_accepts_selected_file_payload_without_source_path(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            uploaded_dir = Path(tmp_dir) / "uploaded_resumes"
+            with patch("tools.sidecar.handlers.resume._UPLOADED_DIR", uploaded_dir):
+                result = handle_resume_upload(
+                    {
+                        "meta": {"correlation_id": "corr_file_resume"},
+                        "file": {
+                            "filename": "selected_resume.pdf",
+                            "content_base64": base64.b64encode(
+                                b"%PDF-1.4\nselected\n"
+                            ).decode("ascii"),
+                        },
+                        "language": "zh",
+                    }
+                )
+                stored = uploaded_dir / f"{result['resume_id']}.pdf"
+                meta = uploaded_dir / f"{result['resume_id']}.meta.yaml"
+
+                self.assertEqual(result["label"], "selected_resume")
+                self.assertEqual(stored.read_bytes(), b"%PDF-1.4\nselected\n")
+                self.assertIn(
+                    'original_filename: "selected_resume.pdf"',
+                    meta.read_text(encoding="utf-8"),
+                )
 
 
 class ResumePreviewTests(unittest.TestCase):

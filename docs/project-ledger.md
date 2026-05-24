@@ -13,6 +13,7 @@ Last updated: 2026-05-23
 
 - System Settings: LLM provider defaults, model discovery, save/reload, masked secret behavior, and blocked local-provider failure path are covered by scenario and contract tests.
 - Resumes and Evidence: material library inputs feed the evidence-first workflow and Evidence Card review contracts.
+- Resumes upload UX: Resumes 页上传简历和工作材料必须支持系统文件选择器读取文件内容后上传；手填绝对路径只作为高级兜底，不能成为普通用户完成上传的唯一方式。
 - Jobs: pasted JD text can create reviewed job targets for downstream matching and runs.
 - Quick Run: selected eligible Evidence Cards and complete Job Profiles produce matching, resume, PDF, scorecard, and gap artifacts with traceability.
 - Targeted resume product rule: 系统生成的候选人简历必须由 Personal Profile、目标公司/岗位 JD、resume positioning 和 selected Evidence Cards 共同驱动；同一版本可复用于同类岗位簇，但不是所有公司/岗位通投版本；候选人 PDF 不得包含 `Evidence trace`、本机路径、source report、内部 evidence id 或系统版本标题，追溯信息必须进入 run record / `resume_trace` / scorecard。
