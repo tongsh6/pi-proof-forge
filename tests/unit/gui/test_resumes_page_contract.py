@@ -18,6 +18,7 @@ def test_resumes_page_renders_final_design_contract():
         "pages.resumes.uploaded.title",
         "pages.resumes.generated.title",
         "pages.resumes.preview.summary",
+        "pages.resumes.exportedTo",
         "exportResumePdf",
         "uploadResume",
         "getResumePreview",
@@ -37,6 +38,7 @@ def test_resumes_i18n_contract_is_complete():
         "upload",
         "exportPdf",
         "exporting",
+        "exportedTo",
     }
     nested_keys = {
         "profile": {

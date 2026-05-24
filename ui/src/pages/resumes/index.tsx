@@ -107,6 +107,7 @@ export function ResumesPage() {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [showMaterialUploadForm, setShowMaterialUploadForm] = useState(false);
   const [exportPath, setExportPath] = useState("");
+  const [exportedPath, setExportedPath] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -261,8 +262,13 @@ export function ResumesPage() {
     }
     setExporting(true);
     setError(null);
+    setExportedPath(null);
     try {
-      await exportResumePdf({ resume_id: selectedId, destination: exportPath.trim() });
+      const result = await exportResumePdf({
+        resume_id: selectedId,
+        destination: exportPath.trim(),
+      });
+      setExportedPath(result.path);
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
@@ -326,6 +332,12 @@ export function ResumesPage() {
       {error && loadState === "ready" ? (
         <section className="rounded-card border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">
           {error}
+        </section>
+      ) : null}
+
+      {exportedPath && loadState === "ready" ? (
+        <section className="rounded-card border border-success/40 bg-success/10 px-4 py-3 text-sm text-success">
+          {t("pages.resumes.exportedTo", { path: exportedPath })}
         </section>
       ) : null}
 

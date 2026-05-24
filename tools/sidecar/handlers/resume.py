@@ -301,6 +301,26 @@ def _parse_preview_markdown(text: str) -> dict[str, Any]:
     }
 
 
+def _resolve_pdf_export_destination(destination_text: str, source: Path) -> Path:
+    destination_value = destination_text.strip()
+    if not destination_value:
+        raise ValueError("destination path is required")
+    destination = Path(destination_value).expanduser()
+    directory_requested = (
+        destination_value.endswith(("/", "\\"))
+        or destination.suffix.lower() != ".pdf"
+        or (destination.exists() and destination.is_dir())
+    )
+    if not directory_requested:
+        return destination
+    if destination.exists() and destination.is_file():
+        raise ValueError(
+            "PDF export destination must be a .pdf file path or a directory path; "
+            f"existing non-PDF file blocks directory export: {destination}"
+        )
+    return destination / f"{source.stem}.pdf"
+
+
 def handle_resume_list(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
     cursor = _parse_cursor(params.get("cursor"))
@@ -436,7 +456,7 @@ def handle_resume_get_preview(params: dict[str, Any]) -> dict[str, Any]:
 def handle_resume_export_pdf(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
     resume_id = str(params["resume_id"])
-    destination = Path(str(params["destination"]))
+    destination_text = str(params["destination"])
 
     source = _find_generated_resume(resume_id)
     if source is None:
@@ -454,6 +474,7 @@ def handle_resume_export_pdf(params: dict[str, Any]) -> dict[str, Any]:
     if source is None:
         raise KeyError(f"NOT_FOUND: {resume_id}")
 
+    destination = _resolve_pdf_export_destination(destination_text, source)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.suffix.lower() == ".pdf":
         shutil.copy2(source, destination)
@@ -470,4 +491,5 @@ def handle_resume_export_pdf(params: dict[str, Any]) -> dict[str, Any]:
     return {
         "meta": {"correlation_id": correlation_id},
         "resource_id": f"pdf_{uuid4().hex[:8]}",
+        "path": str(destination),
     }

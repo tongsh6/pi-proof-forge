@@ -384,6 +384,7 @@ export interface ResumePreviewResult extends RpcResultBase {
 
 export interface ResumeExportResult extends RpcResultBase {
   resource_id: string;
+  path: string;
 }
 
 export interface MaterialSourceItem {

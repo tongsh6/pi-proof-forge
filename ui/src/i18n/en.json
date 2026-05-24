@@ -91,6 +91,7 @@
       "upload": "Upload Resume",
       "exportPdf": "Export PDF",
       "exporting": "Exporting...",
+      "exportedTo": "PDF exported to {{path}}",
       "profile": {
         "title": "Personal Profile",
         "subtitle": "Basic identity used by generated resumes.",
@@ -140,7 +141,7 @@
         "title": "Generated Resumes",
         "count": "{{count}} generated versions",
         "empty": "No generated resume versions yet.",
-        "destinationPlaceholder": "PDF destination path",
+        "destinationPlaceholder": "PDF file path or export directory",
         "score": "Score {{score}}"
       },
       "preview": {

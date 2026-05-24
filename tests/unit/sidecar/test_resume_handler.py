@@ -448,6 +448,7 @@ class ResumeExportPdfTests(unittest.TestCase):
                         }
                     )
                     self.assertTrue(result["resource_id"].startswith("pdf_"))
+                    self.assertEqual(result["path"], str(destination))
                     self.assertTrue(destination.exists())
                     self.assertEqual(destination.read_bytes(), source_bytes)
 
@@ -471,6 +472,7 @@ class ResumeExportPdfTests(unittest.TestCase):
                         }
                     )
                     self.assertTrue(result["resource_id"].startswith("pdf_"))
+                    self.assertEqual(result["path"], str(destination))
                     self.assertTrue(destination.exists())
                     self.assertTrue(destination.read_bytes().startswith(b"%PDF-"))
                     self.assertGreater(destination.stat().st_size, 0)
@@ -495,7 +497,54 @@ class ResumeExportPdfTests(unittest.TestCase):
                         }
                     )
                     self.assertTrue(result["resource_id"].startswith("pdf_"))
+                    self.assertEqual(result["path"], str(destination))
                     self.assertTrue(destination.exists())
+
+    def test_export_pdf_accepts_destination_directory_for_markdown(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            outputs_dir = Path(tmp_dir) / "outputs"
+            outputs_dir.mkdir()
+            generated = outputs_dir / "resume_mr-2026-005_A.md"
+            generated.write_text("# Resume\n", encoding="utf-8")
+            destination_dir = Path(tmp_dir) / "exports"
+            expected = destination_dir / "resume_mr-2026-005_A.pdf"
+            with patch("tools.sidecar.handlers.resume._OUTPUTS_DIR", outputs_dir):
+                with patch(
+                    "tools.sidecar.handlers.resume._UPLOADED_DIR",
+                    Path(tmp_dir) / "uploaded",
+                ):
+                    result = handle_resume_export_pdf(
+                        {
+                            "meta": {"correlation_id": "corr_dir_export"},
+                            "resume_id": "gen_resume_mr-2026-005_A",
+                            "destination": f"{destination_dir}/",
+                        }
+                    )
+                    self.assertEqual(result["path"], str(expected))
+                    self.assertTrue(expected.exists())
+                    self.assertTrue(expected.read_bytes().startswith(b"%PDF-"))
+
+    def test_export_pdf_rejects_existing_non_pdf_destination_file(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            outputs_dir = Path(tmp_dir) / "outputs"
+            outputs_dir.mkdir()
+            generated = outputs_dir / "resume_mr-2026-005_A.md"
+            generated.write_text("# Resume\n", encoding="utf-8")
+            destination = Path(tmp_dir) / "resume"
+            destination.write_bytes(b"%PDF-1.4\nold mistaken export\n")
+            with patch("tools.sidecar.handlers.resume._OUTPUTS_DIR", outputs_dir):
+                with patch(
+                    "tools.sidecar.handlers.resume._UPLOADED_DIR",
+                    Path(tmp_dir) / "uploaded",
+                ):
+                    with self.assertRaises(ValueError):
+                        handle_resume_export_pdf(
+                            {
+                                "meta": {"correlation_id": "corr_bad_path"},
+                                "resume_id": "gen_resume_mr-2026-005_A",
+                                "destination": str(destination),
+                            }
+                        )
 
 
 if __name__ == "__main__":

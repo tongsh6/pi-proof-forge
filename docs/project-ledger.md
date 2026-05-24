@@ -15,6 +15,7 @@ Last updated: 2026-05-23
 - Resumes and Evidence: material library inputs feed the evidence-first workflow and Evidence Card review contracts.
 - Jobs: pasted JD text can create reviewed job targets for downstream matching and runs.
 - Quick Run: selected eligible Evidence Cards and complete Job Profiles produce matching, resume, PDF, scorecard, and gap artifacts with traceability.
+- Resume PDF export: Resumes 页的 `resume.exportPdf` 接受 `.pdf` 文件路径或目录路径；目录路径会自动生成 `<简历源文件名>.pdf` 并在返回值和页面提示中展示最终路径，避免把用户填写的导出目录误写成无后缀 PDF 文件。
 - Agent Run: guided batch stops at review state, writes review queue artifacts, and keeps delivery disabled before approval.
 - Submissions: channel session setup, check mode, submit-skipped logging, and feedback iteration are represented by sidecar contracts and real artifacts.
 - Closed-loop audit reads durable artifacts from `outputs/quick_runs`, `outputs/agent_runs`, `outputs/submissions`, and `outputs/feedback_iterations`.

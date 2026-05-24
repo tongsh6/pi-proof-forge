@@ -91,6 +91,7 @@
       "upload": "上传简历",
       "exportPdf": "导出 PDF",
       "exporting": "导出中...",
+      "exportedTo": "PDF 已导出到 {{path}}",
       "profile": {
         "title": "个人资料",
         "subtitle": "生成简历时使用的基础身份信息。",
@@ -140,7 +141,7 @@
         "title": "系统生成简历",
         "count": "{{count}} 个生成版本",
         "empty": "暂无系统生成简历。",
-        "destinationPlaceholder": "PDF 导出目标路径",
+        "destinationPlaceholder": "PDF 文件路径或导出目录",
         "score": "分数 {{score}}"
       },
       "preview": {
