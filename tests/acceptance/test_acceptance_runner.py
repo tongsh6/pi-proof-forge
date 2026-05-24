@@ -2813,6 +2813,34 @@ def test_acceptance_runner_l3_blocks_zero_returncode_when_submission_log_failed(
     )
     assert payload["outcome_summary"]["external_l3_success"] is False
     assert payload["outcome_summary"]["p0_017_complete"] is False
+    release_decision = payload["operator_handoff"][
+        "authorized_template_release_decision"
+    ]
+    assert release_decision["status"] == "authorized_live_run_template_executed"
+    assert release_decision["copy_execution_allowed"] is True
+    assert release_decision["release_blockers"] == []
+    go_no_go_decision = payload["operator_handoff"]["live_run_go_no_go_decision"]
+    assert go_no_go_decision["status"] == "authorized_live_run_executed"
+    assert go_no_go_decision["go_for_live_run"] is True
+    assert go_no_go_decision["blocking_evidence"] == []
+    execution_sequence = payload["operator_handoff"]["live_run_execution_sequence"]
+    assert (
+        execution_sequence["status"]
+        == "authorized_live_run_executed_pending_p0_verification"
+    )
+    assert execution_sequence["next_executable_step"] == "verify_p0_017_completion"
+    assert execution_sequence["authorized_template_execution_allowed"] is True
+    sequence_steps = {item["id"]: item for item in execution_sequence["steps"]}
+    assert sequence_steps["execute_authorized_template"]["status"] == "satisfied"
+    assert sequence_steps["verify_p0_017_completion"]["status"] == "blocked"
+    evidence_entries = {
+        item["id"]: item for item in payload["evidence_manifest"]["entries"]
+    }
+    assert (
+        evidence_entries["live_run_execution_sequence"]["status"]
+        == "authorized_live_run_executed_pending_p0_verification"
+    )
+    assert evidence_entries["live_run_execution_sequence"]["present"] is True
 
 
 def test_acceptance_runner_l3_promotes_target_verify_submission_log_error(

@@ -3924,6 +3924,8 @@ def _live_run_execution_sequence_status(
         and p0_complete
     ):
         return "authorized_live_run_execution_verified"
+    if authorized_template_execution_allowed and external_submission_attempted:
+        return "authorized_live_run_executed_pending_p0_verification"
     if authorized_template_execution_allowed:
         return "ready_for_authorized_template_execution"
     return "blocked_before_authorized_template_execution"
