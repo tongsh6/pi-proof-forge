@@ -2651,6 +2651,19 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     )
     assert evidence_entries["live_run_execution_sequence"]["present"] is True
     assert evidence_entries["feedback_source_artifact"]["location"] == str(log_json)
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    handoff_template_review_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_handoff_command_template_review_recorded"
+        )
+    )
+    assert handoff_template_review_rule["status"] == "pass"
+    assert "授权执行态" in handoff_template_review_rule["message"]
+    assert "真实渠道成功" in handoff_template_review_rule["message"]
     authorization_packet = payload["operator_handoff"]["authorization_packet"]
     assert authorization_packet["status"] == "executed"
     assert authorization_packet["raw_confirmation_values_persisted"] is False
@@ -2841,6 +2854,19 @@ def test_acceptance_runner_l3_blocks_zero_returncode_when_submission_log_failed(
         == "authorized_live_run_executed_pending_p0_verification"
     )
     assert evidence_entries["live_run_execution_sequence"]["present"] is True
+    _, _, journey_json_path, _ = write_acceptance_report(tmp_path, report)
+    journey_payload = json.loads(journey_json_path.read_text(encoding="utf-8"))
+    handoff_template_review_rule = next(
+        step
+        for step in journey_payload["steps"]
+        if (
+            step["rule_id"]
+            == "external_l3_handoff_command_template_review_recorded"
+        )
+    )
+    assert handoff_template_review_rule["status"] == "pass"
+    assert "post-command blocker" in handoff_template_review_rule["message"]
+    assert "待 P0-017 完成验证" in handoff_template_review_rule["message"]
 
 
 def test_acceptance_runner_l3_promotes_target_verify_submission_log_error(

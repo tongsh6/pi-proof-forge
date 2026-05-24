@@ -3333,7 +3333,14 @@ def _operator_authorization_readiness_action_plan(
     )
     blockers = list(preflight_result.get("authorization_decision_blockers") or [])
     actions = _authorization_readiness_actions(blockers)
-    ready = not actions and preflight_result.get("all_required_items_passed") is True
+    live_readiness = validation.get("live_run_readiness") or {}
+    ready = not actions and (
+        preflight_result.get("all_required_items_passed") is True
+        or (
+            validation.get("external_submission_attempted") is True
+            and live_readiness.get("ready") is True
+        )
+    )
     return {
         "status": (
             "blocked_until_live_inputs_and_session_ready"

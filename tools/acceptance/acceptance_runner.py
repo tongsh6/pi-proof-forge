@@ -2523,6 +2523,39 @@ def _external_l3_handoff_command_template_review_result(
             missing.append(
                 f"preflight_review_checklist.items.{item_id}.raw_live_inputs_persisted"
             )
+
+    if payload.get("external_submission_attempted") is True:
+        missing.extend(
+            _external_l3_authorized_execution_handoff_missing(
+                payload=payload,
+                markdown=markdown,
+                preflight_review_result=preflight_review_result,
+                authorization_action_plan=authorization_action_plan,
+                authorization_intake_checklist=authorization_intake_checklist,
+                release_decision=release_decision,
+                go_no_go_decision=go_no_go_decision,
+                execution_sequence=execution_sequence,
+            )
+        )
+        if not missing:
+            return JourneyStepResult(
+                status="pass",
+                evidence=step.evidence,
+                message=(
+                    "External L3 授权交接命令模板复核已记录授权执行态："
+                    "模板已发布，Go/No-Go 已放行，授权模板已执行；执行顺序能区分"
+                    "真实渠道成功与 post-command blocker 待 P0-017 完成验证。"
+                ),
+            )
+        return JourneyStepResult(
+            status="fail",
+            evidence=step.evidence,
+            message=(
+                "External L3 授权执行态命令模板复核缺失或不完整: "
+                f"{', '.join(missing)}"
+            ),
+        )
+
     expected_preflight_result_fields = {
         "status": "preflight_evidence_review_passed_with_live_readiness_blockers",
         "applies_to_current_run": True,
@@ -3124,6 +3157,180 @@ def _external_l3_handoff_command_template_review_result(
         evidence=step.evidence,
         message=f"External L3 命令模板复核缺失或不完整: {', '.join(missing)}",
     )
+
+
+def _external_l3_authorized_execution_handoff_missing(
+    *,
+    payload: dict[str, Any],
+    markdown: str,
+    preflight_review_result: dict[str, Any],
+    authorization_action_plan: dict[str, Any],
+    authorization_intake_checklist: dict[str, Any],
+    release_decision: dict[str, Any],
+    go_no_go_decision: dict[str, Any],
+    execution_sequence: dict[str, Any],
+) -> list[str]:
+    missing: list[str] = []
+    p0_complete = payload.get("status") == "external_validated"
+    expected_sequence_status = (
+        "authorized_live_run_execution_verified"
+        if p0_complete
+        else "authorized_live_run_executed_pending_p0_verification"
+    )
+    expected_next_step = "complete" if p0_complete else "verify_p0_017_completion"
+    expected_verify_step_status = "satisfied" if p0_complete else "blocked"
+
+    expected_preflight_result_fields = {
+        "status": "not_applicable_after_external_submission",
+        "applies_to_current_run": False,
+        "live_readiness_for_authorization": True,
+        "ready_for_authorization_decision": False,
+        "authorized_template_execution_allowed": False,
+        "authorization_decision_required": False,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_preflight_result_fields.items():
+        if preflight_review_result.get(key) != expected:
+            missing.append(f"preflight_review_result.{key}")
+    if preflight_review_result.get("authorization_decision_blockers") != []:
+        missing.append("preflight_review_result.authorization_decision_blockers")
+
+    expected_action_plan_fields = {
+        "status": "ready_for_explicit_authorization_decision",
+        "ready_for_authorization_decision": True,
+        "authorized_template_execution_allowed": False,
+        "pending_action_count": 0,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_action_plan_fields.items():
+        if authorization_action_plan.get(key) != expected:
+            missing.append(f"authorization_readiness_action_plan.{key}")
+    if authorization_action_plan.get("actions") != []:
+        missing.append("authorization_readiness_action_plan.actions")
+
+    expected_intake_fields = {
+        "status": "authorization_intake_complete",
+        "required_before_template_release": True,
+        "required_before_authorized_template": True,
+        "pending_item_count": 0,
+        "satisfied_item_count": 9,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_intake_fields.items():
+        if authorization_intake_checklist.get(key) != expected:
+            missing.append(f"authorization_intake_checklist.{key}")
+    if any(
+        item.get("status") != "satisfied"
+        for item in authorization_intake_checklist.get("items") or []
+        if isinstance(item, dict)
+    ):
+        missing.append("authorization_intake_checklist.items.status")
+
+    expected_release_fields = {
+        "status": "authorized_live_run_template_executed",
+        "template_released": True,
+        "template_released_to_operator": True,
+        "copy_execution_allowed": True,
+        "authorized_template_rendered_for_review": True,
+        "template_rendered_for_audit": True,
+        "withheld_reason": "",
+        "pending_action_count": 0,
+        "pending_action_ids": [],
+        "release_blockers": [],
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_release_fields.items():
+        if release_decision.get(key) != expected:
+            missing.append(f"authorized_template_release_decision.{key}")
+
+    expected_go_no_go_fields = {
+        "status": "authorized_live_run_executed",
+        "go_for_live_run": True,
+        "submit_command_may_start": True,
+        "copy_authorized_template_allowed": True,
+        "reason": "",
+        "blocking_evidence": [],
+        "resolution_routes": [],
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_go_no_go_fields.items():
+        if go_no_go_decision.get(key) != expected:
+            missing.append(f"live_run_go_no_go_decision.{key}")
+
+    decision_inputs = go_no_go_decision.get("decision_inputs") or {}
+    expected_decision_inputs = {
+        "live_run_readiness_ready": True,
+        "live_run_readiness_submit_command_allowed": True,
+        "submit_safety_decision": "allowed_and_executed",
+        "authorization_readiness_action_plan_pending_action_count": 0,
+        "authorization_intake_pending_item_count": 0,
+        "authorization_acknowledgement_pending_count": 0,
+        "authorized_template_copy_execution_allowed": True,
+        "p0_017_complete": p0_complete,
+    }
+    for key, expected in expected_decision_inputs.items():
+        if decision_inputs.get(key) != expected:
+            missing.append(f"live_run_go_no_go_decision.decision_inputs.{key}")
+
+    expected_sequence_fields = {
+        "status": expected_sequence_status,
+        "next_executable_step": expected_next_step,
+        "authorized_template_execution_allowed": True,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_sequence_fields.items():
+        if execution_sequence.get(key) != expected:
+            missing.append(f"live_run_execution_sequence.{key}")
+    sequence_steps = {
+        str(item.get("id", "")): item
+        for item in execution_sequence.get("steps") or []
+        if isinstance(item, dict)
+    }
+    expected_steps = {
+        "run_preflight_template": "satisfied",
+        "review_preflight_evidence": "satisfied",
+        "resolve_no_go_routes": "satisfied",
+        "complete_authorization_readiness_actions": "satisfied",
+        "complete_authorization_intake": "satisfied",
+        "complete_authorization_acknowledgements": "satisfied",
+        "release_authorized_template": "satisfied",
+        "pass_live_run_go_no_go": "satisfied",
+        "execute_authorized_template": "satisfied",
+        "verify_p0_017_completion": expected_verify_step_status,
+    }
+    for step_id, expected_status in expected_steps.items():
+        item = sequence_steps.get(step_id)
+        if not item:
+            missing.append(f"live_run_execution_sequence.steps.{step_id}")
+            continue
+        if item.get("status") != expected_status:
+            missing.append(f"live_run_execution_sequence.steps.{step_id}.status")
+        expected_blocks_next = expected_status != "satisfied"
+        if item.get("blocks_next_step") is not expected_blocks_next:
+            missing.append(
+                f"live_run_execution_sequence.steps.{step_id}.blocks_next_step"
+            )
+        if item.get("raw_live_inputs_persisted") is not False:
+            missing.append(
+                f"live_run_execution_sequence.steps.{step_id}.raw_live_inputs_persisted"
+            )
+
+    markdown_fragments = [
+        "- 模板是否发布给操作者执行: `True`",
+        "- 是否允许复制执行: `True`",
+        "- 状态: `authorized_live_run_executed`",
+        "- 是否允许启动真实运行: `True`",
+        "- submit 命令是否可启动: `True`",
+        f"- 状态: `{expected_sequence_status}`",
+        f"- 下一可执行步骤: `{expected_next_step}`",
+        "- 是否允许执行授权模板: `True`",
+        "`9` | `execute_authorized_template` | `satisfied`",
+        f"`10` | `verify_p0_017_completion` | `{expected_verify_step_status}`",
+    ]
+    missing.extend(
+        fragment for fragment in markdown_fragments if fragment not in markdown
+    )
+    return missing
 
 
 def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepResult:
