@@ -364,7 +364,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须记录统一证据清单，覆盖 validation JSON/Markdown、关键嵌入段、中文真实运行 runbook、live_run_go_no_go_decision、live_run_execution_sequence、live blocker 或 submission log、feedback source，并证明清单不持久化原始 live 输入；Markdown 清单必须逐项同步 JSON 中的位置、必需性、存在状态和状态值。"
+        message: "External L3 验收必须记录统一证据清单，覆盖 validation JSON/Markdown、关键嵌入段、中文真实运行 runbook、authorization_packet、authorized_template_release_decision、live_run_go_no_go_decision、live_run_execution_sequence、live blocker 或 submission log、feedback source，并证明清单不持久化原始 live 输入；证据清单必须同时支持 no-go 阻断态和真实渠道成功态，不能在模板已发布、Go/No-Go 已放行或授权运行已执行后把有效段误标为缺失；Markdown 清单必须逐项同步 JSON 中的位置、必需性、存在状态和状态值。"
       - rule_id: "external_l3_outcome_summary_recorded"
         level: "L3"
         stage: "submissions"

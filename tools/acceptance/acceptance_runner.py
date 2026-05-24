@@ -3162,6 +3162,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "target_confirmation_audit",
         "operator_handoff",
         "p0_017_completion_gate",
+        "authorization_packet",
         "external_l3_live_run_runbook",
         "preflight_review_checklist",
         "preflight_review_result",

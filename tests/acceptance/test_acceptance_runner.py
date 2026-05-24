@@ -345,6 +345,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         evidence_entries["external_l3_live_run_runbook"]["location"]
         == "docs/runbooks/external-l3-live-run.md"
     )
+    assert evidence_entries["authorization_packet"]["required"] is True
+    assert evidence_entries["authorization_packet"]["present"] is True
+    assert (
+        evidence_entries["authorization_packet"]["status"]
+        == "blocked_until_missing_gates_resolved"
+    )
     assert evidence_entries["preflight_review_checklist"]["required"] is True
     assert evidence_entries["preflight_review_checklist"]["present"] is True
     assert (
@@ -2567,6 +2573,34 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert payload["live_run_readiness"]["submit_command_allowed"] is True
     assert payload["live_run_readiness"]["missing_gates"] == []
     assert payload["operator_handoff"]["status"] == "executed_with_guarded_live_result"
+    release_decision = payload["operator_handoff"][
+        "authorized_template_release_decision"
+    ]
+    assert release_decision["status"] == "authorized_live_run_template_executed"
+    assert release_decision["template_released_to_operator"] is True
+    assert release_decision["copy_execution_allowed"] is True
+    assert release_decision["withheld_reason"] == ""
+    assert release_decision["release_blockers"] == []
+    go_no_go_decision = payload["operator_handoff"]["live_run_go_no_go_decision"]
+    assert go_no_go_decision["status"] == "authorized_live_run_executed"
+    assert go_no_go_decision["go_for_live_run"] is True
+    assert go_no_go_decision["submit_command_may_start"] is True
+    assert go_no_go_decision["copy_authorized_template_allowed"] is True
+    assert go_no_go_decision["blocking_evidence"] == []
+    assert go_no_go_decision["resolution_routes"] == []
+    execution_sequence = payload["operator_handoff"]["live_run_execution_sequence"]
+    assert (
+        execution_sequence["status"]
+        == "authorized_live_run_execution_verified"
+    )
+    assert execution_sequence["next_executable_step"] == "complete"
+    assert execution_sequence["authorized_template_execution_allowed"] is True
+    assert all(
+        item["status"] == "satisfied"
+        and item["blocks_next_step"] is False
+        and item["raw_live_inputs_persisted"] is False
+        for item in execution_sequence["steps"]
+    )
     assert payload["outcome_summary"]["outcome"] == "external_validated"
     assert (
         payload["outcome_summary"]["acceptance_status_meaning"]
@@ -2586,12 +2620,42 @@ def test_acceptance_runner_l3_executes_live_command_only_after_all_gates(
     assert evidence_entries["submission_log_json"]["present"] is True
     assert evidence_entries["submission_log_json"]["location"] == str(log_json)
     assert evidence_entries["live_blocker"]["required"] is False
+    assert evidence_entries["authorization_packet"]["required"] is True
+    assert evidence_entries["authorization_packet"]["present"] is True
+    assert evidence_entries["authorization_packet"]["status"] == "executed"
     assert evidence_entries["external_l3_live_run_runbook"]["required"] is True
     assert evidence_entries["external_l3_live_run_runbook"]["present"] is True
+    assert (
+        evidence_entries["authorization_readiness_action_plan"]["status"]
+        == "ready_for_explicit_authorization_decision"
+    )
+    assert evidence_entries["authorization_readiness_action_plan"]["present"] is True
+    assert (
+        evidence_entries["authorization_intake_checklist"]["status"]
+        == "authorization_intake_complete"
+    )
+    assert evidence_entries["authorization_intake_checklist"]["present"] is True
+    assert (
+        evidence_entries["authorized_template_release_decision"]["status"]
+        == "authorized_live_run_template_executed"
+    )
+    assert evidence_entries["authorized_template_release_decision"]["present"] is True
+    assert (
+        evidence_entries["live_run_go_no_go_decision"]["status"]
+        == "authorized_live_run_executed"
+    )
+    assert evidence_entries["live_run_go_no_go_decision"]["present"] is True
+    assert (
+        evidence_entries["live_run_execution_sequence"]["status"]
+        == "authorized_live_run_execution_verified"
+    )
+    assert evidence_entries["live_run_execution_sequence"]["present"] is True
     assert evidence_entries["feedback_source_artifact"]["location"] == str(log_json)
     authorization_packet = payload["operator_handoff"]["authorization_packet"]
     assert authorization_packet["status"] == "executed"
     assert authorization_packet["raw_confirmation_values_persisted"] is False
+    assert authorization_packet["pending_acknowledgement_count"] == 0
+    assert authorization_packet["satisfied_acknowledgement_count"] == 6
     assert "live_input_artifacts" in authorization_packet["required_evidence"]
     assert run_mock.call_count == 1
     command = run_mock.call_args.args[0]

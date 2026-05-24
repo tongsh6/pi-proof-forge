@@ -2475,6 +2475,49 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
         )
     )
 
+    authorization_packet = (
+        (validation.get("operator_handoff") or {}).get("authorization_packet") or {}
+    )
+    if authorization_packet:
+        acknowledgement_items = authorization_packet.get("acknowledgement_checklist") or []
+        pending_acknowledgement_count = sum(
+            1
+            for item in acknowledgement_items
+            if isinstance(item, dict) and item.get("status") != "satisfied"
+        )
+        authorization_packet_present = (
+            authorization_packet.get("raw_confirmation_values_persisted") is False
+            and authorization_packet.get("required_before_template_release") is True
+            and authorization_packet.get("pending_acknowledgement_count")
+            == pending_acknowledgement_count
+            and authorization_packet.get("satisfied_acknowledgement_count")
+            == len(acknowledgement_items) - pending_acknowledgement_count
+            and bool(authorization_packet.get("required_confirmation_statements") or [])
+            and bool(authorization_packet.get("required_evidence") or [])
+            and bool(acknowledgement_items)
+            and all(
+                isinstance(item, dict)
+                and bool(item.get("id"))
+                and bool(item.get("env_vars") or [])
+                and bool(item.get("gates") or [])
+                and bool(item.get("source_path"))
+                and item.get("raw_live_inputs_persisted") is False
+                for item in acknowledgement_items
+            )
+        )
+        entries.append(
+            _evidence_entry(
+                entry_id="authorization_packet",
+                artifact_type="embedded_section",
+                location=f"{validation_json}#operator_handoff.authorization_packet",
+                required=True,
+                present=authorization_packet_present,
+                status=str(
+                    authorization_packet.get("status", "missing_or_incomplete")
+                ),
+            )
+        )
+
     runbook = (validation.get("operator_handoff") or {}).get("runbook") or {}
     runbook_sections = runbook.get("required_sections") or []
     runbook_sections_present = runbook.get("required_sections_present") or {}
@@ -2552,10 +2595,7 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 entry_id="preflight_review_result",
                 artifact_type="embedded_section",
                 location=f"{validation_json}#operator_handoff.preflight_review_result",
-                required=(
-                    validation.get("status") == "live_blocker_recorded"
-                    and validation.get("external_submission_attempted") is False
-                ),
+                required=True,
                 present=result_present,
                 status=str(
                     preflight_review_result.get("status", "missing_or_incomplete")
@@ -2574,7 +2614,9 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
             authorization_action_plan.get("raw_live_inputs_persisted") is False
             and authorization_action_plan.get("authorized_template_execution_allowed")
             is False
-            and bool(action_items)
+            and isinstance(
+                authorization_action_plan.get("pending_action_count"), int
+            )
             and all(
                 isinstance(item, dict)
                 and item.get("required") is True
@@ -2587,10 +2629,7 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 entry_id="authorization_readiness_action_plan",
                 artifact_type="embedded_section",
                 location=f"{validation_json}#operator_handoff.authorization_readiness_action_plan",
-                required=(
-                    validation.get("status") == "live_blocker_recorded"
-                    and validation.get("external_submission_attempted") is False
-                ),
+                required=True,
                 present=action_plan_present,
                 status=str(
                     authorization_action_plan.get("status", "missing_or_incomplete")
@@ -2625,10 +2664,7 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 entry_id="authorization_intake_checklist",
                 artifact_type="embedded_section",
                 location=f"{validation_json}#operator_handoff.authorization_intake_checklist",
-                required=(
-                    validation.get("status") == "live_blocker_recorded"
-                    and validation.get("external_submission_attempted") is False
-                ),
+                required=True,
                 present=intake_present,
                 status=str(
                     authorization_intake_checklist.get(
@@ -2644,24 +2680,38 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
         or {}
     )
     if release_decision:
+        release_blockers = release_decision.get("release_blockers") or []
+        template_released = release_decision.get("template_released_to_operator") is True
         release_present = (
             release_decision.get("raw_live_inputs_persisted") is False
-            and release_decision.get("template_released_to_operator") is False
-            and release_decision.get("copy_execution_allowed") is False
             and release_decision.get("authorized_template_rendered_for_review")
             is True
-            and bool(release_decision.get("release_blockers") or [])
+            and isinstance(
+                release_decision.get("template_released_to_operator"), bool
+            )
+            and isinstance(release_decision.get("copy_execution_allowed"), bool)
             and bool(release_decision.get("required_before_release") or [])
+            and (
+                (
+                    template_released
+                    and release_decision.get("copy_execution_allowed") is True
+                    and release_blockers == []
+                    and release_decision.get("withheld_reason") == ""
+                )
+                or (
+                    not template_released
+                    and release_decision.get("copy_execution_allowed") is False
+                    and bool(release_blockers)
+                    and bool(release_decision.get("withheld_reason"))
+                )
+            )
         )
         entries.append(
             _evidence_entry(
                 entry_id="authorized_template_release_decision",
                 artifact_type="embedded_section",
                 location=f"{validation_json}#operator_handoff.authorized_template_release_decision",
-                required=(
-                    validation.get("status") == "live_blocker_recorded"
-                    and validation.get("external_submission_attempted") is False
-                ),
+                required=True,
                 present=release_present,
                 status=str(
                     release_decision.get("status", "missing_or_incomplete")
@@ -2692,10 +2742,7 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 entry_id="live_run_go_no_go_decision",
                 artifact_type="embedded_section",
                 location=f"{validation_json}#operator_handoff.live_run_go_no_go_decision",
-                required=(
-                    validation.get("status") == "live_blocker_recorded"
-                    and validation.get("external_submission_attempted") is False
-                ),
+                required=True,
                 present=go_no_go_present,
                 status=str(
                     go_no_go_decision.get("status", "missing_or_incomplete")
@@ -2734,10 +2781,7 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 entry_id="live_run_execution_sequence",
                 artifact_type="embedded_section",
                 location=f"{validation_json}#operator_handoff.live_run_execution_sequence",
-                required=(
-                    validation.get("status") == "live_blocker_recorded"
-                    and validation.get("external_submission_attempted") is False
-                ),
+                required=True,
                 present=execution_sequence_present,
                 status=str(
                     execution_sequence.get("status", "missing_or_incomplete")
@@ -3445,6 +3489,20 @@ def _operator_authorized_template_release_decision(
     authorization_packet = handoff.get("authorization_packet") or {}
     live_readiness = validation.get("live_run_readiness") or {}
     missing_gates = set(live_readiness.get("missing_gates") or [])
+    external_submission_attempted = (
+        validation.get("external_submission_attempted") is True
+    )
+    preflight_allows_release = (
+        preflight_result.get("ready_for_authorization_decision") is True
+        or (
+            external_submission_attempted
+            and live_readiness.get("submit_command_allowed") is True
+        )
+    )
+    authorization_packet_allows_release = authorization_packet.get("status") in {
+        "ready_for_operator_confirmation",
+        "executed",
+    }
     pending_actions = [
         str(item.get("id", ""))
         for item in action_plan.get("actions") or []
@@ -3455,9 +3513,9 @@ def _operator_authorized_template_release_decision(
         release_blockers.append("authorization_readiness_action_plan_pending")
     if intake_checklist.get("pending_item_count", 0) != 0:
         release_blockers.append("authorization_intake_checklist_pending")
-    if preflight_result.get("ready_for_authorization_decision") is not True:
+    if not preflight_allows_release:
         release_blockers.append("ready_for_authorization_decision_false")
-    if authorization_packet.get("status") != "ready_for_operator_confirmation":
+    if not authorization_packet_allows_release:
         release_blockers.append("authorization_packet_not_ready")
     if authorization_packet.get("pending_acknowledgement_count", 0) != 0:
         release_blockers.append("authorization_acknowledgement_checklist_pending")
@@ -3467,11 +3525,12 @@ def _operator_authorized_template_release_decision(
         release_blockers.append("final_submit_confirmation_missing")
 
     template_released = not release_blockers
-    status = (
-        "released_for_authorized_live_run"
-        if template_released
-        else "withheld_until_authorization_readiness"
-    )
+    if template_released and external_submission_attempted:
+        status = "authorized_live_run_template_executed"
+    elif template_released:
+        status = "released_for_authorized_live_run"
+    else:
+        status = "withheld_until_authorization_readiness"
     withheld_reason = "" if template_released else release_blockers[0]
     return {
         "status": status,
@@ -3711,10 +3770,13 @@ def _operator_live_run_execution_sequence(
     release_decision = handoff.get("authorized_template_release_decision") or {}
     go_no_go_decision = handoff.get("live_run_go_no_go_decision") or {}
     completion_gate = validation.get("p0_017_completion_gate") or {}
-    external_submission_attempted = validation.get("external_submission_attempted") is True
+    external_submission_attempted = (
+        validation.get("external_submission_attempted") is True
+    )
 
     preflight_review_passed = (
         preflight_result.get("all_required_items_passed") is True
+        or external_submission_attempted
     )
     no_go_routes_clear = not (go_no_go_decision.get("resolution_routes") or [])
     action_plan_clear = action_plan.get("pending_action_count", 0) == 0
@@ -3834,10 +3896,10 @@ def _operator_live_run_execution_sequence(
         template_released and go_allowed and not pre_execution_blocked
     )
     return {
-        "status": (
-            "ready_for_authorized_template_execution"
-            if authorized_template_execution_allowed
-            else "blocked_before_authorized_template_execution"
+        "status": _live_run_execution_sequence_status(
+            authorized_template_execution_allowed=authorized_template_execution_allowed,
+            external_submission_attempted=external_submission_attempted,
+            p0_complete=p0_complete,
         ),
         "next_executable_step": (
             str(blocking_steps[0]["id"]) if blocking_steps else "complete"
@@ -3848,6 +3910,23 @@ def _operator_live_run_execution_sequence(
         "raw_live_inputs_persisted": False,
         "steps": steps,
     }
+
+
+def _live_run_execution_sequence_status(
+    *,
+    authorized_template_execution_allowed: bool,
+    external_submission_attempted: bool,
+    p0_complete: bool,
+) -> str:
+    if (
+        authorized_template_execution_allowed
+        and external_submission_attempted
+        and p0_complete
+    ):
+        return "authorized_live_run_execution_verified"
+    if authorized_template_execution_allowed:
+        return "ready_for_authorized_template_execution"
+    return "blocked_before_authorized_template_execution"
 
 
 def _authorization_readiness_actions(blockers: list[str]) -> list[dict[str, Any]]:
