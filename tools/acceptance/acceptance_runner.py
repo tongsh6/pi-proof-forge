@@ -2291,6 +2291,12 @@ def _external_l3_handoff_command_template_review_result(
         )
         or {}
     )
+    release_decision = (
+        (payload.get("operator_handoff") or {}).get(
+            "authorized_template_release_decision"
+        )
+        or {}
+    )
     expected_placeholders = {
         "<https-url>",
         "<resume.pdf>",
@@ -2535,6 +2541,45 @@ def _external_l3_handoff_command_template_review_result(
             missing.append(
                 f"authorization_readiness_action_plan.actions.{action_id}.blocks_authorization_decision"
             )
+    expected_release_fields = {
+        "status": "withheld_until_authorization_readiness",
+        "template_released": False,
+        "template_released_to_operator": False,
+        "copy_execution_allowed": False,
+        "authorized_template_rendered_for_review": True,
+        "template_rendered_for_audit": True,
+        "withheld_reason": "authorization_readiness_action_plan_pending",
+        "pending_action_count": 5,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_release_fields.items():
+        if release_decision.get(key) != expected:
+            missing.append(f"authorized_template_release_decision.{key}")
+    expected_release_blockers = {
+        "authorization_readiness_action_plan_pending",
+        "ready_for_authorization_decision_false",
+        "authorization_packet_not_ready",
+        "explicit_user_authorization_missing",
+        "final_submit_confirmation_missing",
+    }
+    release_blockers = set(release_decision.get("release_blockers") or [])
+    if not expected_release_blockers.issubset(release_blockers):
+        missing.append("authorized_template_release_decision.release_blockers")
+    release_pending_actions = set(release_decision.get("pending_action_ids") or [])
+    if not expected_action_ids.issubset(release_pending_actions):
+        missing.append("authorized_template_release_decision.pending_action_ids")
+    expected_required_before_release = {
+        "authorization_readiness_action_plan.pending_action_count=0",
+        "preflight_review_result.ready_for_authorization_decision=true",
+        "operator_handoff.authorization_packet.status=ready_for_operator_confirmation",
+        "PIPF_EXTERNAL_L3_AUTHORIZED=true",
+        "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true",
+    }
+    required_before_release = set(
+        release_decision.get("required_before_release") or []
+    )
+    if not expected_required_before_release.issubset(required_before_release):
+        missing.append("authorized_template_release_decision.required_before_release")
 
     markdown_fragments = [
         "### 命令模板复核",
@@ -2591,6 +2636,19 @@ def _external_l3_handoff_command_template_review_result(
         "`provide_reviewed_resume_pdf`",
         "`provide_reviewed_profile_yaml`",
         "`confirm_target_identity`",
+        "### 授权模板发布决策",
+        "- 状态: `withheld_until_authorization_readiness`",
+        "- 模板是否发布给操作者执行: `False`",
+        "- 是否允许复制执行: `False`",
+        "- 模板是否仅供复核展示: `True`",
+        "- 发布阻断原因: `authorization_readiness_action_plan_pending`",
+        "#### 发布阻断项",
+        "`authorization_readiness_action_plan_pending`",
+        "`explicit_user_authorization_missing`",
+        "`final_submit_confirmation_missing`",
+        "#### 发布前必需条件",
+        "`authorization_readiness_action_plan.pending_action_count=0`",
+        "`preflight_review_result.ready_for_authorization_decision=true`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
@@ -2599,7 +2657,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划已列出待补行动。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划已列出待补行动，授权模板发布决策保持 withheld。",
         )
     return JourneyStepResult(
         status="fail",
@@ -2647,6 +2705,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "preflight_review_checklist",
         "preflight_review_result",
         "authorization_readiness_action_plan",
+        "authorized_template_release_decision",
         "post_submit_feedback_traceability",
         "feedback_source_artifact",
     }

@@ -328,6 +328,10 @@ def write_external_l3_validation(
             _operator_authorization_readiness_action_plan(validation)
         )
         validation["operator_handoff"] = handoff
+        handoff["authorized_template_release_decision"] = (
+            _operator_authorized_template_release_decision(validation)
+        )
+        validation["operator_handoff"] = handoff
         validation["evidence_manifest"] = _evidence_manifest(
             validation,
             run_id=run_id,
@@ -931,6 +935,36 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     )
                     + " |"
                 )
+        release_decision = (
+            handoff.get("authorized_template_release_decision") or {}
+        )
+        if release_decision:
+            lines.extend(
+                [
+                    "",
+                    "### 授权模板发布决策",
+                    "",
+                    f"- 状态: `{release_decision.get('status', '')}`",
+                    f"- 模板是否发布给操作者执行: `{release_decision.get('template_released_to_operator', True)}`",
+                    f"- 是否允许复制执行: `{release_decision.get('copy_execution_allowed', True)}`",
+                    f"- 模板是否仅供复核展示: `{release_decision.get('authorized_template_rendered_for_review', False)}`",
+                    f"- 发布阻断原因: `{release_decision.get('withheld_reason', '')}`",
+                    f"- 待补行动数: `{release_decision.get('pending_action_count', 0)}`",
+                    f"- 原始 live 输入是否持久化: `{release_decision.get('raw_live_inputs_persisted', True)}`",
+                    "",
+                    "#### 发布阻断项",
+                    "",
+                ]
+            )
+            for item in release_decision.get("release_blockers") or []:
+                lines.append(f"- `{item}`")
+            required_before_release = release_decision.get(
+                "required_before_release"
+            ) or []
+            if required_before_release:
+                lines.extend(["", "#### 发布前必需条件", ""])
+                for item in required_before_release:
+                    lines.append(f"- `{item}`")
         if command_template:
             lines.extend(
                 [
@@ -2189,6 +2223,37 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 ),
             )
         )
+    release_decision = (
+        (validation.get("operator_handoff") or {}).get(
+            "authorized_template_release_decision"
+        )
+        or {}
+    )
+    if release_decision:
+        release_present = (
+            release_decision.get("raw_live_inputs_persisted") is False
+            and release_decision.get("template_released_to_operator") is False
+            and release_decision.get("copy_execution_allowed") is False
+            and release_decision.get("authorized_template_rendered_for_review")
+            is True
+            and bool(release_decision.get("release_blockers") or [])
+            and bool(release_decision.get("required_before_release") or [])
+        )
+        entries.append(
+            _evidence_entry(
+                entry_id="authorized_template_release_decision",
+                artifact_type="embedded_section",
+                location=f"{validation_json}#operator_handoff.authorized_template_release_decision",
+                required=(
+                    validation.get("status") == "live_blocker_recorded"
+                    and validation.get("external_submission_attempted") is False
+                ),
+                present=release_present,
+                status=str(
+                    release_decision.get("status", "missing_or_incomplete")
+                ),
+            )
+        )
 
     live_blocker_required = validation.get("status") == "live_blocker_recorded"
     live_blocker_present = bool(validation.get("live_blocker"))
@@ -2746,6 +2811,61 @@ def _operator_authorization_readiness_action_plan(
         "pending_action_count": len(actions),
         "raw_live_inputs_persisted": False,
         "actions": actions,
+    }
+
+
+def _operator_authorized_template_release_decision(
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    handoff = validation.get("operator_handoff") or {}
+    action_plan = handoff.get("authorization_readiness_action_plan") or {}
+    preflight_result = handoff.get("preflight_review_result") or {}
+    authorization_packet = handoff.get("authorization_packet") or {}
+    live_readiness = validation.get("live_run_readiness") or {}
+    missing_gates = set(live_readiness.get("missing_gates") or [])
+    pending_actions = [
+        str(item.get("id", ""))
+        for item in action_plan.get("actions") or []
+        if isinstance(item, dict) and item.get("blocks_authorization_decision") is True
+    ]
+    release_blockers: list[str] = []
+    if pending_actions:
+        release_blockers.append("authorization_readiness_action_plan_pending")
+    if preflight_result.get("ready_for_authorization_decision") is not True:
+        release_blockers.append("ready_for_authorization_decision_false")
+    if authorization_packet.get("status") != "ready_for_operator_confirmation":
+        release_blockers.append("authorization_packet_not_ready")
+    if "user_authorization" in missing_gates:
+        release_blockers.append("explicit_user_authorization_missing")
+    if "final_submit_confirmation" in missing_gates:
+        release_blockers.append("final_submit_confirmation_missing")
+
+    template_released = not release_blockers
+    status = (
+        "released_for_authorized_live_run"
+        if template_released
+        else "withheld_until_authorization_readiness"
+    )
+    withheld_reason = "" if template_released else release_blockers[0]
+    return {
+        "status": status,
+        "template_released": template_released,
+        "template_released_to_operator": template_released,
+        "copy_execution_allowed": template_released,
+        "authorized_template_rendered_for_review": True,
+        "template_rendered_for_audit": True,
+        "withheld_reason": withheld_reason,
+        "pending_action_count": len(pending_actions),
+        "pending_action_ids": pending_actions,
+        "release_blockers": release_blockers,
+        "required_before_release": [
+            "authorization_readiness_action_plan.pending_action_count=0",
+            "preflight_review_result.ready_for_authorization_decision=true",
+            "operator_handoff.authorization_packet.status=ready_for_operator_confirmation",
+            "PIPF_EXTERNAL_L3_AUTHORIZED=true",
+            "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true",
+        ],
+        "raw_live_inputs_persisted": False,
     }
 
 

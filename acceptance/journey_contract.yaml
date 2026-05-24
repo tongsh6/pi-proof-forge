@@ -358,7 +358,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 授权交接包必须记录命令模板复核结论，证明模板不可盲贴执行；复核结论必须要求先跑本地预检、预检模板不启用授权或最终提交、预检正常结果应为授权 blocker 且不触碰外部渠道、授权模板执行前必须按预检复核清单复核 validation 状态、blocker reason、外部提交未启动、submit 命令未允许、P0-017 未完成、输入审计脱敏、session、频控、证据清单、runbook 指纹和反馈追溯；本次预检复核结果必须逐项记录 observed 值并全部通过，同时把真实运行输入和 session 缺口记录为 authorization_decision_blockers，在缺口未清零前保持 ready_for_authorization_decision=false 与 authorized_template_execution_allowed=false；交接包还必须把这些缺口转成 authorization_readiness_action_plan，列出人工 session、Job URL、resume PDF、profile YAML 和目标确认的待补行动、阻断 gate、必需证据和原值不落盘边界；替换 live 输入占位符、显式授权、独立最终提交确认、人工会话可用确认和 session 存储就绪确认完成前，Markdown 报告必须保持 copy_paste_ready=false。"
+        message: "External L3 授权交接包必须记录命令模板复核结论，证明模板不可盲贴执行；复核结论必须要求先跑本地预检、预检模板不启用授权或最终提交、预检正常结果应为授权 blocker 且不触碰外部渠道、授权模板执行前必须按预检复核清单复核 validation 状态、blocker reason、外部提交未启动、submit 命令未允许、P0-017 未完成、输入审计脱敏、session、频控、证据清单、runbook 指纹和反馈追溯；本次预检复核结果必须逐项记录 observed 值并全部通过，同时把真实运行输入和 session 缺口记录为 authorization_decision_blockers，在缺口未清零前保持 ready_for_authorization_decision=false 与 authorized_template_execution_allowed=false；交接包还必须把这些缺口转成 authorization_readiness_action_plan，列出人工 session、Job URL、resume PDF、profile YAML 和目标确认的待补行动、阻断 gate、必需证据和原值不落盘边界；authorized_template_release_decision 必须在待补行动清零、预检复核允许进入授权决策、authorization_packet 就绪、显式授权和最终提交确认存在前保持 template_released_to_operator=false 与 copy_execution_allowed=false，并在 Markdown 中列出发布阻断项和发布前必需条件；替换 live 输入占位符、显式授权、独立最终提交确认、人工会话可用确认和 session 存储就绪确认完成前，Markdown 报告必须保持 copy_paste_ready=false。"
       - rule_id: "external_l3_evidence_manifest_recorded"
         level: "L3"
         stage: "submissions"

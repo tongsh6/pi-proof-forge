@@ -330,6 +330,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         evidence_entries["authorization_readiness_action_plan"]["status"]
         == "blocked_until_live_inputs_and_session_ready"
     )
+    assert evidence_entries["authorized_template_release_decision"]["required"] is True
+    assert evidence_entries["authorized_template_release_decision"]["present"] is True
+    assert (
+        evidence_entries["authorized_template_release_decision"]["status"]
+        == "withheld_until_authorization_readiness"
+    )
     assert evidence_entries["post_submit_feedback_traceability"]["present"] is True
     assert evidence_entries["live_blocker"]["required"] is True
     assert evidence_entries["live_blocker"]["present"] is True
@@ -601,6 +607,50 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         and item["blocks_authorization_decision"] is True
         for item in action_plan["actions"]
     )
+    release_decision = handoff["authorized_template_release_decision"]
+    assert release_decision["status"] == "withheld_until_authorization_readiness"
+    assert release_decision["template_released"] is False
+    assert release_decision["template_released_to_operator"] is False
+    assert release_decision["copy_execution_allowed"] is False
+    assert release_decision["authorized_template_rendered_for_review"] is True
+    assert release_decision["template_rendered_for_audit"] is True
+    assert (
+        release_decision["withheld_reason"]
+        == "authorization_readiness_action_plan_pending"
+    )
+    assert release_decision["pending_action_count"] == 5
+    assert "prepare_manual_session" in release_decision["pending_action_ids"]
+    assert "provide_job_url" in release_decision["pending_action_ids"]
+    assert "confirm_target_identity" in release_decision["pending_action_ids"]
+    assert (
+        "authorization_readiness_action_plan_pending"
+        in release_decision["release_blockers"]
+    )
+    assert (
+        "ready_for_authorization_decision_false"
+        in release_decision["release_blockers"]
+    )
+    assert (
+        "explicit_user_authorization_missing"
+        in release_decision["release_blockers"]
+    )
+    assert (
+        "final_submit_confirmation_missing"
+        in release_decision["release_blockers"]
+    )
+    assert (
+        "authorization_readiness_action_plan.pending_action_count=0"
+        in release_decision["required_before_release"]
+    )
+    assert (
+        "preflight_review_result.ready_for_authorization_decision=true"
+        in release_decision["required_before_release"]
+    )
+    assert (
+        "PIPF_EXTERNAL_L3_AUTHORIZED=true"
+        in release_decision["required_before_release"]
+    )
+    assert release_decision["raw_live_inputs_persisted"] is False
     command_template_review = handoff["command_template_review"]
     assert command_template_review["copy_paste_ready"] is False
     assert command_template_review["requires_placeholder_replacement"] is True
@@ -773,6 +823,25 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "`provide_reviewed_resume_pdf`" in markdown
     assert "`provide_reviewed_profile_yaml`" in markdown
     assert "`confirm_target_identity`" in markdown
+    assert "### 授权模板发布决策" in markdown
+    assert (
+        "- 状态: `withheld_until_authorization_readiness`"
+        in markdown
+    )
+    assert "- 模板是否发布给操作者执行: `False`" in markdown
+    assert "- 是否允许复制执行: `False`" in markdown
+    assert "- 模板是否仅供复核展示: `True`" in markdown
+    assert (
+        "- 发布阻断原因: `authorization_readiness_action_plan_pending`"
+        in markdown
+    )
+    assert "#### 发布阻断项" in markdown
+    assert "`authorization_readiness_action_plan_pending`" in markdown
+    assert "`explicit_user_authorization_missing`" in markdown
+    assert "`final_submit_confirmation_missing`" in markdown
+    assert "#### 发布前必需条件" in markdown
+    assert "`authorization_readiness_action_plan.pending_action_count=0`" in markdown
+    assert "`preflight_review_result.ready_for_authorization_decision=true`" in markdown
     assert "### 授权真实运行命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
     assert "```bash" in markdown
@@ -1053,6 +1122,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert "预检复核结果已逐项通过" in handoff_template_review_rule["message"]
     assert "不能进入授权决策" in handoff_template_review_rule["message"]
     assert "授权就绪行动计划" in handoff_template_review_rule["message"]
+    assert "授权模板发布决策" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step
         for step in journey_payload["steps"]

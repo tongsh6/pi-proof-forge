@@ -561,6 +561,7 @@ steps:
         - "handoff_preflight_review_checklist_required_before_authorized_template"
         - "handoff_preflight_review_result_evaluates_current_evidence"
         - "handoff_authorization_readiness_action_plan_records_next_actions"
+        - "handoff_authorized_template_release_decision_withholds_execution"
         - "external_l3_evidence_manifest_links_required_artifacts"
         - "external_l3_outcome_summary_disambiguates_acceptance_pass"
         - "manual_session_ready_confirmed_before_external_submit"
