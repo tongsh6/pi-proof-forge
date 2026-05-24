@@ -338,6 +338,10 @@ def write_external_l3_validation(
             _operator_authorized_template_release_decision(validation)
         )
         validation["operator_handoff"] = handoff
+        handoff["live_run_go_no_go_decision"] = (
+            _operator_live_run_go_no_go_decision(validation)
+        )
+        validation["operator_handoff"] = handoff
         validation["evidence_manifest"] = _evidence_manifest(
             validation,
             run_id=run_id,
@@ -1038,6 +1042,37 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             if required_before_release:
                 lines.extend(["", "#### 发布前必需条件", ""])
                 for item in required_before_release:
+                    lines.append(f"- `{item}`")
+        go_no_go_decision = handoff.get("live_run_go_no_go_decision") or {}
+        if go_no_go_decision:
+            decision_inputs = go_no_go_decision.get("decision_inputs") or {}
+            lines.extend(
+                [
+                    "",
+                    "### 真实运行 Go/No-Go 决策",
+                    "",
+                    f"- 状态: `{go_no_go_decision.get('status', '')}`",
+                    f"- 是否允许启动真实运行: `{go_no_go_decision.get('go_for_live_run', True)}`",
+                    f"- submit 命令是否可启动: `{go_no_go_decision.get('submit_command_may_start', True)}`",
+                    f"- 是否允许复制授权模板: `{go_no_go_decision.get('copy_authorized_template_allowed', True)}`",
+                    f"- 决策原因: `{go_no_go_decision.get('reason', '')}`",
+                    f"- 原始 live 输入是否持久化: `{go_no_go_decision.get('raw_live_inputs_persisted', True)}`",
+                    "",
+                    "#### 决策输入",
+                    "",
+                ]
+            )
+            for key, value in decision_inputs.items():
+                lines.append(f"- `{key}`: `{value}`")
+            blocking_evidence = go_no_go_decision.get("blocking_evidence") or []
+            if blocking_evidence:
+                lines.extend(["", "#### Go/No-Go 阻断证据", ""])
+                for item in blocking_evidence:
+                    lines.append(f"- `{item}`")
+            required_before_go = go_no_go_decision.get("required_before_go") or []
+            if required_before_go:
+                lines.extend(["", "#### Go 前必需条件", ""])
+                for item in required_before_go:
                     lines.append(f"- `{item}`")
         if command_template:
             lines.extend(
@@ -2541,6 +2576,39 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 ),
             )
         )
+    go_no_go_decision = (
+        (validation.get("operator_handoff") or {}).get(
+            "live_run_go_no_go_decision"
+        )
+        or {}
+    )
+    if go_no_go_decision:
+        go_no_go_present = (
+            go_no_go_decision.get("raw_live_inputs_persisted") is False
+            and isinstance(go_no_go_decision.get("go_for_live_run"), bool)
+            and isinstance(go_no_go_decision.get("submit_command_may_start"), bool)
+            and isinstance(
+                go_no_go_decision.get("copy_authorized_template_allowed"), bool
+            )
+            and bool(go_no_go_decision.get("decision_inputs") or {})
+            and bool(go_no_go_decision.get("required_before_go") or [])
+            and bool(go_no_go_decision.get("status"))
+        )
+        entries.append(
+            _evidence_entry(
+                entry_id="live_run_go_no_go_decision",
+                artifact_type="embedded_section",
+                location=f"{validation_json}#operator_handoff.live_run_go_no_go_decision",
+                required=(
+                    validation.get("status") == "live_blocker_recorded"
+                    and validation.get("external_submission_attempted") is False
+                ),
+                present=go_no_go_present,
+                status=str(
+                    go_no_go_decision.get("status", "missing_or_incomplete")
+                ),
+            )
+        )
 
     live_blocker_required = validation.get("status") == "live_blocker_recorded"
     live_blocker_present = bool(validation.get("live_blocker"))
@@ -3288,6 +3356,99 @@ def _operator_authorized_template_release_decision(
             "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true",
         ],
         "raw_live_inputs_persisted": False,
+    }
+
+
+def _operator_live_run_go_no_go_decision(
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    handoff = validation.get("operator_handoff") or {}
+    readiness = validation.get("live_run_readiness") or {}
+    submit_decision = validation.get("submit_safety_decision") or {}
+    action_plan = handoff.get("authorization_readiness_action_plan") or {}
+    intake_checklist = handoff.get("authorization_intake_checklist") or {}
+    release_decision = handoff.get("authorized_template_release_decision") or {}
+    completion_gate = validation.get("p0_017_completion_gate") or {}
+
+    decision_inputs = {
+        "live_run_readiness_ready": readiness.get("ready") is True,
+        "live_run_readiness_submit_command_allowed": (
+            readiness.get("submit_command_allowed") is True
+        ),
+        "submit_safety_decision": str(submit_decision.get("decision", "")),
+        "authorization_readiness_action_plan_status": str(
+            action_plan.get("status", "")
+        ),
+        "authorization_readiness_action_plan_pending_action_count": int(
+            action_plan.get("pending_action_count", 0)
+        ),
+        "authorization_intake_status": str(intake_checklist.get("status", "")),
+        "authorization_intake_pending_item_count": int(
+            intake_checklist.get("pending_item_count", 0)
+        ),
+        "authorized_template_release_status": str(
+            release_decision.get("status", "")
+        ),
+        "authorized_template_copy_execution_allowed": (
+            release_decision.get("copy_execution_allowed") is True
+        ),
+        "p0_017_completion_gate_status": str(completion_gate.get("status", "")),
+        "p0_017_complete": completion_gate.get("p0_017_complete") is True,
+    }
+    submit_safety_allows_live_run = submit_decision.get("decision") in {
+        "allowed_pending_execution",
+        "allowed_and_executed",
+    }
+    blocking_evidence: list[str] = []
+    if not decision_inputs["live_run_readiness_ready"]:
+        blocking_evidence.append("live_run_readiness_not_ready")
+    if not decision_inputs["live_run_readiness_submit_command_allowed"]:
+        blocking_evidence.append("submit_command_not_allowed")
+    if not submit_safety_allows_live_run:
+        blocking_evidence.append(
+            f"submit_safety_decision_{submit_decision.get('decision', 'missing')}"
+        )
+    if action_plan.get("pending_action_count", 0) != 0:
+        blocking_evidence.append("authorization_readiness_action_plan_pending")
+    if intake_checklist.get("pending_item_count", 0) != 0:
+        blocking_evidence.append("authorization_intake_checklist_pending")
+    if release_decision.get("copy_execution_allowed") is not True:
+        blocking_evidence.append("authorized_template_not_released")
+
+    go_for_live_run = not blocking_evidence
+    if go_for_live_run and validation.get("external_submission_attempted") is True:
+        status = "authorized_live_run_executed"
+    elif go_for_live_run:
+        status = "go_for_authorized_live_run"
+    else:
+        status = "no_go_until_authorized_template_released"
+    reason = "" if go_for_live_run else blocking_evidence[0]
+    return {
+        "status": status,
+        "go_for_live_run": go_for_live_run,
+        "submit_command_may_start": (
+            readiness.get("submit_command_allowed") is True
+            and submit_safety_allows_live_run
+        ),
+        "copy_authorized_template_allowed": (
+            release_decision.get("copy_execution_allowed") is True
+        ),
+        "reason": reason,
+        "raw_live_inputs_persisted": False,
+        "decision_inputs": decision_inputs,
+        "blocking_evidence": blocking_evidence,
+        "required_before_go": [
+            "live_run_readiness.ready=true",
+            "live_run_readiness.submit_command_allowed=true",
+            "submit_safety_decision.decision=allowed_pending_execution",
+            "operator_handoff.authorization_readiness_action_plan.pending_action_count=0",
+            "operator_handoff.authorization_intake_checklist.pending_item_count=0",
+            "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true",
+        ],
+        "p0_017_completion_note": (
+            "p0_017_completion_gate 只在真实渠道验证成功后完成；Go/No-Go "
+            "只判断是否允许启动一次已授权真实运行。"
+        ),
     }
 
 

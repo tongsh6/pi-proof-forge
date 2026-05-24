@@ -2303,6 +2303,12 @@ def _external_l3_handoff_command_template_review_result(
         )
         or {}
     )
+    go_no_go_decision = (
+        (payload.get("operator_handoff") or {}).get(
+            "live_run_go_no_go_decision"
+        )
+        or {}
+    )
     expected_placeholders = {
         "<https-url>",
         "<resume.pdf>",
@@ -2663,6 +2669,64 @@ def _external_l3_handoff_command_template_review_result(
     )
     if not expected_required_before_release.issubset(required_before_release):
         missing.append("authorized_template_release_decision.required_before_release")
+    expected_go_no_go_fields = {
+        "status": "no_go_until_authorized_template_released",
+        "go_for_live_run": False,
+        "submit_command_may_start": False,
+        "copy_authorized_template_allowed": False,
+        "reason": "live_run_readiness_not_ready",
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_go_no_go_fields.items():
+        if go_no_go_decision.get(key) != expected:
+            missing.append(f"live_run_go_no_go_decision.{key}")
+    expected_decision_inputs = {
+        "live_run_readiness_ready": False,
+        "live_run_readiness_submit_command_allowed": False,
+        "submit_safety_decision": "blocked_before_command",
+        "authorization_readiness_action_plan_status": (
+            "blocked_until_live_inputs_and_session_ready"
+        ),
+        "authorization_readiness_action_plan_pending_action_count": 5,
+        "authorization_intake_status": (
+            "blocked_until_authorization_intake_complete"
+        ),
+        "authorization_intake_pending_item_count": 9,
+        "authorized_template_release_status": (
+            "withheld_until_authorization_readiness"
+        ),
+        "authorized_template_copy_execution_allowed": False,
+        "p0_017_completion_gate_status": "incomplete_pre_submit_blocker",
+        "p0_017_complete": False,
+    }
+    decision_inputs = go_no_go_decision.get("decision_inputs") or {}
+    for key, expected in expected_decision_inputs.items():
+        if decision_inputs.get(key) != expected:
+            missing.append(f"live_run_go_no_go_decision.decision_inputs.{key}")
+    expected_go_no_go_blockers = {
+        "live_run_readiness_not_ready",
+        "submit_command_not_allowed",
+        "submit_safety_decision_blocked_before_command",
+        "authorization_readiness_action_plan_pending",
+        "authorization_intake_checklist_pending",
+        "authorized_template_not_released",
+    }
+    go_no_go_blockers = set(go_no_go_decision.get("blocking_evidence") or [])
+    if not expected_go_no_go_blockers.issubset(go_no_go_blockers):
+        missing.append("live_run_go_no_go_decision.blocking_evidence")
+    expected_required_before_go = {
+        "live_run_readiness.ready=true",
+        "live_run_readiness.submit_command_allowed=true",
+        "submit_safety_decision.decision=allowed_pending_execution",
+        "operator_handoff.authorization_readiness_action_plan.pending_action_count=0",
+        "operator_handoff.authorization_intake_checklist.pending_item_count=0",
+        "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true",
+    }
+    required_before_go = set(go_no_go_decision.get("required_before_go") or [])
+    if not expected_required_before_go.issubset(required_before_go):
+        missing.append("live_run_go_no_go_decision.required_before_go")
+    if not go_no_go_decision.get("p0_017_completion_note"):
+        missing.append("live_run_go_no_go_decision.p0_017_completion_note")
 
     markdown_fragments = [
         "### 命令模板复核",
@@ -2745,6 +2809,23 @@ def _external_l3_handoff_command_template_review_result(
         "`authorization_readiness_action_plan.pending_action_count=0`",
         "`authorization_intake_checklist.pending_item_count=0`",
         "`preflight_review_result.ready_for_authorization_decision=true`",
+        "### 真实运行 Go/No-Go 决策",
+        "- 状态: `no_go_until_authorized_template_released`",
+        "- 是否允许启动真实运行: `False`",
+        "- submit 命令是否可启动: `False`",
+        "- 是否允许复制授权模板: `False`",
+        "- 决策原因: `live_run_readiness_not_ready`",
+        "#### 决策输入",
+        "`live_run_readiness_submit_command_allowed`: `False`",
+        "`submit_safety_decision`: `blocked_before_command`",
+        "`authorized_template_copy_execution_allowed`: `False`",
+        "#### Go/No-Go 阻断证据",
+        "`submit_command_not_allowed`",
+        "`authorized_template_not_released`",
+        "#### Go 前必需条件",
+        "`live_run_readiness.submit_command_allowed=true`",
+        "`submit_safety_decision.decision=allowed_pending_execution`",
+        "`operator_handoff.authorized_template_release_decision.copy_execution_allowed=true`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
@@ -2753,7 +2834,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划与授权输入接收清单已列出待补项，授权模板发布决策保持 withheld。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划与授权输入接收清单已列出待补项，授权模板发布决策保持 withheld，真实运行 Go/No-Go 决策保持 no-go。",
         )
     return JourneyStepResult(
         status="fail",
@@ -2804,6 +2885,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "authorization_readiness_action_plan",
         "authorization_intake_checklist",
         "authorized_template_release_decision",
+        "live_run_go_no_go_decision",
         "post_submit_feedback_traceability",
         "feedback_source_artifact",
     }

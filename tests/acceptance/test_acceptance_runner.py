@@ -375,6 +375,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         evidence_entries["authorized_template_release_decision"]["status"]
         == "withheld_until_authorization_readiness"
     )
+    assert evidence_entries["live_run_go_no_go_decision"]["required"] is True
+    assert evidence_entries["live_run_go_no_go_decision"]["present"] is True
+    assert (
+        evidence_entries["live_run_go_no_go_decision"]["status"]
+        == "no_go_until_authorized_template_released"
+    )
     assert evidence_entries["post_submit_feedback_traceability"]["present"] is True
     assert evidence_entries["live_blocker"]["required"] is True
     assert evidence_entries["live_blocker"]["present"] is True
@@ -753,6 +759,66 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         in release_decision["required_before_release"]
     )
     assert release_decision["raw_live_inputs_persisted"] is False
+    go_no_go_decision = handoff["live_run_go_no_go_decision"]
+    assert (
+        go_no_go_decision["status"]
+        == "no_go_until_authorized_template_released"
+    )
+    assert go_no_go_decision["go_for_live_run"] is False
+    assert go_no_go_decision["submit_command_may_start"] is False
+    assert go_no_go_decision["copy_authorized_template_allowed"] is False
+    assert go_no_go_decision["reason"] == "live_run_readiness_not_ready"
+    assert go_no_go_decision["raw_live_inputs_persisted"] is False
+    assert (
+        go_no_go_decision["decision_inputs"][
+            "live_run_readiness_submit_command_allowed"
+        ]
+        is False
+    )
+    assert (
+        go_no_go_decision["decision_inputs"]["submit_safety_decision"]
+        == "blocked_before_command"
+    )
+    assert (
+        go_no_go_decision["decision_inputs"][
+            "authorization_readiness_action_plan_pending_action_count"
+        ]
+        == 5
+    )
+    assert (
+        go_no_go_decision["decision_inputs"][
+            "authorization_intake_pending_item_count"
+        ]
+        == 9
+    )
+    assert (
+        go_no_go_decision["decision_inputs"][
+            "authorized_template_copy_execution_allowed"
+        ]
+        is False
+    )
+    assert "submit_command_not_allowed" in go_no_go_decision["blocking_evidence"]
+    assert (
+        "authorization_readiness_action_plan_pending"
+        in go_no_go_decision["blocking_evidence"]
+    )
+    assert (
+        "authorization_intake_checklist_pending"
+        in go_no_go_decision["blocking_evidence"]
+    )
+    assert (
+        "authorized_template_not_released"
+        in go_no_go_decision["blocking_evidence"]
+    )
+    assert (
+        "submit_safety_decision.decision=allowed_pending_execution"
+        in go_no_go_decision["required_before_go"]
+    )
+    assert (
+        "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true"
+        in go_no_go_decision["required_before_go"]
+    )
+    assert "真实渠道验证成功后完成" in go_no_go_decision["p0_017_completion_note"]
     command_template_review = handoff["command_template_review"]
     assert command_template_review["copy_paste_ready"] is False
     assert command_template_review["requires_placeholder_replacement"] is True
@@ -973,6 +1039,29 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "`authorization_readiness_action_plan.pending_action_count=0`" in markdown
     assert "`authorization_intake_checklist.pending_item_count=0`" in markdown
     assert "`preflight_review_result.ready_for_authorization_decision=true`" in markdown
+    assert "### 真实运行 Go/No-Go 决策" in markdown
+    assert "- 状态: `no_go_until_authorized_template_released`" in markdown
+    assert "- 是否允许启动真实运行: `False`" in markdown
+    assert "- submit 命令是否可启动: `False`" in markdown
+    assert "- 是否允许复制授权模板: `False`" in markdown
+    assert "- 决策原因: `live_run_readiness_not_ready`" in markdown
+    assert "#### 决策输入" in markdown
+    assert "`live_run_readiness_submit_command_allowed`: `False`" in markdown
+    assert "`submit_safety_decision`: `blocked_before_command`" in markdown
+    assert "`authorized_template_copy_execution_allowed`: `False`" in markdown
+    assert "#### Go/No-Go 阻断证据" in markdown
+    assert "`submit_command_not_allowed`" in markdown
+    assert "`authorized_template_not_released`" in markdown
+    assert "#### Go 前必需条件" in markdown
+    assert "`live_run_readiness.submit_command_allowed=true`" in markdown
+    assert (
+        "`submit_safety_decision.decision=allowed_pending_execution`"
+        in markdown
+    )
+    assert (
+        "`operator_handoff.authorized_template_release_decision.copy_execution_allowed=true`"
+        in markdown
+    )
     assert "### 授权真实运行命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
     assert "```bash" in markdown
@@ -1255,6 +1344,8 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert "授权就绪行动计划" in handoff_template_review_rule["message"]
     assert "授权输入接收清单" in handoff_template_review_rule["message"]
     assert "授权模板发布决策" in handoff_template_review_rule["message"]
+    assert "真实运行 Go/No-Go 决策" in handoff_template_review_rule["message"]
+    assert "no-go" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step
         for step in journey_payload["steps"]

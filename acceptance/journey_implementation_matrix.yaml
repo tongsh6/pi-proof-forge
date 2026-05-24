@@ -563,6 +563,7 @@ steps:
         - "handoff_authorization_readiness_action_plan_records_next_actions"
         - "handoff_authorization_intake_checklist_maps_env_to_gates"
         - "handoff_authorized_template_release_decision_withholds_execution"
+        - "handoff_live_run_go_no_go_decision_blocks_submit"
         - "external_l3_evidence_manifest_links_required_artifacts"
         - "external_l3_outcome_summary_disambiguates_acceptance_pass"
         - "p0_017_completion_gate_blocks_false_completion"
