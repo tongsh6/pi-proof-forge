@@ -370,7 +370,7 @@ case_contracts:
         stage: "submissions"
         status: "not_started"
         evidence: ""
-        message: "External L3 验收必须记录结果分级，明确 acceptance pass 只代表证据写出与规则通过，并区分 pre-submit blocker、post-command blocker 和真实外部验证成功；P0-017 未真实成功时必须保持 p0_017_complete=false；blocker 场景中的 next_action 必须与 live_blocker.next_action 一致，Markdown 报告中的 outcome、blocker reason 和 next action 必须与 JSON 一致。"
+        message: "External L3 验收必须记录结果分级，明确 acceptance pass 只代表证据写出与规则通过，并区分 pre-submit blocker、post-command blocker 和真实外部验证成功；P0-017 未真实成功时必须保持 p0_017_complete=false；同时必须记录 p0_017_completion_gate，把显式授权、最终提交确认、人工 session、真实输入、外部提交、submission log 反向链接、submission log success、反馈追溯和 external_validated outcome 列为完成证据；blocker 场景中的 next_action 必须与 live_blocker.next_action 一致，Markdown 报告中的 outcome、blocker reason、next action 和 P0-017 完成门禁必须与 JSON 一致。"
       - rule_id: "external_l3_manual_session_ready_confirmed_before_command"
         level: "L3"
         stage: "submissions"

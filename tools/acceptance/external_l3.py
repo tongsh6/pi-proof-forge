@@ -177,6 +177,7 @@ def build_external_l3_validation(
             live_blocker=live_blocker,
             next_action=live_blocker["next_action"],
         )
+        base["p0_017_completion_gate"] = _p0_017_completion_gate(base)
         return base
 
     command = _submission_command(request)
@@ -304,6 +305,7 @@ def build_external_l3_validation(
             else str((base.get("live_blocker") or {}).get("next_action", ""))
         ),
     )
+    base["p0_017_completion_gate"] = _p0_017_completion_gate(base)
     return base
 
 
@@ -365,6 +367,7 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
     handoff = validation.get("operator_handoff") or {}
     evidence_manifest = validation.get("evidence_manifest") or {}
     outcome_summary = validation.get("outcome_summary") or {}
+    p0_completion_gate = validation.get("p0_017_completion_gate") or {}
     lines = [
         "# External L3 投递验证",
         "",
@@ -397,6 +400,38 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 f"- 下一步: {outcome_summary.get('next_action', '')}",
             ]
         )
+    if p0_completion_gate:
+        lines.extend(
+            [
+                "",
+                "## P0-017 完成门禁",
+                "",
+                f"- 状态: `{p0_completion_gate.get('status', '')}`",
+                f"- P0-017 是否完成: `{p0_completion_gate.get('p0_017_complete', False)}`",
+                f"- Acceptance pass 是否等于完成: `{p0_completion_gate.get('acceptance_pass_is_completion', False)}`",
+                f"- 是否已真实验证成功: `{p0_completion_gate.get('external_l3_success', False)}`",
+                f"- 是否已尝试外部提交: `{p0_completion_gate.get('external_submission_attempted', False)}`",
+                f"- 完成阻断项: `{', '.join(p0_completion_gate.get('completion_blockers') or [])}`",
+                f"- 原始 live 输入是否持久化: `{p0_completion_gate.get('raw_live_inputs_persisted', True)}`",
+                "",
+                "| 完成证据 | 状态 | 来源 | 必需 | 原值落盘 |",
+                "|---|---:|---|---:|---:|",
+            ]
+        )
+        for item in p0_completion_gate.get("required_evidence") or []:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"`{item.get('id', '')}`",
+                        f"`{item.get('status', '')}`",
+                        f"`{item.get('source_path', '')}`",
+                        f"`{item.get('required', False)}`",
+                        f"`{item.get('raw_live_inputs_persisted', True)}`",
+                    ]
+                )
+                + " |"
+            )
     if blocker:
         blocker_diagnostics = blocker.get("diagnostics") or {}
         lines.extend(
@@ -2092,6 +2127,151 @@ def _outcome_summary(
     }
 
 
+def _p0_017_completion_gate(validation: dict[str, Any]) -> dict[str, Any]:
+    readiness = validation.get("live_run_readiness") or {}
+    submission_traceability = validation.get("submission_traceability") or {}
+    feedback_traceability = validation.get("post_submit_feedback_traceability") or {}
+    status = str(validation.get("status", ""))
+    external_submission_attempted = (
+        validation.get("external_submission_attempted") is True
+    )
+    external_l3_success = status == "external_validated"
+    evidence_items = [
+        _p0_completion_evidence_item(
+            item_id="explicit_user_authorization",
+            source_path="live_run_readiness.gates.user_authorization",
+            satisfied=_readiness_gates_passed(readiness, ["user_authorization"]),
+        ),
+        _p0_completion_evidence_item(
+            item_id="separate_final_submit_confirmation",
+            source_path="live_run_readiness.gates.final_submit_confirmation",
+            satisfied=_readiness_gates_passed(readiness, ["final_submit_confirmation"]),
+        ),
+        _p0_completion_evidence_item(
+            item_id="manual_session_ready_confirmed",
+            source_path="live_run_readiness.gates.manual_session_ready_confirmed",
+            satisfied=_readiness_gates_passed(
+                readiness, ["manual_session_ready_confirmed"]
+            ),
+        ),
+        _p0_completion_evidence_item(
+            item_id="manual_session_storage_ready",
+            source_path="live_run_readiness.gates.manual_session_storage_ready",
+            satisfied=_readiness_gates_passed(
+                readiness, ["manual_session_storage_ready"]
+            ),
+        ),
+        _p0_completion_evidence_item(
+            item_id="live_job_url_ready",
+            source_path="live_run_readiness.gates.job_url",
+            satisfied=_readiness_gates_passed(
+                readiness,
+                ["job_url_present", "job_url_valid", "target_job_id_extractable"],
+            ),
+        ),
+        _p0_completion_evidence_item(
+            item_id="resume_pdf_ready",
+            source_path="live_run_readiness.gates.resume_pdf",
+            satisfied=_readiness_gates_passed(
+                readiness, ["resume_pdf_present", "resume_pdf_file_ready"]
+            ),
+        ),
+        _p0_completion_evidence_item(
+            item_id="profile_yaml_ready",
+            source_path="live_run_readiness.gates.profile_yaml",
+            satisfied=_readiness_gates_passed(
+                readiness, ["profile_yaml_present", "profile_yaml_file_ready"]
+            ),
+        ),
+        _p0_completion_evidence_item(
+            item_id="target_confirmation_ready",
+            source_path="live_run_readiness.gates.target_confirmation",
+            satisfied=_readiness_gates_passed(
+                readiness,
+                [
+                    "confirm_job_id_present",
+                    "target_job_id_matches_confirmation",
+                    "confirm_recruiter_present",
+                ],
+            ),
+        ),
+        _p0_completion_evidence_item(
+            item_id="external_submission_attempted",
+            source_path="external_submission_attempted",
+            satisfied=external_submission_attempted,
+        ),
+        _p0_completion_evidence_item(
+            item_id="submission_log_linked_to_validation",
+            source_path="submission_traceability.linked_to_validation",
+            satisfied=submission_traceability.get("linked_to_validation") is True,
+        ),
+        _p0_completion_evidence_item(
+            item_id="submission_log_status_success",
+            source_path="submission_traceability.submission_log_status_success",
+            satisfied=(
+                submission_traceability.get("submission_log_status_success") is True
+            ),
+        ),
+        _p0_completion_evidence_item(
+            item_id="post_submit_feedback_traceability",
+            source_path="post_submit_feedback_traceability.traceable",
+            satisfied=feedback_traceability.get("traceable") is True,
+        ),
+        _p0_completion_evidence_item(
+            item_id="outcome_external_validated",
+            source_path="outcome_summary.outcome",
+            satisfied=external_l3_success,
+        ),
+    ]
+    completion_blockers = [
+        str(item["id"]) for item in evidence_items if item["status"] != "satisfied"
+    ]
+    p0_complete = external_l3_success and not completion_blockers
+    if p0_complete:
+        gate_status = "complete_external_l3_validated"
+    elif external_submission_attempted:
+        gate_status = "incomplete_post_command_blocker_or_traceability_gap"
+    else:
+        gate_status = "incomplete_pre_submit_blocker"
+    return {
+        "status": gate_status,
+        "p0_017_complete": p0_complete,
+        "acceptance_pass_is_completion": p0_complete,
+        "external_l3_success": external_l3_success,
+        "external_submission_attempted": external_submission_attempted,
+        "completion_blockers": completion_blockers,
+        "raw_live_inputs_persisted": False,
+        "required_evidence": evidence_items,
+    }
+
+
+def _p0_completion_evidence_item(
+    *,
+    item_id: str,
+    source_path: str,
+    satisfied: bool,
+) -> dict[str, Any]:
+    return {
+        "id": item_id,
+        "source_path": source_path,
+        "status": "satisfied" if satisfied else "missing",
+        "required": True,
+        "raw_live_inputs_persisted": False,
+    }
+
+
+def _readiness_gates_passed(
+    readiness: dict[str, Any],
+    gate_ids: list[str],
+) -> bool:
+    gates = {
+        str(gate.get("id", "")): gate
+        for gate in readiness.get("gates") or []
+        if isinstance(gate, dict)
+    }
+    return all(gates.get(gate_id, {}).get("status") == "pass" for gate_id in gate_ids)
+
+
 def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, Any]:
     validation_json = str(
         Path("outputs") / "acceptance" / run_id / "external-l3-validation.json"
@@ -2126,6 +2306,7 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
         "forbidden_input_audit",
         "target_confirmation_audit",
         "operator_handoff",
+        "p0_017_completion_gate",
         "post_submit_feedback_traceability",
     ):
         present = bool(validation.get(section))

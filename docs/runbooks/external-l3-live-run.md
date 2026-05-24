@@ -63,13 +63,15 @@ bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --leve
 2. 打开对应 Markdown 报告，确认结果分级、live blocker、submission traceability 和 post-submit feedback trace 与 JSON 一致。
 3. 如果 `external_l3_success=true`，确认 `outputs/submissions/liepin/*/submission_log.yaml` 或 `.json` 存在，且反向链接本次 validation run id/path。
 4. 确认 submission log 的 `live_inputs_redacted=true`，且 Job URL、resume/profile 路径、文件名、页面观测值、截图和 HTML snapshot 没有落盘。
-5. 如果只记录 blocker，把 blocker reason、next action 和 feedback trace 作为下一轮处理入口，不得把 acceptance pass 解读为 P0-017 完成。
+5. 复核 `P0-017 完成门禁`；只有所有 required evidence 都为 `satisfied` 且 `acceptance_pass_is_completion=true` 时，才可把本次 acceptance pass 解读为 P0-017 完成。
+6. 如果只记录 blocker，把 blocker reason、next action 和 feedback trace 作为下一轮处理入口，不得把 acceptance pass 解读为 P0-017 完成。
 
 ## 完成口径
 
 P0-017 只有在以下证据同时成立时才可从 `next` 更新为完成状态：
 
 - `external-l3-validation.json` 的 `status=external_validated`。
+- `p0_017_completion_gate.p0_017_complete=true` 且 `completion_blockers` 为空。
 - `outcome_summary.external_l3_success=true` 且 `outcome_summary.p0_017_complete=true`。
 - submission log 存在、位于允许输出根目录下，并反向链接本次 validation run id/path。
 - submission log 关键步骤 `rate_limit`、`login_check`、`target_verify`、`submit_safety`、`chat_send_resume` 和 `submit` 均记录且通过。

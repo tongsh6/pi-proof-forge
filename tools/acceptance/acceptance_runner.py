@@ -2797,6 +2797,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "forbidden_input_audit",
         "target_confirmation_audit",
         "operator_handoff",
+        "p0_017_completion_gate",
         "external_l3_live_run_runbook",
         "preflight_review_checklist",
         "preflight_review_result",
@@ -2911,6 +2912,7 @@ def _external_l3_outcome_summary_result(step: AcceptanceStep) -> JourneyStepResu
         )
 
     outcome = payload.get("outcome_summary") or {}
+    completion_gate = payload.get("p0_017_completion_gate") or {}
     status = payload.get("status")
     expected_outcome = (
         "external_validated"
@@ -2944,6 +2946,62 @@ def _external_l3_outcome_summary_result(step: AcceptanceStep) -> JourneyStepResu
         missing.append("next_action")
     if blocker_reason and outcome.get("next_action") != blocker.get("next_action"):
         missing.append("next_action_matches_live_blocker")
+    expected_completion_status = (
+        "complete_external_l3_validated"
+        if status == "external_validated"
+        else (
+            "incomplete_post_command_blocker_or_traceability_gap"
+            if payload.get("external_submission_attempted") is True
+            else "incomplete_pre_submit_blocker"
+        )
+    )
+    if completion_gate.get("status") != expected_completion_status:
+        missing.append("p0_017_completion_gate.status")
+    if completion_gate.get("p0_017_complete") is not (status == "external_validated"):
+        missing.append("p0_017_completion_gate.p0_017_complete")
+    if completion_gate.get("acceptance_pass_is_completion") is not (
+        status == "external_validated"
+    ):
+        missing.append("p0_017_completion_gate.acceptance_pass_is_completion")
+    if completion_gate.get("raw_live_inputs_persisted") is not False:
+        missing.append("p0_017_completion_gate.raw_live_inputs_persisted")
+    required_completion_ids = {
+        "explicit_user_authorization",
+        "separate_final_submit_confirmation",
+        "manual_session_ready_confirmed",
+        "manual_session_storage_ready",
+        "live_job_url_ready",
+        "resume_pdf_ready",
+        "profile_yaml_ready",
+        "target_confirmation_ready",
+        "external_submission_attempted",
+        "submission_log_linked_to_validation",
+        "submission_log_status_success",
+        "post_submit_feedback_traceability",
+        "outcome_external_validated",
+    }
+    completion_items = {
+        str(item.get("id", "")): item
+        for item in completion_gate.get("required_evidence") or []
+        if isinstance(item, dict)
+    }
+    for item_id in required_completion_ids:
+        item = completion_items.get(item_id)
+        if not item:
+            missing.append(f"p0_017_completion_gate.required_evidence.{item_id}")
+            continue
+        if item.get("required") is not True:
+            missing.append(
+                f"p0_017_completion_gate.required_evidence.{item_id}.required"
+            )
+        if item.get("raw_live_inputs_persisted") is not False:
+            missing.append(
+                f"p0_017_completion_gate.required_evidence.{item_id}.raw_live_inputs_persisted"
+            )
+    if status != "external_validated":
+        blockers = set(completion_gate.get("completion_blockers") or [])
+        if "outcome_external_validated" not in blockers:
+            missing.append("p0_017_completion_gate.completion_blockers")
 
     markdown_fragments = [
         "## 结果分级",
@@ -2953,6 +3011,15 @@ def _external_l3_outcome_summary_result(step: AcceptanceStep) -> JourneyStepResu
         f"- 是否已尝试外部提交: `{outcome.get('external_submission_attempted', False)}`",
         f"- 是否需要阻断处理: `{outcome.get('blocker_resolution_required', False)}`",
         f"- P0-017 是否完成: `{outcome.get('p0_017_complete', False)}`",
+        "## P0-017 完成门禁",
+        f"- 状态: `{completion_gate.get('status', '')}`",
+        f"- P0-017 是否完成: `{completion_gate.get('p0_017_complete', False)}`",
+        (
+            "- Acceptance pass 是否等于完成: "
+            f"`{completion_gate.get('acceptance_pass_is_completion', False)}`"
+        ),
+        f"- 完成阻断项: `{', '.join(completion_gate.get('completion_blockers') or [])}`",
+        "| 完成证据 | 状态 | 来源 | 必需 | 原值落盘 |",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown

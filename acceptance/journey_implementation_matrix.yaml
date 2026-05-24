@@ -565,6 +565,7 @@ steps:
         - "handoff_authorized_template_release_decision_withholds_execution"
         - "external_l3_evidence_manifest_links_required_artifacts"
         - "external_l3_outcome_summary_disambiguates_acceptance_pass"
+        - "p0_017_completion_gate_blocks_false_completion"
         - "manual_session_ready_confirmed_before_external_submit"
         - "manual_session_storage_ready_before_external_submit"
         - "explicit_user_authorized_live_run"

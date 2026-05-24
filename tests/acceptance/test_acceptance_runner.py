@@ -292,6 +292,33 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert outcome_summary["blocker_resolution_required"] is True
     assert outcome_summary["blocker_reason"] == "explicit_user_authorization_required"
     assert outcome_summary["p0_017_complete"] is False
+    completion_gate = payload["p0_017_completion_gate"]
+    assert completion_gate["status"] == "incomplete_pre_submit_blocker"
+    assert completion_gate["p0_017_complete"] is False
+    assert completion_gate["acceptance_pass_is_completion"] is False
+    assert completion_gate["external_l3_success"] is False
+    assert completion_gate["external_submission_attempted"] is False
+    assert "explicit_user_authorization" in completion_gate["completion_blockers"]
+    assert "external_submission_attempted" in completion_gate["completion_blockers"]
+    assert "outcome_external_validated" in completion_gate["completion_blockers"]
+    assert completion_gate["raw_live_inputs_persisted"] is False
+    completion_items = {
+        item["id"]: item for item in completion_gate["required_evidence"]
+    }
+    assert completion_items["explicit_user_authorization"]["status"] == "missing"
+    assert (
+        completion_items["explicit_user_authorization"]["source_path"]
+        == "live_run_readiness.gates.user_authorization"
+    )
+    assert (
+        completion_items["post_submit_feedback_traceability"]["status"]
+        == "satisfied"
+    )
+    assert completion_items["outcome_external_validated"]["status"] == "missing"
+    assert all(
+        item["required"] is True and item["raw_live_inputs_persisted"] is False
+        for item in completion_gate["required_evidence"]
+    )
     evidence_manifest = payload["evidence_manifest"]
     assert evidence_manifest["status"] == "complete"
     assert evidence_manifest["raw_live_inputs_persisted"] is False
@@ -302,6 +329,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert evidence_entries["external_l3_validation_markdown"]["present"] is True
     assert evidence_entries["live_run_readiness"]["present"] is True
     assert evidence_entries["operator_handoff"]["present"] is True
+    assert evidence_entries["p0_017_completion_gate"]["required"] is True
+    assert evidence_entries["p0_017_completion_gate"]["present"] is True
+    assert evidence_entries["p0_017_completion_gate"]["status"] == "present"
     assert evidence_entries["external_l3_live_run_runbook"]["required"] is True
     assert evidence_entries["external_l3_live_run_runbook"]["present"] is True
     assert (
@@ -812,6 +842,19 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert "- 是否已真实验证成功: `False`" in markdown
     assert "- P0-017 是否完成: `False`" in markdown
+    assert "## P0-017 完成门禁" in markdown
+    assert "- 状态: `incomplete_pre_submit_blocker`" in markdown
+    assert "- Acceptance pass 是否等于完成: `False`" in markdown
+    assert "- 完成阻断项: `explicit_user_authorization" in markdown
+    assert "| 完成证据 | 状态 | 来源 | 必需 | 原值落盘 |" in markdown
+    assert (
+        "| `explicit_user_authorization` | `missing` | "
+        "`live_run_readiness.gates.user_authorization` | `True` | `False` |"
+    ) in markdown
+    assert (
+        "| `post_submit_feedback_traceability` | `satisfied` | "
+        "`post_submit_feedback_traceability.traceable` | `True` | `False` |"
+    ) in markdown
     assert "## Live Run Readiness" in markdown
     assert "- 是否允许启动 submit 命令: `False`" in markdown
     assert "## 最终提交安全决策" in markdown
