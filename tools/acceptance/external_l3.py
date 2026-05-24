@@ -1199,6 +1199,9 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                     "### 授权确认包",
                     "",
                     f"- 状态: `{authorization_packet.get('status', '')}`",
+                    f"- 授权签核待补数: `{authorization_packet.get('pending_acknowledgement_count', 0)}`",
+                    f"- 授权签核已满足数: `{authorization_packet.get('satisfied_acknowledgement_count', 0)}`",
+                    f"- 模板发布前必需: `{authorization_packet.get('required_before_template_release', False)}`",
                     f"- 原始确认值是否持久化: `{authorization_packet.get('raw_confirmation_values_persisted', True)}`",
                     "",
                     "#### 必需确认声明",
@@ -3456,6 +3459,8 @@ def _operator_authorized_template_release_decision(
         release_blockers.append("ready_for_authorization_decision_false")
     if authorization_packet.get("status") != "ready_for_operator_confirmation":
         release_blockers.append("authorization_packet_not_ready")
+    if authorization_packet.get("pending_acknowledgement_count", 0) != 0:
+        release_blockers.append("authorization_acknowledgement_checklist_pending")
     if "user_authorization" in missing_gates:
         release_blockers.append("explicit_user_authorization_missing")
     if "final_submit_confirmation" in missing_gates:
@@ -3482,6 +3487,7 @@ def _operator_authorized_template_release_decision(
         "required_before_release": [
             "authorization_readiness_action_plan.pending_action_count=0",
             "authorization_intake_checklist.pending_item_count=0",
+            "operator_handoff.authorization_packet.pending_acknowledgement_count=0",
             "preflight_review_result.ready_for_authorization_decision=true",
             "operator_handoff.authorization_packet.status=ready_for_operator_confirmation",
             "PIPF_EXTERNAL_L3_AUTHORIZED=true",
@@ -3499,6 +3505,7 @@ def _operator_live_run_go_no_go_decision(
     submit_decision = validation.get("submit_safety_decision") or {}
     action_plan = handoff.get("authorization_readiness_action_plan") or {}
     intake_checklist = handoff.get("authorization_intake_checklist") or {}
+    authorization_packet = handoff.get("authorization_packet") or {}
     release_decision = handoff.get("authorized_template_release_decision") or {}
     completion_gate = validation.get("p0_017_completion_gate") or {}
 
@@ -3517,6 +3524,9 @@ def _operator_live_run_go_no_go_decision(
         "authorization_intake_status": str(intake_checklist.get("status", "")),
         "authorization_intake_pending_item_count": int(
             intake_checklist.get("pending_item_count", 0)
+        ),
+        "authorization_acknowledgement_pending_count": int(
+            authorization_packet.get("pending_acknowledgement_count", 0)
         ),
         "authorized_template_release_status": str(
             release_decision.get("status", "")
@@ -3544,6 +3554,8 @@ def _operator_live_run_go_no_go_decision(
         blocking_evidence.append("authorization_readiness_action_plan_pending")
     if intake_checklist.get("pending_item_count", 0) != 0:
         blocking_evidence.append("authorization_intake_checklist_pending")
+    if authorization_packet.get("pending_acknowledgement_count", 0) != 0:
+        blocking_evidence.append("authorization_acknowledgement_checklist_pending")
     if release_decision.get("copy_execution_allowed") is not True:
         blocking_evidence.append("authorized_template_not_released")
 
@@ -3576,6 +3588,7 @@ def _operator_live_run_go_no_go_decision(
             "submit_safety_decision.decision=allowed_pending_execution",
             "operator_handoff.authorization_readiness_action_plan.pending_action_count=0",
             "operator_handoff.authorization_intake_checklist.pending_item_count=0",
+            "operator_handoff.authorization_packet.pending_acknowledgement_count=0",
             "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true",
         ],
         "p0_017_completion_note": (
@@ -3649,6 +3662,13 @@ def _go_no_go_resolution_routes(blockers: list[str]) -> list[dict[str, Any]]:
                 "operator_handoff.authorization_intake_checklist.pending_item_count=0",
             ],
         ),
+        "authorization_acknowledgement_checklist_pending": (
+            "operator_handoff.authorization_packet.acknowledgement_checklist",
+            "逐项完成授权签核清单；每项必须有 env、gate、source_path 和 status 证据，且原始 live 输入不落盘。",
+            [
+                "operator_handoff.authorization_packet.pending_acknowledgement_count=0",
+            ],
+        ),
         "authorized_template_not_released": (
             "operator_handoff.authorized_template_release_decision.release_blockers",
             "清空模板发布阻断项；只有 copy_execution_allowed=true 后，授权真实运行模板才可复制执行。",
@@ -3687,6 +3707,7 @@ def _operator_live_run_execution_sequence(
     preflight_result = handoff.get("preflight_review_result") or {}
     action_plan = handoff.get("authorization_readiness_action_plan") or {}
     intake_checklist = handoff.get("authorization_intake_checklist") or {}
+    authorization_packet = handoff.get("authorization_packet") or {}
     release_decision = handoff.get("authorized_template_release_decision") or {}
     go_no_go_decision = handoff.get("live_run_go_no_go_decision") or {}
     completion_gate = validation.get("p0_017_completion_gate") or {}
@@ -3698,6 +3719,9 @@ def _operator_live_run_execution_sequence(
     no_go_routes_clear = not (go_no_go_decision.get("resolution_routes") or [])
     action_plan_clear = action_plan.get("pending_action_count", 0) == 0
     intake_clear = intake_checklist.get("pending_item_count", 0) == 0
+    acknowledgements_clear = (
+        authorization_packet.get("pending_acknowledgement_count", 0) == 0
+    )
     template_released = release_decision.get("copy_execution_allowed") is True
     go_allowed = go_no_go_decision.get("go_for_live_run") is True
     p0_complete = completion_gate.get("p0_017_complete") is True
@@ -3742,6 +3766,15 @@ def _operator_live_run_execution_sequence(
             "operator_handoff.authorization_intake_checklist.pending_item_count",
             not intake_clear,
             ["operator_handoff.authorization_intake_checklist.pending_item_count=0"],
+        ),
+        (
+            "complete_authorization_acknowledgements",
+            "satisfied" if acknowledgements_clear else "blocked",
+            "operator_handoff.authorization_packet.pending_acknowledgement_count",
+            not acknowledgements_clear,
+            [
+                "operator_handoff.authorization_packet.pending_acknowledgement_count=0"
+            ],
         ),
         (
             "release_authorized_template",
@@ -4037,6 +4070,12 @@ def _operator_authorization_packet(
     external_submission_attempted: bool,
 ) -> dict[str, Any]:
     missing_gates = list(readiness.get("missing_gates") or [])
+    acknowledgement_checklist = _operator_authorization_acknowledgement_checklist(
+        readiness
+    )
+    pending_acknowledgements = [
+        item for item in acknowledgement_checklist if item["status"] != "satisfied"
+    ]
     if external_submission_attempted:
         status = "executed"
     elif readiness.get("submit_command_allowed") is True:
@@ -4046,6 +4085,11 @@ def _operator_authorization_packet(
     return {
         "status": status,
         "raw_confirmation_values_persisted": False,
+        "required_before_template_release": True,
+        "pending_acknowledgement_count": len(pending_acknowledgements),
+        "satisfied_acknowledgement_count": (
+            len(acknowledgement_checklist) - len(pending_acknowledgements)
+        ),
         "required_confirmation_statements": [
             "我明确授权本次 External L3 接触真实外部渠道，但不会提供密码、验证码或短信码。",
             "我已单独确认允许最终提交路径在目标岗位与招聘方一致时执行。",
@@ -4065,9 +4109,7 @@ def _operator_authorization_packet(
             "live_output_redaction",
             "post_submit_feedback_traceability",
         ],
-        "acknowledgement_checklist": _operator_authorization_acknowledgement_checklist(
-            readiness
-        ),
+        "acknowledgement_checklist": acknowledgement_checklist,
         "abort_conditions": _operator_abort_conditions(missing_gates),
         "redaction_policy": {
             "raw_live_inputs_persisted": False,

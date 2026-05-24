@@ -2153,6 +2153,9 @@ def _external_l3_authorization_packet_result(
         )
     acknowledgement_markdown_ok = (
         "#### 授权签核清单" in markdown
+        and "- 授权签核待补数: `5`" in markdown
+        and "- 授权签核已满足数: `1`" in markdown
+        and "- 模板发布前必需: `True`" in markdown
         and "| 签核项 | 状态 | Env | Gate | 来源 | 原值落盘 |" in markdown
         and "`acknowledge_external_channel_authorization`" in markdown
         and "`acknowledge_final_submit_confirmation`" in markdown
@@ -2161,6 +2164,9 @@ def _external_l3_authorization_packet_result(
     )
     if (
         packet.get("raw_confirmation_values_persisted") is False
+        and packet.get("required_before_template_release") is True
+        and packet.get("pending_acknowledgement_count") == 5
+        and packet.get("satisfied_acknowledgement_count") == 1
         and len(required_statements) >= 3
         and {"live_run_readiness", "submit_safety_decision"}.issubset(
             required_evidence
@@ -2721,6 +2727,7 @@ def _external_l3_handoff_command_template_review_result(
         "authorization_intake_checklist_pending",
         "ready_for_authorization_decision_false",
         "authorization_packet_not_ready",
+        "authorization_acknowledgement_checklist_pending",
         "explicit_user_authorization_missing",
         "final_submit_confirmation_missing",
     }
@@ -2733,6 +2740,7 @@ def _external_l3_handoff_command_template_review_result(
     expected_required_before_release = {
         "authorization_readiness_action_plan.pending_action_count=0",
         "authorization_intake_checklist.pending_item_count=0",
+        "operator_handoff.authorization_packet.pending_acknowledgement_count=0",
         "preflight_review_result.ready_for_authorization_decision=true",
         "operator_handoff.authorization_packet.status=ready_for_operator_confirmation",
         "PIPF_EXTERNAL_L3_AUTHORIZED=true",
@@ -2766,6 +2774,7 @@ def _external_l3_handoff_command_template_review_result(
             "blocked_until_authorization_intake_complete"
         ),
         "authorization_intake_pending_item_count": 9,
+        "authorization_acknowledgement_pending_count": 5,
         "authorized_template_release_status": (
             "withheld_until_authorization_readiness"
         ),
@@ -2783,6 +2792,7 @@ def _external_l3_handoff_command_template_review_result(
         "submit_safety_decision_blocked_before_command",
         "authorization_readiness_action_plan_pending",
         "authorization_intake_checklist_pending",
+        "authorization_acknowledgement_checklist_pending",
         "authorized_template_not_released",
     }
     go_no_go_blockers = set(go_no_go_decision.get("blocking_evidence") or [])
@@ -2808,6 +2818,10 @@ def _external_l3_handoff_command_template_review_result(
         "authorization_intake_checklist_pending": (
             "operator_handoff.authorization_intake_checklist.items",
             "operator_handoff.authorization_intake_checklist.pending_item_count=0",
+        ),
+        "authorization_acknowledgement_checklist_pending": (
+            "operator_handoff.authorization_packet.acknowledgement_checklist",
+            "operator_handoff.authorization_packet.pending_acknowledgement_count=0",
         ),
         "authorized_template_not_released": (
             "operator_handoff.authorized_template_release_decision.release_blockers",
@@ -2848,6 +2862,7 @@ def _external_l3_handoff_command_template_review_result(
         "submit_safety_decision.decision=allowed_pending_execution",
         "operator_handoff.authorization_readiness_action_plan.pending_action_count=0",
         "operator_handoff.authorization_intake_checklist.pending_item_count=0",
+        "operator_handoff.authorization_packet.pending_acknowledgement_count=0",
         "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true",
     }
     required_before_go = set(go_no_go_decision.get("required_before_go") or [])
@@ -2900,29 +2915,36 @@ def _external_l3_handoff_command_template_review_result(
             True,
             "operator_handoff.authorization_intake_checklist.pending_item_count=0",
         ),
-        "release_authorized_template": (
+        "complete_authorization_acknowledgements": (
             6,
+            "blocked",
+            "operator_handoff.authorization_packet.pending_acknowledgement_count",
+            True,
+            "operator_handoff.authorization_packet.pending_acknowledgement_count=0",
+        ),
+        "release_authorized_template": (
+            7,
             "blocked",
             "operator_handoff.authorized_template_release_decision.copy_execution_allowed",
             True,
             "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true",
         ),
         "pass_live_run_go_no_go": (
-            7,
+            8,
             "blocked",
             "operator_handoff.live_run_go_no_go_decision.go_for_live_run",
             True,
             "operator_handoff.live_run_go_no_go_decision.go_for_live_run=true",
         ),
         "execute_authorized_template": (
-            8,
+            9,
             "blocked",
             "external_submission_attempted",
             True,
             "external_submission_attempted=true",
         ),
         "verify_p0_017_completion": (
-            9,
+            10,
             "blocked",
             "p0_017_completion_gate.p0_017_complete",
             True,
@@ -3041,11 +3063,13 @@ def _external_l3_handoff_command_template_review_result(
         "#### 发布阻断项",
         "`authorization_readiness_action_plan_pending`",
         "`authorization_intake_checklist_pending`",
+        "`authorization_acknowledgement_checklist_pending`",
         "`explicit_user_authorization_missing`",
         "`final_submit_confirmation_missing`",
         "#### 发布前必需条件",
         "`authorization_readiness_action_plan.pending_action_count=0`",
         "`authorization_intake_checklist.pending_item_count=0`",
+        "`operator_handoff.authorization_packet.pending_acknowledgement_count=0`",
         "`preflight_review_result.ready_for_authorization_decision=true`",
         "### 真实运行 Go/No-Go 决策",
         "- 状态: `no_go_until_authorized_template_released`",
@@ -3056,9 +3080,11 @@ def _external_l3_handoff_command_template_review_result(
         "#### 决策输入",
         "`live_run_readiness_submit_command_allowed`: `False`",
         "`submit_safety_decision`: `blocked_before_command`",
+        "`authorization_acknowledgement_pending_count`: `5`",
         "`authorized_template_copy_execution_allowed`: `False`",
         "#### Go/No-Go 阻断证据",
         "`submit_command_not_allowed`",
+        "`authorization_acknowledgement_checklist_pending`",
         "`authorized_template_not_released`",
         "#### No-Go 处理路线",
         "| 阻断项 | 来源 | 处理动作 | 必需证据 | 原值落盘 |",
@@ -3066,10 +3092,12 @@ def _external_l3_handoff_command_template_review_result(
         "`submit_safety_decision_blocked_before_command` | `submit_safety_decision.blocking_reason`",
         "`authorization_readiness_action_plan_pending` | `operator_handoff.authorization_readiness_action_plan.actions`",
         "`authorization_intake_checklist_pending` | `operator_handoff.authorization_intake_checklist.items`",
+        "`authorization_acknowledgement_checklist_pending` | `operator_handoff.authorization_packet.acknowledgement_checklist`",
         "`authorized_template_not_released` | `operator_handoff.authorized_template_release_decision.release_blockers`",
         "#### Go 前必需条件",
         "`live_run_readiness.submit_command_allowed=true`",
         "`submit_safety_decision.decision=allowed_pending_execution`",
+        "`operator_handoff.authorization_packet.pending_acknowledgement_count=0`",
         "`operator_handoff.authorized_template_release_decision.copy_execution_allowed=true`",
         "### 真实运行执行顺序门禁",
         "- 状态: `blocked_before_authorized_template_execution`",
@@ -3078,8 +3106,9 @@ def _external_l3_handoff_command_template_review_result(
         "| 顺序 | 步骤 | 状态 | 来源 | 阻断后续 | 必需条件 | 原值落盘 |",
         "`1` | `run_preflight_template` | `satisfied`",
         "`3` | `resolve_no_go_routes` | `blocked`",
-        "`6` | `release_authorized_template` | `blocked`",
-        "`9` | `verify_p0_017_completion` | `blocked`",
+        "`6` | `complete_authorization_acknowledgements` | `blocked`",
+        "`7` | `release_authorized_template` | `blocked`",
+        "`10` | `verify_p0_017_completion` | `blocked`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown

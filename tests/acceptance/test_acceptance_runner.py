@@ -737,6 +737,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         in release_decision["release_blockers"]
     )
     assert (
+        "authorization_acknowledgement_checklist_pending"
+        in release_decision["release_blockers"]
+    )
+    assert (
         "ready_for_authorization_decision_false"
         in release_decision["release_blockers"]
     )
@@ -754,6 +758,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert (
         "authorization_intake_checklist.pending_item_count=0"
+        in release_decision["required_before_release"]
+    )
+    assert (
+        "operator_handoff.authorization_packet.pending_acknowledgement_count=0"
         in release_decision["required_before_release"]
     )
     assert (
@@ -799,6 +807,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert (
         go_no_go_decision["decision_inputs"][
+            "authorization_acknowledgement_pending_count"
+        ]
+        == 5
+    )
+    assert (
+        go_no_go_decision["decision_inputs"][
             "authorized_template_copy_execution_allowed"
         ]
         is False
@@ -810,6 +824,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert (
         "authorization_intake_checklist_pending"
+        in go_no_go_decision["blocking_evidence"]
+    )
+    assert (
+        "authorization_acknowledgement_checklist_pending"
         in go_no_go_decision["blocking_evidence"]
     )
     assert (
@@ -850,6 +868,18 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         == "operator_handoff.authorization_intake_checklist.items"
     )
     assert (
+        resolution_routes["authorization_acknowledgement_checklist_pending"][
+            "source_path"
+        ]
+        == "operator_handoff.authorization_packet.acknowledgement_checklist"
+    )
+    assert (
+        "operator_handoff.authorization_packet.pending_acknowledgement_count=0"
+        in resolution_routes["authorization_acknowledgement_checklist_pending"][
+            "required_evidence"
+        ]
+    )
+    assert (
         resolution_routes["authorized_template_not_released"]["source_path"]
         == "operator_handoff.authorized_template_release_decision.release_blockers"
     )
@@ -861,6 +891,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert (
         "submit_safety_decision.decision=allowed_pending_execution"
+        in go_no_go_decision["required_before_go"]
+    )
+    assert (
+        "operator_handoff.authorization_packet.pending_acknowledgement_count=0"
         in go_no_go_decision["required_before_go"]
     )
     assert (
@@ -902,9 +936,26 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         == "operator_handoff.authorization_readiness_action_plan.pending_action_count"
     )
     assert sequence_steps["complete_authorization_intake"]["status"] == "blocked"
+    assert (
+        sequence_steps["complete_authorization_acknowledgements"]["order"] == 6
+    )
+    assert (
+        sequence_steps["complete_authorization_acknowledgements"]["source_path"]
+        == "operator_handoff.authorization_packet.pending_acknowledgement_count"
+    )
+    assert (
+        "operator_handoff.authorization_packet.pending_acknowledgement_count=0"
+        in sequence_steps["complete_authorization_acknowledgements"][
+            "required_before_next"
+        ]
+    )
+    assert sequence_steps["release_authorized_template"]["order"] == 7
     assert sequence_steps["release_authorized_template"]["status"] == "blocked"
+    assert sequence_steps["pass_live_run_go_no_go"]["order"] == 8
     assert sequence_steps["pass_live_run_go_no_go"]["status"] == "blocked"
+    assert sequence_steps["execute_authorized_template"]["order"] == 9
     assert sequence_steps["execute_authorized_template"]["status"] == "blocked"
+    assert sequence_steps["verify_p0_017_completion"]["order"] == 10
     assert sequence_steps["verify_p0_017_completion"]["status"] == "blocked"
     assert all(
         item["required_before_next"]
@@ -974,6 +1025,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     authorization_packet = handoff["authorization_packet"]
     assert authorization_packet["status"] == "blocked_until_missing_gates_resolved"
     assert authorization_packet["raw_confirmation_values_persisted"] is False
+    assert authorization_packet["required_before_template_release"] is True
+    assert authorization_packet["pending_acknowledgement_count"] == 5
+    assert authorization_packet["satisfied_acknowledgement_count"] == 1
     assert len(authorization_packet["required_confirmation_statements"]) >= 3
     assert any(
         "Liepin 持久化会话目录" in item
@@ -1176,11 +1230,16 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "#### 发布阻断项" in markdown
     assert "`authorization_readiness_action_plan_pending`" in markdown
     assert "`authorization_intake_checklist_pending`" in markdown
+    assert "`authorization_acknowledgement_checklist_pending`" in markdown
     assert "`explicit_user_authorization_missing`" in markdown
     assert "`final_submit_confirmation_missing`" in markdown
     assert "#### 发布前必需条件" in markdown
     assert "`authorization_readiness_action_plan.pending_action_count=0`" in markdown
     assert "`authorization_intake_checklist.pending_item_count=0`" in markdown
+    assert (
+        "`operator_handoff.authorization_packet.pending_acknowledgement_count=0`"
+        in markdown
+    )
     assert "`preflight_review_result.ready_for_authorization_decision=true`" in markdown
     assert "### 真实运行 Go/No-Go 决策" in markdown
     assert "- 状态: `no_go_until_authorized_template_released`" in markdown
@@ -1191,6 +1250,7 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "#### 决策输入" in markdown
     assert "`live_run_readiness_submit_command_allowed`: `False`" in markdown
     assert "`submit_safety_decision`: `blocked_before_command`" in markdown
+    assert "`authorization_acknowledgement_pending_count`: `5`" in markdown
     assert "`authorized_template_copy_execution_allowed`: `False`" in markdown
     assert "#### Go/No-Go 阻断证据" in markdown
     assert "`submit_command_not_allowed`" in markdown
@@ -1214,6 +1274,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         in markdown
     )
     assert (
+        "`authorization_acknowledgement_checklist_pending` | `operator_handoff.authorization_packet.acknowledgement_checklist`"
+        in markdown
+    )
+    assert (
         "`authorized_template_not_released` | `operator_handoff.authorized_template_release_decision.release_blockers`"
         in markdown
     )
@@ -1221,6 +1285,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "`live_run_readiness.submit_command_allowed=true`" in markdown
     assert (
         "`submit_safety_decision.decision=allowed_pending_execution`"
+        in markdown
+    )
+    assert (
+        "`operator_handoff.authorization_packet.pending_acknowledgement_count=0`"
         in markdown
     )
     assert (
@@ -1240,8 +1308,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert "`1` | `run_preflight_template` | `satisfied`" in markdown
     assert "`3` | `resolve_no_go_routes` | `blocked`" in markdown
-    assert "`6` | `release_authorized_template` | `blocked`" in markdown
-    assert "`9` | `verify_p0_017_completion` | `blocked`" in markdown
+    assert "`6` | `complete_authorization_acknowledgements` | `blocked`" in markdown
+    assert "`7` | `release_authorized_template` | `blocked`" in markdown
+    assert "`10` | `verify_p0_017_completion` | `blocked`" in markdown
     assert "### 授权真实运行命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
     assert "```bash" in markdown
@@ -1261,6 +1330,9 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "#### 需替换占位符" in markdown
     assert "#### 复核项" in markdown
     assert "### 授权确认包" in markdown
+    assert "- 授权签核待补数: `5`" in markdown
+    assert "- 授权签核已满足数: `1`" in markdown
+    assert "- 模板发布前必需: `True`" in markdown
     assert "#### 必需确认声明" in markdown
     assert "#### 授权签核清单" in markdown
     assert "| 签核项 | 状态 | Env | Gate | 来源 | 原值落盘 |" in markdown

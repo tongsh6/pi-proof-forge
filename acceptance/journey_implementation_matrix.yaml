@@ -553,6 +553,7 @@ steps:
         - "submit_safety_decision_recorded"
         - "structured_authorization_packet_recorded_without_raw_values"
         - "authorization_acknowledgement_checklist_maps_confirmations"
+        - "authorization_acknowledgement_checklist_blocks_template_release"
         - "external_l3_live_run_runbook_linked"
         - "handoff_command_template_matches_effective_rate_limit_policy"
         - "handoff_runtime_options_recorded_for_reproducible_live_run"
