@@ -2057,6 +2057,11 @@ def _external_l3_authorization_packet_result(
     runbook = handoff.get("runbook") or {}
     required_statements = packet.get("required_confirmation_statements") or []
     required_evidence = set(packet.get("required_evidence") or [])
+    acknowledgement_items = {
+        str(item.get("id", "")): item
+        for item in packet.get("acknowledgement_checklist") or []
+        if isinstance(item, dict)
+    }
     abort_conditions = packet.get("abort_conditions") or []
     prohibited_inputs = set(packet.get("operator_must_not_provide") or [])
     runbook_path = str(runbook.get("path", ""))
@@ -2093,12 +2098,75 @@ def _external_l3_authorization_packet_result(
         and f"- SHA256: `{runbook.get('sha256', '')}`" in markdown
         and "#### Runbook 必需章节" in markdown
     )
+    expected_acknowledgements = {
+        "acknowledge_external_channel_authorization": (
+            "PIPF_EXTERNAL_L3_AUTHORIZED",
+            "user_authorization",
+            "live_run_readiness.gates.user_authorization",
+            "pending",
+        ),
+        "acknowledge_final_submit_confirmation": (
+            "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED",
+            "final_submit_confirmation",
+            "live_run_readiness.gates.final_submit_confirmation",
+            "pending",
+        ),
+        "acknowledge_manual_session_ready": (
+            "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED",
+            "manual_session_ready_confirmed",
+            "session_readiness",
+            "pending",
+        ),
+        "acknowledge_live_input_artifacts": (
+            "PIPF_EXTERNAL_L3_JOB_URL",
+            "job_url_present",
+            "live_input_artifacts",
+            "pending",
+        ),
+        "acknowledge_target_identity": (
+            "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID",
+            "confirm_job_id_present",
+            "target_confirmation_audit",
+            "pending",
+        ),
+        "acknowledge_forbidden_inputs_absent": (
+            "PIPF_EXTERNAL_L3_PASSWORD",
+            "forbidden_sensitive_inputs_absent",
+            "forbidden_input_audit",
+            "satisfied",
+        ),
+    }
+    acknowledgement_ok = True
+    for item_id, (env_var, gate, source_path, status) in (
+        expected_acknowledgements.items()
+    ):
+        item = acknowledgement_items.get(item_id) or {}
+        acknowledgement_ok = acknowledgement_ok and (
+            env_var in (item.get("env_vars") or [])
+            and gate in (item.get("gates") or [])
+            and item.get("source_path") == source_path
+            and item.get("status") == status
+            and item.get("required_before_template_release") is True
+            and item.get("required_before_authorized_template") is True
+            and item.get("raw_live_inputs_persisted") is False
+            and bool(item.get("statement"))
+        )
+    acknowledgement_markdown_ok = (
+        "#### 授权签核清单" in markdown
+        and "| 签核项 | 状态 | Env | Gate | 来源 | 原值落盘 |" in markdown
+        and "`acknowledge_external_channel_authorization`" in markdown
+        and "`acknowledge_final_submit_confirmation`" in markdown
+        and "`acknowledge_manual_session_ready`" in markdown
+        and "`acknowledge_forbidden_inputs_absent`" in markdown
+    )
     if (
         packet.get("raw_confirmation_values_persisted") is False
         and len(required_statements) >= 3
         and {"live_run_readiness", "submit_safety_decision"}.issubset(
             required_evidence
         )
+        and acknowledgement_ok
+        and acknowledgement_markdown_ok
         and abort_conditions
         and {"password", "captcha_code", "sms_code"}.issubset(prohibited_inputs)
         and runbook_ok
@@ -2106,7 +2174,7 @@ def _external_l3_authorization_packet_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权确认包已记录必需声明、证据清单、中止条件、禁止输入项、中文真实运行 runbook 指纹和章节完整性。",
+            message="External L3 授权确认包已记录必需声明、结构化授权签核清单、证据清单、中止条件、禁止输入项、中文真实运行 runbook 指纹和章节完整性。",
         )
     return JourneyStepResult(
         status="fail",

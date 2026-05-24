@@ -1212,6 +1212,34 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
             lines.extend(["", "#### 必需证据", ""])
             for item in authorization_packet.get("required_evidence", []):
                 lines.append(f"- `{item}`")
+            acknowledgement_items = authorization_packet.get(
+                "acknowledgement_checklist"
+            ) or []
+            if acknowledgement_items:
+                lines.extend(
+                    [
+                        "",
+                        "#### 授权签核清单",
+                        "",
+                        "| 签核项 | 状态 | Env | Gate | 来源 | 原值落盘 |",
+                        "|---|---|---|---|---|---:|",
+                    ]
+                )
+                for item in acknowledgement_items:
+                    lines.append(
+                        "| "
+                        + " | ".join(
+                            [
+                                f"`{item.get('id', '')}`",
+                                f"`{item.get('status', '')}`",
+                                f"`{', '.join(item.get('env_vars') or [])}`",
+                                f"`{', '.join(item.get('gates') or [])}`",
+                                f"`{item.get('source_path', '')}`",
+                                f"`{item.get('raw_live_inputs_persisted', True)}`",
+                            ]
+                        )
+                        + " |"
+                    )
             lines.extend(["", "#### 中止条件", ""])
             for item in authorization_packet.get("abort_conditions", []):
                 lines.append(f"- {item}")
@@ -4037,6 +4065,9 @@ def _operator_authorization_packet(
             "live_output_redaction",
             "post_submit_feedback_traceability",
         ],
+        "acknowledgement_checklist": _operator_authorization_acknowledgement_checklist(
+            readiness
+        ),
         "abort_conditions": _operator_abort_conditions(missing_gates),
         "redaction_policy": {
             "raw_live_inputs_persisted": False,
@@ -4056,6 +4087,101 @@ def _operator_authorization_packet(
             "credential_recovery_flow",
         ],
     }
+
+
+def _operator_authorization_acknowledgement_checklist(
+    readiness: dict[str, Any],
+) -> list[dict[str, Any]]:
+    missing_gates = set(readiness.get("missing_gates") or [])
+    specs = [
+        (
+            "acknowledge_external_channel_authorization",
+            ["PIPF_EXTERNAL_L3_AUTHORIZED"],
+            ["user_authorization"],
+            "live_run_readiness.gates.user_authorization",
+            "用户明确授权本次 External L3 接触真实外部渠道。",
+        ),
+        (
+            "acknowledge_final_submit_confirmation",
+            ["PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED"],
+            ["final_submit_confirmation"],
+            "live_run_readiness.gates.final_submit_confirmation",
+            "用户单独确认允许最终提交路径进入真实渠道命令。",
+        ),
+        (
+            "acknowledge_manual_session_ready",
+            [
+                "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED",
+                "PIPF_EXTERNAL_L3_SESSION_DIR",
+            ],
+            ["manual_session_ready_confirmed", "manual_session_storage_ready"],
+            "session_readiness",
+            "共享渠道 session 已由人工登录或刷新确认可用，且 session 存储已准备。",
+        ),
+        (
+            "acknowledge_live_input_artifacts",
+            [
+                "PIPF_EXTERNAL_L3_JOB_URL",
+                "PIPF_EXTERNAL_L3_RESUME_PDF",
+                "PIPF_EXTERNAL_L3_PROFILE",
+            ],
+            [
+                "job_url_present",
+                "job_url_valid",
+                "resume_pdf_file_ready",
+                "profile_yaml_file_ready",
+            ],
+            "live_input_artifacts",
+            "Job URL、resume PDF 和 profile YAML 已人工复核且只进入本地运行环境。",
+        ),
+        (
+            "acknowledge_target_identity",
+            [
+                "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID",
+                "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER",
+            ],
+            [
+                "confirm_job_id_present",
+                "target_job_id_matches_confirmation",
+                "confirm_recruiter_present",
+            ],
+            "target_confirmation_audit",
+            "确认岗位 ID 与 URL 解析目标一致，确认 recruiter 已提供且页面匹配由 target_verify 证明。",
+        ),
+        (
+            "acknowledge_forbidden_inputs_absent",
+            [
+                "PIPF_EXTERNAL_L3_PASSWORD",
+                "PIPF_EXTERNAL_L3_CAPTCHA_CODE",
+                "PIPF_EXTERNAL_L3_SMS_CODE",
+                "PIPF_EXTERNAL_L3_RAW_API_KEY",
+            ],
+            ["forbidden_sensitive_inputs_absent"],
+            "forbidden_input_audit",
+            "不会提供密码、验证码、短信码、原始密钥或账号恢复输入。",
+        ),
+    ]
+    items = []
+    for item_id, env_vars, gates, source_path, statement in specs:
+        status = (
+            "pending"
+            if any(gate in missing_gates for gate in gates)
+            else "satisfied"
+        )
+        items.append(
+            {
+                "id": item_id,
+                "status": status,
+                "env_vars": env_vars,
+                "gates": gates,
+                "source_path": source_path,
+                "statement": statement,
+                "required_before_template_release": True,
+                "required_before_authorized_template": True,
+                "raw_live_inputs_persisted": False,
+            }
+        )
+    return items
 
 
 def _operator_abort_conditions(missing_gates: list[str]) -> list[str]:

@@ -984,6 +984,57 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "session_readiness" in authorization_packet["required_evidence"]
     assert "password" in authorization_packet["operator_must_not_provide"]
     assert "captcha_code" in authorization_packet["operator_must_not_provide"]
+    acknowledgement_items = {
+        item["id"]: item
+        for item in authorization_packet["acknowledgement_checklist"]
+    }
+    assert (
+        acknowledgement_items["acknowledge_external_channel_authorization"][
+            "status"
+        ]
+        == "pending"
+    )
+    assert (
+        "PIPF_EXTERNAL_L3_AUTHORIZED"
+        in acknowledgement_items["acknowledge_external_channel_authorization"][
+            "env_vars"
+        ]
+    )
+    assert (
+        "user_authorization"
+        in acknowledgement_items["acknowledge_external_channel_authorization"][
+            "gates"
+        ]
+    )
+    assert (
+        acknowledgement_items["acknowledge_final_submit_confirmation"][
+            "source_path"
+        ]
+        == "live_run_readiness.gates.final_submit_confirmation"
+    )
+    assert (
+        acknowledgement_items["acknowledge_manual_session_ready"]["source_path"]
+        == "session_readiness"
+    )
+    assert (
+        "PIPF_EXTERNAL_L3_JOB_URL"
+        in acknowledgement_items["acknowledge_live_input_artifacts"]["env_vars"]
+    )
+    assert (
+        acknowledgement_items["acknowledge_target_identity"]["source_path"]
+        == "target_confirmation_audit"
+    )
+    assert (
+        acknowledgement_items["acknowledge_forbidden_inputs_absent"]["status"]
+        == "satisfied"
+    )
+    assert all(
+        item["required_before_template_release"] is True
+        and item["required_before_authorized_template"] is True
+        and item["raw_live_inputs_persisted"] is False
+        and item["statement"]
+        for item in authorization_packet["acknowledgement_checklist"]
+    )
     assert any(
         "当前缺失 gate" in item
         for item in authorization_packet["abort_conditions"]
@@ -1211,6 +1262,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "#### 复核项" in markdown
     assert "### 授权确认包" in markdown
     assert "#### 必需确认声明" in markdown
+    assert "#### 授权签核清单" in markdown
+    assert "| 签核项 | 状态 | Env | Gate | 来源 | 原值落盘 |" in markdown
+    assert "`acknowledge_external_channel_authorization`" in markdown
+    assert "`acknowledge_final_submit_confirmation`" in markdown
+    assert "`acknowledge_manual_session_ready`" in markdown
+    assert "`acknowledge_forbidden_inputs_absent`" in markdown
     assert "#### 中止条件" in markdown
     assert "| 必需环境变量 | 是否存在 | 是否敏感 |" in markdown
     assert "## 提交后反馈追溯" in markdown
@@ -1442,6 +1499,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert authorization_rule["stage"] == "submissions"
     assert authorization_rule["status"] == "pass"
     assert "授权确认包" in authorization_rule["message"]
+    assert "授权签核清单" in authorization_rule["message"]
     handoff_template_rule = next(
         step
         for step in journey_payload["steps"]
