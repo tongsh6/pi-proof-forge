@@ -330,6 +330,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         evidence_entries["authorization_readiness_action_plan"]["status"]
         == "blocked_until_live_inputs_and_session_ready"
     )
+    assert evidence_entries["authorization_intake_checklist"]["required"] is True
+    assert evidence_entries["authorization_intake_checklist"]["present"] is True
+    assert (
+        evidence_entries["authorization_intake_checklist"]["status"]
+        == "blocked_until_authorization_intake_complete"
+    )
     assert evidence_entries["authorized_template_release_decision"]["required"] is True
     assert evidence_entries["authorized_template_release_decision"]["present"] is True
     assert (
@@ -607,6 +613,61 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         and item["blocks_authorization_decision"] is True
         for item in action_plan["actions"]
     )
+    intake_checklist = handoff["authorization_intake_checklist"]
+    assert (
+        intake_checklist["status"]
+        == "blocked_until_authorization_intake_complete"
+    )
+    assert intake_checklist["required_before_template_release"] is True
+    assert intake_checklist["required_before_authorized_template"] is True
+    assert intake_checklist["pending_item_count"] == 9
+    assert intake_checklist["satisfied_item_count"] == 0
+    assert intake_checklist["raw_live_inputs_persisted"] is False
+    intake_items = {item["id"]: item for item in intake_checklist["items"]}
+    assert (
+        intake_items["confirm_user_authorization"]["env_var"]
+        == "PIPF_EXTERNAL_L3_AUTHORIZED"
+    )
+    assert "user_authorization" in intake_items[
+        "confirm_user_authorization"
+    ]["gates"]
+    assert (
+        intake_items["confirm_final_submit"]["env_var"]
+        == "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED"
+    )
+    assert (
+        intake_items["confirm_manual_session_ready"]["env_var"]
+        == "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED"
+    )
+    assert (
+        intake_items["prepare_session_storage"]["env_var"]
+        == "PIPF_EXTERNAL_L3_SESSION_DIR"
+    )
+    assert intake_items["provide_job_url"]["env_var"] == "PIPF_EXTERNAL_L3_JOB_URL"
+    assert "target_job_id_extractable" in intake_items["provide_job_url"]["gates"]
+    assert (
+        intake_items["provide_resume_pdf"]["env_var"]
+        == "PIPF_EXTERNAL_L3_RESUME_PDF"
+    )
+    assert (
+        intake_items["provide_profile_yaml"]["env_var"]
+        == "PIPF_EXTERNAL_L3_PROFILE"
+    )
+    assert (
+        intake_items["confirm_target_job_id"]["env_var"]
+        == "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID"
+    )
+    assert (
+        intake_items["confirm_recruiter"]["env_var"]
+        == "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER"
+    )
+    assert all(
+        item["status"] == "pending"
+        and item["required"] is True
+        and item["blocks_template_release"] is True
+        and item["raw_live_inputs_persisted"] is False
+        for item in intake_checklist["items"]
+    )
     release_decision = handoff["authorized_template_release_decision"]
     assert release_decision["status"] == "withheld_until_authorization_readiness"
     assert release_decision["template_released"] is False
@@ -627,6 +688,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         in release_decision["release_blockers"]
     )
     assert (
+        "authorization_intake_checklist_pending"
+        in release_decision["release_blockers"]
+    )
+    assert (
         "ready_for_authorization_decision_false"
         in release_decision["release_blockers"]
     )
@@ -640,6 +705,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert (
         "authorization_readiness_action_plan.pending_action_count=0"
+        in release_decision["required_before_release"]
+    )
+    assert (
+        "authorization_intake_checklist.pending_item_count=0"
         in release_decision["required_before_release"]
     )
     assert (
@@ -823,6 +892,20 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "`provide_reviewed_resume_pdf`" in markdown
     assert "`provide_reviewed_profile_yaml`" in markdown
     assert "`confirm_target_identity`" in markdown
+    assert "### 授权输入接收清单" in markdown
+    assert (
+        "- 状态: `blocked_until_authorization_intake_complete`"
+        in markdown
+    )
+    assert "- 授权模板发布前必需: `True`" in markdown
+    assert "- 待补输入/确认数: `9`" in markdown
+    assert "| 输入/确认 | Env | 占位符 | Gate | 状态 | 需要补齐 | 原值落盘 |" in markdown
+    assert "`confirm_user_authorization`" in markdown
+    assert "`PIPF_EXTERNAL_L3_AUTHORIZED`" in markdown
+    assert "`confirm_final_submit`" in markdown
+    assert "`PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED`" in markdown
+    assert "`provide_job_url`" in markdown
+    assert "`PIPF_EXTERNAL_L3_JOB_URL`" in markdown
     assert "### 授权模板发布决策" in markdown
     assert (
         "- 状态: `withheld_until_authorization_readiness`"
@@ -837,10 +920,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     )
     assert "#### 发布阻断项" in markdown
     assert "`authorization_readiness_action_plan_pending`" in markdown
+    assert "`authorization_intake_checklist_pending`" in markdown
     assert "`explicit_user_authorization_missing`" in markdown
     assert "`final_submit_confirmation_missing`" in markdown
     assert "#### 发布前必需条件" in markdown
     assert "`authorization_readiness_action_plan.pending_action_count=0`" in markdown
+    assert "`authorization_intake_checklist.pending_item_count=0`" in markdown
     assert "`preflight_review_result.ready_for_authorization_decision=true`" in markdown
     assert "### 授权真实运行命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
@@ -1122,6 +1207,7 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert "预检复核结果已逐项通过" in handoff_template_review_rule["message"]
     assert "不能进入授权决策" in handoff_template_review_rule["message"]
     assert "授权就绪行动计划" in handoff_template_review_rule["message"]
+    assert "授权输入接收清单" in handoff_template_review_rule["message"]
     assert "授权模板发布决策" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step

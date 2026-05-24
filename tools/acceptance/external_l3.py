@@ -328,6 +328,10 @@ def write_external_l3_validation(
             _operator_authorization_readiness_action_plan(validation)
         )
         validation["operator_handoff"] = handoff
+        handoff["authorization_intake_checklist"] = (
+            _operator_authorization_intake_checklist(validation)
+        )
+        validation["operator_handoff"] = handoff
         handoff["authorized_template_release_decision"] = (
             _operator_authorized_template_release_decision(validation)
         )
@@ -904,6 +908,41 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
         authorization_action_plan = (
             handoff.get("authorization_readiness_action_plan") or {}
         )
+        authorization_intake_checklist = (
+            handoff.get("authorization_intake_checklist") or {}
+        )
+        if authorization_intake_checklist:
+            lines.extend(
+                [
+                    "",
+                    "### 授权输入接收清单",
+                    "",
+                    f"- 状态: `{authorization_intake_checklist.get('status', '')}`",
+                    f"- 授权模板发布前必需: `{authorization_intake_checklist.get('required_before_template_release', False)}`",
+                    f"- 待补输入/确认数: `{authorization_intake_checklist.get('pending_item_count', 0)}`",
+                    f"- 已满足输入/确认数: `{authorization_intake_checklist.get('satisfied_item_count', 0)}`",
+                    f"- 原始 live 输入是否持久化: `{authorization_intake_checklist.get('raw_live_inputs_persisted', True)}`",
+                    "",
+                    "| 输入/确认 | Env | 占位符 | Gate | 状态 | 需要补齐 | 原值落盘 |",
+                    "|---|---|---|---|---:|---|---:|",
+                ]
+            )
+            for item in authorization_intake_checklist.get("items") or []:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            f"`{item.get('id', '')}`",
+                            f"`{item.get('env_var', '')}`",
+                            f"`{item.get('placeholder', '')}`",
+                            f"`{', '.join(item.get('gates') or [])}`",
+                            f"`{item.get('status', '')}`",
+                            str(item.get("operator_action", "")),
+                            f"`{item.get('raw_live_inputs_persisted', True)}`",
+                        ]
+                    )
+                    + " |"
+                )
         if authorization_action_plan:
             lines.extend(
                 [
@@ -2223,6 +2262,46 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 ),
             )
         )
+    authorization_intake_checklist = (
+        (validation.get("operator_handoff") or {}).get(
+            "authorization_intake_checklist"
+        )
+        or {}
+    )
+    if authorization_intake_checklist:
+        intake_items = authorization_intake_checklist.get("items") or []
+        intake_present = (
+            authorization_intake_checklist.get("raw_live_inputs_persisted") is False
+            and authorization_intake_checklist.get("required_before_template_release")
+            is True
+            and bool(intake_items)
+            and all(
+                isinstance(item, dict)
+                and item.get("required") is True
+                and item.get("blocks_template_release") is True
+                and item.get("raw_live_inputs_persisted") is False
+                and bool(item.get("env_var"))
+                and bool(item.get("gates"))
+                for item in intake_items
+            )
+        )
+        entries.append(
+            _evidence_entry(
+                entry_id="authorization_intake_checklist",
+                artifact_type="embedded_section",
+                location=f"{validation_json}#operator_handoff.authorization_intake_checklist",
+                required=(
+                    validation.get("status") == "live_blocker_recorded"
+                    and validation.get("external_submission_attempted") is False
+                ),
+                present=intake_present,
+                status=str(
+                    authorization_intake_checklist.get(
+                        "status", "missing_or_incomplete"
+                    )
+                ),
+            )
+        )
     release_decision = (
         (validation.get("operator_handoff") or {}).get(
             "authorized_template_release_decision"
@@ -2814,11 +2893,143 @@ def _operator_authorization_readiness_action_plan(
     }
 
 
+def _operator_authorization_intake_checklist(
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    missing_gates = set(
+        (validation.get("live_run_readiness") or {}).get("missing_gates") or []
+    )
+    items = [
+        _authorization_intake_item(
+            item_id="confirm_user_authorization",
+            category="authorization",
+            env_var="PIPF_EXTERNAL_L3_AUTHORIZED",
+            placeholder="true",
+            gates=["user_authorization"],
+            missing_gates=missing_gates,
+            operator_action="保留 true 只代表用户已明确授权接触真实外部渠道。",
+        ),
+        _authorization_intake_item(
+            item_id="confirm_final_submit",
+            category="authorization",
+            env_var="PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED",
+            placeholder="true",
+            gates=["final_submit_confirmation"],
+            missing_gates=missing_gates,
+            operator_action="保留 true 只代表用户已独立确认允许最终提交路径。",
+        ),
+        _authorization_intake_item(
+            item_id="confirm_manual_session_ready",
+            category="session",
+            env_var="PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED",
+            placeholder="true",
+            gates=["manual_session_ready_confirmed"],
+            missing_gates=missing_gates,
+            operator_action="人工登录或刷新共享渠道 session 后，确认会话可用再保留 true。",
+        ),
+        _authorization_intake_item(
+            item_id="prepare_session_storage",
+            category="session",
+            env_var="PIPF_EXTERNAL_L3_SESSION_DIR",
+            placeholder="<session-dir>",
+            gates=["manual_session_storage_ready"],
+            missing_gates=missing_gates,
+            operator_action="确认 session 根目录存在，且 Liepin 持久化会话目录包含非空浏览器状态标记。",
+        ),
+        _authorization_intake_item(
+            item_id="provide_job_url",
+            category="target",
+            env_var="PIPF_EXTERNAL_L3_JOB_URL",
+            placeholder="<https-url>",
+            gates=["job_url_present", "job_url_valid", "target_job_id_extractable"],
+            missing_gates=missing_gates,
+            operator_action="提供真实岗位 URL；必须为 http/https 且可解析岗位 ID。",
+        ),
+        _authorization_intake_item(
+            item_id="provide_resume_pdf",
+            category="artifact",
+            env_var="PIPF_EXTERNAL_L3_RESUME_PDF",
+            placeholder="<resume.pdf>",
+            gates=["resume_pdf_present", "resume_pdf_file_ready"],
+            missing_gates=missing_gates,
+            operator_action="提供已审核 resume PDF 的本地路径，路径原值不得写回验收证据。",
+        ),
+        _authorization_intake_item(
+            item_id="provide_profile_yaml",
+            category="artifact",
+            env_var="PIPF_EXTERNAL_L3_PROFILE",
+            placeholder="<profile.yaml>",
+            gates=["profile_yaml_present", "profile_yaml_file_ready"],
+            missing_gates=missing_gates,
+            operator_action="提供已审核 profile YAML 的本地路径，路径原值不得写回验收证据。",
+        ),
+        _authorization_intake_item(
+            item_id="confirm_target_job_id",
+            category="target",
+            env_var="PIPF_EXTERNAL_L3_CONFIRM_JOB_ID",
+            placeholder="<job-id>",
+            gates=["confirm_job_id_present", "target_job_id_matches_confirmation"],
+            missing_gates=missing_gates,
+            operator_action="提供人工复核后的岗位 ID 确认值，原值不得写回验收证据。",
+        ),
+        _authorization_intake_item(
+            item_id="confirm_recruiter",
+            category="target",
+            env_var="PIPF_EXTERNAL_L3_CONFIRM_RECRUITER",
+            placeholder="<recruiter>",
+            gates=["confirm_recruiter_present"],
+            missing_gates=missing_gates,
+            operator_action="提供人工复核后的招聘方确认值；页面匹配仍必须由 target_verify 证明。",
+        ),
+    ]
+    pending_count = sum(1 for item in items if item["status"] != "satisfied")
+    return {
+        "status": (
+            "blocked_until_authorization_intake_complete"
+            if pending_count
+            else "authorization_intake_complete"
+        ),
+        "required_before_template_release": True,
+        "required_before_authorized_template": True,
+        "pending_item_count": pending_count,
+        "satisfied_item_count": len(items) - pending_count,
+        "raw_live_inputs_persisted": False,
+        "items": items,
+    }
+
+
+def _authorization_intake_item(
+    *,
+    item_id: str,
+    category: str,
+    env_var: str,
+    placeholder: str,
+    gates: list[str],
+    missing_gates: set[str],
+    operator_action: str,
+) -> dict[str, Any]:
+    status = "pending" if any(gate in missing_gates for gate in gates) else "satisfied"
+    return {
+        "id": item_id,
+        "category": category,
+        "env_var": env_var,
+        "placeholder": placeholder,
+        "gates": gates,
+        "status": status,
+        "required": True,
+        "required_before_template_release": True,
+        "blocks_template_release": True,
+        "operator_action": operator_action,
+        "raw_live_inputs_persisted": False,
+    }
+
+
 def _operator_authorized_template_release_decision(
     validation: dict[str, Any],
 ) -> dict[str, Any]:
     handoff = validation.get("operator_handoff") or {}
     action_plan = handoff.get("authorization_readiness_action_plan") or {}
+    intake_checklist = handoff.get("authorization_intake_checklist") or {}
     preflight_result = handoff.get("preflight_review_result") or {}
     authorization_packet = handoff.get("authorization_packet") or {}
     live_readiness = validation.get("live_run_readiness") or {}
@@ -2831,6 +3042,8 @@ def _operator_authorized_template_release_decision(
     release_blockers: list[str] = []
     if pending_actions:
         release_blockers.append("authorization_readiness_action_plan_pending")
+    if intake_checklist.get("pending_item_count", 0) != 0:
+        release_blockers.append("authorization_intake_checklist_pending")
     if preflight_result.get("ready_for_authorization_decision") is not True:
         release_blockers.append("ready_for_authorization_decision_false")
     if authorization_packet.get("status") != "ready_for_operator_confirmation":
@@ -2860,6 +3073,7 @@ def _operator_authorized_template_release_decision(
         "release_blockers": release_blockers,
         "required_before_release": [
             "authorization_readiness_action_plan.pending_action_count=0",
+            "authorization_intake_checklist.pending_item_count=0",
             "preflight_review_result.ready_for_authorization_decision=true",
             "operator_handoff.authorization_packet.status=ready_for_operator_confirmation",
             "PIPF_EXTERNAL_L3_AUTHORIZED=true",

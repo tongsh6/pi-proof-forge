@@ -2291,6 +2291,12 @@ def _external_l3_handoff_command_template_review_result(
         )
         or {}
     )
+    authorization_intake_checklist = (
+        (payload.get("operator_handoff") or {}).get(
+            "authorization_intake_checklist"
+        )
+        or {}
+    )
     release_decision = (
         (payload.get("operator_handoff") or {}).get(
             "authorized_template_release_decision"
@@ -2541,6 +2547,81 @@ def _external_l3_handoff_command_template_review_result(
             missing.append(
                 f"authorization_readiness_action_plan.actions.{action_id}.blocks_authorization_decision"
             )
+    expected_intake_fields = {
+        "status": "blocked_until_authorization_intake_complete",
+        "required_before_template_release": True,
+        "required_before_authorized_template": True,
+        "pending_item_count": 9,
+        "satisfied_item_count": 0,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_intake_fields.items():
+        if authorization_intake_checklist.get(key) != expected:
+            missing.append(f"authorization_intake_checklist.{key}")
+    expected_intake_items = {
+        "confirm_user_authorization": (
+            "PIPF_EXTERNAL_L3_AUTHORIZED",
+            {"user_authorization"},
+        ),
+        "confirm_final_submit": (
+            "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED",
+            {"final_submit_confirmation"},
+        ),
+        "confirm_manual_session_ready": (
+            "PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED",
+            {"manual_session_ready_confirmed"},
+        ),
+        "prepare_session_storage": (
+            "PIPF_EXTERNAL_L3_SESSION_DIR",
+            {"manual_session_storage_ready"},
+        ),
+        "provide_job_url": (
+            "PIPF_EXTERNAL_L3_JOB_URL",
+            {"job_url_present", "job_url_valid", "target_job_id_extractable"},
+        ),
+        "provide_resume_pdf": (
+            "PIPF_EXTERNAL_L3_RESUME_PDF",
+            {"resume_pdf_present", "resume_pdf_file_ready"},
+        ),
+        "provide_profile_yaml": (
+            "PIPF_EXTERNAL_L3_PROFILE",
+            {"profile_yaml_present", "profile_yaml_file_ready"},
+        ),
+        "confirm_target_job_id": (
+            "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID",
+            {"confirm_job_id_present", "target_job_id_matches_confirmation"},
+        ),
+        "confirm_recruiter": (
+            "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER",
+            {"confirm_recruiter_present"},
+        ),
+    }
+    intake_items = {
+        str(item.get("id", "")): item
+        for item in authorization_intake_checklist.get("items") or []
+        if isinstance(item, dict)
+    }
+    for item_id, (env_var, gates) in expected_intake_items.items():
+        item = intake_items.get(item_id)
+        if not item:
+            missing.append(f"authorization_intake_checklist.items.{item_id}")
+            continue
+        if item.get("env_var") != env_var:
+            missing.append(f"authorization_intake_checklist.items.{item_id}.env_var")
+        if not gates.issubset(set(item.get("gates") or [])):
+            missing.append(f"authorization_intake_checklist.items.{item_id}.gates")
+        if item.get("status") != "pending":
+            missing.append(f"authorization_intake_checklist.items.{item_id}.status")
+        if item.get("required") is not True:
+            missing.append(f"authorization_intake_checklist.items.{item_id}.required")
+        if item.get("blocks_template_release") is not True:
+            missing.append(
+                f"authorization_intake_checklist.items.{item_id}.blocks_template_release"
+            )
+        if item.get("raw_live_inputs_persisted") is not False:
+            missing.append(
+                f"authorization_intake_checklist.items.{item_id}.raw_live_inputs_persisted"
+            )
     expected_release_fields = {
         "status": "withheld_until_authorization_readiness",
         "template_released": False,
@@ -2557,6 +2638,7 @@ def _external_l3_handoff_command_template_review_result(
             missing.append(f"authorized_template_release_decision.{key}")
     expected_release_blockers = {
         "authorization_readiness_action_plan_pending",
+        "authorization_intake_checklist_pending",
         "ready_for_authorization_decision_false",
         "authorization_packet_not_ready",
         "explicit_user_authorization_missing",
@@ -2570,6 +2652,7 @@ def _external_l3_handoff_command_template_review_result(
         missing.append("authorized_template_release_decision.pending_action_ids")
     expected_required_before_release = {
         "authorization_readiness_action_plan.pending_action_count=0",
+        "authorization_intake_checklist.pending_item_count=0",
         "preflight_review_result.ready_for_authorization_decision=true",
         "operator_handoff.authorization_packet.status=ready_for_operator_confirmation",
         "PIPF_EXTERNAL_L3_AUTHORIZED=true",
@@ -2636,6 +2719,17 @@ def _external_l3_handoff_command_template_review_result(
         "`provide_reviewed_resume_pdf`",
         "`provide_reviewed_profile_yaml`",
         "`confirm_target_identity`",
+        "### 授权输入接收清单",
+        "- 状态: `blocked_until_authorization_intake_complete`",
+        "- 授权模板发布前必需: `True`",
+        "- 待补输入/确认数: `9`",
+        "| 输入/确认 | Env | 占位符 | Gate | 状态 | 需要补齐 | 原值落盘 |",
+        "`confirm_user_authorization`",
+        "`PIPF_EXTERNAL_L3_AUTHORIZED`",
+        "`confirm_final_submit`",
+        "`PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED`",
+        "`provide_job_url`",
+        "`PIPF_EXTERNAL_L3_JOB_URL`",
         "### 授权模板发布决策",
         "- 状态: `withheld_until_authorization_readiness`",
         "- 模板是否发布给操作者执行: `False`",
@@ -2644,10 +2738,12 @@ def _external_l3_handoff_command_template_review_result(
         "- 发布阻断原因: `authorization_readiness_action_plan_pending`",
         "#### 发布阻断项",
         "`authorization_readiness_action_plan_pending`",
+        "`authorization_intake_checklist_pending`",
         "`explicit_user_authorization_missing`",
         "`final_submit_confirmation_missing`",
         "#### 发布前必需条件",
         "`authorization_readiness_action_plan.pending_action_count=0`",
+        "`authorization_intake_checklist.pending_item_count=0`",
         "`preflight_review_result.ready_for_authorization_decision=true`",
     ]
     missing.extend(
@@ -2657,7 +2753,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划已列出待补行动，授权模板发布决策保持 withheld。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划与授权输入接收清单已列出待补项，授权模板发布决策保持 withheld。",
         )
     return JourneyStepResult(
         status="fail",
@@ -2705,6 +2801,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "preflight_review_checklist",
         "preflight_review_result",
         "authorization_readiness_action_plan",
+        "authorization_intake_checklist",
         "authorized_template_release_decision",
         "post_submit_feedback_traceability",
         "feedback_source_artifact",
