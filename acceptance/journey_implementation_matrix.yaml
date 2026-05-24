@@ -564,6 +564,7 @@ steps:
         - "handoff_authorization_intake_checklist_maps_env_to_gates"
         - "handoff_authorized_template_release_decision_withholds_execution"
         - "handoff_live_run_go_no_go_decision_blocks_submit"
+        - "handoff_live_run_no_go_resolution_routes_recorded"
         - "external_l3_evidence_manifest_links_required_artifacts"
         - "external_l3_outcome_summary_disambiguates_acceptance_pass"
         - "p0_017_completion_gate_blocks_false_completion"

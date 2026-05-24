@@ -810,6 +810,49 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "authorized_template_not_released"
         in go_no_go_decision["blocking_evidence"]
     )
+    resolution_routes = {
+        item["blocker"]: item for item in go_no_go_decision["resolution_routes"]
+    }
+    assert (
+        resolution_routes["live_run_readiness_not_ready"]["source_path"]
+        == "live_run_readiness.missing_gates"
+    )
+    assert (
+        "live_run_readiness.ready=true"
+        in resolution_routes["live_run_readiness_not_ready"]["required_evidence"]
+    )
+    assert (
+        resolution_routes["submit_safety_decision_blocked_before_command"][
+            "source_path"
+        ]
+        == "submit_safety_decision.blocking_reason"
+    )
+    assert (
+        "submit_safety_decision.decision=allowed_pending_execution"
+        in resolution_routes["submit_safety_decision_blocked_before_command"][
+            "required_evidence"
+        ]
+    )
+    assert (
+        resolution_routes["authorization_readiness_action_plan_pending"][
+            "source_path"
+        ]
+        == "operator_handoff.authorization_readiness_action_plan.actions"
+    )
+    assert (
+        resolution_routes["authorization_intake_checklist_pending"]["source_path"]
+        == "operator_handoff.authorization_intake_checklist.items"
+    )
+    assert (
+        resolution_routes["authorized_template_not_released"]["source_path"]
+        == "operator_handoff.authorized_template_release_decision.release_blockers"
+    )
+    assert all(
+        item["operator_action"]
+        and item["required_evidence"]
+        and item["raw_live_inputs_persisted"] is False
+        for item in go_no_go_decision["resolution_routes"]
+    )
     assert (
         "submit_safety_decision.decision=allowed_pending_execution"
         in go_no_go_decision["required_before_go"]
@@ -1052,6 +1095,28 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert "#### Go/No-Go 阻断证据" in markdown
     assert "`submit_command_not_allowed`" in markdown
     assert "`authorized_template_not_released`" in markdown
+    assert "#### No-Go 处理路线" in markdown
+    assert "| 阻断项 | 来源 | 处理动作 | 必需证据 | 原值落盘 |" in markdown
+    assert (
+        "`live_run_readiness_not_ready` | `live_run_readiness.missing_gates`"
+        in markdown
+    )
+    assert (
+        "`submit_safety_decision_blocked_before_command` | `submit_safety_decision.blocking_reason`"
+        in markdown
+    )
+    assert (
+        "`authorization_readiness_action_plan_pending` | `operator_handoff.authorization_readiness_action_plan.actions`"
+        in markdown
+    )
+    assert (
+        "`authorization_intake_checklist_pending` | `operator_handoff.authorization_intake_checklist.items`"
+        in markdown
+    )
+    assert (
+        "`authorized_template_not_released` | `operator_handoff.authorized_template_release_decision.release_blockers`"
+        in markdown
+    )
     assert "#### Go 前必需条件" in markdown
     assert "`live_run_readiness.submit_command_allowed=true`" in markdown
     assert (

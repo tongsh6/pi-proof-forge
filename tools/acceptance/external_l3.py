@@ -1069,6 +1069,31 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 lines.extend(["", "#### Go/No-Go 阻断证据", ""])
                 for item in blocking_evidence:
                     lines.append(f"- `{item}`")
+            resolution_routes = go_no_go_decision.get("resolution_routes") or []
+            if resolution_routes:
+                lines.extend(
+                    [
+                        "",
+                        "#### No-Go 处理路线",
+                        "",
+                        "| 阻断项 | 来源 | 处理动作 | 必需证据 | 原值落盘 |",
+                        "|---|---|---|---|---:|",
+                    ]
+                )
+                for item in resolution_routes:
+                    lines.append(
+                        "| "
+                        + " | ".join(
+                            [
+                                f"`{item.get('blocker', '')}`",
+                                f"`{item.get('source_path', '')}`",
+                                str(item.get("operator_action", "")),
+                                f"`{', '.join(item.get('required_evidence') or [])}`",
+                                f"`{item.get('raw_live_inputs_persisted', True)}`",
+                            ]
+                        )
+                        + " |"
+                    )
             required_before_go = go_no_go_decision.get("required_before_go") or []
             if required_before_go:
                 lines.extend(["", "#### Go 前必需条件", ""])
@@ -2593,6 +2618,7 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
             and bool(go_no_go_decision.get("decision_inputs") or {})
             and bool(go_no_go_decision.get("required_before_go") or [])
             and bool(go_no_go_decision.get("status"))
+            and _go_no_go_resolution_routes_present(go_no_go_decision)
         )
         entries.append(
             _evidence_entry(
@@ -3437,6 +3463,7 @@ def _operator_live_run_go_no_go_decision(
         "raw_live_inputs_persisted": False,
         "decision_inputs": decision_inputs,
         "blocking_evidence": blocking_evidence,
+        "resolution_routes": _go_no_go_resolution_routes(blocking_evidence),
         "required_before_go": [
             "live_run_readiness.ready=true",
             "live_run_readiness.submit_command_allowed=true",
@@ -3450,6 +3477,101 @@ def _operator_live_run_go_no_go_decision(
             "只判断是否允许启动一次已授权真实运行。"
         ),
     }
+
+
+def _go_no_go_resolution_routes_present(decision: dict[str, Any]) -> bool:
+    blockers = {
+        str(item) for item in decision.get("blocking_evidence") or [] if str(item)
+    }
+    routes = [
+        item
+        for item in decision.get("resolution_routes") or []
+        if isinstance(item, dict)
+    ]
+    if not blockers:
+        return routes == []
+    route_blockers = {str(item.get("blocker", "")) for item in routes}
+    return (
+        blockers.issubset(route_blockers)
+        and all(
+            item.get("raw_live_inputs_persisted") is False
+            and bool(item.get("source_path"))
+            and bool(item.get("operator_action"))
+            and bool(item.get("required_evidence") or [])
+            for item in routes
+        )
+    )
+
+
+def _go_no_go_resolution_routes(blockers: list[str]) -> list[dict[str, Any]]:
+    route_specs = {
+        "live_run_readiness_not_ready": (
+            "live_run_readiness.missing_gates",
+            "按 missing gates 补齐真实输入、人工 session、目标确认和授权确认；补齐后重新生成 External L3 预检证据。",
+            [
+                "live_run_readiness.ready=true",
+                "live_run_readiness.missing_gates=[]",
+            ],
+        ),
+        "submit_command_not_allowed": (
+            "live_run_readiness.submit_command_allowed",
+            "先让所有 readiness gate 通过，并确认 submit safety 不再阻断命令启动。",
+            [
+                "live_run_readiness.submit_command_allowed=true",
+                "submit_safety_decision.decision=allowed_pending_execution",
+            ],
+        ),
+        "submit_safety_decision_blocked_before_command": (
+            "submit_safety_decision.blocking_reason",
+            "处理 submit safety 的 blocking_reason；未清零前不得复制或启动授权真实运行模板。",
+            [
+                "submit_safety_decision.blocking_reason=",
+                "submit_safety_decision.decision=allowed_pending_execution",
+            ],
+        ),
+        "authorization_readiness_action_plan_pending": (
+            "operator_handoff.authorization_readiness_action_plan.actions",
+            "逐项完成授权就绪行动计划中的待补行动，并保留对应 evidence，不把 live 原值写入仓库或报告。",
+            [
+                "operator_handoff.authorization_readiness_action_plan.pending_action_count=0",
+            ],
+        ),
+        "authorization_intake_checklist_pending": (
+            "operator_handoff.authorization_intake_checklist.items",
+            "按授权输入接收清单补齐 env、占位符和 gate 对应的真实输入或确认；原始 live 输入只进入本地运行环境。",
+            [
+                "operator_handoff.authorization_intake_checklist.pending_item_count=0",
+            ],
+        ),
+        "authorized_template_not_released": (
+            "operator_handoff.authorized_template_release_decision.release_blockers",
+            "清空模板发布阻断项；只有 copy_execution_allowed=true 后，授权真实运行模板才可复制执行。",
+            [
+                "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true",
+                "operator_handoff.authorized_template_release_decision.release_blockers=[]",
+            ],
+        ),
+    }
+    routes: list[dict[str, Any]] = []
+    for blocker in blockers:
+        source_path, operator_action, required_evidence = route_specs.get(
+            blocker,
+            (
+                "operator_handoff.live_run_go_no_go_decision.blocking_evidence",
+                "复核该 no-go 阻断项对应的证据段，补齐后重新生成 External L3 validation。",
+                ["operator_handoff.live_run_go_no_go_decision.blocking_evidence=[]"],
+            ),
+        )
+        routes.append(
+            {
+                "blocker": blocker,
+                "source_path": source_path,
+                "operator_action": operator_action,
+                "required_evidence": required_evidence,
+                "raw_live_inputs_persisted": False,
+            }
+        )
+    return routes
 
 
 def _authorization_readiness_actions(blockers: list[str]) -> list[dict[str, Any]]:

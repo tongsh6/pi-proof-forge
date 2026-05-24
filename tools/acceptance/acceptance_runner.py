@@ -2714,6 +2714,60 @@ def _external_l3_handoff_command_template_review_result(
     go_no_go_blockers = set(go_no_go_decision.get("blocking_evidence") or [])
     if not expected_go_no_go_blockers.issubset(go_no_go_blockers):
         missing.append("live_run_go_no_go_decision.blocking_evidence")
+    expected_resolution_routes = {
+        "live_run_readiness_not_ready": (
+            "live_run_readiness.missing_gates",
+            "live_run_readiness.ready=true",
+        ),
+        "submit_command_not_allowed": (
+            "live_run_readiness.submit_command_allowed",
+            "submit_safety_decision.decision=allowed_pending_execution",
+        ),
+        "submit_safety_decision_blocked_before_command": (
+            "submit_safety_decision.blocking_reason",
+            "submit_safety_decision.decision=allowed_pending_execution",
+        ),
+        "authorization_readiness_action_plan_pending": (
+            "operator_handoff.authorization_readiness_action_plan.actions",
+            "operator_handoff.authorization_readiness_action_plan.pending_action_count=0",
+        ),
+        "authorization_intake_checklist_pending": (
+            "operator_handoff.authorization_intake_checklist.items",
+            "operator_handoff.authorization_intake_checklist.pending_item_count=0",
+        ),
+        "authorized_template_not_released": (
+            "operator_handoff.authorized_template_release_decision.release_blockers",
+            "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true",
+        ),
+    }
+    resolution_routes = {
+        str(item.get("blocker", "")): item
+        for item in go_no_go_decision.get("resolution_routes") or []
+        if isinstance(item, dict)
+    }
+    for blocker, (source_path, required_evidence) in (
+        expected_resolution_routes.items()
+    ):
+        item = resolution_routes.get(blocker)
+        if not item:
+            missing.append(f"live_run_go_no_go_decision.resolution_routes.{blocker}")
+            continue
+        if item.get("source_path") != source_path:
+            missing.append(
+                f"live_run_go_no_go_decision.resolution_routes.{blocker}.source_path"
+            )
+        if required_evidence not in (item.get("required_evidence") or []):
+            missing.append(
+                f"live_run_go_no_go_decision.resolution_routes.{blocker}.required_evidence"
+            )
+        if not item.get("operator_action"):
+            missing.append(
+                f"live_run_go_no_go_decision.resolution_routes.{blocker}.operator_action"
+            )
+        if item.get("raw_live_inputs_persisted") is not False:
+            missing.append(
+                f"live_run_go_no_go_decision.resolution_routes.{blocker}.raw_live_inputs_persisted"
+            )
     expected_required_before_go = {
         "live_run_readiness.ready=true",
         "live_run_readiness.submit_command_allowed=true",
@@ -2822,6 +2876,13 @@ def _external_l3_handoff_command_template_review_result(
         "#### Go/No-Go 阻断证据",
         "`submit_command_not_allowed`",
         "`authorized_template_not_released`",
+        "#### No-Go 处理路线",
+        "| 阻断项 | 来源 | 处理动作 | 必需证据 | 原值落盘 |",
+        "`live_run_readiness_not_ready` | `live_run_readiness.missing_gates`",
+        "`submit_safety_decision_blocked_before_command` | `submit_safety_decision.blocking_reason`",
+        "`authorization_readiness_action_plan_pending` | `operator_handoff.authorization_readiness_action_plan.actions`",
+        "`authorization_intake_checklist_pending` | `operator_handoff.authorization_intake_checklist.items`",
+        "`authorized_template_not_released` | `operator_handoff.authorized_template_release_decision.release_blockers`",
         "#### Go 前必需条件",
         "`live_run_readiness.submit_command_allowed=true`",
         "`submit_safety_decision.decision=allowed_pending_execution`",
