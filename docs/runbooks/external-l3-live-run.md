@@ -32,15 +32,16 @@
 9. 确认 `授权模板发布决策` 中 `template_released_to_operator=true` 且 `copy_execution_allowed=true`；如果模板已展示但发布决策仍为 false，说明模板仅供复核，不能复制执行。
 10. 确认 `授权模板发布决策` 的发布阻断项为空，且发布前必需条件均已满足。
 11. 确认 `真实运行 Go/No-Go 决策` 中 `go_for_live_run=true`、`submit_command_may_start=true` 且 `copy_authorized_template_allowed=true`；如果仍为 no-go，必须按 `blocking_evidence`、`resolution_routes` 和 `required_before_go` 处理，不得启动真实运行。
-12. 确认 `PIPF_EXTERNAL_L3_AUTHORIZED=true` 只在用户明确授权后保留。
-13. 确认 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true` 只在用户独立确认允许最终提交路径后保留。
-14. 确认 `PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true` 只在人工登录或刷新确认 session 可用后保留。
-15. 确认频控参数仍为正数，且符合本次真实渠道风险边界。
-16. 确认没有设置 `PIPF_EXTERNAL_L3_PASSWORD`、`PIPF_EXTERNAL_L3_CAPTCHA_CODE`、`PIPF_EXTERNAL_L3_SMS_CODE` 或 `PIPF_EXTERNAL_L3_RAW_API_KEY`。
+12. 确认 `真实运行执行顺序门禁` 中 `authorized_template_execution_allowed=true`；如果 `next_executable_step` 仍指向前置步骤，必须先完成该步骤，不得跳到授权模板。
+13. 确认 `PIPF_EXTERNAL_L3_AUTHORIZED=true` 只在用户明确授权后保留。
+14. 确认 `PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true` 只在用户独立确认允许最终提交路径后保留。
+15. 确认 `PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true` 只在人工登录或刷新确认 session 可用后保留。
+16. 确认频控参数仍为正数，且符合本次真实渠道风险边界。
+17. 确认没有设置 `PIPF_EXTERNAL_L3_PASSWORD`、`PIPF_EXTERNAL_L3_CAPTCHA_CODE`、`PIPF_EXTERNAL_L3_SMS_CODE` 或 `PIPF_EXTERNAL_L3_RAW_API_KEY`。
 
 ## 执行命令
 
-从最新 `external-l3-validation.md` 先复制 `本地预检命令模板` 并替换所有 live 输入占位符；预检仍应记录 blocker，且不得触碰真实渠道。只有预检证据完整、命令模板复核显示 `preflight_must_run_before_authorized_template=true`、预检结果符合 `本地预检预期结果`、`本地预检复核清单` 全部 required 项已人工复核、`本地预检复核结果` 全部 required 项已通过、`授权就绪行动计划` 的待补行动清零且 `authorization_decision_blockers` 为空、`授权输入接收清单` 的待补输入/确认清零、`授权模板发布决策` 明确模板已发布并允许复制执行、`真实运行 Go/No-Go 决策` 明确 `go_for_live_run=true` 且没有待处理 no-go 路线、用户显式授权并独立确认最终提交后，才复制 `授权真实运行命令模板`。模板中的 live 输入不应写回仓库、文档、测试或验收报告。
+从最新 `external-l3-validation.md` 先复制 `本地预检命令模板` 并替换所有 live 输入占位符；预检仍应记录 blocker，且不得触碰真实渠道。只有预检证据完整、命令模板复核显示 `preflight_must_run_before_authorized_template=true`、预检结果符合 `本地预检预期结果`、`本地预检复核清单` 全部 required 项已人工复核、`本地预检复核结果` 全部 required 项已通过、`授权就绪行动计划` 的待补行动清零且 `authorization_decision_blockers` 为空、`授权输入接收清单` 的待补输入/确认清零、`授权模板发布决策` 明确模板已发布并允许复制执行、`真实运行 Go/No-Go 决策` 明确 `go_for_live_run=true` 且没有待处理 no-go 路线、`真实运行执行顺序门禁` 明确授权模板可执行、用户显式授权并独立确认最终提交后，才复制 `授权真实运行命令模板`。模板中的 live 输入不应写回仓库、文档、测试或验收报告。
 
 ```bash
 bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3

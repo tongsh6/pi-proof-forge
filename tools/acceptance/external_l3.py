@@ -342,6 +342,10 @@ def write_external_l3_validation(
             _operator_live_run_go_no_go_decision(validation)
         )
         validation["operator_handoff"] = handoff
+        handoff["live_run_execution_sequence"] = (
+            _operator_live_run_execution_sequence(validation)
+        )
+        validation["operator_handoff"] = handoff
         validation["evidence_manifest"] = _evidence_manifest(
             validation,
             run_id=run_id,
@@ -1099,6 +1103,38 @@ def render_external_l3_validation_markdown(validation: dict[str, Any]) -> str:
                 lines.extend(["", "#### Go 前必需条件", ""])
                 for item in required_before_go:
                     lines.append(f"- `{item}`")
+        execution_sequence = handoff.get("live_run_execution_sequence") or {}
+        if execution_sequence:
+            lines.extend(
+                [
+                    "",
+                    "### 真实运行执行顺序门禁",
+                    "",
+                    f"- 状态: `{execution_sequence.get('status', '')}`",
+                    f"- 下一可执行步骤: `{execution_sequence.get('next_executable_step', '')}`",
+                    f"- 是否允许执行授权模板: `{execution_sequence.get('authorized_template_execution_allowed', True)}`",
+                    f"- 原始 live 输入是否持久化: `{execution_sequence.get('raw_live_inputs_persisted', True)}`",
+                    "",
+                    "| 顺序 | 步骤 | 状态 | 来源 | 阻断后续 | 必需条件 | 原值落盘 |",
+                    "|---:|---|---|---|---:|---|---:|",
+                ]
+            )
+            for item in execution_sequence.get("steps") or []:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            f"`{item.get('order', '')}`",
+                            f"`{item.get('id', '')}`",
+                            f"`{item.get('status', '')}`",
+                            f"`{item.get('source_path', '')}`",
+                            f"`{item.get('blocks_next_step', True)}`",
+                            f"`{', '.join(item.get('required_before_next') or [])}`",
+                            f"`{item.get('raw_live_inputs_persisted', True)}`",
+                        ]
+                    )
+                    + " |"
+                )
         if command_template:
             lines.extend(
                 [
@@ -2635,6 +2671,48 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 ),
             )
         )
+    execution_sequence = (
+        (validation.get("operator_handoff") or {}).get(
+            "live_run_execution_sequence"
+        )
+        or {}
+    )
+    if execution_sequence:
+        execution_steps = execution_sequence.get("steps") or []
+        execution_sequence_present = (
+            execution_sequence.get("raw_live_inputs_persisted") is False
+            and isinstance(
+                execution_sequence.get("authorized_template_execution_allowed"),
+                bool,
+            )
+            and bool(execution_steps)
+            and all(
+                isinstance(item, dict)
+                and isinstance(item.get("order"), int)
+                and bool(item.get("id"))
+                and bool(item.get("status"))
+                and bool(item.get("source_path"))
+                and isinstance(item.get("blocks_next_step"), bool)
+                and item.get("raw_live_inputs_persisted") is False
+                and bool(item.get("required_before_next") or [])
+                for item in execution_steps
+            )
+        )
+        entries.append(
+            _evidence_entry(
+                entry_id="live_run_execution_sequence",
+                artifact_type="embedded_section",
+                location=f"{validation_json}#operator_handoff.live_run_execution_sequence",
+                required=(
+                    validation.get("status") == "live_blocker_recorded"
+                    and validation.get("external_submission_attempted") is False
+                ),
+                present=execution_sequence_present,
+                status=str(
+                    execution_sequence.get("status", "missing_or_incomplete")
+                ),
+            )
+        )
 
     live_blocker_required = validation.get("status") == "live_blocker_recorded"
     live_blocker_present = bool(validation.get("live_blocker"))
@@ -3572,6 +3650,143 @@ def _go_no_go_resolution_routes(blockers: list[str]) -> list[dict[str, Any]]:
             }
         )
     return routes
+
+
+def _operator_live_run_execution_sequence(
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    handoff = validation.get("operator_handoff") or {}
+    preflight_result = handoff.get("preflight_review_result") or {}
+    action_plan = handoff.get("authorization_readiness_action_plan") or {}
+    intake_checklist = handoff.get("authorization_intake_checklist") or {}
+    release_decision = handoff.get("authorized_template_release_decision") or {}
+    go_no_go_decision = handoff.get("live_run_go_no_go_decision") or {}
+    completion_gate = validation.get("p0_017_completion_gate") or {}
+    external_submission_attempted = validation.get("external_submission_attempted") is True
+
+    preflight_review_passed = (
+        preflight_result.get("all_required_items_passed") is True
+    )
+    no_go_routes_clear = not (go_no_go_decision.get("resolution_routes") or [])
+    action_plan_clear = action_plan.get("pending_action_count", 0) == 0
+    intake_clear = intake_checklist.get("pending_item_count", 0) == 0
+    template_released = release_decision.get("copy_execution_allowed") is True
+    go_allowed = go_no_go_decision.get("go_for_live_run") is True
+    p0_complete = completion_gate.get("p0_017_complete") is True
+
+    step_specs = [
+        (
+            "run_preflight_template",
+            "satisfied",
+            "operator_handoff.preflight_command_template",
+            False,
+            [
+                "PIPF_EXTERNAL_L3_AUTHORIZED=false",
+                "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=false",
+            ],
+        ),
+        (
+            "review_preflight_evidence",
+            "satisfied" if preflight_review_passed else "blocked",
+            "operator_handoff.preflight_review_result.all_required_items_passed",
+            not preflight_review_passed,
+            ["operator_handoff.preflight_review_result.all_required_items_passed=true"],
+        ),
+        (
+            "resolve_no_go_routes",
+            "satisfied" if no_go_routes_clear else "blocked",
+            "operator_handoff.live_run_go_no_go_decision.resolution_routes",
+            not no_go_routes_clear,
+            ["operator_handoff.live_run_go_no_go_decision.resolution_routes=[]"],
+        ),
+        (
+            "complete_authorization_readiness_actions",
+            "satisfied" if action_plan_clear else "blocked",
+            "operator_handoff.authorization_readiness_action_plan.pending_action_count",
+            not action_plan_clear,
+            [
+                "operator_handoff.authorization_readiness_action_plan.pending_action_count=0"
+            ],
+        ),
+        (
+            "complete_authorization_intake",
+            "satisfied" if intake_clear else "blocked",
+            "operator_handoff.authorization_intake_checklist.pending_item_count",
+            not intake_clear,
+            ["operator_handoff.authorization_intake_checklist.pending_item_count=0"],
+        ),
+        (
+            "release_authorized_template",
+            "satisfied" if template_released else "blocked",
+            "operator_handoff.authorized_template_release_decision.copy_execution_allowed",
+            not template_released,
+            [
+                "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true"
+            ],
+        ),
+        (
+            "pass_live_run_go_no_go",
+            "satisfied" if go_allowed else "blocked",
+            "operator_handoff.live_run_go_no_go_decision.go_for_live_run",
+            not go_allowed,
+            ["operator_handoff.live_run_go_no_go_decision.go_for_live_run=true"],
+        ),
+        (
+            "execute_authorized_template",
+            "satisfied" if external_submission_attempted else "blocked",
+            "external_submission_attempted",
+            not external_submission_attempted,
+            ["external_submission_attempted=true"],
+        ),
+        (
+            "verify_p0_017_completion",
+            "satisfied" if p0_complete else "blocked",
+            "p0_017_completion_gate.p0_017_complete",
+            not p0_complete,
+            ["p0_017_completion_gate.p0_017_complete=true"],
+        ),
+    ]
+    steps = [
+        {
+            "order": index,
+            "id": step_id,
+            "status": status,
+            "source_path": source_path,
+            "blocks_next_step": blocks_next_step,
+            "required_before_next": required_before_next,
+            "raw_live_inputs_persisted": False,
+        }
+        for index, (
+            step_id,
+            status,
+            source_path,
+            blocks_next_step,
+            required_before_next,
+        ) in enumerate(step_specs, start=1)
+    ]
+    blocking_steps = [step for step in steps if step["blocks_next_step"] is True]
+    pre_execution_blocked = any(
+        step["blocks_next_step"] is True and int(step["order"]) <= 7
+        for step in steps
+    )
+    authorized_template_execution_allowed = (
+        template_released and go_allowed and not pre_execution_blocked
+    )
+    return {
+        "status": (
+            "ready_for_authorized_template_execution"
+            if authorized_template_execution_allowed
+            else "blocked_before_authorized_template_execution"
+        ),
+        "next_executable_step": (
+            str(blocking_steps[0]["id"]) if blocking_steps else "complete"
+        ),
+        "authorized_template_execution_allowed": (
+            authorized_template_execution_allowed
+        ),
+        "raw_live_inputs_persisted": False,
+        "steps": steps,
+    }
 
 
 def _authorization_readiness_actions(blockers: list[str]) -> list[dict[str, Any]]:

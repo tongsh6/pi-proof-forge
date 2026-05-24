@@ -2309,6 +2309,12 @@ def _external_l3_handoff_command_template_review_result(
         )
         or {}
     )
+    execution_sequence = (
+        (payload.get("operator_handoff") or {}).get(
+            "live_run_execution_sequence"
+        )
+        or {}
+    )
     expected_placeholders = {
         "<https-url>",
         "<resume.pdf>",
@@ -2781,6 +2787,116 @@ def _external_l3_handoff_command_template_review_result(
         missing.append("live_run_go_no_go_decision.required_before_go")
     if not go_no_go_decision.get("p0_017_completion_note"):
         missing.append("live_run_go_no_go_decision.p0_017_completion_note")
+    expected_sequence_fields = {
+        "status": "blocked_before_authorized_template_execution",
+        "next_executable_step": "resolve_no_go_routes",
+        "authorized_template_execution_allowed": False,
+        "raw_live_inputs_persisted": False,
+    }
+    for key, expected in expected_sequence_fields.items():
+        if execution_sequence.get(key) != expected:
+            missing.append(f"live_run_execution_sequence.{key}")
+    expected_sequence_steps = {
+        "run_preflight_template": (
+            1,
+            "satisfied",
+            "operator_handoff.preflight_command_template",
+            False,
+            "PIPF_EXTERNAL_L3_AUTHORIZED=false",
+        ),
+        "review_preflight_evidence": (
+            2,
+            "satisfied",
+            "operator_handoff.preflight_review_result.all_required_items_passed",
+            False,
+            "operator_handoff.preflight_review_result.all_required_items_passed=true",
+        ),
+        "resolve_no_go_routes": (
+            3,
+            "blocked",
+            "operator_handoff.live_run_go_no_go_decision.resolution_routes",
+            True,
+            "operator_handoff.live_run_go_no_go_decision.resolution_routes=[]",
+        ),
+        "complete_authorization_readiness_actions": (
+            4,
+            "blocked",
+            "operator_handoff.authorization_readiness_action_plan.pending_action_count",
+            True,
+            "operator_handoff.authorization_readiness_action_plan.pending_action_count=0",
+        ),
+        "complete_authorization_intake": (
+            5,
+            "blocked",
+            "operator_handoff.authorization_intake_checklist.pending_item_count",
+            True,
+            "operator_handoff.authorization_intake_checklist.pending_item_count=0",
+        ),
+        "release_authorized_template": (
+            6,
+            "blocked",
+            "operator_handoff.authorized_template_release_decision.copy_execution_allowed",
+            True,
+            "operator_handoff.authorized_template_release_decision.copy_execution_allowed=true",
+        ),
+        "pass_live_run_go_no_go": (
+            7,
+            "blocked",
+            "operator_handoff.live_run_go_no_go_decision.go_for_live_run",
+            True,
+            "operator_handoff.live_run_go_no_go_decision.go_for_live_run=true",
+        ),
+        "execute_authorized_template": (
+            8,
+            "blocked",
+            "external_submission_attempted",
+            True,
+            "external_submission_attempted=true",
+        ),
+        "verify_p0_017_completion": (
+            9,
+            "blocked",
+            "p0_017_completion_gate.p0_017_complete",
+            True,
+            "p0_017_completion_gate.p0_017_complete=true",
+        ),
+    }
+    sequence_steps = {
+        str(item.get("id", "")): item
+        for item in execution_sequence.get("steps") or []
+        if isinstance(item, dict)
+    }
+    for step_id, (
+        order,
+        status,
+        source_path,
+        blocks_next_step,
+        required_before_next,
+    ) in expected_sequence_steps.items():
+        item = sequence_steps.get(step_id)
+        if not item:
+            missing.append(f"live_run_execution_sequence.steps.{step_id}")
+            continue
+        if item.get("order") != order:
+            missing.append(f"live_run_execution_sequence.steps.{step_id}.order")
+        if item.get("status") != status:
+            missing.append(f"live_run_execution_sequence.steps.{step_id}.status")
+        if item.get("source_path") != source_path:
+            missing.append(
+                f"live_run_execution_sequence.steps.{step_id}.source_path"
+            )
+        if item.get("blocks_next_step") is not blocks_next_step:
+            missing.append(
+                f"live_run_execution_sequence.steps.{step_id}.blocks_next_step"
+            )
+        if required_before_next not in (item.get("required_before_next") or []):
+            missing.append(
+                f"live_run_execution_sequence.steps.{step_id}.required_before_next"
+            )
+        if item.get("raw_live_inputs_persisted") is not False:
+            missing.append(
+                f"live_run_execution_sequence.steps.{step_id}.raw_live_inputs_persisted"
+            )
 
     markdown_fragments = [
         "### 命令模板复核",
@@ -2887,6 +3003,15 @@ def _external_l3_handoff_command_template_review_result(
         "`live_run_readiness.submit_command_allowed=true`",
         "`submit_safety_decision.decision=allowed_pending_execution`",
         "`operator_handoff.authorized_template_release_decision.copy_execution_allowed=true`",
+        "### 真实运行执行顺序门禁",
+        "- 状态: `blocked_before_authorized_template_execution`",
+        "- 下一可执行步骤: `resolve_no_go_routes`",
+        "- 是否允许执行授权模板: `False`",
+        "| 顺序 | 步骤 | 状态 | 来源 | 阻断后续 | 必需条件 | 原值落盘 |",
+        "`1` | `run_preflight_template` | `satisfied`",
+        "`3` | `resolve_no_go_routes` | `blocked`",
+        "`6` | `release_authorized_template` | `blocked`",
+        "`9` | `verify_p0_017_completion` | `blocked`",
     ]
     missing.extend(
         fragment for fragment in markdown_fragments if fragment not in markdown
@@ -2895,7 +3020,7 @@ def _external_l3_handoff_command_template_review_result(
         return JourneyStepResult(
             status="pass",
             evidence=step.evidence,
-            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划与授权输入接收清单已列出待补项，授权模板发布决策保持 withheld，真实运行 Go/No-Go 决策保持 no-go。",
+            message="External L3 授权交接命令模板复核已记录：必须先跑本地预检，预检预期结果是授权 blocker 且不触碰外部渠道，授权模板执行前必须按预检复核清单复核证据；本次预检复核结果已逐项通过，但真实运行输入和 session 尚未就绪，不能进入授权决策或执行授权模板；授权就绪行动计划与授权输入接收清单已列出待补项，授权模板发布决策保持 withheld，真实运行 Go/No-Go 决策保持 no-go，真实运行执行顺序门禁阻断在 resolve_no_go_routes。",
         )
     return JourneyStepResult(
         status="fail",
@@ -2947,6 +3072,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         "authorization_intake_checklist",
         "authorized_template_release_decision",
         "live_run_go_no_go_decision",
+        "live_run_execution_sequence",
         "post_submit_feedback_traceability",
         "feedback_source_artifact",
     }

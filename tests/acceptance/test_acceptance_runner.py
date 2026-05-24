@@ -381,6 +381,12 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         evidence_entries["live_run_go_no_go_decision"]["status"]
         == "no_go_until_authorized_template_released"
     )
+    assert evidence_entries["live_run_execution_sequence"]["required"] is True
+    assert evidence_entries["live_run_execution_sequence"]["present"] is True
+    assert (
+        evidence_entries["live_run_execution_sequence"]["status"]
+        == "blocked_before_authorized_template_execution"
+    )
     assert evidence_entries["post_submit_feedback_traceability"]["present"] is True
     assert evidence_entries["live_blocker"]["required"] is True
     assert evidence_entries["live_blocker"]["present"] is True
@@ -862,6 +868,49 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         in go_no_go_decision["required_before_go"]
     )
     assert "真实渠道验证成功后完成" in go_no_go_decision["p0_017_completion_note"]
+    execution_sequence = handoff["live_run_execution_sequence"]
+    assert (
+        execution_sequence["status"]
+        == "blocked_before_authorized_template_execution"
+    )
+    assert execution_sequence["next_executable_step"] == "resolve_no_go_routes"
+    assert execution_sequence["authorized_template_execution_allowed"] is False
+    assert execution_sequence["raw_live_inputs_persisted"] is False
+    sequence_steps = {
+        item["id"]: item for item in execution_sequence["steps"]
+    }
+    assert sequence_steps["run_preflight_template"]["order"] == 1
+    assert sequence_steps["run_preflight_template"]["status"] == "satisfied"
+    assert (
+        sequence_steps["run_preflight_template"]["source_path"]
+        == "operator_handoff.preflight_command_template"
+    )
+    assert sequence_steps["run_preflight_template"]["blocks_next_step"] is False
+    assert sequence_steps["review_preflight_evidence"]["status"] == "satisfied"
+    assert (
+        sequence_steps["resolve_no_go_routes"]["source_path"]
+        == "operator_handoff.live_run_go_no_go_decision.resolution_routes"
+    )
+    assert sequence_steps["resolve_no_go_routes"]["status"] == "blocked"
+    assert sequence_steps["resolve_no_go_routes"]["blocks_next_step"] is True
+    assert (
+        "operator_handoff.live_run_go_no_go_decision.resolution_routes=[]"
+        in sequence_steps["resolve_no_go_routes"]["required_before_next"]
+    )
+    assert (
+        sequence_steps["complete_authorization_readiness_actions"]["source_path"]
+        == "operator_handoff.authorization_readiness_action_plan.pending_action_count"
+    )
+    assert sequence_steps["complete_authorization_intake"]["status"] == "blocked"
+    assert sequence_steps["release_authorized_template"]["status"] == "blocked"
+    assert sequence_steps["pass_live_run_go_no_go"]["status"] == "blocked"
+    assert sequence_steps["execute_authorized_template"]["status"] == "blocked"
+    assert sequence_steps["verify_p0_017_completion"]["status"] == "blocked"
+    assert all(
+        item["required_before_next"]
+        and item["raw_live_inputs_persisted"] is False
+        for item in execution_sequence["steps"]
+    )
     command_template_review = handoff["command_template_review"]
     assert command_template_review["copy_paste_ready"] is False
     assert command_template_review["requires_placeholder_replacement"] is True
@@ -1127,6 +1176,21 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
         "`operator_handoff.authorized_template_release_decision.copy_execution_allowed=true`"
         in markdown
     )
+    assert "### 真实运行执行顺序门禁" in markdown
+    assert (
+        "- 状态: `blocked_before_authorized_template_execution`"
+        in markdown
+    )
+    assert "- 下一可执行步骤: `resolve_no_go_routes`" in markdown
+    assert "- 是否允许执行授权模板: `False`" in markdown
+    assert (
+        "| 顺序 | 步骤 | 状态 | 来源 | 阻断后续 | 必需条件 | 原值落盘 |"
+        in markdown
+    )
+    assert "`1` | `run_preflight_template` | `satisfied`" in markdown
+    assert "`3` | `resolve_no_go_routes` | `blocked`" in markdown
+    assert "`6` | `release_authorized_template` | `blocked`" in markdown
+    assert "`9` | `verify_p0_017_completion` | `blocked`" in markdown
     assert "### 授权真实运行命令模板" in markdown
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=true" in markdown
     assert "```bash" in markdown
@@ -1411,6 +1475,8 @@ def test_acceptance_runner_l3_journey_report_records_live_blocker_rule(
     assert "授权模板发布决策" in handoff_template_review_rule["message"]
     assert "真实运行 Go/No-Go 决策" in handoff_template_review_rule["message"]
     assert "no-go" in handoff_template_review_rule["message"]
+    assert "真实运行执行顺序门禁" in handoff_template_review_rule["message"]
+    assert "resolve_no_go_routes" in handoff_template_review_rule["message"]
     evidence_manifest_rule = next(
         step
         for step in journey_payload["steps"]
