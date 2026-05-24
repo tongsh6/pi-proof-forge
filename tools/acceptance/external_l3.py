@@ -2306,7 +2306,6 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
         "forbidden_input_audit",
         "target_confirmation_audit",
         "operator_handoff",
-        "p0_017_completion_gate",
         "post_submit_feedback_traceability",
     ):
         present = bool(validation.get(section))
@@ -2320,6 +2319,34 @@ def _evidence_manifest(validation: dict[str, Any], *, run_id: str) -> dict[str, 
                 status="present" if present else "missing",
             )
         )
+
+    p0_completion_gate = validation.get("p0_017_completion_gate") or {}
+    p0_completion_items = p0_completion_gate.get("required_evidence") or []
+    p0_completion_present = (
+        p0_completion_gate.get("raw_live_inputs_persisted") is False
+        and bool(p0_completion_items)
+        and all(
+            isinstance(item, dict)
+            and item.get("required") is True
+            and item.get("raw_live_inputs_persisted") is False
+            and bool(item.get("id"))
+            and bool(item.get("source_path"))
+            and item.get("status") in {"satisfied", "missing"}
+            for item in p0_completion_items
+        )
+        and p0_completion_gate.get("acceptance_pass_is_completion")
+        is p0_completion_gate.get("p0_017_complete")
+    )
+    entries.append(
+        _evidence_entry(
+            entry_id="p0_017_completion_gate",
+            artifact_type="embedded_section",
+            location=f"{validation_json}#p0_017_completion_gate",
+            required=True,
+            present=p0_completion_present,
+            status=str(p0_completion_gate.get("status", "missing_or_incomplete")),
+        )
+    )
 
     runbook = (validation.get("operator_handoff") or {}).get("runbook") or {}
     runbook_sections = runbook.get("required_sections") or []

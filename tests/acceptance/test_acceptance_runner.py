@@ -331,7 +331,10 @@ def test_acceptance_runner_l3_records_authorization_blocker(tmp_path: Path) -> N
     assert evidence_entries["operator_handoff"]["present"] is True
     assert evidence_entries["p0_017_completion_gate"]["required"] is True
     assert evidence_entries["p0_017_completion_gate"]["present"] is True
-    assert evidence_entries["p0_017_completion_gate"]["status"] == "present"
+    assert (
+        evidence_entries["p0_017_completion_gate"]["status"]
+        == "incomplete_pre_submit_blocker"
+    )
     assert evidence_entries["external_l3_live_run_runbook"]["required"] is True
     assert evidence_entries["external_l3_live_run_runbook"]["present"] is True
     assert (

@@ -2817,6 +2817,7 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
         missing.append("status")
     if manifest.get("raw_live_inputs_persisted") is not False:
         missing.append("raw_live_inputs_persisted")
+    completion_gate = payload.get("p0_017_completion_gate") or {}
     for entry_id in sorted(required_entry_ids):
         entry = entries.get(entry_id)
         if not entry:
@@ -2828,6 +2829,9 @@ def _external_l3_evidence_manifest_result(step: AcceptanceStep) -> JourneyStepRe
             missing.append(f"{entry_id}.present")
         if entry.get("raw_live_inputs_persisted") is not False:
             missing.append(f"{entry_id}.raw_live_inputs_persisted")
+    completion_entry = entries.get("p0_017_completion_gate") or {}
+    if completion_entry.get("status") != completion_gate.get("status"):
+        missing.append("p0_017_completion_gate.status")
     runbook = (payload.get("operator_handoff") or {}).get("runbook") or {}
     runbook_entry = entries.get("external_l3_live_run_runbook") or {}
     runbook_path = str(runbook.get("path", ""))
