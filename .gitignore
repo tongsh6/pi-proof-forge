@@ -39,6 +39,8 @@ ui/test-results/
 # Local environment
 .env
 .env.*
+personal_profile.yaml
+policy.local.yaml
 
 # Local browser/session state
 .sessions/

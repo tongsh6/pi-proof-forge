@@ -83,6 +83,15 @@ python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id r
 
 可以在仓库根目录放置 `policy.yaml`（或设置环境变量 `PPF_POLICY_PATH` 指向文件）来定义需要排除的企业名单。
 
+本机 LLM、个人投递策略等只适合当前机器的运行配置，建议写入已忽略的 `policy.local.yaml`，并用环境变量指向它：
+
+```bash
+PPF_POLICY_PATH=policy.local.yaml ./app start
+PPF_POLICY_PATH=policy.local.yaml python3 -m tools.cli.entrypoints agent --policy policy.local.yaml --dry-run --run-id run-001 --output-dir outputs/agent_runs
+```
+
+根目录 `policy.yaml` 是仓库默认策略文件；提交前应避免把本机 provider、base_url 或个人运行状态混入默认策略。
+
 支持以下字段（均为字符串列表）：
 
 - `exclusion_list`: 简单名单，按精确匹配处理。
