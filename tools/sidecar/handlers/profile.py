@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import re
+import json
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.infra.career_profile import inspect_career, normalize_career
+from tools.infra.persistence.review_queue import locked_review_queue
 
 _PROFILE_PATH = Path("personal_profile.yaml")
 _PROFILE_FIELDS = ("name", "phone", "email", "city", "current_position")
@@ -34,10 +39,22 @@ def _load_profile() -> dict[str, str]:
 
 
 def _write_profile(fields: dict[str, str]) -> None:
-    lines = [f"{field}: {_quote(fields.get(field, ''))}" for field in _PROFILE_FIELDS]
-    lines.append(f"updated_at: {_quote(fields.get('updated_at', ''))}")
-    _PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _PROFILE_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    owned=set(_PROFILE_FIELDS)|{'updated_at','career_json','career_review_json'}
+    original=_PROFILE_PATH.read_text(encoding='utf-8') if _PROFILE_PATH.is_file() else ''
+    blocks=re.split(r'(?m)(?=^[A-Za-z_][A-Za-z0-9_-]*\s*:)',original)
+    kept=[]
+    for block in blocks:
+        match=re.match(r'^([A-Za-z_][A-Za-z0-9_-]*)\s*:',block)
+        if not match or match.group(1) not in owned:kept.append(block)
+    lines=[f'{key}: '+json.dumps(str(fields.get(key,'')),ensure_ascii=False) for key in (*_PROFILE_FIELDS,'updated_at','career_json','career_review_json') if key in fields or key in _PROFILE_FIELDS]
+    _PROFILE_PATH.parent.mkdir(parents=True,exist_ok=True)
+    fd,name=tempfile.mkstemp(prefix='.profile-',dir=_PROFILE_PATH.parent)
+    temporary=Path(name)
+    try:
+        with os.fdopen(fd,'w',encoding='utf-8') as stream:
+            stream.write(''.join(kept).rstrip()+'\n'+'\n'.join(lines)+'\n');stream.flush();os.fsync(stream.fileno())
+        os.replace(temporary,_PROFILE_PATH)
+    finally:temporary.unlink(missing_ok=True)
 
 
 def _profile_payload(fields: dict[str, str]) -> dict[str, Any]:
@@ -61,7 +78,8 @@ def _profile_payload(fields: dict[str, str]) -> dict[str, Any]:
 
 def handle_profile_get(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
-    profile = _profile_payload(_load_profile())
+    fields=_load_profile()
+    profile = {**_profile_payload(fields),**inspect_career(fields,_PROFILE_PATH.parent/"evidence_cards")}
     return {
         "meta": {"correlation_id": correlation_id},
         "profile": profile,
@@ -69,31 +87,28 @@ def handle_profile_get(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def handle_profile_update(params: dict[str, Any]) -> dict[str, Any]:
-    correlation_id = params["meta"]["correlation_id"]
-    patch = params.get("patch", {})
-    if not isinstance(patch, dict):
-        raise ValueError("patch must be an object")
+    patch=params.get('patch',{})
+    if not isinstance(patch,dict) or set(patch)-set(_PROFILE_FIELDS)-{'career'}:raise ValueError('unsupported_profile_fields')
+    with locked_review_queue(_PROFILE_PATH):
+        fields=_load_profile();current=inspect_career(fields,_PROFILE_PATH.parent/'evidence_cards')
+        expected=params.get('expected_revision')
+        if expected!=current['revision']:raise ValueError('profile_changed')
+        for key in _PROFILE_FIELDS:
+            if key in patch:
+                if not isinstance(patch[key],str) or len(patch[key])>1000:raise ValueError('invalid_profile_field')
+                fields[key]=patch[key].strip()
+        if fields.get('email') and not _EMAIL_PATTERN.fullmatch(fields['email']):raise ValueError('email must be a valid email address')
+        if 'career' in patch:fields['career_json']=json.dumps(normalize_career(patch['career']),ensure_ascii=False,separators=(',',':'))
+        fields['updated_at']=_utcnow_iso();_write_profile(fields)
+    return {'meta':params['meta'],'saved':True,'updated_at':fields['updated_at']}
 
-    unsupported_fields = set(patch) - set(_PROFILE_FIELDS)
-    if unsupported_fields:
-        unsupported = ", ".join(sorted(unsupported_fields))
-        raise ValueError(f"unsupported profile fields: {unsupported}")
 
-    if "email" in patch:
-        email = str(patch["email"]).strip()
-        if email and not _EMAIL_PATTERN.fullmatch(email):
-            raise ValueError("email must be a valid email address")
-
-    fields = _load_profile()
-    for key in _PROFILE_FIELDS:
-        if key in patch:
-            fields[key] = str(patch[key])
-
-    updated_at = _utcnow_iso()
-    fields["updated_at"] = updated_at
-    _write_profile(fields)
-    return {
-        "meta": {"correlation_id": correlation_id},
-        "saved": True,
-        "updated_at": updated_at,
-    }
+def handle_profile_review(params):
+    if params.get('confirmed') is not True:raise ValueError('career_confirmation_required')
+    with locked_review_queue(_PROFILE_PATH):
+        fields=_load_profile();current=inspect_career(fields,_PROFILE_PATH.parent/'evidence_cards')
+        if params.get('expected_revision')!=current['revision']:raise ValueError('profile_changed')
+        if current['career_status']['missing']:raise ValueError('career_profile_incomplete')
+        fields['career_review_json']=json.dumps({'revision':current['revision'],'reviewed_at':_utcnow_iso()},ensure_ascii=False)
+        fields['updated_at']=_utcnow_iso();_write_profile(fields)
+    return handle_profile_get(params)

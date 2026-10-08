@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.infra.llm.client import LLMClient
+from tools.infra.liepin_readonly import liepin_readonly
 from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
 from tools.policy.exclusions import (
     load_delivery_settings,
@@ -41,6 +42,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "meta": {"correlation_id": correlation_id},
+        "liepin_api": liepin_readonly.snapshot(),
         "gate_policy": {
             "n_pass_required": 3,
             "matching_threshold": 70,
@@ -58,7 +60,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
                 "label": "Liepin",
                 "enabled": True,
                 "priority": 1,
-                "fallback_to": "email",
+                "fallback_to": "",
                 "credential_status": "configured"
                 if liepin_session_configured
                 else "missing",
@@ -95,6 +97,24 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
             "temperature": llm_config["temperature"],
         },
     }
+
+
+def handle_settings_liepin_credential(params: dict[str, Any]) -> dict[str, Any]:
+    action = params.get("action")
+    if action == "set":
+        auth = liepin_readonly.configure(params.get("token"))
+    elif action == "clear":
+        auth = liepin_readonly.clear()
+    elif action == "check":
+        auth = liepin_readonly.read_resume()["auth"]
+    else:
+        raise ValueError("unsupported credential action")
+    return {"meta": {"correlation_id": params["meta"]["correlation_id"]}, "auth": auth}
+
+
+def handle_settings_liepin_resume(params: dict[str, Any]) -> dict[str, Any]:
+    return {"meta": {"correlation_id": params["meta"]["correlation_id"]},
+            **liepin_readonly.read_resume()}
 
 
 def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, Any]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -16,6 +17,7 @@ from typing import Any
 
 from tools.infra.export.pdf_exporter import markdown_to_pdf
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.sidecar.handlers.resume import read_generation_trace
 
 
 def _find_project_root(start: Path) -> Path:
@@ -72,6 +74,8 @@ def _validate_run_resource_id(name: str, value: Any) -> str:
 
 
 def _get_agent_run_file(run_id: str) -> Path:
+    if not isinstance(run_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', run_id):
+        raise ValueError('invalid_review_run_id')
     _ensure_agent_run_dir()
     return _AGENT_RUN_DIR / f"{run_id}.json"
 
@@ -183,6 +187,7 @@ def _execute_local_dry_run(run_id: str, options: dict[str, Any]) -> dict[str, An
 
 def _read_domain_job_profile(job_profile_id: str) -> Any:
     from tools.domain.models import JobProfile
+    from tools.infra.persistence.job_lead_binding import reviewed_official_profile
 
     profile_path = _PROJECT_ROOT / "job_profiles" / f"{job_profile_id}.yaml"
     if not profile_path.exists():
@@ -191,6 +196,16 @@ def _read_domain_job_profile(job_profile_id: str) -> Any:
     status = doc["scalars"].get("status", "").strip()
     if status and status != "active":
         raise ValueError(f"job_profile_not_active: {job_profile_id}")
+    if doc["scalars"].get("source") == "liepin_official":
+        lead_id = doc["scalars"].get("job_lead_id", "")
+        if not lead_id or "/" in lead_id or "\\" in lead_id:
+            raise ValueError("job_profile_review_required")
+        lead_path = _PROJECT_ROOT / "job_leads" / f"{lead_id}.yaml"
+        if not lead_path.is_file():
+            raise ValueError("job_profile_review_required")
+        lead = parse_simple_yaml(lead_path.read_text())["scalars"]
+        if lead.get("job_profile_id") != job_profile_id or not reviewed_official_profile(lead, _PROJECT_ROOT / "job_profiles"):
+            raise ValueError("job_profile_review_required")
     return JobProfile(
         id=job_profile_id,
         title=doc["scalars"].get("target_role", job_profile_id),
@@ -244,6 +259,7 @@ def _domain_evidence_cards(options: dict[str, Any]) -> tuple[Any, ...]:
 
 def _job_lead_candidates(options: dict[str, Any]) -> tuple[Any, ...]:
     from tools.domain.value_objects import Candidate
+    from tools.infra.persistence.job_lead_binding import reviewed_official_profile
 
     selected_ids_raw = options.get("candidate_ids")
     selected_ids = [
@@ -276,6 +292,13 @@ def _job_lead_candidates(options: dict[str, Any]) -> tuple[Any, ...]:
             url = doc["scalars"].get("url", doc["scalars"].get("job_url", ""))
             if not url:
                 continue
+            source_fields = doc["scalars"]
+            if source_fields.get("source") == "liepin_official":
+                if not reviewed_official_profile(source_fields, _PROJECT_ROOT / "job_profiles"):
+                    continue
+            profile_id = source_fields.get("job_profile_id", "")
+            if profile_id and options.get("job_profile_id") and profile_id != options["job_profile_id"]:
+                continue
             lead_map[lead_id] = Candidate(
                 candidate_id=lead_id,
                 direction=doc["scalars"].get("position", doc["scalars"].get("title", "")),
@@ -285,10 +308,16 @@ def _job_lead_candidates(options: dict[str, Any]) -> tuple[Any, ...]:
                 source=doc["scalars"].get("source", "job_leads"),
                 merged_sources=("job_leads",),
                 legal_entity=doc["scalars"].get("legal_entity", ""),
+                platform=source_fields.get("platform", ""),
+                platform_job_id=source_fields.get("platform_job_id", ""),
+                platform_job_type=source_fields.get("platform_job_type", ""),
+                job_profile_id=profile_id,
+                jd_status=source_fields.get("jd_status", ""),
+                source_jd_sha256=source_fields.get("source_jd_sha256", ""),
             )
 
     ordered_ids = [lead_id for lead_id in pinned_ids + selected_ids if lead_id in lead_map]
-    if not ordered_ids:
+    if not ordered_ids and not selected_ids:
         ordered_ids = sorted(lead_map)
     candidates = [
         lead_map[lead_id]
@@ -312,6 +341,8 @@ def _execute_guided_batch_run(
     from tools.infra.persistence.file_run_store import FileRunStore
 
     max_rounds = _coerce_positive_int(options.get("max_rounds"), 2)
+    from tools.policy.exclusions import load_exclusion_policy
+    exclusions = load_exclusion_policy(_PROJECT_ROOT / 'policy.yaml')
     policy = PolicyConfig(
         n_pass_required=1,
         matching_threshold=float(options.get("matching_threshold") or 0.3),
@@ -320,13 +351,13 @@ def _execute_guided_batch_run(
         gate_mode="strict",
         delivery_mode="manual",
         batch_review=True,
-        excluded_companies=(),
-        excluded_legal_entities=(),
+        excluded_companies=exclusions.company_rules,
+        excluded_legal_entities=exclusions.legal_entities,
         max_deliveries=0,
     )
     job_profile = _read_domain_job_profile(job_profile_id)
     evidence_cards = _domain_evidence_cards(options)
-    candidates = _job_lead_candidates(options)
+    candidates = _job_lead_candidates({**options, "job_profile_id": job_profile_id})
     store = FileRunStore(base_dir=str(_AGENT_RUN_DIR))
     composer = Composer(policy=policy)
     stdout_buffer = StringIO()
@@ -659,21 +690,6 @@ def _quick_run_positioning(options: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _append_positioning_to_resume(resume_path: Path, positioning: dict[str, str]) -> None:
-    if not resume_path.exists():
-        return
-    text = resume_path.read_text(encoding="utf-8")
-    if "## Target Positioning" in text:
-        return
-    label = positioning["custom"] or positioning["label"]
-    resume_path.write_text(
-        text.rstrip()
-        + "\n\n## Target Positioning\n"
-        + f"- Selected positioning: {label}\n",
-        encoding="utf-8",
-    )
-
-
 def _export_resume_pdf(run_id: str, artifacts: dict[str, object]) -> str:
     resume_dir_artifact = artifacts.get("resume_dir")
     if not isinstance(resume_dir_artifact, str) or not resume_dir_artifact:
@@ -681,8 +697,17 @@ def _export_resume_pdf(run_id: str, artifacts: dict[str, object]) -> str:
     resume_md = _resolve_project_path(resume_dir_artifact) / f"resume_mr-{run_id}_A.md"
     if not resume_md.exists():
         return ""
-    pdf_path = _PROJECT_ROOT / "outputs" / "quick_runs" / run_id / "exports" / f"resume_mr-{run_id}_A.pdf"
+    from tools.infra.export.resume_filename import pdf_filename_for_resume
+    pdf_path = _PROJECT_ROOT / "outputs" / "quick_runs" / run_id / "exports" / pdf_filename_for_resume(resume_md, _PROJECT_ROOT / 'outputs')
+    trace_path=resume_md.with_suffix('.trace.json')
+    source_hash=hashlib.sha256(resume_md.read_bytes()).hexdigest()
+    trace_hash=hashlib.sha256(trace_path.read_bytes()).hexdigest() if trace_path.is_file() else ''
     markdown_to_pdf(resume_md, pdf_path)
+    if (hashlib.sha256(resume_md.read_bytes()).hexdigest()!=source_hash
+            or (hashlib.sha256(trace_path.read_bytes()).hexdigest() if trace_path.is_file() else '')!=trace_hash):
+        raise RuntimeError('resume_pdf_source_changed')
+    artifacts['resume_pdf_source_sha256']=source_hash
+    artifacts['resume_pdf_trace_sha256']=trace_hash
     return str(pdf_path.relative_to(_PROJECT_ROOT))
 
 
@@ -725,23 +750,77 @@ def _quick_run_result_details(
         if isinstance(resume_dir_artifact, str) and resume_dir_artifact
         else None
     )
-    if resume_a is not None and resume_positioning is not None:
-        _append_positioning_to_resume(resume_a, resume_positioning)
     pdf_artifact = ""
+    pdf_export_error = ""
     if resume_a is not None and resume_a.exists():
-        pdf_artifact = _export_resume_pdf(run_id, artifacts)
-        if pdf_artifact:
-            artifacts["resume_pdf"] = pdf_artifact
+        try:
+            pdf_artifact = _export_resume_pdf(run_id, artifacts)
+            if pdf_artifact:
+                artifacts["resume_pdf"] = pdf_artifact
+                artifacts["resume_pdf_sha256"] = hashlib.sha256(_resolve_project_path(pdf_artifact).read_bytes()).hexdigest()
+                artifacts["resume_html"] = str(_resolve_project_path(pdf_artifact).with_suffix('.html'))
+        except (RuntimeError, OSError) as exc:
+            pdf_export_error = str(exc)
     resume_traceable = False
+    generation_trace: dict[str, Any] = {}
     if resume_a is not None and resume_a.exists():
-        resume_text = resume_a.read_text(encoding="utf-8")
-        resume_traceable = all(
-            evidence_id in resume_text for evidence_id in evidence_card_ids
+        generation_trace, trace_valid = read_generation_trace(resume_a)
+        resume_traceable = trace_valid and set(generation_trace.get("evidence_card_ids", [])).issubset(
+            set(evidence_card_ids)
         )
+        if generation_trace:
+            artifacts["resume_trace"] = str(resume_a.with_suffix(".trace.json"))
     selected_ids = selected_evidence_card_ids or []
     matching_uses_selected_evidence = bool(evidence_card_ids) and set(evidence_card_ids).issubset(
         set(selected_ids)
     )
+    readiness = dict(generation_trace.get("readiness") or {})
+    readiness["status"] = (
+        "NEEDS_EVIDENCE" if readiness.get("missing_profile_fields") or readiness.get("missing_target_fields") or readiness.get("missing_evidence_fields") or readiness.get("missing_career_fields")
+        else "NEEDS_REVIEW"
+    )
+    reasons = list(readiness.get("reasons") or ["需人工审核简历事实与岗位适用性"])
+    evaluation_score = None
+    evaluation_gaps: list[str] = []
+    if resume_a is not None and isinstance(scorecard_artifact, str) and scorecard_artifact:
+        try:
+            score = json.loads(_resolve_project_path(scorecard_artifact).with_suffix(".json").read_text(encoding="utf-8"))
+            value = score.get("total_score")
+            if (
+                score.get("resume_sha256") == hashlib.sha256(resume_a.read_bytes()).hexdigest()
+                and type(value) in (int, float) and 0 <= value <= 100
+            ):
+                evaluation_score = value
+                evaluation_gaps = [str(task) for task in score.get("gap_tasks", [])]
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+    advisory_messages = {"保持当前证据完整度，按新 JD 微调关键词", "暂无高优先级补证据任务。"}
+    pending_gaps = list(dict.fromkeys(
+        task for task in [*matching_lists["gap_tasks"], *evaluation_gaps]
+        if task not in advisory_messages
+    ))
+    if not resume_traceable:
+        reasons.append("独立追溯缺失或正文/输入已变化，请重新生成并审核")
+    if evaluation_score is None:
+        reasons.append("缺少与本版简历匹配的规则评测")
+    elif evaluation_score < 78:
+        reasons.append(f"规则评分 {evaluation_score}/100，低于参考线 78")
+    if pending_gaps:
+        reasons.append("仍有待处理的证据或岗位匹配缺口")
+    if pdf_export_error:
+        reasons.append("PDF 导出失败：" + pdf_export_error)
+    readiness.update({
+        "deliverable": False,
+        "evaluation_score": evaluation_score,
+        "evaluation_reference_score": 78,
+        "gap_tasks": pending_gaps,
+        "reasons": reasons,
+        "quality_passed": bool(
+            resume_traceable and matching_uses_selected_evidence and bool(pdf_artifact)
+            and readiness["status"] != "NEEDS_EVIDENCE"
+            and evaluation_score is not None and evaluation_score >= 78 and not pending_gaps
+        ),
+    })
     return {
         "stdout": stdout[-4000:],
         "stderr": stderr[-4000:],
@@ -754,6 +833,8 @@ def _quick_run_result_details(
         "gap_tasks": matching_lists["gap_tasks"],
         "resume_positioning": resume_positioning or {},
         "resume_pdf": pdf_artifact,
+        "pdf_export_error": pdf_export_error,
+        "resume_readiness": readiness,
         "traceability": {
             "evidence_card_ids": evidence_card_ids,
             "selected_evidence_card_ids": selected_ids,
@@ -844,6 +925,12 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
         "--run-id",
         run_id,
         "--skip-evidence-extraction",
+        "--personal-profile",
+        str(_PROJECT_ROOT / "personal_profile.yaml"),
+        "--resume-positioning",
+        resume_positioning["mode"],
+        "--custom-positioning",
+        resume_positioning["custom"],
     ]
     timeout_seconds = _coerce_positive_int(options.get("timeout_seconds"), 120)
     if options.get("use_llm") is True:
@@ -954,10 +1041,12 @@ def _get_queue_file(run_id: str | None = None) -> Path:
     _ensure_queue_dir()
     if run_id is None:
         # Use the most recent queue file or create a default
-        files = sorted(_REVIEW_QUEUE_DIR.glob("*.json"))
+        files = sorted(_REVIEW_QUEUE_DIR.glob("*.json"), key=lambda path: (path.stat().st_mtime_ns, path.name))
         if files:
             return files[-1]
         return _REVIEW_QUEUE_DIR / "default.json"
+    if not isinstance(run_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', run_id):
+        raise ValueError('invalid_review_run_id')
     return _REVIEW_QUEUE_DIR / f"{run_id}.json"
 
 
@@ -972,9 +1061,109 @@ def _load_queue(queue_file: Path) -> dict[str, Any]:
 
 
 def _save_queue(queue_file: Path, queue: dict[str, Any]) -> None:
-    queue_file.write_text(
-        json.dumps(queue, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    from tools.infra.persistence.review_queue import atomic_write_json
+    atomic_write_json(queue_file, queue)
+
+
+def handle_prepare_liepin_default(params: dict[str, Any]) -> dict[str, Any]:
+    """从已审核岗位准备默认简历审批；此入口只有读取操作，绝不发送。"""
+    from tools.sidecar.handlers import jobs
+    from tools.channels.base import DeliveryRequest
+    from tools.infra.liepin_job_detail import fetch_liepin_job_detail, LiepinJobDetailError
+    from tools.infra.persistence.delivery_attempt_store import DeliveryAttemptStore
+    from tools.infra.persistence.job_lead_binding import reviewed_official_profile
+    from tools.infra.persistence.review_queue import atomic_write_json, locked_review_queue
+    from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
+    from tools.orchestration.approved_delivery import _job_key
+    from tools.policy.exclusions import load_exclusion_policy, match_exclusion
+
+    base = {'meta': {'correlation_id': params['meta']['correlation_id']}, 'status': 'blocked'}
+    lead_id = params.get('job_lead_id')
+    if (set(params) - {'meta', 'job_lead_id'} or not isinstance(lead_id, str)
+            or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', lead_id)):
+        return {**base, 'code': 'INVALID_INPUT'}
+    try:
+        binding = jobs._bound_lead(lead_id)
+        if not binding:
+            return {**base, 'code': 'JOB_REVIEW_REQUIRED'}
+        lead = binding[1]
+        if (lead.get('source') != 'liepin_official' or lead.get('platform') != 'liepin'
+                or not reviewed_official_profile(lead, jobs._JOB_PROFILE_DIR)):
+            return {**base, 'code': 'JOB_REVIEW_REQUIRED'}
+        if match_exclusion(lead.get('company', ''), lead.get('legal_entity', ''),
+                           load_exclusion_policy(_PROJECT_ROOT / 'policy.yaml')):
+            return {**base, 'code': 'EXCLUDED_TARGET'}
+        request = DeliveryRequest('', lead_id, 'liepin', '', lead['url'], False, lead)
+        store = DeliveryAttemptStore(_PROJECT_ROOT / 'outputs/submissions/delivery_attempts.sqlite3')
+        if store.has_attempt(_job_key(request)):
+            return {**base, 'code': 'ALREADY_ATTEMPTED'}
+        batch = store.active_batch()
+        if batch and batch.get('allowed_delivery_kind') not in (None, 'platform_default'):
+            return {**base, 'code': 'BATCH_ROUTE_NOT_AUTHORIZED'}
+        if batch and batch['remaining'] == 0:
+            return {**base, 'code': 'BATCH_LIMIT_REACHED'}
+        if batch and batch['unresolved']:
+            return {**base, 'code': 'BATCH_UNRESOLVED'}
+        from tools.infra.resume_content import current_career,content_body_issues
+        career=current_career(_PROJECT_ROOT)
+        detail = fetch_liepin_job_detail(lead['url'], lead['platform_job_id'])
+        if detail['source_jd_sha256'] != lead['source_jd_sha256']:
+            return {**base, 'code': 'JOB_REVIEW_REQUIRED'}
+        resume = jobs.liepin_readonly.read_resume()
+        if resume['status'] != 'pass':
+            return {**base, 'code': 'RESUME_UNAVAILABLE'}
+        content = resume.get('resume_text', '')
+        if not isinstance(content, str) or not content.strip():
+            return {**base, 'code': 'RESUME_UNAVAILABLE'}
+        if content_body_issues(career,content):return {**base,'code':'RESUME_CONTENT_INCOMPLETE'}
+        digest = hashlib.sha256(content.encode()).hexdigest()
+        candidate = {key: lead.get(key, '') for key in (
+            'company', 'position', 'platform', 'platform_job_id', 'platform_job_type',
+            'job_profile_id', 'jd_status', 'source_jd_sha256', 'source', 'legal_entity')}
+        candidate.update(job_lead_id=lead_id, job_url=lead['url'], delivery_kind='platform_default',
+                         career_revision=career['revision'],content_schema_version=1,
+                         platform_resume_sha256=digest, resume_version='platform-default-' + digest[:12],
+                         matching_score=None, evaluation_score=None, round_index=0, status='pending',
+                         created_at=_utcnow_iso())
+        snapshots = ReviewSnapshotStore(_AGENT_RUN_DIR)
+        # 多窗口同时准备时只创建一个任务；审批与真实发送仍使用各自原有锁和占位。
+        with locked_review_queue(_REVIEW_QUEUE_DIR / '.prepare-liepin'):
+            if store.has_attempt(_job_key(request)):
+                return {**base, 'code': 'ALREADY_ATTEMPTED'}
+            for path in _REVIEW_QUEUE_DIR.glob('*.json'):
+                with locked_review_queue(path):
+                    queue = _load_queue(path)
+                    for existing in queue.get('candidates', []):
+                        if (existing.get('status') != 'pending' or existing.get('delivery')
+                                or any(existing.get(key) != candidate.get(key) for key in candidate
+                                       if key not in {'created_at', 'matching_score', 'evaluation_score', 'round_index'})):
+                            continue
+                        try:
+                            sealed = snapshots.load(path.stem, existing)
+                            run = _load_agent_run(path.stem)['run']
+                        except (ValueError, KeyError, OSError):
+                            continue
+                        if not sealed['dry_run'] and run.get('status') == 'REVIEW_PENDING':
+                            return {**base, 'status': 'ready', 'code': 'OK', 'run_id': path.stem,
+                                    'job_profile_id': lead['job_profile_id'], 'reused': True}
+            run_id = _build_agent_run_id()
+            candidate['snapshot'] = snapshots.create(run_id, candidate, content, dry_run=False)
+            queue = {'run_id': run_id, 'candidates': [candidate], 'created_at': _utcnow_iso()}
+            payload = {'run': {'run_id': run_id, 'status': 'REVIEW_PENDING', 'round': 0,
+                       'started_at': _utcnow_iso(), 'job_profile_id': lead['job_profile_id'],
+                       'options': {'delivery_kind': 'platform_default'}, 'review_queue': queue,
+                       'deliveries_completed': 0, 'app_verified_deliveries': 0, 'externally_confirmed_deliveries': 0},
+                       'events': [], 'gate_checks': [], 'next_event_cursor': None}
+            atomic_write_json(_get_agent_run_file(run_id), payload)
+            _save_queue(_get_queue_file(run_id), queue)
+        return {**base, 'status': 'ready', 'code': 'OK', 'run_id': run_id,
+                'job_profile_id': lead['job_profile_id'], 'reused': False}
+    except LiepinJobDetailError:
+        return {**base, 'code': 'JOB_DETAIL_UNAVAILABLE'}
+    except ValueError as error:
+        return {**base,'code':'CAREER_PROFILE_UNCONFIRMED' if str(error)=='career_profile_unconfirmed' else 'PREPARATION_UNAVAILABLE'}
+    except (OSError, KeyError):
+        return {**base, 'code': 'PREPARATION_UNAVAILABLE'}
 
 
 def handle_agent_start(params: dict[str, Any]) -> dict[str, Any]:
@@ -1059,6 +1248,7 @@ def handle_agent_start(params: dict[str, Any]) -> dict[str, Any]:
 
 def handle_agent_get(params: dict[str, Any]) -> dict[str, Any]:
     """Return the persisted Agent Run control record."""
+    from tools.infra.persistence.delivery_attempt_store import DeliveryAttemptStore
     correlation_id = params["meta"]["correlation_id"]
     run_id = params.get("run_id")
 
@@ -1074,10 +1264,15 @@ def handle_agent_get(params: dict[str, Any]) -> dict[str, Any]:
     next_event_cursor = (
         str(next_cursor_index) if next_cursor_index < len(events) else None
     )
+    queue = _load_queue(_get_queue_file(run_id))
+    # 每日项在原 daily 历史展示所属批次；不能借用当前手动验证批次的成功计数。
+    delivery_batch = None if queue.get('daily_cycle') else DeliveryAttemptStore(
+        _AGENT_RUN_DIR.parent / 'submissions/delivery_attempts.sqlite3').active_batch()
 
     return {
         "meta": {"correlation_id": correlation_id},
-        "run": payload.get("run", {}),
+        "run": _delivery_summary(payload.get("run", {})),
+        "delivery_batch": delivery_batch,
         "gate_checks": payload.get("gate_checks", []),
         "events": visible_events,
         "next_event_cursor": next_event_cursor,
@@ -1114,56 +1309,195 @@ def handle_get_pending_review(params: dict[str, Any]) -> dict[str, Any]:
     queue = _load_queue(queue_file)
 
     # Filter only pending candidates
-    pending = [c for c in queue.get("candidates", []) if c.get("status") == "pending"]
+    pending = [c for c in queue.get("candidates", []) if c.get("status") == "pending"
+               or (c.get('status') == 'approved' and 'delivery' not in c)]
+    from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
+    for candidate in pending:
+        try:
+            snapshot = ReviewSnapshotStore(_AGENT_RUN_DIR).load(queue_file.stem, candidate)
+            candidate.update(snapshot_status='ready', resume_preview=snapshot['resume_markdown'])
+        except ValueError:
+            candidate.update(snapshot_status='invalid', resume_preview='')
 
     return {
         "meta": {"correlation_id": correlation_id},
         "candidates": pending,
+        "run_id": queue_file.stem,
+        "native_pdf_quick_run_id": queue.get("quick_run_id"),
+        "delivery_results": [_delivery_confirmation(c['delivery']) for c in queue.get('candidates', []) if 'delivery' in c],
     }
 
 
 def handle_submit_review(params: dict[str, Any]) -> dict[str, Any]:
-    """Accept review decisions and update candidate statuses."""
+    """持久化审批决定，从对应快照恢复执行，不重新生成简历。"""
     correlation_id = params["meta"]["correlation_id"]
     run_id = params.get("run_id")
     decisions = params.get("decisions", [])
 
-    if not isinstance(decisions, list):
+    if not isinstance(decisions, list) or not decisions or not isinstance(run_id, str) or not run_id:
         raise ValueError("decisions must be a list")
 
     queue_file = _get_queue_file(run_id)
-    queue = _load_queue(queue_file)
-    candidates = queue.get("candidates", [])
-
-    accepted_count = 0
-
-    for decision in decisions:
-        job_lead_id = decision.get("job_lead_id")
-        action = decision.get("action")
-
-        # Find and update the candidate
-        for candidate in candidates:
-            if candidate.get("job_lead_id") == job_lead_id:
-                if action == "approve":
-                    candidate["status"] = "approved"
-                    accepted_count += 1
-                elif action == "reject":
-                    candidate["status"] = "rejected"
-                elif action in ("skip", "skip_all"):
-                    candidate["status"] = "skipped"
-
-                candidate["decided_by"] = decision.get("decided_by", "user")
-                candidate["decided_at"] = decision.get("decided_at", _utcnow_iso())
-                if "note" in decision:
-                    candidate["note"] = decision["note"]
-                break
-
-    _save_queue(queue_file, queue)
+    from tools.infra.persistence.review_queue import locked_review_queue
+    from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
+    from tools.orchestration.approved_delivery import resume_approved_candidate
+    actions = {'approve': 'approved', 'reject': 'rejected', 'skip': 'skipped', 'skip_all': 'skipped'}
+    with locked_review_queue(queue_file):
+        queue = _load_queue(queue_file)
+        if queue.get('run_id') != run_id:
+            raise ValueError('review_run_mismatch')
+        # 原生 PDF 的批准依据与平台副作用由原上传/每日流程管理，不能混用通用投递。
+        if queue.get('quick_run_id'):
+            raise ValueError('native_pdf_review_required')
+        candidates = queue.get('candidates', [])
+        unresolved = any(c.get('delivery', {}).get('status') == 'unknown' for c in candidates)
+        if unresolved and any(isinstance(d, dict) and d.get('action') == 'approve' for d in decisions):
+            raise ValueError('review_batch_has_unresolved_delivery')
+        lookup = {c['job_lead_id']: c for c in candidates}
+        if len(lookup) != len(candidates):
+            raise ValueError('duplicate_review_candidate')
+        selected = set()
+        snapshots = ReviewSnapshotStore(_AGENT_RUN_DIR)
+        for decision in decisions:
+            if not isinstance(decision, dict):
+                raise ValueError('invalid_review_decision')
+            lead_id, action = decision.get('job_lead_id'), decision.get('action')
+            if (not isinstance(lead_id, str) or lead_id not in lookup or lead_id in selected
+                    or not isinstance(action, str) or action not in actions):
+                raise ValueError('invalid_review_decision')
+            selected.add(lead_id)
+            candidate = lookup[lead_id]
+            if candidate.get('status') not in {'pending', actions[action]}:
+                raise ValueError('review_decision_already_final')
+            if action == 'approve':
+                snapshots.load(run_id, candidate)
+                run_file = _AGENT_RUN_DIR / f'{run_id}.json'
+                if run_file.exists() and _load_agent_run(run_id).get('run', {}).get('status') == 'stopped':
+                    raise ValueError('review_run_stopped')
+        accepted_count = 0
+        for decision in decisions:
+            candidate = lookup[decision['job_lead_id']]
+            if candidate['status'] != 'pending':
+                continue
+            candidate.update(status=actions[decision['action']],
+                             decided_by=decision.get('decided_by', 'user'), decided_at=_utcnow_iso())
+            if 'note' in decision:
+                candidate['note'] = decision['note']
+            accepted_count += int(decision['action'] == 'approve')
+        # 批准先落盘；中断后同一批准可恢复，真实调用由持久化占位防重。
+        _save_queue(queue_file, queue)
+        for decision in decisions:
+            candidate = lookup[decision['job_lead_id']]
+            if candidate['status'] == 'approved' and 'delivery' not in candidate:
+                try:
+                    candidate['delivery'] = resume_approved_candidate(run_id, candidate, _AGENT_RUN_DIR)
+                except Exception:
+                    candidate['delivery'] = {'job_lead_id': candidate['job_lead_id'], 'success': False,
+                                             'submission_id': '', 'status': 'blocked', 'code': 'review_execution_failed'}
+                _save_queue(queue_file, queue)
+                if candidate['delivery']['status'] == 'unknown':
+                    break
+        results = [c['delivery'] for c in candidates if 'delivery' in c]
+        _sync_review_run(run_id, queue, results)
 
     return {
         "meta": {"correlation_id": correlation_id},
         "accepted": accepted_count,
+        "delivery_results": [_delivery_confirmation(result) for result in results],
     }
+
+
+def handle_recheck_receipt(params: dict[str, Any]) -> dict[str, Any]:
+    """App 重新核验已有 API 回执；没有发送或网络操作。"""
+    from tools.infra.liepin_default_delivery import recheck_api_receipt
+    from tools.infra.persistence.review_queue import locked_review_queue, atomic_write_json
+    base = {'meta': {'correlation_id': params['meta']['correlation_id']}, 'status':'blocked'}
+    run_id, lead_id = params.get('run_id'), params.get('job_lead_id')
+    if (set(params) - {'meta','run_id','job_lead_id'} or
+            not all(isinstance(v, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,160}', v) for v in (run_id, lead_id))):
+        return {**base, 'code':'INVALID_INPUT'}
+    with locked_review_queue(_get_queue_file(run_id)):
+        queue = _load_queue(_get_queue_file(run_id))
+        candidate = next((c for c in queue['candidates'] if c['job_lead_id'] == lead_id), None)
+        if not candidate or queue.get('run_id') != run_id:
+            return {**base, 'code':'RECEIPT_EVIDENCE_UNAVAILABLE'}
+        if (candidate.get('delivery', {}).get('status') == 'unknown'
+                or candidate.get('delivery', {}).get('receipt_source') == 'website_history'):
+            try:
+                result = recheck_api_receipt(_PROJECT_ROOT, run_id, candidate)
+            except (OSError, ValueError, KeyError, TypeError):
+                return {**base, 'code':'RECEIPT_EVIDENCE_UNAVAILABLE'}
+            changed = result != candidate['delivery']
+            candidate['delivery'] = result
+            _save_queue(_get_queue_file(run_id), queue)
+            if changed:
+                payload = _load_agent_run(run_id)
+                payload.setdefault('events', []).append({'event_type':'DELIVER', 'round_index':candidate.get('round_index', 0),
+                    'timestamp':_utcnow_iso(), 'payload':{**result, 'source':'api_receipt_recheck'}})
+                atomic_write_json(_get_agent_run_file(run_id), payload)
+        results = [c['delivery'] for c in queue['candidates'] if 'delivery' in c]
+        _sync_review_run(run_id, queue, results)
+    return {**base, 'status':'ready', 'code':'RECEIPT_RECHECKED',
+            'delivery_results':[_delivery_confirmation(r) for r in results]}
+
+
+def _delivery_confirmation(result: dict) -> dict:
+    """保留实际投递事实，单独标记其确认来源；历史记录不自动升级。"""
+    result = {**result, 'app_verified': False}
+    if result.get('success'):
+        if result.get('receipt_source') == 'website_history':
+            result.update(status='externally_confirmed', code='external_observation_confirmed')
+        elif result.get('receipt_source') in {'app_api', 'app_browser'} and result.get('submission_id'):
+            result['app_verified'] = True
+        else:
+            result.update(status='unknown', code='receipt_source_unverified')
+    return result
+
+
+def _delivery_summary(run: dict) -> dict:
+    run = dict(run)
+    if 'delivery_results' not in run:
+        return run
+    results = [_delivery_confirmation(r) for r in run['delivery_results']]
+    run.update(delivery_results=results, deliveries_completed=sum(bool(r.get('success')) for r in results),
+               app_verified_deliveries=sum(r['app_verified'] for r in results),
+               externally_confirmed_deliveries=sum(r.get('status') == 'externally_confirmed' for r in results))
+    if run.get('status') not in {'REVIEW_PENDING', 'stopped'}:
+        if any(r.get('status') in {'blocked', 'unknown'} for r in results):
+            run['status'] = 'DELIVERY_BLOCKED'
+        elif run['externally_confirmed_deliveries']:
+            run['status'] = 'EXTERNAL_CONFIRMATION_ONLY'
+    return run
+
+
+def _sync_review_run(run_id: str, queue: dict, results: list[dict]) -> None:
+    """审批队列为恢复来源，同步 App 已有运行记录与事件流。"""
+    from tools.infra.persistence.review_queue import atomic_write_json
+    run_file = _AGENT_RUN_DIR / f'{run_id}.json'
+    if not run_file.exists():
+        return
+    payload = _load_agent_run(run_id)
+    run = payload.setdefault('run', {})
+    run['review_queue'] = queue
+    run['delivery_results'] = results
+    run['deliveries_completed'] = sum(bool(r['success']) for r in results)
+    if any(c.get('status') == 'pending' for c in queue['candidates']):
+        run['status'] = 'REVIEW_PENDING'
+    elif any(r['status'] in {'blocked', 'unknown'} for r in results):
+        run['status'] = 'DELIVERY_BLOCKED'
+    elif results and all(r['status'] == 'checked' for r in results):
+        run['status'] = 'REVIEWED_CHECK_ONLY'
+    else:
+        run['status'] = 'DONE'
+    run.update(_delivery_summary(run))
+    events = payload.setdefault('events', [])
+    for result in results:
+        event_key = 'review-delivery:' + result['job_lead_id']
+        if not any(e.get('payload', {}).get('event_key') == event_key for e in events):
+            round_index = next((c.get('round_index', 0) for c in queue['candidates'] if c['job_lead_id'] == result['job_lead_id']), 0)
+            events.append({'event_type': 'DELIVER', 'round_index': round_index, 'timestamp': _utcnow_iso(),
+                           'payload': {**result, 'dry_run': result['status'] == 'checked', 'event_key': event_key}})
+    atomic_write_json(run_file, payload)
 
 
 def handle_create_review_candidates(params: dict[str, Any]) -> dict[str, Any]:
@@ -1199,7 +1533,11 @@ def handle_create_review_candidates(params: dict[str, Any]) -> dict[str, Any]:
         "candidates": candidates,
         "created_at": _utcnow_iso(),
     }
-    _save_queue(queue_file, queue)
+    from tools.infra.persistence.review_queue import locked_review_queue
+    with locked_review_queue(queue_file):
+        if queue_file.exists():
+            raise ValueError('review_queue_already_exists')
+        _save_queue(queue_file, queue)
 
     return {
         "meta": {"correlation_id": correlation_id},

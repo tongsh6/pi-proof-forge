@@ -10,6 +10,11 @@
 - 一句话介绍：Evidence-first 框架，将原始工作材料转为结构化证据并生成事实保真的目标文档。
 - 核心价值：不假设知识已结构化；强调证据提炼、可解释匹配与事实保真生成。
 
+工程取舍：
+- 兼顾效率、质量和性价比，不做重型工程；以仓库根 `AGENTS.md` 和 `constitution.md` 第 6 条为准。
+- 按变更风险选择必要流程，优先复用现有实现与证据；达到验收标准即收口，不机械执行全部工具链或为小改动重复建档。
+- 新增内容或功能前，按 `constitution.md` 第 7 条探索已有设计、实现、调用链、测试与 WIP，明确复用或补齐依据，避免重复建设。
+
 ## AIEF 状态
 - 当前级别：L3（持续运行）
 - 入口文件：AGENTS.md, context/INDEX.md
@@ -55,7 +60,7 @@
 - 实现类任务默认加载：context/experience/INDEX.md
 
 ### 经验沉淀（L3）
-- 每个重要变更至少新增一条 lessons 记录
+- 出现可复用的新经验或重复踩坑时，补充对应 lessons；普通小改动无需机械新增记录
 - 高频主题同步更新 summaries
 
 ## 工具链集成
@@ -70,6 +75,8 @@
 
 ### 任务路由（三工具版）
 
+按 `constitution.md` 第 3、4、6 条选择所需入口；已有规范和授权覆盖的小改动直接实施并做相应验证。
+
 - 新功能提案 → `/opsx:propose "你的想法"` → brainstorming skill
 - 设计阶段 → brainstorming skill → writing-plans skill → `AIEF/docs/plans/`
 - 实现阶段 → test-driven-development skill（强制 TDD）
@@ -79,9 +86,9 @@
 ### 原则守护（constitution.md）
 
 以下行为触发宪法违规，立即停止：
-- 代码先于 spec 被提议
+- 新功能或业务语义变更在没有 spec 覆盖时进入实现
 - Evidence Card 无 results/artifacts 进入生成
-- 测试在实现之后补写
+- 需要 TDD 的业务逻辑实现未先建立失败测试
 - 把纯 handler/unit/contract、源码 marker 或页面加载当作深度场景验收
 
 深度完成口径：

@@ -3,13 +3,60 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
-from dataclasses import dataclass, field
+import re
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 from urllib.parse import urlparse
 
 
 _REDACTED_LIVE_INPUT = "<redacted>"
+SUCCESS_SUBMISSION_REQUIRED_STEPS = (
+    "rate_limit", "login_check", "target_verify",
+    "submit_safety", "chat_send_resume", "submit",
+)
+API_SUBMISSION_REQUIRED_STEPS = (
+    'idempotency', 'credential_check', 'target_check', 'resume_observed',
+    'authorization', 'api_submit', 'receipt',
+)
+
+
+def submission_required_steps_evidence(log_payload: dict[str, Any]) -> dict[str, Any]:
+    """共享步骤审计口径；非成功日志的 passed 不代表已投递。"""
+    required = API_SUBMISSION_REQUIRED_STEPS if log_payload.get('transport') == 'liepin_api' else SUCCESS_SUBMISSION_REQUIRED_STEPS
+    steps = log_payload.get("steps") if log_payload else []
+    if not isinstance(steps, list):
+        steps = []
+    recorded_steps = [
+        {"name": str(step.get("name", "")), "status": str(step.get("status", ""))}
+        for step in steps if isinstance(step, dict)
+    ]
+    steps_by_name = {step["name"]: step for step in recorded_steps}
+    if log_payload.get("status") != "success":
+        return {
+            "required_for_successful_submit": list(required),
+            "recorded_steps": recorded_steps,
+            "missing_steps": [],
+            "failed_steps": [],
+            "passed": bool(log_payload),
+            "not_required_reason": (
+                "submission_log_status_not_success" if log_payload else "missing_submission_log"
+            ),
+        }
+    missing_steps = [name for name in required if name not in steps_by_name]
+    failed_steps = [
+        name for name in required
+        if name in steps_by_name and steps_by_name[name]["status"] != "success"
+    ]
+    external_observation = log_payload.get('input_artifacts', {}).get('receipt_source') == 'website_history'
+    return {
+        "required_for_successful_submit": list(required),
+        "recorded_steps": recorded_steps,
+        "missing_steps": missing_steps,
+        "failed_steps": failed_steps,
+        "passed": not missing_steps and not failed_steps and not external_observation,
+        "not_required_reason": "external_observation_not_app_verified" if external_observation else "",
+    }
 
 
 @dataclass
@@ -26,6 +73,7 @@ class SubmissionRecord:
     platform: str
     mode: str
     started_at: str
+    transport: str = 'browser'
     ended_at: str = ""
     status: str = "running"
     error: str = ""
@@ -59,8 +107,10 @@ class SubmissionRecorder:
     record: SubmissionRecord
     _redaction_values: list[str]
 
-    def __init__(self, output_root: Path, platform: str, mode: str) -> None:
-        run_id = make_run_id()
+    def __init__(self, output_root: Path, platform: str, mode: str, *, run_id: str | None = None, transport: str = 'browser') -> None:
+        run_id = run_id or make_run_id()
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', run_id):
+            raise ValueError('invalid_submission_run_id')
         self.output_root = output_root
         self.run_dir = output_root / platform / run_id
         self.screenshot_dir = self.run_dir / "screenshots"
@@ -71,6 +121,7 @@ class SubmissionRecorder:
             platform=platform,
             mode=mode,
             started_at=utc_now_iso(),
+            transport=transport,
         )
         self._redaction_values = []
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -86,9 +137,10 @@ class SubmissionRecorder:
         external_l3_validation_run_id: str = "",
         external_l3_validation_path: str = "",
         redaction_values: Iterable[str] = (),
+        redact_inputs: bool = False,
     ) -> None:
         redact_live_inputs = bool(
-            external_l3_validation_run_id or external_l3_validation_path
+            external_l3_validation_run_id or external_l3_validation_path or redact_inputs
         )
         if redact_live_inputs:
             values = [job_url, resume_path, profile_path, *redaction_values]
@@ -115,6 +167,22 @@ class SubmissionRecorder:
             redact_file_names=redact_live_inputs,
         )
 
+    @classmethod
+    def load_existing(cls, log_path: Path) -> 'SubmissionRecorder':
+        payload = json.loads(log_path.read_text(encoding='utf-8'))
+        if payload['run_id'] != log_path.parent.name:
+            raise ValueError('submission_record_identity_mismatch')
+        steps = [SubmissionStep(**step) for step in payload.pop('steps')]
+        instance = cls.__new__(cls)
+        instance.run_dir = log_path.parent
+        instance.output_root = log_path.parent.parent.parent
+        instance.screenshot_dir = instance.run_dir / 'screenshots'
+        instance.log_json = log_path
+        instance.log_yaml = instance.run_dir / 'submission_log.yaml'
+        instance.record = SubmissionRecord(**payload, steps=steps)
+        instance._redaction_values = []  # 已落盘字段已经脱敏，新回执仅允许固定摘要。
+        return instance
+
     def add_step(self, name: str, status: str, detail: str, screenshot: Path | None = None) -> None:
         screenshot_rel = ""
         if screenshot is not None and not self.record.live_inputs_redacted:
@@ -139,6 +207,19 @@ class SubmissionRecorder:
         self._write_json()
         self._write_yaml()
 
+    def confirmed_submission(self) -> bool:
+        """只认可本次调用结束后实际落盘的真实提交成功记录。"""
+        if self.record.mode != "submit" or self.record.status != "success" or self.record.error:
+            return False
+        try:
+            payload = json.loads(self.log_json.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return (
+            payload == asdict(self.record)
+            and submission_required_steps_evidence(payload)["passed"] is True
+        )
+
     def _redact_live_text(self, value: str) -> str:
         redacted = value
         for raw_value in self._redaction_values:
@@ -151,6 +232,7 @@ class SubmissionRecorder:
             "platform": self.record.platform,
             "mode": self.record.mode,
             "started_at": self.record.started_at,
+            "transport": self.record.transport,
             "ended_at": self.record.ended_at,
             "status": self.record.status,
             "error": self.record.error,
@@ -173,13 +255,15 @@ class SubmissionRecorder:
                 for s in self.record.steps
             ],
         }
-        _ = self.log_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        from tools.infra.persistence.review_queue import atomic_write_json
+        atomic_write_json(self.log_json, payload)
 
     def _write_yaml(self) -> None:
         lines: list[str] = [
             f"run_id: \"{_escape(self.record.run_id)}\"",
             f"platform: \"{_escape(self.record.platform)}\"",
             f"mode: \"{_escape(self.record.mode)}\"",
+            f"transport: \"{_escape(self.record.transport)}\"",
             f"started_at: \"{_escape(self.record.started_at)}\"",
             f"ended_at: \"{_escape(self.record.ended_at)}\"",
             f"status: \"{_escape(self.record.status)}\"",

@@ -61,6 +61,7 @@ class ProfileUpdateTests(unittest.TestCase):
                 result = handle_profile_update(
                     {
                         "meta": {"correlation_id": "corr_003"},
+                        "expected_revision": handle_profile_get({"meta": {"correlation_id": "load"}})["profile"]["revision"],
                         "patch": {"city": "Shanghai", "current_position": "Tech Lead"},
                     }
                 )
@@ -78,10 +79,11 @@ class ProfileUpdateTests(unittest.TestCase):
         with TemporaryDirectory() as tmp_dir:
             profile_path = Path(tmp_dir) / "personal_profile.yaml"
             with patch("tools.sidecar.handlers.profile._PROFILE_PATH", profile_path):
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(ValueError, "valid email"):
                     handle_profile_update(
                         {
                             "meta": {"correlation_id": "corr_005"},
+                            "expected_revision": handle_profile_get({"meta": {"correlation_id": "load"}})["profile"]["revision"],
                             "patch": {"email": "not-an-email"},
                         }
                     )

@@ -73,11 +73,15 @@ class LiepinSubmissionConfig:
     confirm_submit_recruiter: str = ""
     external_l3_validation_run_id: str = ""
     external_l3_validation_path: str = ""
+    session_profile_path: str = ""
 
 
-def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
+def run_liepin_submission(
+    config: LiepinSubmissionConfig, *, recorder: SubmissionRecorder | None = None
+) -> int:
     mode = "dry_run" if config.dry_run else ("submit" if config.submit else "check")
-    recorder = SubmissionRecorder(output_root=Path(config.output_dir), platform="liepin", mode=mode)
+    if recorder is None:
+        recorder = SubmissionRecorder(output_root=Path(config.output_dir), platform="liepin", mode=mode)
     recorder.set_meta(
         job_url=config.job_url,
         resume_path=config.resume_path,
@@ -133,7 +137,7 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
         print(f"[INFO] log: {recorder.log_yaml}")
         return 3
 
-    session_root = Path(config.session_dir) / "liepin" / "session" / "liepin"
+    session_root = Path(config.session_profile_path) if config.session_profile_path else Path(config.session_dir) / "liepin" / "session" / "liepin"
     session_root.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -223,11 +227,12 @@ def run_liepin_submission(config: LiepinSubmissionConfig) -> int:
                 "chat_send_resume",
             )
             if not chat_ok:
-                recorder.add_step("chat_send_resume", "failed", chat_detail, shot_chat)
+                binding_blocked = chat_detail == "resume_attachment_binding_unverified"
+                recorder.add_step("chat_send_resume", "blocked" if binding_blocked else "failed", chat_detail, shot_chat)
                 _record_dom_snapshot_step(recorder, config, page)
-                recorder.finish(status="failed", error=chat_detail)
+                recorder.finish(status="blocked" if binding_blocked else "failed", error=chat_detail)
                 print(f"[INFO] log: {recorder.log_yaml}")
-                return 13
+                return 16 if binding_blocked else 13
             recorder.add_step("chat_send_resume", "success", chat_detail, shot_chat)
 
             if not config.submit:
@@ -347,38 +352,9 @@ def _human_browsing_pause(page: Page) -> None:
     human_long_pause(3.0, 8.0)
 
 
-def _is_logged_in(page: Page) -> bool:
-    current_url = page.url.lower()
-    if "passport" in current_url or "login" in current_url:
-        return False
-
-    # Check for login modal (even if indicators exist in background)
-    login_modal = page.locator(".pc-login-pop-container:visible, .ant-modal-root:has-text('登录'):visible")
-    if login_modal.count() > 0:
-        return False
-
-    # Negative login prompts must dominate because public job pages can still
-    # render chat/apply buttons before the user is authenticated.
-    inline_login = page.locator("[data-selector='inline-login']:visible, .inline-login-container:visible")
-    if inline_login.count() > 0:
-        return False
-
-    login_btn = page.locator("a:has-text('登录'):visible, button:has-text('登录/注册'):visible")
-    if login_btn.count() > 0:
-        return False
-
-    header_login = page.locator("#header-quick-menu-login:visible, span:has-text('登录/注册'):visible")
-    if header_login.count() > 0:
-        return False
-
-    # Positive check: elements that only appear when logged in.
-    user_indicators = page.locator(".nav-user-item:visible")
-    if user_indicators.count() > 0:
-        return True
-
-    # Fallback: if we are on a job page and see action buttons, we are likely logged in
-    job_action = page.locator("button:has-text('投递简历'):visible, button:has-text('立即沟通'):visible, button:has-text('聊一聊'):visible")
-    return job_action.count() > 0 or "liepin.com/job" in current_url
+def _is_logged_in(page: object) -> bool:
+    from tools.infra.browser.liepin_session import observe_login_page
+    return bool(observe_login_page(page)["login_signals"].get("authenticated_user_visible"))
 
 
 def _extract_liepin_job_id(url: str) -> str | None:
@@ -501,6 +477,11 @@ def _send_resume_via_chat(
     timeout_ms: int,
     submit: bool,
 ) -> tuple[bool, str]:
+    # 当前默认“发简历”发送平台已有简历，尚不能绑定本次本地 PDF。
+    # 在真实附件入口完成验证与接通前，必须停在打开聊天之前。
+    if submit:
+        return False, "resume_attachment_binding_unverified"
+
     verification = _verify_main_chat_target(page, job_url)
     if not verification.ok:
         return False, verification.reason
@@ -528,11 +509,7 @@ def _send_resume_via_chat(
     except Exception as exc:
         return False, f"send_resume_click_failed:{exc}"
 
-    if not submit:
-        return True, "chat_send_resume_ready"
-
-    ok, detail = _click_confirm_send_resume(page, timeout_ms)
-    return (True, f"submitted_via_{detail}") if ok else (False, detail)
+    return True, "chat_send_resume_ready"
 
 
 def _click_confirm_send_resume(page: Page, timeout_ms: int) -> tuple[bool, str]:

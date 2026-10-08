@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
+import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -26,6 +28,7 @@ class ParsedDoc(TypedDict):
 class RuleResult(TypedDict):
     markdown: str
     total_score: int
+    gap_tasks: list[str]
 
 
 def read_text(path: str) -> str:
@@ -206,7 +209,8 @@ def evaluate_rule(
         markdown_lines.append(f"- {item}")
 
     markdown = "\n".join(markdown_lines) + "\n"
-    return {"markdown": markdown, "total_score": total_score}
+    return {"markdown": markdown, "total_score": total_score,
+            "gap_tasks": [task for task in gap_tasks if task != "暂无高优先级补证据任务。"]}
 
 
 def _legacy_main() -> int:
@@ -301,6 +305,12 @@ def _legacy_main() -> int:
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     _ = output_file.write_text(final_markdown, encoding="utf-8")
+    output_file.with_suffix(".json").write_text(json.dumps({
+        "schema_version": 1,
+        "resume_sha256": hashlib.sha256(resume_text.encode("utf-8")).hexdigest(),
+        "total_score": rule_result["total_score"],
+        "gap_tasks": rule_result["gap_tasks"],
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0
 
 

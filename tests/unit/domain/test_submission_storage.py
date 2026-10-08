@@ -204,3 +204,14 @@ class SubmissionStorageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_external_observation_does_not_pass_app_submission_evidence():
+    from tools.submission.storage import submission_required_steps_evidence
+    required = ['idempotency','credential_check','target_check','resume_observed','authorization','api_submit','receipt']
+    log = {'platform':'liepin', 'mode':'submit', 'transport':'liepin_api','status':'success',
+           'input_artifacts':{'receipt_source':'website_history'},
+           'steps':[{'name':name,'status':'success','detail':''} for name in required]}
+    proof = submission_required_steps_evidence(log)
+    assert proof['passed'] is False
+    assert proof['not_required_reason'] == 'external_observation_not_app_verified'

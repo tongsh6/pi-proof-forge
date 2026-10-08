@@ -185,9 +185,11 @@ def test_validate_optional_pdf_runtime_checks_staged_imports() -> None:
                 "run",
                 return_value=CompletedProcess(args=[], returncode=0, stdout="ok"),
             ) as run_mock:
-                module._validate_optional_pdf_runtime(["markdown", "weasyprint"])
+                module._validate_optional_pdf_runtime(["weasyprint"])
 
+        assert run_mock.called
         assert run_mock.call_args.args[0][0] == str(wrapper)
+        assert "from weasyprint import HTML" in run_mock.call_args.args[0][2]
 
 
 def test_validate_optional_pdf_runtime_fails_on_broken_staged_imports() -> None:

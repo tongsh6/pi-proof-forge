@@ -58,7 +58,7 @@ GUI 关键文档：
 - 当前 GUI 真源为 `ui/design/DESIGN.md` 与 `ui/design/piproofforge.pen`
 - 当前 GUI 信息架构为 9 页：Overview、Resumes、Evidence、Jobs、Quick Run、Agent Run、Submissions、Policy、System Settings
 - 当前仓库已具备 Tauri 桌面壳、React 前端、Python sidecar、JSON-RPC bridge 与一键启停脚本；9 页 GUI 已完成产品化垂直切片。旧的内嵌 GUI 验收入口已删除，因为它依赖页面内验收钩子。
-- Quick Run 已接入 `run.quick.start` / `run.quick.cancel`，可从 GUI 直接启动本地单次 pipeline；CLI 命令仍保留为 fallback。Resumes 页已接入 PDF export RPC。Markdown 转 PDF 会优先使用 `weasyprint`/`markdown` 高保真渲染；依赖缺失时自动使用内置基础 PDF writer，避免 runtime 断链。高保真 PDF 依赖见 `requirements-pdf.txt`；安装后 `pnpm --dir ui run prepare:python-runtime` 会把可选 PDF runtime 带入 Tauri packaged sidecar。
+- Quick Run 已接入 `run.quick.start` / `run.quick.cancel`，可从 GUI 直接启动本地单次 pipeline；CLI 命令仍保留为 fallback。Resumes 的预览与 PDF 导出共用受控 HTML/CSS 模板，优先复用本机已有 Chromium Headless Shell / Chrome，支持已安装 WeasyPrint；无可用渲染器时明确报错并保留旧 PDF。可用 `PIPF_PDF_BROWSER` 指定既有浏览器路径，不自动安装依赖。
 - Quick Run 自动化必须由外部自动化驱动真实页面或真实桌面壳；生产页面不得内置 verifier env 分支、自启动验收流程或验收事件钩子。验收结果以外部自动化动作、`outputs/quick_runs` 与 run summary 等真实产物校验。
 - GUI 验收必须由外部自动化驱动真实页面或真实桌面壳；仓库不保留内嵌验收脚本入口。
 
@@ -194,7 +194,7 @@ tools/
 - extraction/matching/generation/evaluation 已可从 CLI 端到端运行，默认产物是 Markdown 简历与 Scorecard
 - 普通 `tools/run_pipeline.py` 可跑通，并会写统一 Run Record 到 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`；内部仍保留 legacy subprocess 串联
 - Agent manual REVIEW 会在审批点写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会未经审批进入投递
-- Markdown 简历转 PDF 的代码路径已接入 sidecar；当前环境缺少 `weasyprint`/`markdown` 时也可用内置基础 PDF writer 导出非空 PDF；如安装 `requirements-pdf.txt`，staging 会将可选 PDF 包复制进 packaged runtime
+- Markdown 简历通过共享 HTML 模板导出 PDF；原纯文本 writer 已退役。当前本机已验证现有 Chromium Headless Shell，WeasyPrint 可选依赖见 `requirements-pdf.txt`，安装仍须遵守本机策略
 - job-discovery 和 submission 属于支撑系统；当前项目主线仍以 evidence-first 求职材料工程为准
 - GUI 终版规范已冻结，当前实现仍是垂直切片；Quick Run 已能从桌面 GUI 直接运行本地单次 pipeline
 - 2026-05-17 收束审计见 `docs/reports/project-state-and-core-flow-review.md`
@@ -273,7 +273,7 @@ GUI key docs:
 - The GUI source of truth is `ui/design/DESIGN.md` plus `ui/design/piproofforge.pen`
 - The GUI information architecture now contains 9 pages: Overview, Resumes, Evidence, Jobs, Quick Run, Agent Run, Submissions, Policy, and System Settings
 - The repository now includes the Tauri desktop shell, React frontend, Python sidecar, JSON-RPC bridge, and one-command app control. All 9 GUI pages have productized vertical slices. GUI acceptance must use external real-page automation.
-- Quick Run is wired to `run.quick.start` / `run.quick.cancel` and can launch a local single-pass pipeline directly from the GUI; CLI commands remain as a fallback. The Resumes page has a PDF export RPC; Markdown-to-PDF prefers `weasyprint` and `markdown` for high-fidelity rendering, then falls back to the built-in basic PDF writer when those packages are missing. High-fidelity PDF dependencies are listed in `requirements-pdf.txt`; after installation, `pnpm --dir ui run prepare:python-runtime` stages the optional PDF runtime into the Tauri packaged sidecar.
+- Quick Run launches a local single-pass pipeline through `run.quick.start` / `run.quick.cancel`. Resume previews and PDF export share one controlled HTML/CSS template. Export prefers an existing Chromium Headless Shell / Chrome installation and also supports installed WeasyPrint. Missing renderers produce an explicit error and preserve the previous PDF. `PIPF_PDF_BROWSER` can select an existing browser; dependencies are never installed automatically.
 - Quick Run automation must be driven externally against the real page or desktop shell; production pages must not embed verifier env branches, self-starting acceptance flows, or acceptance-event hooks. Results are verified from external actions plus real artifacts such as `outputs/quick_runs` and run summaries.
 - GUI acceptance scripts are only valid when they drive the real page or desktop shell from outside the production page code.
 
@@ -342,7 +342,7 @@ ui/design/          GUI design mainline (Pencil design assets + design docs)
 - End-to-end extraction/matching/generation/evaluation is runnable from the CLI and currently produces Markdown resumes plus scorecards by default
 - `tools/run_pipeline.py` is runnable and writes a unified run record under `outputs/agent_runs/<run_id>/run_log.json` plus `summary.json`; internally it still keeps the legacy subprocess chain
 - Agent manual REVIEW writes `outputs/review_queue/<run_id>.json` and returns `REVIEW_PENDING` instead of delivering without approval
-- Markdown-to-PDF export is wired through the sidecar and remains available without `weasyprint`/`markdown` through the built-in basic PDF writer; installing `requirements-pdf.txt` lets staging copy the optional PDF packages into the packaged runtime
+- Markdown-to-PDF uses the shared HTML template; the plain-text writer is retired. Existing local Chromium Headless Shell has been verified. Optional WeasyPrint dependencies are listed in `requirements-pdf.txt`, subject to the machine's installation policy.
 - Job discovery and submission are supporting systems; the project mainline remains evidence-first career-material engineering
 - The final GUI specification is frozen; the current desktop app is still a vertical-slice implementation, and Quick Run can now launch the local single-pass pipeline directly
 - 2026-05-17 state audit: `docs/reports/project-state-and-core-flow-review.md`

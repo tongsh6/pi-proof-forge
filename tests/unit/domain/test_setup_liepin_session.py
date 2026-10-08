@@ -7,6 +7,10 @@ from tools import setup_liepin_session
 
 
 class SetupLiepinSessionTests(unittest.TestCase):
+    def test_missing_login_prompt_alone_does_not_prove_login(self):
+        page = Mock(url="https://www.liepin.com/")
+        page.locator.return_value.count.return_value = 0
+        self.assertFalse(setup_liepin_session._is_session_ready(page))
     def setUp(self) -> None:
         self._tmp = self.enterContext(TemporaryDirectory())
 
@@ -28,7 +32,7 @@ class SetupLiepinSessionTests(unittest.TestCase):
 
     def test_playwright_login_session_opens_liepin_in_persistent_context(self) -> None:
         page = Mock(url="https://www.liepin.com/")
-        page.locator.return_value.count.return_value = 0
+        page.locator.side_effect = lambda selector: Mock(count=lambda: int("nav-user-item" in selector))
         context = Mock()
         context.pages = [page]
         chromium = Mock()
@@ -63,7 +67,7 @@ class SetupLiepinSessionTests(unittest.TestCase):
 
     def test_browser_channel_can_be_disabled_for_bundled_chromium(self) -> None:
         page = Mock(url="https://www.liepin.com/")
-        page.locator.return_value.count.return_value = 0
+        page.locator.side_effect = lambda selector: Mock(count=lambda: int("nav-user-item" in selector))
         context = Mock(pages=[page])
         chromium = Mock()
         chromium.launch_persistent_context.return_value = context

@@ -25,7 +25,6 @@ KEEP_LIB_NAMES = {
     "libcrypto.3.dylib",
 }
 PDF_RUNTIME_PACKAGES = {
-    "markdown": ("Markdown",),
     "weasyprint": ("weasyprint",),
     "pydyf": ("pydyf",),
     "tinycss2": ("tinycss2",),
@@ -41,7 +40,7 @@ PDF_RUNTIME_PACKAGES = {
     "brotli": ("brotli", "brotlicffi"),
     "zopfli": ("zopfli",),
 }
-PDF_RUNTIME_ACTIVATION_IMPORTS = ("markdown", "weasyprint")
+PDF_RUNTIME_ACTIVATION_IMPORTS = ("weasyprint",)
 RUNTIME_IGNORE = shutil.ignore_patterns(
     "__pycache__",
     "*.pyc",
@@ -366,7 +365,7 @@ def _write_optional_runtime_manifest(
 
 def _validate_optional_pdf_runtime(copied_packages: list[str]) -> None:
     copied = set(copied_packages)
-    if not {"markdown", "weasyprint"}.issubset(copied):
+    if "weasyprint" not in copied:
         return
 
     wrapper_path = SIDECAR_BIN_DIR / "python3"
@@ -380,12 +379,10 @@ def _validate_optional_pdf_runtime(copied_packages: list[str]) -> None:
             (
                 "from pathlib import Path\n"
                 "from tempfile import TemporaryDirectory\n"
-                "from tools.infra.export.pdf_exporter import markdown_to_pdf\n"
+                "from weasyprint import HTML\n"
                 "with TemporaryDirectory() as tmp:\n"
-                "    md = Path(tmp) / 'probe.md'\n"
                 "    pdf = Path(tmp) / 'probe.pdf'\n"
-                "    md.write_text('# PDF Runtime Probe\\n', encoding='utf-8')\n"
-                "    markdown_to_pdf(md, pdf)\n"
+                "    HTML(string='<h1>PDF Runtime Probe</h1>').write_pdf(str(pdf))\n"
                 "    assert pdf.read_bytes().startswith(b'%PDF-')\n"
                 "print('optional pdf runtime ok')\n"
             ),
@@ -393,10 +390,11 @@ def _validate_optional_pdf_runtime(copied_packages: list[str]) -> None:
         check=False,
         capture_output=True,
         text=True,
+        timeout=30,
     )
     if completed.returncode != 0:
         raise RuntimeError(
-            "Staged optional PDF runtime failed to import markdown/weasyprint:\n"
+            "Staged optional PDF runtime failed to import/render WeasyPrint:\n"
             f"{completed.stderr or completed.stdout}"
         )
 

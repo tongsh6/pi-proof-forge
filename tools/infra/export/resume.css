@@ -1,0 +1,29 @@
+@page { size:A4; margin:16mm 18mm; }
+* { box-sizing:border-box; }
+html { background:#fff; color:#202b36; }
+/* 使用已有完整 Unicode 字体，兼顾中文复制与单栏阅读顺序。 */
+body { margin:0; font-family:Arial,"Arial Unicode MS","Noto Sans CJK SC","Microsoft YaHei","PingFang SC",sans-serif; font-size:10.5pt; line-height:1.6; font-weight:400; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.sheet { width:210mm; min-height:297mm; margin:0 auto; padding:16mm 18mm; background:#fff; }
+.header { padding-bottom:11pt; border-bottom:1.5pt solid #24445d; }
+h1 { margin:0; font-size:25pt; line-height:1.25; font-weight:700; letter-spacing:.035em; color:#172c3d; }
+.contact { display:flex; gap:8pt; flex-wrap:wrap; margin:7pt 0; color:#4b5967; font-size:9.2pt; }
+.contact span + span::before { content:"|"; margin-right:8pt; color:#8a959e; }
+.intro { margin:4pt 0 0; font-size:10pt; color:#344555; }
+section { margin-top:13pt; }
+h2 { margin:0 0 7pt; padding-bottom:4pt; border-bottom:.6pt solid #b8c8d3; color:#24445d; font-size:11pt; font-weight:700; letter-spacing:.08em; break-after:avoid; }
+.skills { display:flex; flex-wrap:wrap; column-gap:15pt; row-gap:3pt; color:#293c4b; font-size:10pt; }
+.skill { white-space:normal; overflow-wrap:anywhere; }
+.experience { margin-top:11pt; }
+.experience:first-of-type { margin-top:0; }
+.experience-heading { display:flex; justify-content:space-between; align-items:baseline; gap:12pt; break-after:avoid; }
+h3 { margin:0; color:#1b2d3b; font-size:11pt; font-weight:700; line-height:1.5; break-after:avoid; }
+time { flex-shrink:0; max-width:38%; text-align:right; font-size:9pt; color:#5d6973; font-variant-numeric:tabular-nums; }
+.role { margin:3pt 0; color:#425666; font-size:9.7pt; break-after:avoid; }
+.context { margin:4pt 0 5pt; color:#53606b; font-size:9.7pt; break-after:avoid; }
+.paragraph { margin:4pt 0; }
+ul { margin:0; padding-left:12pt; }
+li { margin:3pt 0; padding-left:2pt; text-align:left; overflow-wrap:anywhere; orphans:2; widows:2; }
+li::marker { color:#5b7487; font-size:8pt; }
+strong { font-weight:700; color:#203d53; }
+code { font:9.2pt/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; color:#304956; overflow-wrap:anywhere; }
+@media print { html,body { background:white; } .sheet { width:auto; min-height:0; padding:0; margin:0; } }

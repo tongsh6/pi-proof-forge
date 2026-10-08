@@ -25,6 +25,10 @@ tags:
 
 
 class ParseScalarTests(unittest.TestCase):
+    def test_closed_quoted_scalar_with_comment_preserves_next_field(self) -> None:
+        doc = parse_simple_yaml('title: "Java工程师" # 已确认\nstatus: "active"\n')
+        self.assertEqual(doc["scalars"], {"title": "Java工程师", "status": "active"})
+
     def test_parses_scalar_fields(self) -> None:
         doc = parse_simple_yaml(SAMPLE_YAML)
         self.assertEqual(doc["scalars"]["id"], "ec-2026-001")

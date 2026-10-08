@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   CheckCircle,
@@ -14,6 +15,7 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   cancelQuickRun,
   getSettings,
+  getProfile,
   listEvidence,
   listEvidenceMaterialSources,
   listJobProfiles,
@@ -21,9 +23,11 @@ import {
 } from "@/lib/sidecar/api";
 import type {
   JobProfileListItem,
+  EvidenceListItem,
   LlmConfig,
   MaterialSourceItem,
   QuickRunStartResult,
+  ProfilePayload,
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -85,7 +89,10 @@ function getStageStatus(
   return "waiting";
 }
 
-function formatTerminalLines(result: QuickRunStartResult | null, runError: string | null) {
+function formatTerminalLines(
+  result: QuickRunStartResult | null, runError: string | null,
+  labels: { needsReview: string; needsEvidence: string }
+) {
   if (!result && !runError) return [];
   const lines: string[] = [];
   if (result) {
@@ -96,6 +103,11 @@ function formatTerminalLines(result: QuickRunStartResult | null, runError: strin
     const stderr = result.stderr?.trim();
     if (stdout) lines.push(...stdout.split(/\r?\n/));
     if (stderr) lines.push(...stderr.split(/\r?\n/).map((line) => `[stderr] ${line}`));
+    if (result.resume_readiness) {
+      const readiness = result.resume_readiness;
+      lines.push(readiness.status === "NEEDS_EVIDENCE" ? labels.needsEvidence : labels.needsReview);
+      lines.push(...readiness.reasons.map((reason) => `- ${reason}`));
+    }
   }
   if (runError) lines.push(`[error] ${runError}`);
   return lines.slice(-80);
@@ -107,15 +119,21 @@ function formatConfigValue(value: string | null | undefined): string {
 
 export function QuickRunPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedProfileId = searchParams.get("job_profile_id");
+  const [careerProfile, setCareerProfile] = useState<ProfilePayload | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [runState, setRunState] = useState<RunState>("idle");
   const [evidenceCount, setEvidenceCount] = useState(0);
   const [eligibleEvidenceIds, setEligibleEvidenceIds] = useState<string[]>([]);
   const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
+  const [selectedMaterialId, setSelectedMaterialId] = useState("");
+  const [useLlm, setUseLlm] = useState(false);
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
-  const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+  const [selectedProfileId, setSelectedProfileId] = useState<string>(requestedProfileId ?? "");
   const [resumePositioning, setResumePositioning] = useState("technical_depth");
   const [quickRunId, setQuickRunId] = useState<string | null>(null);
   const [quickRunStatus, setQuickRunStatus] = useState<string | null>(null);
@@ -124,38 +142,66 @@ export function QuickRunPage() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const quickRunInFlightRef = useRef(false);
+  const [availableEvidence,setAvailableEvidence]=useState<EvidenceListItem[]>([]);
+  const evidenceSelectionMade=useRef(false);
+  const selectionVersion = useRef(0);
+  const loadVersion = useRef(0);
+  const clearResult = useCallback(() => {
+    selectionVersion.current += 1;
+    setQuickRunId(null); setQuickRunStatus(null); setQuickRunResult(null); setRunError(null);
+    if (!quickRunInFlightRef.current) setRunState("ready_to_run");
+  }, []);
+
+  useEffect(() => {
+    if (requestedProfileId !== null) setSelectedProfileId(requestedProfileId);
+    clearResult();
+  }, [requestedProfileId, clearResult]);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     setLoadState("loading");
     setError(null);
     try {
-      const [evidence, materials, jobs, settings] = await Promise.all([
+      const [evidence, materials, jobs, settings, profile] = await Promise.all([
         listEvidence(),
         listEvidenceMaterialSources(),
-        listJobProfiles(),
+        listJobProfiles(undefined, { pageSize: 100 }),
         getSettings(),
+        getProfile(),
       ]);
-      const eligibleEvidence = evidence.items.filter(
-        (item) => item.status === "saved_eligible"
-      );
-      const activeProfiles = jobs.items.filter((item) => item.status === "active");
-      setEvidenceCount(eligibleEvidence.length);
-      setEligibleEvidenceIds(eligibleEvidence.map((item) => item.evidence_id));
-      setMaterialSources(materials.items);
-      setJobProfiles(jobs.items);
-      setLlmConfig(settings.llm_config);
-      if (activeProfiles.length > 0 && !selectedProfileId) {
-        setSelectedProfileId(activeProfiles[0].job_profile_id);
+      if (version !== loadVersion.current) return;
+      // 带参目标可能不在第一页；沿原游标读取，不能把首屏外画像当成不存在。
+      const profiles = [...jobs.items];
+      let cursor = jobs.next_cursor;
+      while (cursor) {
+        const page = await listJobProfiles(undefined, { cursor, pageSize: 100 });
+        if (version !== loadVersion.current) return;
+        profiles.push(...page.items);
+        cursor = page.next_cursor;
       }
+      const eligibleEvidence = evidence.items.filter(
+        (item) => item.status === "saved_eligible" && item.candidate_pool_eligible !== false
+      );
+      const activeProfiles = profiles.filter((item) => item.status === "active" && item.source_jd?.trim());
+      setEvidenceCount(eligibleEvidence.length);
+      setAvailableEvidence(eligibleEvidence);
+      setEligibleEvidenceIds(previous=>evidenceSelectionMade.current?previous.filter(id=>eligibleEvidence.some(item=>item.evidence_id===id)):eligibleEvidence.map(item=>item.evidence_id));
+      setMaterialSources(materials.items);
+      setJobProfiles(profiles);
+      setLlmConfig(settings.llm_config);
+      setCareerProfile(profile.profile);
+      setSelectedProfileId(previous => requestedProfileId ?? (previous || activeProfiles[0]?.job_profile_id || ""));
       setLoadState("ready");
     } catch (e) {
+      if (version !== loadVersion.current) return;
       setLoadState("error");
       setError(getErrorMessage(e));
     }
-  }, [selectedProfileId]);
+  }, [requestedProfileId]);
 
   useEffect(() => {
     void load();
+    return () => { loadVersion.current += 1; selectionVersion.current += 1; };
   }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -169,7 +215,8 @@ export function QuickRunPage() {
   const selectedProfile = jobProfiles.find(
     (jp) => jp.job_profile_id === selectedProfileId,
   );
-  const activeJobProfiles = jobProfiles.filter((jp) => jp.status === "active");
+  const activeJobProfiles = jobProfiles.filter((jp) => jp.status === "active" && jp.source_jd?.trim());
+  const targetAvailable = selectedProfile?.status === "active" && Boolean(selectedProfile.source_jd?.trim());
   const providerSummary = [
     {
       label: t("pages.quickRun.provider"),
@@ -191,7 +238,8 @@ export function QuickRunPage() {
     },
   ];
   const canStartRun =
-    selectedProfileId !== "" && eligibleEvidenceIds.length > 0 && runState !== "running";
+    loadState === "ready" && targetAvailable && careerProfile?.career_status?.ready === true &&
+    selectedMaterialId !== "" && eligibleEvidenceIds.length > 0 && runState !== "running";
   const canCancelRun =
     quickRunId !== null &&
     quickRunStatus !== null &&
@@ -212,13 +260,17 @@ export function QuickRunPage() {
   );
 
   const terminalLines = useMemo(
-    () => formatTerminalLines(quickRunResult, runError),
-    [quickRunResult, runError]
+    () => formatTerminalLines(quickRunResult, runError, {
+      needsReview: t("pages.quickRun.needsReview"),
+      needsEvidence: t("pages.quickRun.needsEvidence"),
+    }),
+    [quickRunResult, runError, t]
   );
 
   const handleStartQuickRun = useCallback(async () => {
-    if (!selectedProfileId || quickRunInFlightRef.current) return;
+    if (!canStartRun || quickRunInFlightRef.current) return;
     quickRunInFlightRef.current = true;
+    const version = selectionVersion.current;
     const now = Date.now();
     setStartedAt(now);
     setElapsedSeconds(0);
@@ -231,12 +283,14 @@ export function QuickRunPage() {
         job_profile_id: selectedProfileId,
         options: {
           generate_resume: true,
+          material_id: selectedMaterialId,
           evidence_ids: eligibleEvidenceIds,
           resume_positioning: resumePositioning,
-          use_llm: true,
-          require_llm: true,
+          use_llm: useLlm,
+          require_llm: useLlm,
         },
       });
+      if (version !== selectionVersion.current) return;
       setQuickRunId(result.run_id);
       setQuickRunStatus(result.status);
       setQuickRunResult(result);
@@ -250,12 +304,14 @@ export function QuickRunPage() {
         );
       }
     } catch (e) {
+      if (version !== selectionVersion.current) return;
       setRunState("error");
       setRunError(getErrorMessage(e));
     } finally {
       quickRunInFlightRef.current = false;
+      if (version !== selectionVersion.current) setRunState("ready_to_run");
     }
-  }, [eligibleEvidenceIds, resumePositioning, selectedProfileId]);
+  }, [canStartRun, eligibleEvidenceIds, resumePositioning, selectedProfileId, selectedMaterialId, useLlm]);
 
   const handleCancelQuickRun = async () => {
     if (!quickRunId) return;
@@ -283,19 +339,17 @@ export function QuickRunPage() {
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedProfileId}
+            disabled={runState === "running"}
             onChange={(event) => {
               setSelectedProfileId(event.target.value);
-              setRunState("ready_to_run");
-              setQuickRunId(null);
-              setQuickRunStatus(null);
-              setQuickRunResult(null);
-              setRunError(null);
+              clearResult();
+              setSearchParams({ job_profile_id: event.target.value }, { replace: true });
             }}
             className="h-10 min-w-[280px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
             aria-label={t("pages.quickRun.selectProfile")}
           >
-            {activeJobProfiles.length === 0 ? (
-              <option value="">{t("common.empty")}</option>
+            {!targetAvailable ? (
+              <option value={selectedProfileId}>{t(selectedProfileId ? "pages.quickRun.targetUnavailable" : "common.empty")}</option>
             ) : null}
             {activeJobProfiles.map((profile) => (
               <option key={profile.job_profile_id} value={profile.job_profile_id}>
@@ -305,7 +359,8 @@ export function QuickRunPage() {
           </select>
           <select
             value={resumePositioning}
-            onChange={(event) => setResumePositioning(event.target.value)}
+            disabled={runState === "running"}
+            onChange={(event) => { setResumePositioning(event.target.value); clearResult(); }}
             className="h-10 min-w-[220px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
             aria-label={t("pages.quickRun.resumePositioning")}
           >
@@ -318,7 +373,8 @@ export function QuickRunPage() {
           </select>
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => { clearResult(); void load(); }}
+            disabled={runState === "running"}
             className="inline-flex h-10 w-10 items-center justify-center rounded-card border border-border text-text-primary transition-colors hover:bg-bg-hover"
             aria-label={t("common.retry")}
           >
@@ -387,21 +443,37 @@ export function QuickRunPage() {
             <h2 className="text-lg font-semibold text-text-primary">
               {t("pages.quickRun.inputSummary")}
             </h2>
+            <p role="status" className="mt-3 text-sm text-text-secondary">
+              {t(careerProfile?.career_status?.ready ? "pages.quickRun.profileReady" : "pages.quickRun.profileRequired")}
+              <button type="button" className="ml-3 text-accent underline" onClick={() => navigate("/resumes")}>{t("pages.quickRun.openProfile")}</button>
+            </p>
+            {!targetAvailable && <p role="alert" className="mt-2 text-sm text-warning">
+              {t("pages.quickRun.targetUnavailable")}
+              <button type="button" className="ml-3 text-accent underline" onClick={() => navigate("/jobs")}>{t("pages.quickRun.openJobs")}</button>
+            </p>}
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <div className="rounded-card border border-border bg-bg-primary/50 p-4">
                 <p className="text-xs uppercase text-text-muted">
                   {t("pages.quickRun.materialSource")}
                 </p>
-                <p className="mt-2 truncate text-sm font-medium text-text-primary">
-                  {materialSources[0]?.label || materialSources[0]?.material_id || "--"}
-                </p>
+                <select aria-label={t("pages.quickRun.materialSource")} value={selectedMaterialId}
+                  disabled={runState === "running"} onChange={event => { setSelectedMaterialId(event.target.value); clearResult(); }}
+                  className="mt-2 w-full rounded-card border border-border bg-bg-primary px-2 py-2 text-sm text-text-primary">
+                  <option value="">{t("pages.quickRun.chooseMaterial")}</option>
+                  {materialSources.map(material => <option key={material.material_id} value={material.material_id}>{material.label || material.material_id}</option>)}
+                </select>
+                <label className="mt-3 flex items-center gap-2 text-sm text-text-secondary">
+                  <input type="checkbox" checked={useLlm} disabled={runState === "running"}
+                    onChange={event => { setUseLlm(event.target.checked); clearResult(); }} />
+                  {t("pages.quickRun.useLlm")}
+                </label>
               </div>
               <div className="rounded-card border border-border bg-bg-primary/50 p-4">
                 <p className="text-xs uppercase text-text-muted">
                   {t("pages.quickRun.selectedProfile")}
                 </p>
                 <p className="mt-2 truncate text-sm font-medium text-text-primary">
-                  {selectedProfile?.title ?? "--"}
+                  {[selectedProfile?.company, selectedProfile?.title].filter(Boolean).join(" · ") || "--"}
                 </p>
               </div>
               <div className="rounded-card border border-border bg-bg-primary/50 p-4">
@@ -415,6 +487,7 @@ export function QuickRunPage() {
                 </p>
               </div>
             </div>
+            <fieldset className="mt-4 rounded-card border border-border p-3"><legend className="px-2 text-sm">{t('pages.quickRun.evidenceSelection')} ({eligibleEvidenceIds.length}/{evidenceCount})</legend><div className="grid gap-2 md:grid-cols-2">{availableEvidence.map(item=><label key={item.evidence_id} className="flex items-start gap-2 text-sm text-text-secondary"><input data-evidence-id={item.evidence_id} type="checkbox" checked={eligibleEvidenceIds.includes(item.evidence_id)} disabled={runState==='running'} onChange={e=>{clearResult();evidenceSelectionMade.current=true;setEligibleEvidenceIds(ids=>e.target.checked?[...ids,item.evidence_id]:ids.filter(id=>id!==item.evidence_id));}}/>{item.title||item.evidence_id}</label>)}</div></fieldset>
           </section>
 
           <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
@@ -487,6 +560,14 @@ export function QuickRunPage() {
                   </p>
                 </div>
               </div>
+              {quickRunResult && <div className="mt-4 space-y-2 text-sm">
+                <p>{t(quickRunResult.resume_readiness?.content_ready ? "pages.quickRun.reviewNext" : "pages.quickRun.needsEvidence")}</p>
+                {quickRunResult.status === "DONE" && quickRunResult.resume_readiness?.content_ready === true &&
+                  quickRunResult.traceability?.resume_traceable === true && quickRunResult.resume_pdf ?
+                  <button type="button" data-testid="quick-run-prepare-pdf" className="rounded-card border border-accent px-3 py-2 text-accent"
+                    onClick={() => navigate(`/submissions?quick_run_id=${encodeURIComponent(quickRunResult.run_id)}`)}>{t("pages.quickRun.preparePdf")}</button> :
+                  <button type="button" className="text-accent underline" onClick={() => navigate("/evidence")}>{t("pages.quickRun.openEvidence")}</button>}
+              </div>}
               <div className="mt-4 h-[360px] overflow-auto rounded-card border border-border bg-[#050A16] p-4 font-mono text-xs leading-6 text-text-secondary">
                 {terminalLines.length > 0 ? (
                   terminalLines.map((line, index) => (

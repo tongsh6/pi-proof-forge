@@ -3195,6 +3195,7 @@ def test_acceptance_runner_l3_promotes_send_resume_prefixed_error(
 
 def test_external_l3_maps_real_liepin_send_resume_errors() -> None:
     for error in (
+        "resume_attachment_binding_unverified",
         "main_chat_click_failed:TimeoutError",
         "send_resume_click_failed:TimeoutError",
         "confirm_send_button_not_found",

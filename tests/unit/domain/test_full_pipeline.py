@@ -9,12 +9,24 @@ import json
 import os
 import unittest
 from importlib import import_module
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def synthetic_review_pdf(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr('tools.infra.persistence.review_snapshot._render_pdf',
+                        lambda source, destination: destination.write_bytes(b'%PDF-unit-test'))
 
 from tools.config.fragments import PolicyConfig
 from tools.domain.models import EvidenceCard, JobProfile
-from tools.domain.value_objects import Candidate
+from tools.domain.result import Ok
+from tools.domain.value_objects import Candidate, DeliveryResult
 
 
 def _composer_class():
@@ -492,5 +504,108 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             self.assertEqual(result.rounds_completed, 1)
 
 
+@pytest.mark.parametrize("second_submission_success", [False, True])
+def test_agent_counts_only_confirmed_submissions(tmp_path, monkeypatch, second_submission_success):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("tools.infra.export.pdf_exporter.markdown_to_pdf", lambda source, destination: destination.write_bytes(b"%PDF-test-only"))
+    composer = _composer_class()(policy=_make_policy(
+        max_rounds=2, max_deliveries=1,
+        gate_mode="strict", matching_threshold=0, evaluation_threshold=0,
+    ))
+    store = _file_run_store_class()(base_dir=str(tmp_path / "runs"))
+    loop = composer.build_agent_loop(
+        run_id="count-confirmed",
+        dry_run=False,
+        run_store=store,
+        evidence_cards=_make_evidence_cards(),
+        job_profile=_make_job_profile(),
+        candidates=tuple(replace(candidate, platform="liepin", job_url=f"https://www.liepin.com/job/{index + 1}.shtml") for index, candidate in enumerate(_make_candidates())),
+    )
+    outcomes = [
+        Ok(DeliveryResult("liepin", False, "", "checked_not_submitted", outcome="not_submitted")),
+        Ok(DeliveryResult("liepin", second_submission_success, "submission-2", "已记录",
+                          outcome="submitted" if second_submission_success else "not_submitted")),
+    ]
+    with patch("tools.channels.liepin.LiepinChannel.deliver", side_effect=outcomes):
+        result = loop.run()
+    events = store.load_events("count-confirmed")
+    assert result.rounds_completed == 2
+    deliveries = [event for event in events if event.event_type == "DELIVER"]
+    assert [event.payload.get("success") for event in deliveries] == [False, second_submission_success]
+    learn = [event for event in events if event.event_type == "LEARN"]
+    assert learn[-1].payload["deliveries"] == int(second_submission_success)
+    done = [event for event in events if event.event_type == "DONE"]
+    assert done[-1].payload["stop_reason"] == (
+        "max_deliveries" if second_submission_success else "max_rounds"
+    )
+
+
+def test_unknown_delivery_pauses_other_candidates(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr('tools.infra.export.pdf_exporter.markdown_to_pdf',
+                        lambda source, destination: destination.write_bytes(b'%PDF-test-only'))
+    composer = _composer_class()(policy=_make_policy(max_rounds=2, gate_mode='strict',
+        matching_threshold=0, evaluation_threshold=0))
+    loop = composer.build_agent_loop(run_id='unknown-pauses', dry_run=False,
+        evidence_cards=_make_evidence_cards(), job_profile=_make_job_profile(),
+        candidates=tuple(replace(c, platform='liepin', job_url=f'https://www.liepin.com/job/{i+1}.shtml')
+                         for i,c in enumerate(_make_candidates())))
+    with patch('tools.channels.liepin.LiepinChannel.deliver', side_effect=TimeoutError('unknown')) as channel:
+        result = loop.run()
+    assert channel.call_count == 1
+    assert result.status == 'DELIVERY_BLOCKED'
+
+
+def test_manual_mode_without_injected_review_stage_still_waits(tmp_path):
+    composer = _composer_class()(policy=_make_policy(delivery_mode='manual', max_rounds=1,
+        gate_mode='strict', matching_threshold=0, evaluation_threshold=0))
+    loop = composer.build_agent_loop(run_id='missing-review-stage', dry_run=True,
+        evidence_cards=_make_evidence_cards(), job_profile=_make_job_profile(), candidates=_make_candidates())
+    loop._review = None
+    assert loop.run().status == 'REVIEW_PENDING'
+
+
+def test_full_pipeline_dry_run_separates_simulated_and_real_delivery_counts(tmp_path):
+    composer = _composer_class()(policy=_make_policy(
+        max_rounds=2, max_deliveries=1,
+        gate_mode="strict", matching_threshold=0, evaluation_threshold=0,
+    ))
+    store = _file_run_store_class()(base_dir=str(tmp_path))
+    loop = composer.build_agent_loop(
+        run_id="dry-counts", dry_run=True, run_store=store,
+        evidence_cards=_make_evidence_cards(), job_profile=_make_job_profile(),
+        candidates=_make_candidates(),
+    )
+    result = loop.run()
+    events = store.load_events("dry-counts")
+    assert result.rounds_completed == 1
+    learn = [event for event in events if event.event_type == "LEARN"]
+    assert learn[-1].payload["deliveries"] == 0
+    assert learn[-1].payload["simulated_deliveries"] == 1
+    done = [event for event in events if event.event_type == "DONE"]
+    assert done[-1].payload["deliveries_completed"] == 0
+    deliveries = [event for event in events if event.event_type == "DELIVER"]
+    assert all(event.payload.get("success") is False for event in deliveries)
+
+
 if __name__ == "__main__":
     _ = unittest.main()
+
+
+@pytest.mark.parametrize("profile_id", ["jp-other", ""])
+def test_official_candidates_cannot_use_another_profile_in_cli_auto_discovery(tmp_path, monkeypatch, profile_id):
+    monkeypatch.chdir(tmp_path)
+    candidate = replace(_make_candidates()[0], source="liepin_official", platform="liepin",
+                        job_url="https://www.liepin.com/job/19123456.shtml",
+                        job_profile_id=profile_id, jd_status="complete_reviewed", source_jd_sha256="a" * 64)
+    monkeypatch.setattr("tools.engines.discovery.job_leads_loader.discover_candidates", lambda **kwargs: [candidate])
+    store = _file_run_store_class()(base_dir=str(tmp_path / "runs"))
+    loop = _composer_class()(policy=_make_policy(max_rounds=1, gate_mode="strict",
+        matching_threshold=0, evaluation_threshold=0, delivery_mode="manual", batch_review=True)).build_agent_loop(
+        run_id="bound-cli", dry_run=True, run_store=store, evidence_cards=_make_evidence_cards(),
+        job_profile=_make_job_profile())
+    loop.run()
+    events = store.load_events("bound-cli")
+    discovered = [event for event in events if event.event_type == "DISCOVER"]
+    assert discovered[0].payload["candidates"] == 0
+    assert not (tmp_path / "outputs/review_queue/bound-cli.json").exists()

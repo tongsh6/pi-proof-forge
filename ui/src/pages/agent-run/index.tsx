@@ -1,3 +1,4 @@
+import { DailyDeliveryPanel } from "./daily-delivery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
@@ -10,11 +11,13 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import {
   getAgentRun,
   getPendingReview,
   getSettings,
+  recheckReceipt,
   listJobProfiles,
   startAgentRun,
   stopAgentRun,
@@ -22,9 +25,11 @@ import {
 } from "@/lib/sidecar/api";
 import type {
   AgentRunSummary,
+  AgentRunGetResult,
   JobProfileListItem,
   LlmConfig,
   ReviewCandidateItem,
+  ReviewDeliveryResult,
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -55,6 +60,10 @@ type AgentState = (typeof STATE_SEQUENCE)[number];
 const FINAL_STATUSES = new Set([
   "DONE",
   "DRY_RUN_COMPLETE",
+  "REVIEWED_CHECK_ONLY",
+  "DELIVERY_BLOCKED",
+  "EXTERNAL_CONFIRMATION_ONLY",
+  "REVIEW_SNAPSHOT_BLOCKED",
   "REVIEW_PENDING",
   "FAILED",
   "stopped",
@@ -116,6 +125,10 @@ function runStatusLabel(status: string | undefined, t: (key: string) => string):
   if (normalized === "review_pending") {
     return t("pages.agentRun.runStatuses.reviewPending");
   }
+  if (normalized === "delivery_blocked") return t("pages.agentRun.runStatuses.deliveryBlocked");
+  if (normalized === "external_confirmation_only") return t("pages.agentRun.runStatuses.externalConfirmationOnly");
+  if (normalized === "reviewed_check_only") return t("pages.agentRun.runStatuses.reviewedCheckOnly");
+  if (normalized === "review_snapshot_blocked") return t("pages.agentRun.runStatuses.snapshotBlocked");
   if (normalized === "done") return t("pages.agentRun.runStatuses.done");
   if (normalized === "failed") return t("pages.agentRun.runStatuses.failed");
   if (normalized === "stopped") return t("pages.agentRun.runStatuses.stopped");
@@ -152,13 +165,19 @@ function gateStatusClassName(status: GateRowStatus): string {
 
 export function AgentRunPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedRunId = searchParams.get("run_id");
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [run, setRun] = useState<AgentRunSummary | null>(null);
+  const [deliveryBatch, setDeliveryBatch] = useState<AgentRunGetResult["delivery_batch"]>(null);
   const [events, setEvents] = useState<AgentRunEvent[]>([]);
   const [candidates, setCandidates] = useState<ReviewCandidateItem[]>([]);
+  const [nativePdfQuickRunId, setNativePdfQuickRunId] = useState<string | null>(null);
+  const [deliveryResults, setDeliveryResults] = useState<ReviewDeliveryResult[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [runState, setRunState] = useState<LoadState>("ready");
   const [error, setError] = useState<string | null>(null);
@@ -191,9 +210,12 @@ export function AgentRunPage() {
     async (runId: string | null = currentRunId) => {
       try {
         const result = await getPendingReview(runId ?? undefined);
+        setNativePdfQuickRunId(result.native_pdf_quick_run_id ?? null);
         setCandidates(result.candidates ?? []);
+        setDeliveryResults(result.delivery_results ?? []);
       } catch {
         setCandidates([]);
+        setNativePdfQuickRunId(null);
       }
     },
     [currentRunId]
@@ -206,6 +228,8 @@ export function AgentRunPage() {
       try {
         const result = await getAgentRun(runId);
         setRun(result.run);
+        setDeliveryBatch(result.delivery_batch);
+        if (result.run.job_profile_id) setSelectedProfileId(result.run.job_profile_id);
         setEvents(result.events as AgentRunEvent[]);
         setRunState("ready");
         await loadPending(runId);
@@ -220,6 +244,27 @@ export function AgentRunPage() {
   useEffect(() => {
     void loadProfiles();
   }, [loadProfiles]);
+
+  useEffect(() => {
+    if (requestedRunId) {
+      if (currentRunId !== requestedRunId) {
+        setCurrentRunId(requestedRunId);
+        setRun(null);
+        setCandidates([]);
+        setDeliveryResults([]);
+        void loadRun(requestedRunId);
+      }
+      return;
+    }
+    if (currentRunId) return;
+    let active = true;
+    void getPendingReview().then((result) => {
+      if (!active || (!result.candidates?.length && !result.delivery_results?.length)) return;
+      setCurrentRunId(result.run_id);
+      void loadRun(result.run_id);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [currentRunId, requestedRunId, loadRun]);
 
   const selectedProfile = jobProfiles.find(
     (profile) => profile.job_profile_id === selectedProfileId
@@ -331,6 +376,7 @@ export function AgentRunPage() {
         },
       });
       setCurrentRunId(result.run_id);
+      setSearchParams({ run_id: result.run_id }, { replace: true });
       await loadRun(result.run_id);
     } catch (nextError) {
       setRunState("error");
@@ -338,7 +384,7 @@ export function AgentRunPage() {
     } finally {
       agentRunInFlightRef.current = false;
     }
-  }, [loadRun, selectedProfileId]);
+  }, [loadRun, selectedProfileId, setSearchParams]);
 
   const handleRefreshRun = useCallback(async () => {
     if (currentRunId) {
@@ -363,10 +409,11 @@ export function AgentRunPage() {
 
   const handleDecision = useCallback(
     async (jobLeadId: string, action: "approve" | "reject" | "skip") => {
+      if (nativePdfQuickRunId) return;
       setSubmitState("submitting");
       setSubmitError(null);
       try {
-        await submitReview(
+        const result = await submitReview(
           [
             {
               job_lead_id: jobLeadId,
@@ -377,18 +424,40 @@ export function AgentRunPage() {
           ],
           currentRunId ?? undefined
         );
+        setDeliveryResults(result.delivery_results ?? []);
         setSubmitState("done");
-        await loadPending();
+        if (currentRunId) await loadRun(currentRunId);
+        else await loadPending();
       } catch (nextError) {
         setSubmitState("error");
         setSubmitError(getErrorMessage(nextError));
       }
     },
-    [currentRunId, loadPending]
+    [currentRunId, loadPending, loadRun, nativePdfQuickRunId]
   );
+
+  const handleRecheckReceipt = useCallback(async (leadId: string) => {
+    if (!currentRunId) return;
+    setSubmitState("submitting");
+    setSubmitError(null);
+    try {
+      const result = await recheckReceipt(currentRunId, leadId);
+      if (result.status !== "ready") {
+        setSubmitState("error");
+        setSubmitError(t("pages.agentRun.receiptUnavailable"));
+        return;
+      }
+      setSubmitState("done");
+      await loadRun(currentRunId);
+    } catch {
+      setSubmitState("error");
+      setSubmitError(t("pages.agentRun.receiptUnavailable"));
+    }
+  }, [currentRunId, loadRun, t]);
 
   return (
     <div className="space-y-6">
+      <DailyDeliveryPanel />
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">
@@ -500,7 +569,7 @@ export function AgentRunPage() {
               {t("pages.agentRun.currentRound")}
             </p>
             <p className="mt-2 text-sm text-text-primary">
-              {run ? `${run.round} / ${run.options.max_rounds ?? 1}` : "--"}
+              {run && typeof run.round === "number" ? `${run.round} / ${run.options.max_rounds ?? 1}` : "--"}
             </p>
           </div>
         </div>
@@ -515,6 +584,12 @@ export function AgentRunPage() {
             {runStatusLabel(run?.status, t)}
           </span>
         </div>
+        {deliveryBatch ? <p className="mb-4 rounded-card border border-border p-3 text-sm text-text-secondary">
+          {t("pages.agentRun.batchAuthorized")}: {deliveryBatch.authorized_max}
+          {" · "}{t("pages.agentRun.batchConsumed")}: {deliveryBatch.consumed}
+          {" · "}{t("pages.agentRun.batchConfirmed")}: {deliveryBatch.confirmed}
+          {" · "}{t("pages.agentRun.batchRemaining")}: {deliveryBatch.remaining}
+        </p> : null}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5 xl:grid-cols-10">
           {STATE_SEQUENCE.map((state) => {
             const wasObserved = eventByState.has(state);
@@ -609,31 +684,41 @@ export function AgentRunPage() {
                         <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-text-muted">
                           <span>
                             {t("pages.agentRun.matchScore")}:{" "}
-                            {candidate.matching_score}
+                            {candidate.matching_score ?? t("pages.agentRun.notEvaluated")}
                           </span>
                           <span>
                             {t("pages.agentRun.evalScore")}:{" "}
-                            {candidate.evaluation_score}
+                            {candidate.evaluation_score ?? t("pages.agentRun.notEvaluated")}
                           </span>
                           <span>
                             {t("pages.agentRun.round")}: {candidate.round_index}
                           </span>
+                          <span>{t("pages.agentRun.resumeVersion")}: {candidate.resume_version}</span>
+                          <span>{t(candidate.delivery_kind === "platform_default" ? "pages.agentRun.platformDefaultResume" : "pages.agentRun.generatedPdfResume")}</span>
                         </p>
+                        {candidate.snapshot_status === "ready" ? (
+                          <details className="mt-3">
+                            <summary className="cursor-pointer text-sm text-accent">{t("pages.agentRun.snapshotPreview")}</summary>
+                            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs text-text-secondary">{candidate.resume_preview}</pre>
+                          </details>
+                        ) : <p className="mt-2 text-xs text-error">{t("pages.agentRun.snapshotInvalid")}</p>}
                       </div>
                       <div className="flex shrink-0 gap-2">
+                        {nativePdfQuickRunId ? <button type="button" className="rounded-card border border-accent px-3 py-1.5 text-xs text-accent"
+                          onClick={() => navigate(`/submissions?quick_run_id=${encodeURIComponent(nativePdfQuickRunId)}`)}>{t("pages.agentRun.reviewNativePdf")}</button> : <>
                         <button
                           className="rounded-card border border-success/50 bg-success/10 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/20 disabled:opacity-60"
-                          disabled={submitState === "submitting"}
+                          disabled={submitState === "submitting" || candidate.snapshot_status !== "ready"}
                           onClick={() =>
                             void handleDecision(candidate.job_lead_id, "approve")
                           }
                           type="button"
                         >
-                          {t("pages.agentRun.approve")}
+                          {t(candidate.status === "approved" ? "pages.agentRun.continueApproved" : "pages.agentRun.approve")}
                         </button>
                         <button
                           className="rounded-card border border-error/50 px-3 py-1.5 text-xs font-medium text-error hover:bg-error/10 disabled:opacity-60"
-                          disabled={submitState === "submitting"}
+                          disabled={submitState === "submitting" || candidate.status === "approved"}
                           onClick={() =>
                             void handleDecision(candidate.job_lead_id, "reject")
                           }
@@ -643,7 +728,7 @@ export function AgentRunPage() {
                         </button>
                         <button
                           className="rounded-card border border-border px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-hover disabled:opacity-60"
-                          disabled={submitState === "submitting"}
+                          disabled={submitState === "submitting" || candidate.status === "approved"}
                           onClick={() =>
                             void handleDecision(candidate.job_lead_id, "skip")
                           }
@@ -651,6 +736,7 @@ export function AgentRunPage() {
                         >
                           {t("pages.agentRun.skip")}
                         </button>
+                        </>}
                       </div>
                     </div>
                   </li>
@@ -659,6 +745,29 @@ export function AgentRunPage() {
             )}
             {submitState === "error" && submitError ? (
               <p className="mt-4 text-sm text-error">{submitError}</p>
+            ) : null}
+            {deliveryResults.length > 0 ? (
+              <div className="mt-4 space-y-2" role="status">
+                <h4 className="text-sm font-medium">{t("pages.agentRun.reviewResults")}</h4>
+                <p className="text-sm text-text-secondary">
+                  {t("pages.agentRun.appVerifiedCount")}: {run?.app_verified_deliveries ?? 0}
+                  {" · "}{t("pages.agentRun.externalConfirmedCount")}: {run?.externally_confirmed_deliveries ?? 0}
+                </p>
+                {deliveryResults.map((result) => (
+                  <div key={result.job_lead_id} className="space-y-2 text-sm text-text-secondary">
+                    {result.job_lead_id}: {t(`pages.agentRun.deliveryCodes.${result.code}`, {defaultValue: t("pages.agentRun.deliveryCodes.other")})}
+                    {(result.status === "unknown" || result.receipt_source === "website_history") && result.submission_id ? (
+                      <div>
+                        <button type="button" className="rounded-card border border-accent px-3 py-1 text-accent disabled:opacity-50"
+                          disabled={submitState === "submitting"} onClick={() => void handleRecheckReceipt(result.job_lead_id)}>
+                          {t("pages.agentRun.recheckReceipt")}
+                        </button>
+                        <p className="mt-1 text-xs text-text-muted">{t("pages.agentRun.recheckReceiptHint")}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             ) : null}
           </div>
         </section>

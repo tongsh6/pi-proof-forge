@@ -220,8 +220,9 @@ def handle_material_readiness(params: dict[str, Any]) -> dict[str, Any]:
     missing_items = []
     if not _profile_is_complete():
         missing_items.append("missing_personal_profile")
-    if not _has_uploaded_resume():
-        missing_items.append("missing_uploaded_resume")
+    from tools.infra.career_profile import load_career_profile
+    if not load_career_profile(_PROFILE_PATH)["career_status"]["reviewed"]:
+        missing_items.append("missing_career_profile")
     if not list_material_source_items():
         missing_items.append("missing_raw_work_material")
 

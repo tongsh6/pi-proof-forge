@@ -14,9 +14,17 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
-import { checkLlmConnection, getSettings, updateLlmConfig } from "@/lib/sidecar/api";
+import {
+  checkLlmConnection,
+  getLiepinResume,
+  getSettings,
+  openLiepinAuthorization,
+  updateLiepinCredential,
+  updateLlmConfig,
+} from "@/lib/sidecar/api";
 import type {
   ChannelConfig,
+  LiepinAuthState,
   LlmConfig,
   LlmConnectionCheckResult,
   SettingsGetResult,
@@ -326,10 +334,17 @@ export function SystemSettingsPage() {
   const [llmConnection, setLlmConnection] =
     useState<LlmConnectionCheckResult | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
+  const [liepinToken, setLiepinToken] = useState("");
+  const [liepinAction, setLiepinAction] = useState<"set" | "check" | "clear" | "resume" | null>(null);
+  const [liepinError, setLiepinError] = useState<string | null>(null);
+  const [liepinResume, setLiepinResume] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
     setLoadState("loading");
     setError(null);
+    setLiepinToken("");
+    setLiepinResume(null);
+    setLiepinError(null);
 
     try {
       const result = await getSettings();
@@ -354,7 +369,7 @@ export function SystemSettingsPage() {
     return [...settings.channels]
       .sort((left, right) => left.priority - right.priority)
       .map((channel) => channel.id)
-      .join(" -> ");
+      .join(" / ");
   }, [settings]);
 
   const connectionSummary = useMemo(() => {
@@ -394,6 +409,60 @@ export function SystemSettingsPage() {
     }
   }, [llmForm]);
 
+  const applyLiepinAuth = useCallback((auth: LiepinAuthState) => {
+    setSettings((current) => current ? { ...current, liepin_api: auth } : current);
+    if (auth.state !== "valid") setLiepinResume(null);
+  }, []);
+
+  const handleLiepinCredential = useCallback(async (action: "set" | "check" | "clear") => {
+    if (action === "set" && !liepinToken.trim()) return;
+    setLiepinAction(action);
+    setLiepinError(null);
+    setLiepinResume(null);
+    const payload = action === "set"
+      ? { action, token: liepinToken.trim() } as const
+      : { action };
+    setLiepinToken("");
+    try {
+      const result = await updateLiepinCredential(payload);
+      applyLiepinAuth(result.auth);
+    } catch {
+      setLiepinError(t("pages.systemSettings.liepinApi.requestError"));
+    } finally {
+      setLiepinAction(null);
+    }
+  }, [applyLiepinAuth, liepinToken, t]);
+
+  const handleLiepinResume = useCallback(async () => {
+    setLiepinAction("resume");
+    setLiepinError(null);
+    setLiepinResume(null);
+    try {
+      const result = await getLiepinResume();
+      applyLiepinAuth(result.auth);
+      if (result.status === "pass") {
+        setLiepinResume(result.resume_text);
+      } else {
+        setLiepinError(t(`pages.systemSettings.liepinApi.codes.${result.code}`, {
+          defaultValue: t("pages.systemSettings.liepinApi.requestBlocked"),
+        }));
+      }
+    } catch {
+      setLiepinError(t("pages.systemSettings.liepinApi.requestError"));
+    } finally {
+      setLiepinAction(null);
+    }
+  }, [applyLiepinAuth, t]);
+
+  const handleLiepinAuthorization = useCallback(async () => {
+    setLiepinError(null);
+    try {
+      await openLiepinAuthorization();
+    } catch {
+      setLiepinError(t("pages.systemSettings.liepinApi.authorizationFailed"));
+    }
+  }, [t]);
+
   const handleCheckLlmConnection = useCallback(async () => {
     setLlmCheckState("checking");
     setLlmError(null);
@@ -428,6 +497,7 @@ export function SystemSettingsPage() {
           <button
             className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
             onClick={() => void loadSettings()}
+            disabled={liepinAction !== null}
             type="button"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
@@ -501,6 +571,92 @@ export function SystemSettingsPage() {
                   <StatusChip value={connectionSummary} />
                 </div>
 
+                <article className="space-y-4 rounded-card border border-accent/40 bg-bg-primary/70 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+                        <KeyRound className="h-4 w-4 text-accent" aria-hidden="true" />
+                        {t("pages.systemSettings.liepinApi.title")}
+                      </h3>
+                      <p className="mt-2 text-sm text-text-secondary">{t("pages.systemSettings.liepinApi.scope")}</p>
+                    </div>
+                    <span className={`rounded-chip border px-2.5 py-1 text-xs ${statusClassName(
+                      settings.liepin_api?.state === "valid" ? "success" :
+                        settings.liepin_api?.state === "invalid" || settings.liepin_api?.state === "error" ? "error" : "warning"
+                    )}`}>
+                      {t(`pages.systemSettings.liepinApi.states.${settings.liepin_api?.state ?? "unconfigured"}`)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-text-secondary">{t("pages.systemSettings.liepinApi.storageHint")}</p>
+                  <p className="break-all text-xs text-text-muted select-text">
+                    {t("pages.systemSettings.liepinApi.storagePath")}: {formatNullable(settings.liepin_api?.storage_path)}
+                  </p>
+                  <button className="inline-flex items-center gap-2 text-sm text-accent underline" type="button" onClick={() => void handleLiepinAuthorization()}>
+                    <Link2 className="h-4 w-4" aria-hidden="true" />
+                    {t("pages.systemSettings.liepinApi.authorization")}
+                  </button>
+                  <p className="break-all text-xs text-text-muted select-text">https://www.liepin.com/mcp/auth</p>
+                  <label className="block text-sm text-text-primary">
+                    {t("pages.systemSettings.liepinApi.token")}
+                    <input
+                      autoComplete="off"
+                      className="mt-2 w-full rounded-card border border-border bg-bg-hover px-3 py-2 outline-none focus:border-accent"
+                      disabled={liepinAction !== null}
+                      onChange={(event) => setLiepinToken(event.target.value)}
+                      placeholder={t("pages.systemSettings.liepinApi.tokenPlaceholder")}
+                      spellCheck={false}
+                      type="password"
+                      value={liepinToken}
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {(["set", "check", "clear"] as const).map((action) => (
+                      <button
+                        key={action}
+                        className="rounded-card border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+                        disabled={liepinAction !== null || (action === "set"
+                          ? !liepinToken.trim()
+                          : action === "clear"
+                            ? !(settings.liepin_api?.configured || settings.liepin_api?.saved || settings.liepin_api?.code === "CREDENTIAL_STORAGE_ERROR")
+                            : !settings.liepin_api?.configured)}
+                        onClick={() => void handleLiepinCredential(action)}
+                        type="button"
+                      >
+                        {t(`pages.systemSettings.liepinApi.${liepinAction === action ? "working" : action}`)}
+                      </button>
+                    ))}
+                    <button
+                      className="rounded-card border border-border px-3 py-2 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50"
+                      disabled={liepinAction !== null || !settings.liepin_api?.configured}
+                      onClick={() => void handleLiepinResume()}
+                      type="button"
+                    >
+                      {t(`pages.systemSettings.liepinApi.${liepinAction === "resume" ? "working" : "readResume"}`)}
+                    </button>
+                  </div>
+                  <p className="text-xs text-text-muted">
+                    {t("pages.systemSettings.liepinApi.lastChecked")}: {formatNullable(settings.liepin_api?.last_checked_at)}
+                  </p>
+                  {settings.liepin_api?.last_error || settings.liepin_api?.code === "CREDENTIAL_STORAGE_ERROR" ? (
+                    <p className="text-sm text-error" role="alert">
+                      {settings.liepin_api.last_error || t(`pages.systemSettings.liepinApi.codes.${settings.liepin_api.code}`, {
+                        defaultValue: t("pages.systemSettings.liepinApi.requestBlocked"),
+                      })}
+                    </p>
+                  ) : null}
+                  {liepinError ? <p className="text-sm text-error" role="alert">{liepinError}</p> : null}
+                  {liepinResume !== null ? (
+                    <details className="rounded-card border border-border p-3">
+                      <summary className="cursor-pointer text-sm text-text-primary">{t("pages.systemSettings.liepinApi.resumePreview")}</summary>
+                      <p className="mt-2 text-xs text-text-muted">{t("pages.systemSettings.liepinApi.resumeHint")}</p>
+                      <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words font-sans text-sm text-text-secondary">
+                        {liepinResume || t("pages.systemSettings.liepinApi.resumeEmpty")}
+                      </pre>
+                    </details>
+                  ) : null}
+                </article>
+
+                <p className="text-sm text-text-muted">{t("pages.systemSettings.liepinApi.legacyHint")}</p>
                 <div className="grid gap-4">
                   {settings.channels.map((channel) => (
                     <ChannelCard

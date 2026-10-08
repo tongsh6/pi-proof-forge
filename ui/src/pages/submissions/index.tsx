@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import {
   checkChannelSession,
@@ -27,6 +28,21 @@ import {
   retrySubmission,
   startSubmissionCheckMode,
   startChannelSession,
+  openLiepinNativeSession,
+  checkLiepinNativeSession,
+  inspectLiepinNativeAttachments,
+  type NativeLiepinObservation,
+  prepareLiepinPdf,
+  previewDailyPdf,
+  uploadLiepinNativePdf,
+  inspectUploadedLiepinPdf,
+  inspectLiepinPdfTarget,
+  startLiepinPdfCommunication,
+  continueLiepinPdfDelivery,
+  verifyNativePdfReceipt,
+  removeLiepinNativePdfAttachment,
+  recheckLiepinNativePdfRemoval,
+  type NativePdfPreparation,
 } from "@/lib/sidecar/api";
 import type { ChannelSessionResult, FeedbackIterationResult, FeedbackListResult, SubmissionCheckModeResult, SubmissionDetail, SubmissionListItem } from "@/lib/sidecar/types";
 
@@ -126,6 +142,10 @@ function screenshotSource(path: string): string | null {
 }
 
 export function SubmissionsPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedQuickRun = searchParams.get("quick_run_id");
+  const consumedQuickRun = useRef<string | null | undefined>(undefined);
   const { t, i18n } = useTranslation();
   const [items, setItems] = useState<SubmissionListItem[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -139,10 +159,33 @@ export function SubmissionsPage() {
   const [channelSession, setChannelSession] = useState<ChannelSessionResult | null>(null);
   const [sessionState, setSessionState] = useState<LoadState>("loading");
   const [sessionAction, setSessionAction] = useState<string | null>(null);
+  const [nativeSession, setNativeSession] = useState("not_opened");
+  const [nativeSessionBusy, setNativeSessionBusy] = useState(false);
+  const [nativeAttachmentView, setNativeAttachmentView] = useState<NativeLiepinObservation["attachment_view"]>();
+  const [pdfQuickRunId, setPdfQuickRunId] = useState("");
+  const [nativePdf, setNativePdf] = useState<NativePdfPreparation | null>(null);
+  const [acceptPdfEffects, setAcceptPdfEffects] = useState(false);
+  const [acceptAttachmentRemoval, setAcceptAttachmentRemoval] = useState(false);
+  const [nativePdfError, setNativePdfError] = useState("");
+  const [nativePdfPreview,setNativePdfPreview]=useState("");
+  const [previewedPdf,setPreviewedPdf]=useState("");
+  useEffect(() => {
+    if (nativeSessionBusy || consumedQuickRun.current === requestedQuickRun) return;
+    consumedQuickRun.current = requestedQuickRun;
+    const valid = requestedQuickRun !== null && /^[A-Za-z0-9_-]{1,160}$/.test(requestedQuickRun);
+    setPdfQuickRunId(valid ? requestedQuickRun : "");
+    setNativePdf(null); setNativePdfPreview(""); setPreviewedPdf("");
+    setAcceptPdfEffects(false); setAcceptAttachmentRemoval(false);
+    setNativePdfError(requestedQuickRun && !valid ? t("pages.submissions.nativePdf.invalidLinkedRun") : "");
+  }, [requestedQuickRun, nativeSessionBusy, t]);
   const [checkModeResult, setCheckModeResult] = useState<SubmissionCheckModeResult | null>(null);
   const [checkModeState, setCheckModeState] = useState<LoadState>("ready");
   const [feedbackList, setFeedbackList] = useState<FeedbackListResult | null>(null);
   const [feedbackIteration, setFeedbackIteration] = useState<FeedbackIterationResult | null>(null);
+  const [feedbackNotes, setFeedbackNotes] = useState("");
+  const [feedbackSource, setFeedbackSource] = useState<"user_note" | "manual_recruiter">("user_note");
+  const [feedbackAction, setFeedbackAction] = useState("acknowledge_and_skip");
+  const selectionRef = useRef<string | null>(null);
   const [feedbackState, setFeedbackState] = useState<LoadState>("ready");
   const [checkModeForm, setCheckModeForm] = useState({
     jobLeadId: "",
@@ -231,6 +274,44 @@ export function SubmissionsPage() {
     void loadChannelSession(selectedChannel);
   }, [loadChannelSession, selectedChannel]);
 
+  const handleNativeSession = useCallback(async (action: "open" | "check" | "inspect") => {
+    setNativeSessionBusy(true);
+    setNativeAttachmentView(undefined);
+    try {
+      const result = await (action === "open" ? openLiepinNativeSession() : action === "inspect" ? inspectLiepinNativeAttachments() : checkLiepinNativeSession());
+      setNativeSession(result.status);
+      setNativeAttachmentView(result.attachment_view);
+    } catch {
+      setNativeSession("unavailable");
+    } finally {
+      setNativeSessionBusy(false);
+    }
+  }, []);
+
+  const handleNativePdf = useCallback(async (action: "preview" | "prepare" | "upload" | "inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send" | "receipt" | "remove" | "recheckRemoval") => {
+    if (nativePdf?.recovery_only && ["upload","communicate","prepareResume","send","remove"].includes(action)) return;
+    setNativeSessionBusy(true);setNativePdfError("");
+    try {
+      if (action === "prepare") {const result=await prepareLiepinPdf(pdfQuickRunId.trim());setNativePdf(result);setAcceptPdfEffects(false);setAcceptAttachmentRemoval(false);setNativePdfPreview("");setPreviewedPdf("");}
+      else if(action === "preview" && nativePdf){const result=await previewDailyPdf(nativePdf.run_id);if(result.pdf_sha256!==nativePdf.pdf_sha256)throw new Error('resume_pdf_changed');setNativePdfPreview('data:application/pdf;base64,'+result.pdf_base64);setPreviewedPdf(nativePdf.run_id);}
+      else if (action === "inspect" && nativePdf) setNativePdf(await inspectUploadedLiepinPdf(nativePdf.run_id));
+      else if (action === "target" && nativePdf) setNativePdf(await inspectLiepinPdfTarget(nativePdf.run_id));
+      else if (action === "communicate" && nativePdf) setNativePdf(await startLiepinPdfCommunication(nativePdf.run_id));
+      else if (action === "inspectChat" && nativePdf) setNativePdf(await continueLiepinPdfDelivery(nativePdf.run_id,"inspect"));
+      else if (action === "prepareResume" && nativePdf) setNativePdf(await continueLiepinPdfDelivery(nativePdf.run_id,"prepare"));
+      else if (action === "send" && nativePdf) setNativePdf(await continueLiepinPdfDelivery(nativePdf.run_id,"send"));
+      else if (action === "receipt" && nativePdf) {setNativePdf(await verifyNativePdfReceipt(nativePdf.run_id));await loadData();}
+      else if (action === "recheckRemoval" && nativePdf) setNativePdf(await recheckLiepinNativePdfRemoval(nativePdf.run_id));
+      else if (action === "remove" && nativePdf && acceptAttachmentRemoval) setNativePdf(await removeLiepinNativePdfAttachment(nativePdf.run_id,true));
+      else if (action === "upload" && nativePdf && acceptPdfEffects && previewedPdf===nativePdf.run_id) setNativePdf(await uploadLiepinNativePdf(nativePdf.run_id,true));
+    } catch (error) {
+      const message=typeof error === "string" ? error : getErrorMessage(error);
+      const contentErrors=['career_profile_unconfirmed','resume_content_incomplete','resume_regeneration_required','resume_generation_changed','resume_pdf_source_changed','resume_evidence_changed','resume_pdf_changed','pdf_generation_trace_invalid'];
+      setNativePdfError(message.includes('daily_pdf_filename_too_long')?t('daily.reasons.daily_pdf_filename_too_long'):message.includes('daily_recovery_required')?t('pages.submissions.nativePdf.recoveryOnly'):message.includes('pdf_receipt_unconfirmed')?t('pages.submissions.nativePdf.receiptNotAvailable'):contentErrors.some(code=>message.includes(code))?t('pages.submissions.nativePdf.contentNotReady'):message);
+    }
+    finally {setNativeSessionBusy(false);}
+  }, [pdfQuickRunId,nativePdf,acceptPdfEffects,acceptAttachmentRemoval,loadData,previewedPdf,t]);
+
   const handleStartSession = useCallback(async () => {
     setSessionAction("start");
     setError(null);
@@ -240,37 +321,32 @@ export function SubmissionsPage() {
       setSessionState("ready");
     } catch (nextError) {
       setError(getErrorMessage(nextError));
+      await loadChannelSession(selectedChannel);
       setSessionState("error");
     } finally {
       setSessionAction(null);
     }
-  }, [selectedChannel]);
+  }, [selectedChannel, loadChannelSession]);
 
-  const handleCheckSession = useCallback(async (
-    loginSignals: Record<string, unknown> = {
-      login_required: true,
-    },
-    accountIdentity?: Record<string, unknown>,
-  ) => {
+  const handleCheckSession = useCallback(async () => {
     setSessionAction("check");
     setError(null);
     try {
       const result = await checkChannelSession(
         selectedChannel,
-        loginSignals,
-        accountIdentity,
       );
       setChannelSession(result);
       setSessionState("ready");
       return result;
     } catch (nextError) {
       setError(getErrorMessage(nextError));
+      await loadChannelSession(selectedChannel);
       setSessionState("error");
       return null;
     } finally {
       setSessionAction(null);
     }
-  }, [selectedChannel]);
+  }, [selectedChannel, loadChannelSession]);
 
   const handleClearSession = useCallback(async () => {
     setSessionAction("clear");
@@ -318,30 +394,41 @@ export function SubmissionsPage() {
     }
   }, [checkModeForm, loadData, selectedChannel]);
 
-  const handleCreateFeedbackIteration = useCallback(async (sourceRunId?: string) => {
-    const runId = sourceRunId || checkModeResult?.submission_id;
-    if (!runId) return null;
+  const feedbackRunId = selectedId || checkModeResult?.submission_id || "";
+  const managedFeedback = Boolean(feedbackList?.source_binding?.status);
+  useEffect(() => {
+    let active = true;
+    setFeedbackList(null); setFeedbackIteration(null); setFeedbackNotes("");
+    setFeedbackSource("user_note"); setFeedbackAction("acknowledge_and_skip");
+    if (!feedbackRunId) return;
     setFeedbackState("loading");
-    setError(null);
+    void listSubmissionFeedback(feedbackRunId).then(result => {
+      if (active) { setFeedbackList(result); setFeedbackState("ready"); }
+    }).catch(error => {
+      if (active) { setError(getErrorMessage(error)); setFeedbackState("error"); }
+    });
+    return () => { active = false; };
+  }, [feedbackRunId]);
+
+  const handleCreateFeedbackIteration = useCallback(async () => {
+    if (!feedbackRunId || feedbackList?.source_run_id !== feedbackRunId) return null;
+    setFeedbackState("loading"); setError(null);
     try {
-      const list = await listSubmissionFeedback(runId);
-      setFeedbackList(list);
       const result = await createFeedbackIteration({
-        source_run_id: runId,
-        source_feedback_items: list.items,
-        selected_actions: ["prepare_next_check_mode"],
-        user_notes: "Prepare a guarded next check-mode iteration.",
+        source_run_id: feedbackRunId,
+        source_feedback_items: feedbackList.items,
+        selected_actions: managedFeedback ? [feedbackAction] : ["prepare_next_check_mode"],
+        feedback_source: feedbackSource,
+        user_notes: managedFeedback ? feedbackNotes.trim() : "Prepare a guarded next check-mode iteration.",
       });
-      setFeedbackIteration(result);
-      setFeedbackState("ready");
+      const list = await listSubmissionFeedback(feedbackRunId);
+      if (selectionRef.current && selectionRef.current !== feedbackRunId) return result;
+      setFeedbackIteration(result); setFeedbackList(list); setFeedbackNotes(""); setFeedbackState("ready");
       return result;
     } catch (nextError) {
-      const message = getErrorMessage(nextError);
-      setError(message);
-      setFeedbackState("error");
-      return null;
+      setError(getErrorMessage(nextError)); setFeedbackState("error"); return null;
     }
-  }, [checkModeResult?.submission_id]);
+  }, [feedbackRunId, feedbackList, managedFeedback, feedbackAction, feedbackSource, feedbackNotes]);
 
   const handleRetry = useCallback(async (submissionId: string, strategy: RetryStrategy = "same_channel") => {
     setRetryingId(submissionId);
@@ -360,11 +447,13 @@ export function SubmissionsPage() {
   }, [loadData, selectedId]);
 
   const handleSelect = useCallback(async (submissionId: string) => {
+    selectionRef.current = submissionId;
     setSelectedId(submissionId);
     setDetailState("loading");
     setError(null);
     try {
       const result = await getSubmissionDetail(submissionId);
+      if (selectionRef.current !== submissionId) return;
       setDetail(result.submission);
       setDetailState("ready");
     } catch (nextError) {
@@ -410,6 +499,81 @@ export function SubmissionsPage() {
                 </div>
               );
             })}
+          </section>
+
+          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.nativeSession.title")}</h2>
+              <div className="flex gap-2">
+                <button type="button" disabled={nativeSessionBusy} onClick={() => void handleNativeSession("open")}
+                  className="rounded-card border border-accent px-3 py-2 text-sm text-accent disabled:opacity-50">{t("pages.submissions.nativeSession.open")}</button>
+                <button type="button" disabled={nativeSessionBusy} onClick={() => void handleNativeSession("check")}
+                  className="rounded-card border border-border px-3 py-2 text-sm text-text-primary disabled:opacity-50">{t("pages.submissions.nativeSession.check")}</button>
+                <button type="button" disabled={nativeSessionBusy || nativeSession !== "authenticated"} onClick={() => void handleNativeSession("inspect")}
+                  className="rounded-card border border-border px-3 py-2 text-sm text-text-primary disabled:opacity-50">{t("pages.submissions.nativeSession.inspect")}</button>
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-text-secondary">{t("pages.submissions.nativeSession.boundary")}</p>
+            <p className="mt-2 text-sm text-text-primary" role="status">{t(`pages.submissions.nativeSession.status.${nativeSession}`, {defaultValue:t("pages.submissions.nativeSession.status.unavailable")})}</p>
+            {nativeAttachmentView && <div className="mt-3 text-sm text-text-secondary">
+              <p>{t("pages.submissions.nativeSession.attachmentInputs", {count:nativeAttachmentView.inputs.length})}</p>
+              {nativeAttachmentView.inputs.map((input, i) => <p key={`input-${i}`}>{input.accept || t("pages.submissions.nativeSession.acceptUnknown")}</p>)}
+              {nativeAttachmentView.hints.map((hint, i) => <p key={`hint-${i}`}>{hint}</p>)}
+            </div>}
+            <div className="mt-4 border-t border-border pt-4 text-sm">
+              <label className="block text-text-secondary">{t("pages.submissions.nativePdf.quickRun")}
+                <input aria-label={t("pages.submissions.nativePdf.quickRun")} value={pdfQuickRunId} disabled={nativeSessionBusy}
+                  onChange={event=>{setPdfQuickRunId(event.target.value);setNativePdf(null);setAcceptPdfEffects(false);setNativePdfPreview("");setPreviewedPdf("");}}
+                  className="ml-3 rounded-card border border-border bg-bg-primary px-3 py-2 text-text-primary" />
+              </label>
+              <button type="button" disabled={nativeSessionBusy || !pdfQuickRunId.trim()} onClick={()=>void handleNativePdf("prepare")}
+                className="mt-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.prepare")}</button>
+              {nativePdf && <div className="mt-3 space-y-2">
+                <p>{nativePdf.company} · {nativePdf.position} · {nativePdf.matching_score ?? "--"}/100</p>
+                {nativePdf.pdf_filename&&<p className="break-all">PDF: {nativePdf.pdf_filename}</p>}
+                <p className="break-all">PDF SHA256: {nativePdf.pdf_sha256}</p>
+                <p role="status">{t(`pages.submissions.nativePdf.phase.${nativePdf.phase}`, {defaultValue:nativePdf.phase})}</p>
+                {nativePdf.recovery_only&&<p role="status" className="text-warning">{t('pages.submissions.nativePdf.recoveryOnly')}</p>}
+                {nativePdf.phase === "prepared" && <button type="button" disabled={nativeSessionBusy} className="mr-2 rounded-card border border-border px-3 py-2"
+                  onClick={() => navigate("/agent-run")}>{t("pages.submissions.nativePdf.dailyCandidates")}</button>}
+                <button type="button" disabled={nativeSessionBusy} onClick={()=>void handleNativePdf('preview')} className="rounded-card border border-border px-3 py-2">{t('pages.submissions.nativePdf.preview')}</button>
+                {nativePdfPreview&&<iframe title={t('pages.submissions.nativePdf.preview')} src={nativePdfPreview} className="h-[650px] w-full rounded-card border border-border bg-white"/>}
+                <label className="flex items-start gap-2 text-text-secondary">
+                  <input type="checkbox" aria-label={t("pages.submissions.nativePdf.consent")} checked={acceptPdfEffects} disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !["prepared","not_submitted"].includes(nativePdf.phase)}
+                    onChange={event=>setAcceptPdfEffects(event.target.checked)} />{t("pages.submissions.nativePdf.consent")}
+                </label>
+                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
+                  onClick={()=>void handleNativePdf("upload")} className="rounded-card bg-accent px-3 py-2 text-white disabled:opacity-50">{t("pages.submissions.nativePdf.upload")}</button>
+                <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending","success"].includes(nativePdf.phase)}
+                  onClick={()=>void handleNativePdf("inspect")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.inspect")}</button>
+                <button type="button" disabled={nativeSessionBusy || nativePdf.phase !== "attachment_verified"}
+                  onClick={()=>void handleNativePdf("target")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.target")}</button>
+                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || nativePdf.phase !== "attachment_verified"}
+                  onClick={()=>void handleNativePdf("communicate")} className="ml-2 rounded-card bg-accent px-3 py-2 text-white disabled:opacity-50">{t("pages.submissions.nativePdf.communicate")}</button>
+                <button type="button" disabled={nativeSessionBusy || !["communication_started","resume_interaction_pending","final_send_pending"].includes(nativePdf.phase)}
+                  onClick={()=>void handleNativePdf("inspectChat")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.inspectChat")}</button>
+                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || nativePdf.phase !== "communication_started"}
+                  onClick={()=>void handleNativePdf("prepareResume")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.prepareResume")}</button>
+                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || !nativePdf.can_confirm_send}
+                  onClick={()=>void handleNativePdf("send")} className="ml-2 rounded-card bg-accent px-3 py-2 text-white disabled:opacity-50">{t("pages.submissions.nativePdf.send")}</button>
+                <button type="button" disabled={nativeSessionBusy || !["final_send_pending","success"].includes(nativePdf.phase)}
+                  onClick={()=>void handleNativePdf("receipt")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.receipt")}</button>
+                {nativePdf.phase === "success" && nativePdf.platform_filename && <div className="mt-3 border-t border-border pt-3">
+                  <p className="break-all">{t("pages.submissions.nativePdf.platformFile")}: {nativePdf.platform_filename}</p>
+                  <p className="text-xs text-text-secondary">{t("pages.submissions.nativePdf.removeBoundary")}</p>
+                  <label className="mt-2 flex items-center gap-2"><input type="checkbox" aria-label={t("pages.submissions.nativePdf.removeConsent")}
+                    checked={acceptAttachmentRemoval} disabled={nativeSessionBusy || ["in_flight","unknown","removed"].includes(nativePdf.attachment_removal_state || "")}
+                    onChange={event=>setAcceptAttachmentRemoval(event.target.checked)} />{t("pages.submissions.nativePdf.removeConsent")}</label>
+                  <button type="button" disabled={nativeSessionBusy || !acceptAttachmentRemoval || ["in_flight","unknown","removed"].includes(nativePdf.attachment_removal_state || "")}
+                    onClick={()=>void handleNativePdf("remove")} className="mt-2 rounded-card border border-error px-3 py-2 text-error disabled:opacity-50">{t("pages.submissions.nativePdf.remove")}</button>
+                  {nativePdf.attachment_removal_state === "unknown" && <button type="button" disabled={nativeSessionBusy}
+                    onClick={()=>void handleNativePdf("recheckRemoval")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.recheckRemoval")}</button>}
+                  {nativePdf.attachment_removal_state && <p role="status">{t(`pages.submissions.nativePdf.removal.${nativePdf.attachment_removal_state}`)}</p>}
+                </div>}
+
+              </div>}
+              {nativePdfError && <p role="alert" className="mt-2 text-danger">{nativePdfError}</p>}
+            </div>
           </section>
 
           <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
@@ -522,11 +686,35 @@ export function SubmissionsPage() {
                 <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.feedback.title")}</h2>
                 <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.feedback.boundary")}</p>
               </div>
-              <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={feedbackState === "loading" || !checkModeResult?.submission_id} onClick={() => void handleCreateFeedbackIteration()} type="button">
+              <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={feedbackState === "loading" || !feedbackRunId || !feedbackList || (managedFeedback && !feedbackNotes.trim())} onClick={() => void handleCreateFeedbackIteration()} type="button">
                 <RotateCcw className={`h-4 w-4 ${feedbackState === "loading" ? "animate-spin" : ""}`} aria-hidden="true" />
                 {feedbackState === "loading" ? t("pages.submissions.feedback.recording") : t("pages.submissions.feedback.create")}
               </button>
             </div>
+            <label className="mt-4 block text-sm text-text-secondary">
+              {t("pages.submissions.feedback.submission")}
+              <select aria-label={t("pages.submissions.feedback.submission")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2 text-text-primary"
+                value={selectedId || ""} disabled={feedbackState === "loading"} onChange={event => { if (event.target.value) void handleSelect(event.target.value); }}>
+                <option value="">{t("pages.submissions.feedback.chooseSubmission")}</option>
+                {items.map(item => <option key={item.submission_id} value={item.submission_id}>{item.company || item.submission_id} · {item.position} · {item.submission_id}</option>)}
+              </select>
+            </label>
+            {managedFeedback && <div className="mt-3 space-y-3 text-sm">
+              <p className="break-all text-text-secondary">{t("pages.submissions.checkMode.resumeVersion")}: {feedbackList?.source_binding?.resume_version_id || "--"}</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label>{t("pages.submissions.feedback.source")}<select aria-label={t("pages.submissions.feedback.source")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2"
+                  value={feedbackSource} onChange={event => setFeedbackSource(event.target.value as "user_note" | "manual_recruiter")}>
+                  <option value="user_note">{t("pages.submissions.feedback.sources.user_note")}</option><option value="manual_recruiter">{t("pages.submissions.feedback.sources.manual_recruiter")}</option>
+                </select></label>
+                <label>{t("pages.submissions.feedback.action")}<select aria-label={t("pages.submissions.feedback.action")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2"
+                  value={feedbackAction} onChange={event => setFeedbackAction(event.target.value)}>
+                  {(feedbackList?.supported_actions || []).map(action => <option key={action} value={action}>{t(`pages.submissions.feedback.actions.${action}`)}</option>)}
+                </select></label>
+              </div>
+              <label className="block">{t("pages.submissions.feedback.notes")}<textarea aria-label={t("pages.submissions.feedback.notes")} maxLength={4000}
+                className="mt-1 min-h-24 w-full rounded-card border border-border bg-bg-primary p-2" value={feedbackNotes} onChange={event => setFeedbackNotes(event.target.value)} /></label>
+              <p className="text-xs text-text-muted">{t("pages.submissions.feedback.planOnly")}</p>
+            </div>}
             <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
               <div>
                 <p className="text-xs text-text-muted">{t("pages.submissions.feedback.items")}</p>
@@ -549,6 +737,15 @@ export function SubmissionsPage() {
               <p className="break-all"><span className="text-text-muted">{t("pages.submissions.feedback.record")}</span> {feedbackIteration?.record_path || "--"}</p>
               <p className="break-all"><span className="text-text-muted">{t("pages.submissions.feedback.snapshot")}</span> {feedbackIteration?.iteration.source_snapshot_path || "--"}</p>
             </div>
+            {(feedbackList?.iterations || []).map(record => <article key={record.iteration_id} className="mt-3 rounded-card border border-border p-3 text-sm">
+              <p className="text-xs text-text-muted">{formatDate(record.created_at, i18n.language)} · {t(`pages.submissions.feedback.sources.${record.feedback_source || "user_note"}`)}</p>
+              <p className="mt-2 whitespace-pre-wrap break-words">{record.user_notes}</p>
+              <p className="mt-2 text-text-secondary">{record.selected_actions.map(action => t(`pages.submissions.feedback.actions.${action}`, {defaultValue:action})).join(" · ")}</p>
+              {record.next_quick_run_candidate?.job_profile_id && <p className="mt-2 text-xs text-text-secondary">{t("pages.submissions.feedback.targetProfile")}: {record.next_quick_run_candidate.job_profile_id}</p>}
+              {record.next_recommended_step === "quick_run" && <a href="/quick-run" className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openQuickRun")}</a>}
+              {record.next_recommended_step === "evidence" && <a href="/evidence" className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openEvidence")}</a>}
+              {record.next_recommended_step === "jobs" && <a href="/jobs" className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openJobs")}</a>}
+            </article>)}
             {feedbackState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
           </section>
 
@@ -593,7 +790,7 @@ export function SubmissionsPage() {
                         <button className="grid h-9 w-9 place-items-center rounded-card border border-border text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={detailState === "loading" && selectedId === item.submission_id} onClick={() => void handleSelect(item.submission_id)} title={t("pages.submissions.details")} type="button" aria-label={t("pages.submissions.details")}>
                           <Eye className="h-4 w-4" aria-hidden="true" />
                         </button>
-                        <button className="grid h-9 w-9 place-items-center rounded-card border border-border text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={retryingId !== null} onClick={() => void handleRetry(item.submission_id)} title={retryingId === item.submission_id ? t("pages.submissions.retrying") : t("common.retry")} type="button" aria-label={retryingId === item.submission_id ? t("pages.submissions.retrying") : t("common.retry")}>
+                        <button className="grid h-9 w-9 place-items-center rounded-card border border-border text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={retryingId !== null || item.retry_allowed === false} onClick={() => void handleRetry(item.submission_id)} title={item.retry_allowed === false ? t("pages.submissions.apiRetryBlocked") : retryingId === item.submission_id ? t("pages.submissions.retrying") : t("common.retry")} type="button" aria-label={retryingId === item.submission_id ? t("pages.submissions.retrying") : t("common.retry")}>
                           <RotateCcw className={`h-4 w-4 ${retryingId === item.submission_id ? "animate-spin" : ""}`} aria-hidden="true" />
                         </button>
                       </div>
@@ -655,6 +852,15 @@ export function SubmissionsPage() {
                   </dl>
                 </div>
                 <div className="grid gap-2 border-t border-border pt-4 text-xs text-text-secondary">
+                  {detail.resume_version_id ? <p>{t("pages.submissions.checkMode.resumeVersion")}: {detail.resume_version_id}</p> : null}
+                  {detail.evidence?.status && <>
+                    <p role="status">{t(`pages.submissions.evidence.${detail.evidence.status}`)}</p>
+                    <p>{t(`pages.submissions.evidence.${detail.evidence.delivery_kind}`, {defaultValue: "--"})} · {t(`pages.submissions.evidence.${detail.evidence.receipt_source}`, {defaultValue: "--"})}</p>
+                    <p className="break-all">{t("pages.submissions.evidence.resumeHash")}: {detail.evidence.resume_sha256 || "--"}</p>
+                    <p className="break-all">{t("pages.submissions.evidence.receiptHash")}: {detail.evidence.receipt_sha256 || "--"}</p>
+                  </>}
+
+                  {detail.parent_run_id ? <a className="text-accent underline" href={`/agent-run?run_id=${encodeURIComponent(detail.parent_run_id)}`}>{t("pages.submissions.openApproval")}</a> : null}
                   <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.resume")}</span> {detail.resume_path || "--"}</p>
                   <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.profile")}</span> {detail.profile_path || "--"}</p>
                   <p className="break-all"><span className="text-text-muted">JSON</span> {detail.log_json_path || "--"}</p>
@@ -722,11 +928,11 @@ export function SubmissionsPage() {
                   </h3>
                   <p className="break-words text-sm text-text-secondary">{detail.error || detail.last_step.detail || t("pages.submissions.failure.empty")}</p>
                   <div className="grid gap-2 text-xs text-text-secondary sm:grid-cols-2">
-                    <button className="rounded-card border border-border bg-bg-primary/40 p-3 text-left hover:bg-bg-hover disabled:opacity-50" disabled={retryingId !== null} onClick={() => void handleRetry(detail.submission_id, "same_channel")} type="button">
+                    <button className="rounded-card border border-border bg-bg-primary/40 p-3 text-left hover:bg-bg-hover disabled:opacity-50" disabled={retryingId !== null || detail.retry_allowed === false} onClick={() => void handleRetry(detail.submission_id, "same_channel")} type="button">
                       <p className="flex items-center gap-2 text-text-primary"><RotateCcw className="h-4 w-4" aria-hidden="true" />{t("pages.submissions.retryStrategy.sameChannel")}</p>
                       <p className="mt-1">{detail.channel || t("pages.submissions.unknownChannel")}</p>
                     </button>
-                    <button className="rounded-card border border-border bg-bg-primary/40 p-3 text-left hover:bg-bg-hover disabled:opacity-50" disabled={retryingId !== null} onClick={() => void handleRetry(detail.submission_id, "fallback_email")} type="button">
+                    <button className="rounded-card border border-border bg-bg-primary/40 p-3 text-left hover:bg-bg-hover disabled:opacity-50" disabled={retryingId !== null || detail.retry_allowed === false} onClick={() => void handleRetry(detail.submission_id, "fallback_email")} type="button">
                       <p className="flex items-center gap-2 text-text-primary"><Timer className="h-4 w-4" aria-hidden="true" />{t("pages.submissions.retryStrategy.fallbackEmail")}</p>
                       <p className="mt-1">{detail.rate_limit_detail || "--"}</p>
                     </button>

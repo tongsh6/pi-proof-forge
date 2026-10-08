@@ -23,6 +23,11 @@ evidence_cards/ec-demo_*.yaml
 evidence_cards/ec-qr_*.yaml
 matching_reports/mr-demo_*.yaml
 matching_reports/mr-qr_*.yaml
+# App-generated local career evidence, live leads and reviewed profiles
+evidence_cards/ec_*.yaml
+job_leads/jl_liepin_*.yaml
+job_profiles/jp_*.yaml
+matching_reports/mr-candidate_*.yaml
 .app-runtime/
 ui/src-tauri/gen/
 .playwright-cli/
@@ -40,6 +45,7 @@ ui/test-results/
 .env
 .env.*
 personal_profile.yaml
+personal_profile.lock
 policy.local.yaml
 
 # Local browser/session state

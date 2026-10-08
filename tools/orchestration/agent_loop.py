@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from tools.channels.base import DeliveryChannel, DeliveryRequest, deliver_with_fallback
 from tools.config.fragments import PolicyConfig
@@ -124,9 +127,10 @@ class AgentLoop:
                 self._append_event(
                     "DELIVER",
                     round_index=round_index,
-                    payload={"channel": delivery.value.channel_id},
+                    payload={"channel": delivery.value.channel_id, "success": delivery.value.success},
                 )
-                deliveries_completed += 1
+                if delivery.value.success:
+                    deliveries_completed += 1
                 if (
                     self._policy.max_deliveries > 0
                     and deliveries_completed >= self._policy.max_deliveries
@@ -181,6 +185,7 @@ class AgentLoop:
     def _run_full_pipeline(self) -> AgentLoopResult:
         rounds_completed = 0
         deliveries_completed = 0
+        simulated_deliveries = 0
         selected_candidate_ids: set[str] = set()
         batch_review_candidates: list[dict[str, object]] = []
         sm = self._state_machine
@@ -212,6 +217,13 @@ class AgentLoop:
                 except ImportError:
                     pass
 
+            # 单画像运行只能消费绑定同一画像的岗位，CLI 自动发现与 App 使用相同边界。
+            profile_id = self._job_profile.id if self._job_profile is not None else ""
+            accepted_candidates = [candidate for candidate in accepted_candidates
+                if (not candidate.job_profile_id or candidate.job_profile_id == profile_id)
+                and (candidate.source != "liepin_official" or (
+                    bool(profile_id) and candidate.job_profile_id == profile_id
+                    and candidate.jd_status == "complete_reviewed" and bool(candidate.source_jd_sha256)))]
             discovery_payload: dict[str, object] = {"candidates": len(accepted_candidates)}
             if self._discovery is not None and accepted_candidates:
                 disc_result = self._discovery.discover(accepted_candidates)
@@ -310,6 +322,15 @@ class AgentLoop:
                 round_index=round_index,
                 resume_version=resume.version,
             )
+            if self._policy.delivery_mode == "manual":
+                from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
+                try:
+                    review_candidate['snapshot'] = ReviewSnapshotStore().create(
+                        self._run_id, review_candidate, resume.content, dry_run=self._dry_run,
+                    )
+                except ValueError:
+                    self._log_state('REVIEW', round_index, {'error': 'review_snapshot_export_failed'})
+                    return AgentLoopResult(self._run_id, 'REVIEW_SNAPSHOT_BLOCKED', rounds_completed)
             if self._policy.delivery_mode == "manual" and self._policy.batch_review:
                 batch_review_candidates.append(review_candidate)
 
@@ -340,6 +361,9 @@ class AgentLoop:
             }
             if review_result is not None:
                 review_payload.update(dict(review_result.data))
+            elif self._policy.delivery_mode == 'manual':
+                # 组件缺失不能把人工审批静默降级为自动通过。
+                review_payload['waiting_for_review'] = True
 
             if review_payload.get("waiting_for_review") is True:
                 pending_candidates = (
@@ -384,18 +408,30 @@ class AgentLoop:
             if not self._dry_run and gate_candidate is not None:
                 delivery = self._run_delivery(gate_candidate, round_index, resume)
                 if isinstance(delivery, Ok):
-                    deliveries_completed += 1
+                    if delivery.value.success:
+                        deliveries_completed += 1
                     self._log_state("DELIVER", round_index,
                                     {"channel": delivery.value.channel_id,
+                                     "success": delivery.value.success,
+                                     "submission_id": delivery.value.submission_id,
                                      "candidate": gate_candidate.candidate_id,
                                      "selection_strategy": "confidence_desc_round_robin"})
                 else:
                     self._log_state("DELIVER", round_index,
-                                    {"error": delivery.error.reason})
+                                    {"error": delivery.error.reason, "success": False})
+                    if delivery.error.reason in {
+                        'delivery_result_unknown', 'delivery_receipt_missing',
+                        'delivery_already_attempted', 'delivery_state_unavailable',
+                    }:
+                        self._log_state('LEARN', round_index, {'action': 'pause', 'reason': delivery.error.reason})
+                        self._log_state('DONE', round_index, {'stop_reason': delivery.error.reason,
+                                        'deliveries_completed': deliveries_completed})
+                        return AgentLoopResult(self._run_id, 'DELIVERY_BLOCKED', rounds_completed)
             else:
-                deliveries_completed += 1
+                simulated_deliveries += 1
                 self._log_state("DELIVER", round_index,
                                 {"dry_run": True,
+                                 "success": False,
                                  "would_deliver": True,
                                  "candidate": gate_candidate.candidate_id if gate_candidate else "",
                                  "selection_strategy": "confidence_desc_round_robin"})
@@ -403,17 +439,21 @@ class AgentLoop:
 
             # --- LEARN ---
             stop_reason = ""
-            if self._policy.max_deliveries > 0 and deliveries_completed >= self._policy.max_deliveries:
+            # 模拟沿用单次预算上限，但其数量不进入真实成功计数。
+            budget_count = simulated_deliveries if self._dry_run else deliveries_completed
+            if self._policy.max_deliveries > 0 and budget_count >= self._policy.max_deliveries:
                 stop_reason = "max_deliveries"
             self._log_state("LEARN", round_index,
                             {"deliveries": deliveries_completed,
+                             "simulated_deliveries": simulated_deliveries,
                              "stop_reason": stop_reason})
 
             if stop_reason:
                 current_state = self._transition(sm, current_state, "stop")
                 self._log_state("DONE", round_index,
                                 {"stop_reason": stop_reason,
-                                 "deliveries_completed": deliveries_completed})
+                                 "deliveries_completed": deliveries_completed,
+                                 "simulated_deliveries": simulated_deliveries})
                 return AgentLoopResult(
                     run_id=self._run_id, status="DONE",
                     rounds_completed=rounds_completed,
@@ -427,6 +467,8 @@ class AgentLoop:
         current_state = self._transition(sm, current_state, "stop")
         self._log_state("DONE", max(self._policy.max_rounds - 1, 0),
                         {"stop_reason": "max_rounds",
+                         "deliveries_completed": deliveries_completed,
+                         "simulated_deliveries": simulated_deliveries,
                          "rounds_completed": rounds_completed})
         return AgentLoopResult(
             run_id=self._run_id, status="DONE",
@@ -472,6 +514,16 @@ class AgentLoop:
         round_index: int,
         resume: ResumeOutput,
     ) -> Result[DeliveryResult, ChannelFailure]:
+        route = _delivery_platform(candidate)
+        if isinstance(route, Err):
+            return route
+        platform = route.value
+        if candidate.source == "liepin_official":
+            return Err(ChannelFailure(
+                channel_id=platform, reason="official_delivery_contract_unverified",
+                details="官方投递的发送版本与回执契约尚未验证，禁止转入旧浏览器投递",
+            ))
+
         if not self._channels:
             from tools.channels.email import EmailChannel
             from tools.channels.liepin import LiepinChannel
@@ -479,23 +531,58 @@ class AgentLoop:
         else:
             channels = list(self._channels)
 
-        # Write resume to disk so the delivery channel can read it
-        from pathlib import Path as _Path
-        resume_path = f"outputs/{resume.version}.md"
-        _Path("outputs").mkdir(parents=True, exist_ok=True)
-        _Path(resume_path).write_text(resume.content, encoding="utf-8")
-        self._logger.info("agent_loop.resume_written", path=resume_path)
+        if not any(channel.channel_id == platform for channel in channels):
+            return Err(ChannelFailure(
+                channel_id=platform, reason="no_channel",
+                details="未配置与目标平台匹配的投递通道",
+            ))
+
+        from tools.engines.generation.exporter import ResumeExporter
+        from tools.infra.export.pdf_exporter import markdown_to_pdf
+
+        # 每次尝试保留独立附件，重试或同名版本不能覆盖前次文件。
+        try:
+            output_root = Path("outputs") / "agent_runs" / self._run_id / "deliveries"
+            output_root.mkdir(parents=True, exist_ok=True)
+            attempt_dir = Path(tempfile.mkdtemp(prefix=f"round-{round_index}-", dir=output_root))
+            markdown_path = ResumeExporter().export_markdown(resume, str(attempt_dir))
+            pdf_path = markdown_path.with_suffix(".pdf")
+            markdown_to_pdf(markdown_path, pdf_path)
+            metadata = {
+                "round": round_index,
+                "platform": platform,
+                "platform_job_id": candidate.platform_job_id,
+                "platform_job_type": candidate.platform_job_type,
+                "job_profile_id": candidate.job_profile_id,
+                "jd_status": candidate.jd_status,
+                "source": candidate.source,
+                "source_jd_sha256": candidate.source_jd_sha256,
+                "resume_version": resume.version,
+                "resume_markdown_path": str(markdown_path.resolve()),
+                "resume_markdown_sha256": hashlib.sha256(markdown_path.read_bytes()).hexdigest(),
+                "resume_pdf_sha256": hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
+            }
+            resume_path = str(pdf_path.resolve())
+            self._append_event("resume_exported", round_index, {
+                **metadata, "resume_path": resume_path, "candidate_id": candidate.candidate_id,
+            })
+        except (OSError, RuntimeError) as exc:
+            self._logger.warning("agent_loop.resume_pdf_export_failed", error=str(exc))
+            return Err(ChannelFailure(
+                channel_id="none", reason="resume_pdf_export_failed", details=str(exc),
+            ))
 
         request = DeliveryRequest(
             run_id=self._run_id,
             candidate_id=candidate.candidate_id,
-            channel=candidate.direction,
+            channel=platform,
             resume_path=resume_path,
             job_url=candidate.job_url,
             dry_run=False,
-            metadata={"round": round_index},
+            metadata=metadata,
         )
-        return deliver_with_fallback(request, channels)
+        from tools.orchestration.approved_delivery import deliver_once
+        return deliver_once(request, channels, source=candidate.source)
 
     # ------------------------------------------------------------------
     # shared helpers
@@ -543,6 +630,50 @@ class AgentLoop:
             return current
 
 
+def _delivery_platform(candidate: Candidate) -> Result[str, ChannelFailure]:
+    """使用显式平台或可信 HTTPS 域名，业务方向不参与渠道选择。"""
+    platform_domains = {
+        "liepin": "liepin.com",
+        "boss": "zhipin.com",
+        "zhilian": "zhaopin.com",
+        "51job": "51job.com",
+    }
+    platform = candidate.platform
+    try:
+        if "\\" in candidate.job_url or any(char.isspace() for char in candidate.job_url):
+            raise ValueError("invalid_job_url")
+        url = urlsplit(candidate.job_url)
+        if (
+            url.scheme != "https" or not url.hostname
+            or url.username is not None or url.password is not None
+            or url.port not in (None, 443)
+        ):
+            raise ValueError("invalid_job_url")
+    except ValueError:
+        return Err(ChannelFailure(
+            channel_id=platform or "none", reason="invalid_job_url",
+            details="岗位链接须为不含认证信息的 HTTPS 平台地址",
+        ))
+
+    url_platform = next((
+        name for name, domain in platform_domains.items()
+        if url.hostname == domain or url.hostname.endswith("." + domain)
+    ), "")
+    if platform and (url_platform or platform in platform_domains) and platform != url_platform:
+        return Err(ChannelFailure(
+            channel_id=platform, reason="platform_url_mismatch",
+            details="候选平台与岗位链接所属平台不一致",
+        ))
+    if not platform:
+        platform = url_platform
+    if not platform:
+        return Err(ChannelFailure(
+            channel_id="none", reason="unknown_platform",
+            details="岗位未声明平台，且链接不属于已知招聘平台",
+        ))
+    return Ok(platform)
+
+
 def _gate_engine_for_round(
     policy: PolicyConfig, run_id: str, round_index: int
 ) -> object:
@@ -588,12 +719,20 @@ def _build_review_candidate_payload(
     return {
         "job_lead_id": candidate.candidate_id if candidate else "",
         "company": candidate.company if candidate else "",
+        "legal_entity": candidate.legal_entity if candidate else "",
         "position": candidate.direction if candidate else "",
         "matching_score": matching_score,
         "evaluation_score": evaluation_score,
         "round_index": round_index,
         "resume_version": resume_version,
         "job_url": candidate.job_url if candidate else "",
+        "platform": candidate.platform if candidate else "",
+        "platform_job_id": candidate.platform_job_id if candidate else "",
+        "platform_job_type": candidate.platform_job_type if candidate else "",
+        "job_profile_id": candidate.job_profile_id if candidate else "",
+        "jd_status": candidate.jd_status if candidate else "",
+        "source_jd_sha256": candidate.source_jd_sha256 if candidate else "",
+        "source": candidate.source if candidate else "",
         "status": "pending",
         "created_at": _utcnow_iso(),
     }
@@ -607,8 +746,9 @@ def _write_review_queue(run_id: str, candidates: Sequence[dict[str, object]]) ->
         "candidates": list(candidates),
         "created_at": _utcnow_iso(),
     }
-    queue_path.write_text(
-        json.dumps(queue, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    from tools.infra.persistence.review_queue import atomic_write_json, locked_review_queue
+    with locked_review_queue(queue_path):
+        if queue_path.exists():
+            raise ValueError('review_queue_already_exists')
+        atomic_write_json(queue_path, queue)
     return queue_path

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -127,7 +128,7 @@ def _completed_process() -> object:
     )()
 
 
-def test_quick_run_generate_and_evaluate_resume_l1_acceptance_writes_report(
+def test_quick_run_legacy_body_markers_do_not_prove_traceability(
     tmp_path: Path,
 ) -> None:
     project_root = tmp_path
@@ -242,12 +243,13 @@ def test_quick_run_generate_and_evaluate_resume_l1_acceptance_writes_report(
     assert result["selected_evidence_card_ids"] == ["ec_quick_acceptance"]
     assert result["resume_positioning"]["mode"] == "technical_depth"
     assert result["artifacts"]["matching"].endswith("mr-qr_quick_acceptance.yaml")
-    assert result["resume_pdf"].endswith(".pdf")
+    assert result["resume_pdf"].endswith(".PDF")
     assert (project_root / result["resume_pdf"]).read_bytes().startswith(b"%PDF-")
     assert result["gap_tasks"] == ["补充容量或成本治理指标"]
     assert result["traceability"]["matching_uses_selected_evidence"] is True
-    assert result["traceability"]["resume_traceable"] is True
-    assert result["traceability"]["fact_preserving_traceability"] is True
+    assert result["traceability"]["resume_traceable"] is False
+    assert result["traceability"]["fact_preserving_traceability"] is False
+    assert result["resume_readiness"]["quality_passed"] is False
     assert run_payload["run"]["job_profile"]["status"] == "active"
     assert run_payload["run"]["selected_evidence_card_ids"] == ["ec_quick_acceptance"]
 
@@ -258,19 +260,62 @@ def test_quick_run_generate_and_evaluate_resume_l1_acceptance_writes_report(
         generated_at="2026-05-21T00:00:00Z",
         results={
             "quick_run_outputs_are_traceable": JourneyStepResult(
-                status="pass",
+                status="blocked",
                 evidence=str(tmp_path),
                 message=(
-                    "Complete Job Profile, saved eligible Evidence Card selection, "
-                    "LLM-required command, matching report, resume Markdown/PDF, "
-                    "scorecard, gap tasks, positioning, and traceability are validated."
+                    "旧版正文中的 evidence id 不能替代独立追溯；需重新生成和审核。"
                 ),
             ),
         },
     )
     json_path, markdown_path = write_journey_report(tmp_path, report)
     payload = json.loads(json_path.read_text(encoding="utf-8"))
-    assert payload["summary"]["pass"] == 1
+    assert payload["summary"]["blocked"] == 1
     assert "quick_run_outputs_are_traceable" in markdown_path.read_text(
         encoding="utf-8"
     )
+
+
+def test_quick_run_real_pipeline_generates_pdf_and_independent_trace(tmp_path, monkeypatch):
+    from tools.sidecar.handlers import agent
+
+    shutil.copytree(ROOT / "tools", tmp_path / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+    _write_active_job_profile(tmp_path)
+    _write_material_and_evidence(tmp_path)
+    _write_policy(tmp_path / "policy.yaml")
+    (tmp_path / "personal_profile.yaml").write_text(
+        'name: "候选人甲"\nphone: "13800000000"\nemail: "candidate@example.com"\n'
+        'city: "上海"\ncurrent_position: "后端工程师"\n', encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PPF_POLICY_PATH", str(tmp_path / "policy.yaml"))
+    monkeypatch.setattr(agent, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(agent, "_QUICK_RUN_DIR", tmp_path / "outputs/quick_runs")
+    result = agent.handle_quick_start({
+        "meta": {"correlation_id": "real-local-pipeline"},
+        "job_profile_id": "jp_quick_acceptance",
+        "options": {"evidence_ids": ["ec_quick_acceptance"], "use_llm": False},
+    })
+    assert result["status"] == "DONE", result
+    resume = tmp_path / result["traceability"]["resume_a"]
+    text = resume.read_text()
+    assert "候选人甲" in text
+    assert "Acme" in text
+    assert "candidate@example.com" in text
+    assert "Evidence trace" not in text
+    assert "ec_quick_acceptance" not in text
+    assert result["traceability"]["resume_traceable"] is True
+    assert "resume_readiness" in result
+    # 此样例只有五个基本字段，缺完整职业档案，不能因 PDF/追溯生成成功而提升就绪状态。
+    assert result["resume_readiness"]["status"] == "NEEDS_EVIDENCE"
+    assert result["resume_readiness"]["missing_career_fields"]
+    assert result["resume_readiness"]["content_ready"] is False
+    assert result["resume_readiness"]["deliverable"] is False
+    assert isinstance(result["resume_readiness"]["evaluation_score"], int)
+    assert (tmp_path / result["resume_pdf"]).read_bytes().startswith(b"%PDF-")
+    resume.write_text(text + "- 未经证据支持的新声明\n", encoding="utf-8")
+    changed = agent._quick_run_result_details(
+        result["run_id"], "", "", selected_evidence_card_ids=["ec_quick_acceptance"],
+    )
+    assert changed["traceability"]["resume_traceable"] is False
+    assert changed["resume_readiness"]["quality_passed"] is False

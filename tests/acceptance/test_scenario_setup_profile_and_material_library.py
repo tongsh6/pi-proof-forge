@@ -52,6 +52,7 @@ def test_setup_profile_and_material_library_l1_acceptance_writes_report(
         profile_update = handle_profile_update(
             {
                 "meta": {"correlation_id": "corr_profile_update"},
+                "expected_revision": handle_profile_get({"meta": {"correlation_id": "load"}})["profile"]["revision"],
                 "patch": {
                     "name": "Zhang San",
                     "email": "zhangsan@example.com",
@@ -108,8 +109,8 @@ def test_setup_profile_and_material_library_l1_acceptance_writes_report(
     assert uploaded_material["material_id"].startswith("mat_")
     assert "Reduced payment failure rate" in uploaded_material["preview"]
     assert unsupported_rejected is True
-    assert readiness["status"] == "ready"
-    assert readiness["missing_items"] == []
+    assert readiness["status"] == "incomplete"
+    assert "missing_career_profile" in readiness["missing_items"]
     assert material_sources["items"][0]["material_id"] == uploaded_material["material_id"]
 
     contract = load_journey_contract(CONTRACT_PATH)

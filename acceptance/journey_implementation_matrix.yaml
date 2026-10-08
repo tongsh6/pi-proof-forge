@@ -1,8 +1,8 @@
-version: "2026-05-21"
+version: "2026-10-01"
 mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
-current_focus: "authorized_external_l3_live_run"
+current_focus: "daily_authorized_delivery"
 
 vision_alignment:
   source: "PLAN.md"
@@ -326,31 +326,43 @@ steps:
     order: 11
     status: "deep_verified"
     journey_stage: "submissions"
-    owner_surface: "ui/src/pages/submissions/index.tsx"
-    user_goal: "Set up a controlled channel browser session for later manual-login submission workflows without storing credentials or submitting."
-    vision_link: "Prepares the delivery channel boundary after Agent Run has produced a guarded delivery plan, while preserving no-unattended-submit safety."
+    owner_surface: "ui/src/pages/system-settings/index.tsx"
+    user_goal: "配置猎聘官方凭据，由后端验证只读能力并将真实搜索结果接入 Jobs；不修改平台简历或投递。"
+    vision_link: "以真实原生页面验证官方认证、只读数据输入与清理阻断；不代表完整 JD 或真实投递完成。"
     design_refs:
+      - "AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md"
+      - "openspec/specs/pi-proof-forge-core.md"
       - "PLAN.md#8-delivery"
       - "ui/design/DESIGN.md#submissions"
       - "openspec/changes/autonomous-agent-delivery-loop/design.md#delivery"
     depends_on:
       - "agent_run_guided_batch"
     acceptance:
-      script: "python3 -m pytest tests/acceptance/test_scenario_submission_check_mode.py -q"
+      script: "CUA 原生动作记录：outputs/acceptance/liepin_official_readonly/native-readonly-live-20260928.json"
       depth: "deep"
       evidence:
-        - "tests/acceptance/test_scenario_channel_session_setup.py"
-        - "tests/unit/sidecar/test_submission_handler.py"
-        - "tests/unit/gui/test_submissions_page_contract.py"
-        - "outputs/channel_sessions/liepin/session.json"
-        - "outputs/channel_sessions/liepin/session_check_log.json"
+        - "outputs/acceptance/liepin_official_readonly/native-readonly-live-20260928.json"
+        - "outputs/acceptance/liepin_official_readonly/authorization-link-20260928.json"
+        # 以下为辅助契约证据，不能独立替代上述真实原生动作链。
+        - "tests/unit/infra/test_liepin_api.py"
+        - "tests/unit/sidecar/test_liepin_readonly_handlers.py"
+        - "tests/unit/gui/test_liepin_api_bridge.py"
       covers:
+        - "official_token_backend_readonly_validation"
+        - "token_never_returned_or_logged"
+        - "readonly_search_results_visible_in_jobs"
+        - "native_clear_revokes_readiness_and_removes_preview"
+        - "native_missing_auth_search_blocked"
+        - "persisted_official_leads_survive_ui_refresh"
+        - "invalid_credential_and_transport_error_contract_tested"
+        - "no_resume_mutation_or_delivery_request"
         - "channel_session_status_visible"
         - "manual_login_boundary"
         - "no_password_storage"
         - "no_captcha_bypass"
         - "no_resume_submit"
     unlocks:
+      - "official_delivery_prerequisites"
       - "submission_check_mode"
 
   - id: "submission_check_mode"
@@ -513,88 +525,270 @@ steps:
         - "forbidden_secret_and_challenge_inputs_recorded"
         - "next_authorized_run_command_template_recorded"
     unlocks:
-      - "authorized_external_l3_live_run"
+      - "official_delivery_prerequisites"
+
+  - id: official_delivery_prerequisites
+    order: 17
+    status: deep_verified
+    journey_stage: external_delivery
+    owner_surface: tools/channels/liepin.py
+    user_goal: 完成既定 S2：核实完整 JD、岗位身份、审核简历版本与平台实际发送内容的绑定、回执语义；补齐审批续跑、最小防重和 API 证据契约。未就绪不投递。
+    vision_link: 把已验收的官方只读输入接到事实保真定制简历和受控投递边界，避免默认平台简历、未知结果重试和跨平台误投。
+    design_refs:
+    - PLAN.md
+    - AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md
+    - openspec/specs/pi-proof-forge-core.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - channel_session_setup
+    - external_l3_authorization_handoff
+    acceptance:
+      script: 真实 Tauri 两路线详情、反馈保存和重启读回；External L3 saved_app_records 只读验收
+      depth: deep
+      # 2026-10-01：复用真实 10+1 回执，两路线原生反馈读回与统一验收均通过。
+      evidence:
+      - outputs/acceptance/acceptance_app_delivery_20261001/external-l3-validation.json
+      - outputs/acceptance/official_delivery_prerequisites/submission-feedback-native-20261001.json
+      - outputs/acceptance/official_delivery_prerequisites/pdf-app-completed-20260930.json
+      - tests/unit/sidecar/test_native_pdf_delivery.py
+      - outputs/acceptance/official_delivery_prerequisites/ten-job-completed-20260929.json
+      - outputs/acceptance/official_delivery_prerequisites/default-resume-app-closed-loop-20260929.json
+      - outputs/acceptance/official_delivery_prerequisites/input-binding-20260928.json
+      - tests/unit/infra/test_liepin_job_detail.py
+      - tests/unit/sidecar/test_official_job_profile_binding.py
+      - tests/unit/domain/test_agent_loop.py
+      - tests/unit/gui/test_jobs_liepin_detail_ui.py
+      covers:
+      - reviewed_complete_jd_and_original_job_identity
+      - reviewed_resume_to_platform_content_binding
+      - confirmed_success_failure_unknown_receipt_semantics
+      - approved_review_resumption_and_explicit_platform_routing
+      - persistent_job_key_inflight_and_unknown_recovery_guard
+      - api_recorder_l3_and_runbook_contracts
+      - no_final_submission_before_p0_017_authorization
+    unlocks:
+    - authorized_external_l3_live_run
 
   - id: "authorized_external_l3_live_run"
-    order: 17
-    status: "next"
+    order: 18
+    status: "deep_verified"
     journey_stage: "external_delivery"
     owner_surface: "tools/submission/liepin.py"
-    user_goal: "在用户显式授权并单独确认最终提交后，执行一次真实外部渠道 L3 验证或记录真实渠道 blocker。"
+    user_goal: "用已授权且已发生的 App 真实投递、版本、业务回执与反馈读回完成 L3 验收；复用历史证据时禁止重新发送。"
     vision_link: "把已准备好的授权交接包推进到真实世界渠道结果，同时仍保留频控、target verify、最终提交门禁和反馈追溯。"
     design_refs:
+      - "AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md"
       - "PLAN.md#8-delivery"
       - "acceptance/journey_contract.yaml"
       - "docs/acceptance-depth.md"
       - "openspec/changes/autonomous-agent-delivery-loop/design.md#delivery"
     depends_on:
+      - "official_delivery_prerequisites"
+      - "channel_session_setup"
       - "external_l3_authorization_handoff"
+    # 旧浏览器实时命令/交接包门禁仍由 journey_contract 与既有回归覆盖；此处完成的是新 App 路线。
     acceptance:
-      script: "bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3"
-      depth: "deep_required"
+      script: python3 -m tools.acceptance.external_l3 --run-id <audit-id> --saved-submission <submission-id> --page-evidence <native-page-evidence>
+      depth: deep
       evidence:
-        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
-        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.md"
-        - "outputs/submissions/liepin/*/submission_log.yaml"
+      - outputs/acceptance/acceptance_app_delivery_20261001/external-l3-validation.json
+      - outputs/acceptance/acceptance_app_delivery_20261001/external-l3-validation.md
+      - outputs/acceptance/official_delivery_prerequisites/ten-job-completed-20260929.json
+      - outputs/acceptance/official_delivery_prerequisites/pdf-app-completed-20260930.json
+      - outputs/acceptance/official_delivery_prerequisites/submission-feedback-native-20261001.json
+      - tests/acceptance/test_saved_app_delivery_validation.py
       covers:
-        - "live_run_readiness_gates_recorded"
-        - "pre_submit_live_blocker_diagnostics_recorded"
-        - "post_command_blocker_does_not_rewrite_pre_run_readiness"
-        - "live_input_file_and_url_validation_recorded"
-        - "live_input_artifact_fingerprints_recorded_without_raw_values"
-        - "live_input_artifact_basenames_redacted"
-        - "human_readable_external_l3_redaction_evidence_recorded"
-        - "rate_limit_policy_recorded_and_enforced_before_submit"
-        - "forbidden_secret_and_challenge_inputs_blocked_before_submit"
-        - "target_confirmation_job_id_matches_url_before_submit"
-        - "target_confirmation_recruiter_boundary_requires_target_verify"
-        - "live_submission_command_redacted_in_validation_record"
-        - "live_submission_output_tails_redacted_in_validation_record"
-        - "submit_safety_decision_recorded"
-        - "structured_authorization_packet_recorded_without_raw_values"
-        - "authorization_acknowledgement_checklist_maps_confirmations"
-        - "authorization_acknowledgement_checklist_blocks_template_release"
-        - "authorization_packet_journey_verifier_covers_authorized_states"
-        - "external_l3_live_run_runbook_linked"
-        - "handoff_command_template_matches_effective_rate_limit_policy"
-        - "handoff_runtime_options_recorded_for_reproducible_live_run"
-        - "handoff_command_template_shell_safe_for_copy_paste"
-        - "handoff_command_template_rendered_in_markdown_report"
-        - "handoff_command_template_review_blocks_blind_copy_paste"
-        - "handoff_preflight_review_checklist_required_before_authorized_template"
-        - "handoff_preflight_review_result_evaluates_current_evidence"
-        - "handoff_authorization_readiness_action_plan_records_next_actions"
-        - "handoff_authorization_intake_checklist_maps_env_to_gates"
-        - "handoff_authorized_template_release_decision_withholds_execution"
-        - "handoff_live_run_go_no_go_decision_blocks_submit"
-        - "handoff_live_run_no_go_resolution_routes_recorded"
-        - "handoff_live_run_execution_sequence_gates_order"
-        - "handoff_live_run_execution_sequence_distinguishes_post_command_blocker"
-        - "external_l3_evidence_manifest_links_required_artifacts"
-        - "external_l3_evidence_manifest_covers_authorized_release_states"
-        - "external_l3_outcome_summary_disambiguates_acceptance_pass"
-        - "p0_017_completion_gate_blocks_false_completion"
-        - "manual_session_ready_confirmed_before_external_submit"
-        - "manual_session_storage_ready_before_external_submit"
-        - "explicit_user_authorized_live_run"
-        - "separate_final_submit_confirmed"
-        - "real_channel_result_or_live_blocker"
-        - "submission_log_linked_to_l3_validation"
-        - "submission_log_path_within_allowed_output_root"
-        - "submission_log_links_back_to_l3_validation"
-        - "submission_log_input_artifacts_match_l3_validation"
-        - "submission_log_input_artifact_basenames_redacted"
-        - "submission_log_raw_live_inputs_redacted"
-        - "submission_log_step_details_redacted"
-        - "submission_log_observed_target_values_redacted"
-        - "submission_log_raw_browser_artifacts_not_persisted"
-        - "submission_traceability_failed_checks_recorded"
-        - "successful_command_requires_submission_log"
-        - "post_command_live_blocker_diagnostics_recorded"
-        - "post_command_business_error_promoted_to_exact_blocker"
-        - "submission_log_business_summary_recorded"
-        - "submission_log_summary_detail_redacted"
-        - "successful_submission_log_required_steps_recorded"
-        - "external_channel_timeout_recorded_as_live_blocker"
-        - "external_channel_command_error_recorded_as_live_blocker"
-        - "post_submit_or_blocker_feedback_traceability"
+      - real_app_page_evidence_and_restart_bound_to_submission_ids
+      - protected_business_receipt_reparsed_for_api_and_native_pdf
+      - approved_snapshot_target_resume_and_attempt_database_identity_match
+      - successful_submission_log_required_steps_recorded
+      - existing_authorized_batches_retained_without_network_or_resend
+      - per_route_native_feedback_save_and_restart_readback
+      - user_notes_distinguished_from_manual_recruiter_feedback
+      - source_artifact_hashes_and_historical_feedback_preserved
+      - sensitive_business_payload_excluded_from_audit_report
+      - read_only_runbook_and_completion_blockers_recorded
+
+  # 2026-10-01：S2/S3 已验收，S4 每日目标为唯一 next，其余平台仍待实施。
+  - id: daily_authorized_delivery
+    order: 19
+    status: next
+    journey_stage: external_delivery
+    owner_surface: ui/src/pages/agent-run/index.tsx
+    user_goal: 在猎聘单次闭环通过后，实现每日单批、持续授权和上海自然日合计最多3次确认成功的受控投递。
+    vision_link: 推进六平台可追溯求职闭环，来源覆盖、在线只读和真实投递分开验收。
+    design_refs:
+    - PLAN.md
+    - AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md
+    - openspec/specs/pi-proof-forge-core.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - authorized_external_l3_live_run
+    acceptance:
+      script: 外部真实 Tauri 页面自动化：daily_authorized_delivery（首版已实现，待非空授权与跨日实测）
+      depth: deep_required
+      evidence:
+      - outputs/acceptance/daily-authorized-delivery-20261005/native-inactive-validation.json
+      - outputs/acceptance/app-workflow-20261008/native-validation.json
+      - outputs/acceptance/daily-recovery-20261008/native-validation.json
+      - outputs/acceptance/daily-candidates-20261008/native-validation.json
+      - outputs/acceptance/daily-candidates-20261008/authorized-execution.json
+      covers:
+      - asia_shanghai_daily_success_total_max_three_across_enabled_platforms
+      - persistent_dedup_and_unknown_reservation_after_restart
+      - single_trigger_and_concurrent_run_guard
+      - authorization_expiry_pause_revoke
+      - multi_day_real_results_or_shortfall_reasons
+  - id: boss_readonly_integration
+    order: 20
+    status: not_started
+    journey_stage: jobs
+    owner_surface: ui/src/pages/jobs/index.tsx
+    user_goal: 修复BOSS社区CLI固定版本适配，真实搜索/详情取得完整JD并进入审核、匹配、简历版本关联和结果追踪。
+    vision_link: 推进六平台可追溯求职闭环，来源覆盖、在线只读和真实投递分开验收。
+    design_refs:
+    - PLAN.md
+    - AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md
+    - openspec/specs/pi-proof-forge-core.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - daily_authorized_delivery
+    acceptance:
+      script: 外部真实 Tauri 页面自动化：boss_readonly_integration（待实现）
+      depth: deep_required
+      evidence: []
+      covers:
+      - pinned_cli_version_and_platform_capabilities
+      - real_readonly_search_and_detail_complete_jd
+      - authentication_error_empty_and_transport_failure_distinguished
+      - source_timestamp_review_matching_resume_and_tracking
+      - read_only_allowlist_no_submission
+      - manual_import_does_not_satisfy_online_acceptance
+  - id: zhilian_readonly_integration
+    order: 21
+    status: not_started
+    journey_stage: jobs
+    owner_surface: ui/src/pages/jobs/index.tsx
+    user_goal: 独立确定智联维护路线并完成真实在线搜索/详情及完整JD下游闭环；人工导入不能替代在线接入验收。
+    vision_link: 推进六平台可追溯求职闭环，来源覆盖、在线只读和真实投递分开验收。
+    design_refs:
+    - PLAN.md
+    - AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md
+    - openspec/specs/pi-proof-forge-core.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - boss_readonly_integration
+    acceptance:
+      script: 外部真实 Tauri 页面自动化：zhilian_readonly_integration（待实现）
+      depth: deep_required
+      evidence: []
+      covers:
+      - maintained_route_and_version_verified_independently
+      - real_readonly_search_and_detail_complete_jd
+      - authentication_error_empty_and_transport_failure_distinguished
+      - source_timestamp_review_matching_resume_and_tracking
+      - read_only_allowlist_no_submission
+      - manual_import_does_not_satisfy_online_acceptance
+  - id: qiancheng_readonly_integration
+    order: 22
+    status: not_started
+    journey_stage: jobs
+    owner_surface: ui/src/pages/jobs/index.tsx
+    user_goal: 核实前程无忧51job求职者接入契约并完成真实在线搜索/详情和下游闭环；URL识别不算接入完成。
+    vision_link: 推进六平台可追溯求职闭环，来源覆盖、在线只读和真实投递分开验收。
+    design_refs:
+    - PLAN.md
+    - AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md
+    - openspec/specs/pi-proof-forge-core.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - boss_readonly_integration
+    acceptance:
+      script: 外部真实 Tauri 页面自动化：qiancheng_readonly_integration（待实现）
+      depth: deep_required
+      evidence: []
+      covers:
+      - candidate_side_auth_and_contract_verified
+      - real_readonly_search_and_detail_complete_jd
+      - authentication_error_empty_and_transport_failure_distinguished
+      - source_timestamp_review_matching_resume_and_tracking
+      - read_only_allowlist_no_submission
+      - url_rule_or_manual_import_does_not_satisfy_online_acceptance
+  - id: maimai_source_integration
+    order: 23
+    status: not_started
+    journey_stage: jobs
+    owner_surface: ui/src/pages/jobs/index.tsx
+    user_goal: 完成脉脉真实职位链接和完整JD导入，接通审核、匹配、定制简历版本关联及标明人工来源的结果追踪。
+    vision_link: 推进六平台可追溯求职闭环，来源覆盖、在线只读和真实投递分开验收。
+    design_refs:
+    - PLAN.md
+    - AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md
+    - openspec/specs/pi-proof-forge-core.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - boss_readonly_integration
+    acceptance:
+      script: 外部真实 Tauri 页面自动化：maimai_source_integration（待实现）
+      depth: deep_required
+      evidence: []
+      covers:
+      - maimai_real_source_url_and_complete_jd_sample
+      - source_timestamp_and_manual_import_labeled
+      - review_matching_resume_version_and_manual_tracking
+      - link_only_not_complete_jd
+      - source_coverage_separate_from_online_and_delivery_capability
+  - id: lagou_source_integration
+    order: 24
+    status: not_started
+    journey_stage: jobs
+    owner_surface: ui/src/pages/jobs/index.tsx
+    user_goal: 完成拉勾真实职位链接和完整JD导入，接通审核、匹配、定制简历版本关联及标明人工来源的结果追踪。
+    vision_link: 推进六平台可追溯求职闭环，来源覆盖、在线只读和真实投递分开验收。
+    design_refs:
+    - PLAN.md
+    - AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md
+    - openspec/specs/pi-proof-forge-core.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - boss_readonly_integration
+    acceptance:
+      script: 外部真实 Tauri 页面自动化：lagou_source_integration（待实现）
+      depth: deep_required
+      evidence: []
+      covers:
+      - lagou_real_source_url_and_complete_jd_sample
+      - source_timestamp_and_manual_import_labeled
+      - review_matching_resume_version_and_manual_tracking
+      - link_only_not_complete_jd
+      - source_coverage_separate_from_online_and_delivery_capability
+
+  - id: six_platform_coverage_acceptance
+    order: 25
+    status: not_started
+    journey_stage: jobs
+    owner_surface: ui/src/pages/jobs/index.tsx
+    user_goal: 汇总六平台来源覆盖6/6及四家核心在线只读4/4的真实证据，补验缺口；猎聘人工JD不能替代在线详情。
+    vision_link: 确保六平台目标逐项达成，来源、在线读取、投递与反馈能力不互相冒充。
+    design_refs:
+    - PLAN.md
+    - AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md
+    - openspec/specs/pi-proof-forge-core.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - channel_session_setup
+    - boss_readonly_integration
+    - zhilian_readonly_integration
+    - qiancheng_readonly_integration
+    - maimai_source_integration
+    - lagou_source_integration
+    acceptance:
+      script: 汇总各平台外部真实页面/业务验收证据，并驱动真实页面补验缺口（待实施）
+      depth: deep_required
+      evidence: []
+      covers:
+      - six_platform_real_source_complete_jd_workflows_six_of_six
+      - core_platform_real_online_search_and_detail_four_of_four
+      - liepin_manual_jd_does_not_satisfy_online_detail
+      - reused_real_page_evidence_and_specific_gap_verification
+      - read_only_delivery_and_feedback_statuses_separate

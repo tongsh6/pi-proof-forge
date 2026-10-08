@@ -1,5 +1,6 @@
 import unittest
 import json
+from io import BytesIO
 from os import utime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -356,9 +357,9 @@ class JobsProfileDraftReviewTests(unittest.TestCase):
                 ),
                 patch("tools.sidecar.handlers.jobs._JOB_PROFILE_DIR", profiles_dir),
                 patch(
-                    "tools.sidecar.handlers.jobs.LLMClient.post_json",
-                    return_value=llm_response,
-                ) as post_json,
+                    "tools.infra.llm.client.request.urlopen",
+                    return_value=BytesIO(json.dumps(llm_response).encode()),
+                ) as urlopen,
             ):
                 result = cast(
                     dict[str, Any],
@@ -375,7 +376,22 @@ class JobsProfileDraftReviewTests(unittest.TestCase):
         self.assertFalse(result["active_target_eligible"])
         self.assertEqual(result["draft"]["target_role"], "Senior Backend Engineer")
         self.assertEqual(result["draft"]["source_url"], "https://jobs.example.com/1")
-        self.assertEqual(post_json.call_count, 1)
+        self.assertEqual(urlopen.call_count, 1)
+        request_payload = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual(request_payload["response_format"]["type"], "json_schema")
+        schema = request_payload["response_format"]["json_schema"]["schema"]
+        self.assertEqual(schema["type"], "object")
+        self.assertEqual(set(schema["required"]), {"target_role", "must_have", "keywords", "jd_summary"})
+        for field in ("must_have", "nice_to_have", "keywords", "seniority_signal"):
+            self.assertEqual(schema["properties"][field]["type"], "array")
+            self.assertGreater(schema["properties"][field]["maxItems"], 0)
+            self.assertGreater(schema["properties"][field]["items"]["maxLength"], 0)
+        for field in ("target_role", "company", "city", "jd_summary", "business_domain", "tone"):
+            self.assertEqual(schema["properties"][field]["type"], "string")
+            self.assertGreater(schema["properties"][field]["maxLength"], 0)
+        self.assertNotIn("source_url", schema["properties"])
+        self.assertFalse(schema["additionalProperties"])
+        self.assertLessEqual(request_payload["max_tokens"], 2048)
         self.assertFalse(profiles_dir.exists())
 
     def test_generate_profile_draft_rejects_invalid_json_without_repair(self) -> None:

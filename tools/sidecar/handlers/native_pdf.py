@@ -1,0 +1,503 @@
+"""原生 WebView 的 PDF 准备与上传状态；复用审批快照，不在此模拟网站成功。"""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import unicodedata
+from pathlib import Path
+from uuid import uuid4
+from urllib.parse import urlsplit
+
+from tools.sidecar.handlers import agent, jobs
+from tools.infra.persistence.review_queue import locked_review_queue, atomic_write_json
+from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
+from tools.infra.persistence.job_lead_binding import reviewed_official_profile
+from tools.infra.persistence.delivery_attempt_store import DeliveryAttemptStore
+from tools.orchestration.approved_delivery import _job_key
+from tools.channels.base import DeliveryRequest
+
+
+def _id(value):
+    if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',value):
+        raise ValueError('invalid_native_pdf_id')
+    return value
+
+
+def _sanitize_observation(value, depth=0):
+    """签名只用于当次内存中的读取；连同嵌套 JSON 字符串在入库前统一脱敏。"""
+    if depth>24:return None
+    if isinstance(value,dict):
+        return {k:_sanitize_observation(v,depth+1) for k,v in value.items()
+                if not re.search(r'token|cookie|secret|password|authorization|signature|csrf|credential|accesskey|^tk$',k,re.I)}
+    if isinstance(value,list):return [_sanitize_observation(v,depth+1) for v in value]
+    if isinstance(value,str):
+        if value.lstrip().startswith(('{','[')):
+            try:return json.dumps(_sanitize_observation(json.loads(value),depth+1),ensure_ascii=False,separators=(',',':'))
+            except (ValueError,RecursionError):pass
+        if re.match(r'^(?:https?://|/)',value,re.I):return re.split(r'[?#]',value,maxsplit=1)[0]
+    return value
+
+
+def _local_file(value, suffix):
+    path=Path(value)
+    if not path.is_absolute():path=agent._PROJECT_ROOT/path
+    if path.is_symlink() or not path.resolve().is_relative_to(agent._PROJECT_ROOT.resolve()) or path.suffix.lower()!=suffix or not path.is_file():
+        raise ValueError('invalid_native_pdf_artifact')
+    return path
+
+
+def _validated_generation(quick_run_id):
+    saved=json.loads((agent._PROJECT_ROOT/'outputs/quick_runs'/f'{quick_run_id}.json').read_text())
+    run=saved['run']
+    if run['status']!='DONE' or run['run_id']!=quick_run_id:raise ValueError('pdf_generation_required')
+    md=_local_file(agent._PROJECT_ROOT/f'outputs/{quick_run_id}/resume_mr-{quick_run_id}_A.md','.md')
+    trace,valid=agent.read_generation_trace(md)
+    if not valid:raise ValueError('pdf_generation_trace_invalid')
+    from tools.infra.resume_content import validate_generated_content
+    content_basis=validate_generated_content(agent._PROJECT_ROOT,quick_run_id)
+    lead_id=_id(trace['target']['job_lead_id'])
+    bound=jobs._bound_lead(lead_id)
+    if not bound:raise ValueError('pdf_job_review_required')
+    lead=bound[1]
+    if (lead.get('source')!='liepin_official' or not reviewed_official_profile(lead,jobs._JOB_PROFILE_DIR)
+            or lead.get('job_profile_id')!=run['job_profile_id']
+            or trace['target'].get('source_jd_sha256')!=lead.get('source_jd_sha256')):
+        raise ValueError('pdf_job_review_required')
+    from tools.policy.exclusions import load_exclusion_policy,match_exclusion
+    if match_exclusion(lead.get('company',''),lead.get('legal_entity',''),load_exclusion_policy(agent._PROJECT_ROOT/'policy.yaml')):
+        raise ValueError('pdf_target_excluded')
+    request=DeliveryRequest('',lead_id,'liepin','',lead['url'],False,lead)
+    if DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3').has_attempt(_job_key(request)):
+        raise ValueError('delivery_already_attempted')
+    pdf=_local_file(saved['resume_pdf'],'.pdf')
+    if not pdf.resolve().is_relative_to((agent._PROJECT_ROOT/'outputs').resolve()) or pdf.stat().st_size>10_000_000:
+        raise ValueError('invalid_native_pdf_artifact')
+    candidate={key:lead.get(key,'') for key in ('company','position','platform','platform_job_id','platform_job_type',
+        'job_profile_id','jd_status','source_jd_sha256','source','legal_entity')}
+    candidate.update(job_lead_id=lead_id,job_url=lead['url'],delivery_kind='generated_pdf',
+        resume_version='gen_'+md.stem,content_basis=content_basis,matching_score=saved.get('score_total'),
+        evaluation_score=saved.get('resume_readiness',{}).get('evaluation_score'),status='pending',round_index=0)
+    from tools.infra.export.resume_filename import pdf_filename_for_resume
+    candidate['pdf_filename']=pdf_filename_for_resume(md,agent._PROJECT_ROOT/'outputs')
+    return candidate,md.read_text(),pdf.read_bytes(),saved.get('score_total')
+
+
+def _public(queue):
+    c=queue['candidates'][0]
+    sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(queue['run_id'],c)
+    recovery_only=bool(queue.get('daily_interruption') and queue.get('pdf_delivery',{}).get('state')!='success')
+    return {'run_id':queue['run_id'],'company':c['company'],'position':c['position'],
+            'job_lead_id':c['job_lead_id'],'matching_score':c.get('matching_score'),
+            'pdf_sha256':sealed['pdf_sha256'],'pdf_path':sealed['resume_path'],'pdf_filename':c.get('pdf_filename',''),
+            'account_effects_accepted':bool(queue.get('pdf_upload',{}).get('accepted_account_effects')),
+            'phase':queue.get('pdf_delivery',{}).get('state') or ('attachment_verified' if queue.get('attachment_binding') else queue.get('pdf_upload',{}).get('state','prepared')),
+            'can_confirm_send':not recovery_only and _confirmation_matches(queue),'recovery_only':recovery_only,
+            'platform_filename':queue.get('attachment_binding',{}).get('filename',''),
+            'attachment_removal_state':queue.get('pdf_attachment_removal',{}).get('state','')}
+
+
+def handle_prepare_pdf(params):
+    quick_run_id=_id(params.get('quick_run_id'))
+    with locked_review_queue(agent._REVIEW_QUEUE_DIR/'.prepare-pdf'):
+        for path in agent._REVIEW_QUEUE_DIR.glob('*.json'):
+            q=json.loads(path.read_text())
+            if q.get('quick_run_id')==quick_run_id:
+                return {'meta':params['meta'],**_public(q)}
+        candidate,content,pdf,score=_validated_generation(quick_run_id)
+        run_id=agent._build_agent_run_id()
+        candidate['snapshot']=ReviewSnapshotStore(agent._AGENT_RUN_DIR).create(run_id,candidate,content,dry_run=False,pdf_content=pdf)
+        queue={'run_id':run_id,'quick_run_id':quick_run_id,'source_pdf_sha256':hashlib.sha256(pdf).hexdigest(),
+               'created_at':agent._utcnow_iso(),'candidates':[candidate]}
+        agent._save_queue(agent._get_queue_file(run_id),queue)
+        atomic_write_json(agent._get_agent_run_file(run_id),{'run':{'run_id':run_id,'status':'REVIEW_PENDING',
+            'job_profile_id':candidate.get('job_profile_id',''),'options':{'delivery_kind':'generated_pdf','native_pdf':True},
+            'review_queue':queue,'deliveries_completed':0,'app_verified_deliveries':0},'events':[],'gate_checks':[]})
+        return {'meta':params['meta'],**_public(queue)}
+
+
+def handle_begin_upload(params):
+    run_id=_id(params.get('run_id'))
+    if params.get('accept_account_effects') is not True:raise ValueError('account_effects_consent_required')
+    path=agent._get_queue_file(run_id)
+    with locked_review_queue(path):
+        q=agent._load_queue(path)
+        if q.get('run_id')!=run_id or not q.get('quick_run_id'):raise ValueError('pdf_review_required')
+        previous=q.get('pdf_upload')
+        if previous and (previous.get('state')!='not_submitted' or previous.get('reconciliation',{}).get('reason')!='platform_client_filename_rejected'):
+            raise ValueError('pdf_upload_already_attempted')
+        candidate=q['candidates'][0]
+        if candidate.get('status') not in ({'approved'} if previous else {'pending'}) or candidate.get('delivery_kind')!='generated_pdf':raise ValueError('pdf_review_required')
+        sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,candidate)
+        from tools.sidecar.handlers.daily_delivery import check_queue_write
+        permit=check_queue_write(q,sealed['pdf_sha256'])
+        filename=candidate.get('pdf_filename') or 'cv_'+sealed['pdf_sha256'][:16]+'.pdf'
+        from tools.infra.export.resume_filename import check_platform_pdf_filename
+        check_platform_pdf_filename(filename)
+        upload_ref=uuid4().hex
+        candidate.update(status='approved',decided_by='user',decided_at=agent._utcnow_iso())
+        q['content_review']={'confirmed':True,'basis':candidate.get('content_basis'),'reviewed_at':agent._utcnow_iso()}
+        if previous:q.setdefault('pdf_upload_history',[]).append(previous)
+        q['pdf_upload']={'state':'in_flight','upload_ref':upload_ref,'filename':filename,
+            'pdf_sha256':sealed['pdf_sha256'],'accepted_account_effects':True,'started_at':agent._utcnow_iso()}
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],'upload_ref':upload_ref,'filename':filename,
+                'pdf_sha256':sealed['pdf_sha256'],'pdf_bytes':list(Path(sealed['resume_path']).read_bytes()),**permit}
+
+
+def handle_finish_upload(params):
+    run_id=_id(params.get('run_id'))
+    path=agent._get_queue_file(run_id)
+    observation=params.get('observation')
+    if not isinstance(observation,dict) or len(json.dumps(observation))>65536:raise ValueError('invalid_upload_observation')
+    with locked_review_queue(path):
+        q=agent._load_queue(path); upload=q.get('pdf_upload',{})
+        if upload.get('state')!='in_flight' or upload.get('upload_ref')!=params.get('upload_ref'):
+            raise ValueError('pdf_upload_not_pending')
+        if observation.get('filename')!=upload['filename']:raise ValueError('pdf_upload_identity_mismatch')
+        # 即使页面宣称成功，仍须另行验证平台附件身份/内容，不能直接进入发送。
+        upload.update(state='uploaded_unverified' if observation.get('status')=='uploaded' else 'unknown',
+            observation=_sanitize_observation(observation),finished_at=agent._utcnow_iso())
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],**_public(q)}
+
+
+def handle_inspect_pdf_packet(params):
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    with locked_review_queue(path):
+        q=agent._load_queue(path);u=q.get('pdf_upload',{})
+        if not u or u['state']=='in_flight':raise ValueError('pdf_inspection_not_ready')
+        return {'meta':params['meta'], 'filename':u['filename'], 'pdf_sha256':u['pdf_sha256']}
+
+
+def handle_record_pdf_inspection(params):
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    observation=params.get('observation')
+    if not isinstance(observation,dict) or len(json.dumps(observation))>65536:raise ValueError('invalid_upload_observation')
+    with locked_review_queue(path):
+        q=agent._load_queue(path);u=q.get('pdf_upload',{})
+        if not u or observation.get('filename')!=u['filename']:raise ValueError('pdf_upload_identity_mismatch')
+        q['pdf_inspection']={'observed_at':agent._utcnow_iso(),'observation':_sanitize_observation(observation)}
+        from tools.infra.liepin_attachment_contract import verify_legacy_filename_rejection
+        reconciliation=verify_legacy_filename_rejection(u,observation)
+        if reconciliation:u.update(state='not_submitted',reconciliation=reconciliation)
+        # 从最终发送开始，绑定属于不可变发送历史；当前平台附件的后续变化另作观测。
+        if u.get('state')=='uploaded_unverified' and not q.get('pdf_delivery',{}).get('final_send_started'):
+            from tools.infra.liepin_attachment_contract import verify_uploaded_attachment
+            sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,q['candidates'][0])
+            try:
+                binding=verify_uploaded_attachment(u,observation,sealed['pdf_sha256'],Path(sealed['resume_path']).stat().st_size)
+                q['attachment_binding']={**binding,'verified_at':agent._utcnow_iso()}
+                q.pop('attachment_binding_error',None)
+            except ValueError as error:
+                q['attachment_binding_error']=str(error)
+                q.pop('attachment_binding',None)
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],**_public(q)}
+
+
+def handle_pdf_target_packet(params):
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    with locked_review_queue(path):
+        q=agent._load_queue(path);c=q['candidates'][0]
+        sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,c)
+        binding=q.get('attachment_binding',{})
+        if not binding or binding.get('pdf_sha256')!=sealed['pdf_sha256']:raise ValueError('attachment_verification_required')
+        return {'meta':params['meta'],'filename':binding['filename'],'job_url':c['job_url'],
+                'company':c['company'],'position':c['position'],'attachment_id':binding['attachment_id']}
+
+
+def handle_record_pdf_target(params):
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    observation=params.get('observation')
+    if not isinstance(observation,dict) or len(json.dumps(observation))>65536:raise ValueError('invalid_target_observation')
+    with locked_review_queue(path):
+        q=agent._load_queue(path)
+        if not q.get('attachment_binding'):raise ValueError('attachment_verification_required')
+        q['pdf_target_view']={'observed_at':agent._utcnow_iso(),'observation':_sanitize_observation(observation)}
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],**_public(q)}
+
+
+def handle_begin_pdf_delivery(params):
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    with locked_review_queue(path):
+        q=agent._load_queue(path);c=q['candidates'][0]
+        if q.get('pdf_delivery'):raise ValueError('pdf_delivery_already_started')
+        sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,c)
+        binding=q.get('attachment_binding',{})
+        if c.get('status')!='approved' or not binding or binding.get('pdf_sha256')!=sealed['pdf_sha256']:
+            raise ValueError('attachment_verification_required')
+        target={}
+        for response in q.get('pdf_target_view',{}).get('observation',{}).get('responses',[]):
+            if response.get('method')=='OBSERVE':target=json.loads(response['payload'])
+        if not all(target.get(k) is True for k in ('url_match','company_present','position_present')) or target.get('challenge') or target.get('unavailable'):
+            raise ValueError('pdf_target_verification_required')
+        from tools.policy.exclusions import load_exclusion_policy,match_exclusion
+        if match_exclusion(c.get('company',''),c.get('legal_entity',''),load_exclusion_policy(agent._PROJECT_ROOT/'policy.yaml')):
+            raise ValueError('pdf_target_excluded')
+        from tools.infra.liepin_job_detail import fetch_liepin_job_detail
+        current=fetch_liepin_job_detail(c['job_url'],expected_job_id=str(c['platform_job_id']))
+        if current['source_jd_sha256']!=c['source_jd_sha256']:raise ValueError('job_detail_changed')
+        attempts=DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3')
+        from tools.sidecar.handlers.daily_delivery import check_queue_write,store as daily_store
+        check_queue_write(q,sealed['pdf_sha256'])
+        request=DeliveryRequest(run_id,c['job_lead_id'],'liepin',sealed['resume_path'],c['job_url'],False,c)
+        if q.get('daily_cycle'):
+            ref=daily_store().reserve_daily(q['daily_cycle'],run_id,_job_key(request),sealed['pdf_sha256'])
+        else:
+            batch=attempts.active_batch()
+            if not batch or batch.get('allowed_delivery_kind')!='generated_pdf':raise ValueError('pdf_batch_authorization_required')
+            ref=attempts.reserve(_job_key(request),run_id,sealed['pdf_sha256'],delivery_kind='generated_pdf')
+        if not ref:raise ValueError('delivery_already_attempted')
+        from tools.submission.storage import SubmissionRecorder
+        recorder=SubmissionRecorder(agent._PROJECT_ROOT/'outputs/submissions','liepin','submit',run_id='native-'+ref,transport='browser')
+        recorder.run_dir.chmod(0o700)
+        recorder.set_meta(c['job_url'],sealed['resume_path'],'',False,browser_channel='tauri_webkit',redact_inputs=True)
+        recorder.record.input_artifacts.update({'parent_run_id':run_id,'candidate_id':c['job_lead_id'],'company':c['company'],
+            'position':c['position'],'resume_version':c.get('resume_version',''),'delivery_kind':'generated_pdf',
+            'resume_pdf_sha256':sealed['pdf_sha256'],'delivery_attempt_id':ref,'attachment_id':binding['attachment_id'],
+            'attachment_binding_kind':binding.get('binding_kind',''),'receipt_source':'app_browser'})
+        for name,detail in [('rate_limit','每日授权批次已原子占位' if q.get('daily_cycle') else '额外单笔 generated_pdf 批次已原子占位'),('target_verify','已审核岗位与当前完整 JD 指纹一致'),
+            ('submit_safety','仅本次已批准 PDF 与目标岗位'),('resume_attachment_binding','平台唯一附件 ID、上传响应与已批准文件关联')]:
+            recorder.add_step(name,'success',detail)
+        recorder.finish('running')
+        q['pdf_delivery']={'state':'delivery_in_flight','attempt_id':ref,'submission_id':'native-'+ref,'started_at':agent._utcnow_iso()}
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],'run_id':run_id,'delivery_ref':ref,'filename':binding['filename'],
+                'attachment_id':binding['attachment_id'],'job_url':c['job_url'],'company':c['company'],'position':c['position'],
+                **check_queue_write(q,sealed['pdf_sha256'])}
+
+
+def handle_record_pdf_communication(params):
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    observation=params.get('observation')
+    if not isinstance(observation,dict) or len(json.dumps(observation))>65536:raise ValueError('invalid_chat_observation')
+    with locked_review_queue(path):
+        q=agent._load_queue(path);delivery=q.get('pdf_delivery',{})
+        if delivery.get('state')!='delivery_in_flight' or delivery.get('attempt_id')!=params.get('delivery_ref'):
+            raise ValueError('pdf_delivery_not_pending')
+        delivery.update(state='communication_started',observation=_sanitize_observation(observation))
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],**_public(q)}
+
+
+def _confirmation_matches(q):
+    try:
+        d=q['pdf_delivery']
+        if d.get('state')!='resume_interaction_pending' or d.get('final_send_started'):return False
+        raw=d['interaction_history'][-1]['observation']['responses'][0]['payload']
+        detail=json.loads(raw);dialogs=detail.get('confirmation',[])
+        if len(dialogs)!=1:return False
+        dialog=dialogs[0];binding=q['attachment_binding'];c=q['candidates'][0]
+        normalize=lambda s:''.join(unicodedata.normalize('NFKC',str(s)).split()).lower()
+        if any(normalize(c[k]) not in normalize(detail.get('context',{}).get('text','')) for k in ['company','position']):return False
+        if Path(binding['filename']).stem not in dialog['text'] or '默认在线简历和附件简历' not in dialog['text']:return False
+        radios=[i for i in dialog.get('inputs',[]) if i.get('type')=='radio']
+        targets=[i for i in radios if i.get('value')==binding['file_id']]
+        selected=[i for i in radios if i.get('checked') is True]
+        buttons=[b for b in dialog.get('buttons',[]) if b.get('text')=='立即投递' and b.get('disabled') is False]
+        return len(targets)==1 and targets[0].get('disabled',False) is False and len(selected)==1 and selected[0].get('value')==binding['file_id'] and len(buttons)==1
+    except (KeyError,ValueError,TypeError,IndexError,AttributeError):return False
+
+
+def handle_pdf_interaction_packet(params):
+    run_id=_id(params.get('run_id'));action=params.get('action');path=agent._get_queue_file(run_id)
+    if action not in {'inspect','prepare','send'}:raise ValueError('unsupported_pdf_interaction')
+    with locked_review_queue(path):
+        q=agent._load_queue(path);d=q.get('pdf_delivery',{});c=q['candidates'][0]
+        sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,c)
+        binding=q.get('attachment_binding',{})
+        if d.get('state') not in {'communication_started','resume_interaction_pending','final_send_pending'} or binding.get('pdf_sha256')!=sealed['pdf_sha256']:
+            raise ValueError('pdf_delivery_not_pending')
+        if action=='prepare':
+            if q.get('daily_interruption'):raise ValueError('daily_recovery_required')
+            if d.get('resume_interaction_started'):raise ValueError('resume_interaction_already_started')
+            d.update(state='resume_interaction_pending',resume_interaction_started=True)
+            agent._save_queue(path,q)
+        if action=='send':
+            from tools.sidecar.handlers.daily_delivery import check_queue_write
+            check_queue_write(q,sealed['pdf_sha256'])
+            if d.get('final_send_started'):raise ValueError('pdf_final_send_already_started')
+            if not _confirmation_matches(q):raise ValueError('pdf_confirmation_not_verified')
+            d.update(state='final_send_pending',final_send_started=True,final_send_started_at=agent._utcnow_iso())
+            agent._save_queue(path,q)
+        return {'meta':params['meta'],'action':action,'delivery_ref':d['attempt_id'],'filename':binding['filename'],
+                'attachment_id':binding['attachment_id'],'file_id':binding.get('file_id',''),'job_url':c['job_url'],'company':c['company'],'position':c['position']}
+
+
+def handle_record_pdf_interaction(params):
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id);observation=params.get('observation')
+    if not isinstance(observation,dict) or len(json.dumps(observation))>65536:raise ValueError('invalid_chat_observation')
+    with locked_review_queue(path):
+        q=agent._load_queue(path);d=q.get('pdf_delivery',{})
+        if d.get('attempt_id')!=params.get('delivery_ref'):raise ValueError('pdf_delivery_not_pending')
+        d.setdefault('interaction_history',[]).append({'action':params.get('action'),'observed_at':agent._utcnow_iso(),'observation':_sanitize_observation(observation)})
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],**_public(q)}
+
+
+def handle_verify_pdf_receipt(params):
+    """仅核验已保存的 App 业务响应，不联网、不补发。"""
+    from tools.infra.liepin_native_receipt import classify_native_resume_receipt
+    from tools.submission.storage import SubmissionRecorder,SubmissionRecord,SubmissionStep
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    with locked_review_queue(path):
+        q=agent._load_queue(path);c=q['candidates'][0];d=q.get('pdf_delivery',{});binding=q.get('attachment_binding',{})
+        sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,c)
+        if not d.get('final_send_started') or binding.get('pdf_sha256')!=sealed['pdf_sha256']:raise ValueError('pdf_receipt_unconfirmed')
+        normalize=lambda s:''.join(unicodedata.normalize('NFKC',str(s)).split()).lower()
+        expected_url=urlsplit(c['job_url'])._replace(query='',fragment='').geturl()
+        issued=False;receipt=None;source_time=''
+        for event in d.get('interaction_history',[]):
+            for response in event.get('observation',{}).get('responses',[]):
+                if response.get('method')!='OBSERVE':continue
+                detail=json.loads(response['payload']);context=detail.get('context') or {}
+                if (detail.get('url')!=expected_url or 'im-ui-chat-container' not in str(context.get('class_name','')).split()
+                    or any(normalize(c[k]) not in normalize(context.get('text','')) for k in ['company','position'])):continue
+                if event.get('action')=='send' and detail.get('action')=={'click_issued':True,'reason':'approved_attachment_confirmation'}:issued=True
+                if not issued:continue
+                matches=[classify_native_resume_receipt(item,binding['attachment_id']) for item in detail.get('network',[])]
+                matches=[item for item in matches if item['status']=='success']
+                if len(matches)==1:
+                    receipt=matches[0];source_time=event.get('observed_at','');break
+            if receipt:break
+        if not receipt:raise ValueError('pdf_receipt_unconfirmed')
+        submission_id=_id(d['submission_id']);directory=agent._PROJECT_ROOT/'outputs/submissions/liepin'/submission_id
+        archived={'schema_version':1,'parent_run_id':run_id,'candidate_id':c['job_lead_id'],
+                  'pdf_sha256':sealed['pdf_sha256'],'file_id':binding['file_id'],
+                  'source_observed_at':source_time,'receipt':receipt}
+        archive=directory/'native_receipt.json'
+        if archive.exists():
+            if json.loads(archive.read_text())!=archived:raise ValueError('native_receipt_archive_mismatch')
+        else:atomic_write_json(archive,archived)
+        archive.chmod(0o600)
+        archive_sha=hashlib.sha256(archive.read_bytes()).hexdigest()
+        saved=json.loads((directory/'submission_log.json').read_text())
+        if (saved.get('input_artifacts',{}).get('delivery_attempt_id')!=d['attempt_id']
+            or saved['input_artifacts'].get('resume_pdf_sha256')!=sealed['pdf_sha256']):raise ValueError('native_receipt_log_mismatch')
+        if saved.get('status')!='success':
+            recorder=SubmissionRecorder(agent._PROJECT_ROOT/'outputs/submissions','liepin','submit',run_id=submission_id,transport='browser')
+            steps=[SubmissionStep(**step) for step in saved.pop('steps')]
+            recorder.record=SubmissionRecord(**saved,steps=steps)
+            recorder.record.input_artifacts.update(native_receipt_sha256=archive_sha,receipt_source='app_browser',
+                receipt_business_flag=1,native_receipt_source_observed_at=source_time)
+            recorder.add_step('login_check','success','App 原生登录会话成功读取、上传并回读指定附件')
+            recorder.add_step('chat_send_resume','success','确认框所选平台附件 ID 与已批准 PDF 一致；发送请求携带同一附件 ID')
+            recorder.add_step('submit','success','send-resume 业务响应 HTTP 200 / flag 1 / data {}，无再次发送')
+            recorder.add_step('receipt','success',json.dumps({'parser_version':1,'http_status':200,'business_flag':1,'receipt_sha256':archive_sha}))
+            recorder.finish('success')
+            recorder.log_json.chmod(0o600);recorder.log_yaml.chmod(0o600)
+        attempts=DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3')
+        try:attempts.finish(d['attempt_id'],'success')
+        except ValueError as error:
+            if str(error)!='delivery_attempt_already_finished':raise
+            attempts.resolve_unknown(d['attempt_id'],run_id,sealed['pdf_sha256'],'success')
+        d.update(state='success',native_receipt_sha256=archive_sha,verified_at=d.get('verified_at') or agent._utcnow_iso())
+        c['delivery']={'job_lead_id':c['job_lead_id'],'success':True,'submission_id':submission_id,
+            'receipt_source':'app_browser','app_verified':True,'status':'success','code':'submitted',
+            'resume_pdf_sha256':sealed['pdf_sha256'],'attachment_id':binding['attachment_id'],'native_receipt_sha256':archive_sha}
+        agent._save_queue(path,q)
+        run_file=agent._get_agent_run_file(run_id)
+        if run_file.exists():
+            run=agent._load_agent_run(run_id);run['run'].setdefault('started_at',q.get('created_at',''));run['run'].setdefault('round',0)
+            atomic_write_json(run_file,run)
+        agent._sync_review_run(run_id,q,[c['delivery']])
+        return {'meta':params['meta'],**_public(q),'submission_id':submission_id}
+
+
+def _checked_removal_target(q,run_id):
+    from tools.infra.liepin_attachment_contract import attachment_filename_matches
+    c=q['candidates'][0];d=q.get('pdf_delivery',{});b=q.get('attachment_binding',{})
+    if d.get('state')!='success':raise ValueError('attachment_removal_success_required')
+    from tools.infra.submission_evidence import inspect_submission_evidence
+    proof=inspect_submission_evidence(agent._PROJECT_ROOT,agent._PROJECT_ROOT/'outputs/submissions/liepin'/_id(d['submission_id'])/'submission_log.json')
+    if proof['status']!='verified':raise ValueError('attachment_removal_success_required')
+    sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,c)
+    try:
+        from datetime import datetime,timezone
+        current=q['pdf_inspection'];age=(datetime.now(timezone.utc)-datetime.fromisoformat(current['observed_at'].replace('Z','+00:00'))).total_seconds()
+        rows=[];counts=[]
+        for response in current['observation']['responses']:
+            if response.get('method')=='OBSERVE' and response.get('url')=='https://c.liepin.com/resume/edit':
+                value=json.loads(response['payload']);rows+=value.get('attachments',[]);counts.append(value.get('attachment_count'))
+        if not -5<=age<=120 or len(rows)!=1 or len(counts)!=1 or type(counts[0]) is not int or not 1<=counts[0]<=50:raise ValueError()
+        record=rows[0];download=record.get('download',{});size=Path(sealed['resume_path']).stat().st_size
+        if (record.get('fileId')!=b['file_id'] or record.get('encryAttachmentId')!=b['attachment_id']
+            or not attachment_filename_matches(record,b['filename'])
+            or record.get('fileSize')!=size or download.get('http_status')!=200 or download.get('byte_length')!=size
+            or download.get('sha256')!=sealed['pdf_sha256'] or b.get('pdf_sha256')!=sealed['pdf_sha256']):raise ValueError()
+    except (ValueError,KeyError,TypeError,AttributeError,OSError):
+        raise ValueError('attachment_removal_identity_unverified') from None
+    return b,sealed,counts[0]
+
+
+def handle_begin_pdf_removal(params):
+    """仅移除已成功投递、当前字节再次核实且用户明确确认的那份平台附件。"""
+    if params.get('confirmed') is not True:raise ValueError('attachment_removal_confirmation_required')
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    with locked_review_queue(path):
+        q=agent._load_queue(path);c=q['candidates'][0];d=q.get('pdf_delivery',{});b=q.get('attachment_binding',{})
+        prior=q.get('pdf_attachment_removal',{})
+        if prior and prior.get('state')!='not_submitted':raise ValueError('attachment_removal_already_attempted')
+        if d.get('state')!='success':raise ValueError('attachment_removal_success_required')
+        b,sealed,count=_checked_removal_target(q,run_id)
+        removal={'state':'in_flight','removal_ref':uuid4().hex,'confirmed_by_user':True,'started_at':agent._utcnow_iso(),
+            'filename':b['filename'],'file_id':b['file_id'],'attachment_id':b['attachment_id'],
+            'pdf_sha256':sealed['pdf_sha256'],'attachment_count':count}
+        if prior:q.setdefault('pdf_attachment_removal_history',[]).append(prior)
+        q['pdf_attachment_removal']=removal;agent._save_queue(path,q)
+        return {'meta':params['meta'],'run_id':run_id,**removal}
+
+
+def handle_finish_pdf_removal(params):
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id);observation=params.get('observation')
+    if not isinstance(observation,dict) or len(json.dumps(observation))>65536:raise ValueError('invalid_upload_observation')
+    with locked_review_queue(path):
+        q=agent._load_queue(path);r=q.get('pdf_attachment_removal',{})
+        if r.get('state')!='in_flight' or r.get('removal_ref')!=params.get('removal_ref') or observation.get('filename')!=r.get('filename'):
+            raise ValueError('attachment_removal_not_pending')
+        state='unknown'
+        try:
+            reports=[json.loads(v['payload']) for v in observation.get('responses',[]) if v.get('method')=='OBSERVE' and v.get('url')=='https://c.liepin.com/resume/edit']
+            if len(reports)!=1:raise ValueError()
+            value=reports[0];network=value.get('network',[]);issued=value.get('action',{}).get('click_issued')
+            if issued is False and not network and observation.get('status')=='not_submitted':state='not_submitted'
+            elif issued is True:
+                target=value.get('target',{});before=value.get('before_ids',[]);after=value.get('after_ids',[])
+                if (type(value.get('allowed_requests')) is not int or value['allowed_requests']!=1
+                    or target.get('file_id')!=r['file_id'] or target.get('attachment_id')!=r['attachment_id']
+                    or len(before)!=r['attachment_count'] or len(set(before))!=len(before) or before.count(r['file_id'])!=1
+                    or sorted(after)!=sorted(x for x in before if x!=r['file_id'])):raise ValueError()
+                receipts=[]
+                for item in network:
+                    if item.get('method')!='POST' or item.get('url')!='https://api-c.liepin.com/api/com.liepin.cresume.attachment.remove-attachment-resume' or item.get('http_status')!=200:continue
+                    request=json.loads(item['request']);response=json.loads(item['response'])
+                    if request.get('encryAttachmentId')==r['attachment_id'] and type(response.get('flag')) is int and response['flag']==1:receipts.append(item)
+                if len(receipts)==1:state='removed'
+        except (ValueError,KeyError,TypeError,AttributeError):pass
+        r.update(state=state,finished_at=agent._utcnow_iso(),observation=_sanitize_observation(observation))
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],**_public(q)}
+
+
+def handle_recheck_pdf_removal(params):
+    """只核验原请求前拦截证据和当前同一文件，绝不调用移除脚本。"""
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    with locked_review_queue(path):
+        q=agent._load_queue(path);r=q.get('pdf_attachment_removal',{})
+        if r.get('state')!='unknown':raise ValueError('attachment_removal_outcome_unverified')
+        try:
+            reports=[json.loads(v['payload']) for v in r['observation']['responses'] if v.get('method')=='OBSERVE' and v.get('url')=='https://c.liepin.com/resume/edit']
+            if len(reports)!=1:raise ValueError()
+            v=reports[0];before=v.get('before_ids',[]);after=v.get('after_ids',[])
+            if (type(v.get('allowed_requests')) is not int or v['allowed_requests']!=0 or type(v.get('blocked_requests')) is not int or v['blocked_requests']<1
+                or v.get('network')!=[] or v.get('target',{}).get('file_id')!=r['file_id'] or v.get('target',{}).get('attachment_id')!=r['attachment_id']
+                or before.count(r['file_id'])!=1 or len(before)!=r['attachment_count'] or len(set(before))!=len(before) or sorted(before)!=sorted(after)):raise ValueError()
+        except (ValueError,KeyError,TypeError,AttributeError):raise ValueError('attachment_removal_outcome_unverified') from None
+        _checked_removal_target(q,run_id)
+        q.setdefault('pdf_attachment_removal_history',[]).append(json.loads(json.dumps(r)))
+        r.update(state='not_submitted',reconciliation={'reason':'request_guard_blocked_before_send','checked_at':agent._utcnow_iso(),
+            'current_attachment_original_bytes_verified':True,'source_observation_sha256':hashlib.sha256(json.dumps(r['observation'],sort_keys=True).encode()).hexdigest()})
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],**_public(q)}

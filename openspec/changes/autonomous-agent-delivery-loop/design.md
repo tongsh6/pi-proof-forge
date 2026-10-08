@@ -681,8 +681,9 @@ class RunStore(Protocol):
 ```
 
 ### 10.3 Idempotency
-- 幂等键：`run_id + candidate_id + channel + resume_version`
-- 同一幂等键已成功投递时，不重复投递，仅记录 `delivery.skipped_duplicate`。
+- 2026-09-27 方案增量（待实施）：业务防重键为账号作用域 + 平台 + 稳定岗位身份，换 run、日期或简历版本不自动解锁同一岗位；已成功或结果未知时阻断重投。
+- 原 `run_id + candidate_id + channel + resume_version` 仅作为尝试追溯键；提交前持久化 in-flight，结果未知须核对后才能继续。同一业务键已成功时记录 `delivery.skipped_duplicate`。
+- 与每日成功计数的关系及迁移顺序见 `AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md` 与核心规范；现有本轮候选去重不代表本节已实现。
 
 ## 11. Error Taxonomy and Boundaries
 - `policy_error`: policy 缺失/非法值。
@@ -694,7 +695,7 @@ class RunStore(Protocol):
 边界规则：
 - `policy_error`、`stage_execution_error`（关键阶段）可直接终止 run。
 - `gate_fail` 进入 `LEARN` 并尝试下一轮。
-- `channel_error` 可按通道降级继续（例如 liepin 失败后 email）。
+- `channel_error` 仅在确认未发送且备选渠道在授权范围内时才可考虑降级。超时/结果未知不得自动重试或转 Email，避免重复投递；目标按平台路由，业务方向不能代替平台身份。此为 2026-09-27 待实施增量。
 
 ## 12. Testing and Verification Strategy
 测试分层：

@@ -24,7 +24,7 @@ def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, Any]:
 
 
 def _static_t_keys() -> set[str]:
-    pattern = re.compile(r"\bt\(\s*[\"']([^\"'`$]+)[\"']")
+    pattern = re.compile(r"\bt\(\s*[\"']([^\"'`$]+)[\"']\s*(?=[,)])")
     keys: set[str] = set()
     for path in SRC.rglob("*.tsx"):
         keys.update(pattern.findall(path.read_text(encoding="utf-8")))
@@ -44,3 +44,16 @@ def test_static_translation_keys_exist_in_both_catalogs():
     missing = sorted(key for key in _static_t_keys() if key not in en or key not in zh)
 
     assert not missing
+
+
+def test_static_key_scan_ignores_concatenation_but_keeps_literal_keys(tmp_path, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys.modules[__name__], 'SRC', tmp_path)
+    (tmp_path / 'sample.tsx').write_text('''
+t("existing.key");
+t('missing.literal', {count: 1});
+t('career.add.' + group);
+t("daily.reasons."+code, {defaultValue: message});
+t(`career.fields.${field}`);
+''')
+    assert _static_t_keys() == {'existing.key', 'missing.literal'}

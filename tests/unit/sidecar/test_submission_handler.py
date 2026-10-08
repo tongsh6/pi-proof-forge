@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest.mock import Mock
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -17,6 +18,54 @@ from tools.sidecar.handlers.submission import (
     handle_submission_list,
     handle_submission_retry,
 )
+
+
+class RealSessionBoundaryTests(unittest.TestCase):
+    def test_start_rechecks_existing_authenticated_page(self):
+        from tools.sidecar.handlers import submission
+        with TemporaryDirectory() as tmp, patch.object(submission, "_CHANNEL_SESSIONS_DIR", Path(tmp)), patch.object(submission, "_session_browser") as browser:
+            browser.start.return_value = True
+            browser.check.return_value = {"login_signals": {"authenticated_user_visible": True}}
+            result = handle_channel_session_start({"meta": {"correlation_id": "existing"}, "channel": "liepin"})
+            self.assertEqual(result["session"]["login_status"], "session_valid")
+            self.assertFalse(result["manual_login_required"])
+    def test_legacy_unobserved_valid_session_is_not_trusted(self):
+        from tools.sidecar.handlers import submission
+        with TemporaryDirectory() as tmp, patch.object(submission, "_CHANNEL_SESSIONS_DIR", Path(tmp)):
+            submission._write_session("liepin", {"channel": "liepin", "login_status": "session_valid"})
+            self.assertEqual(submission._read_session("liepin")["login_status"], "session_unknown")
+
+    def test_failed_recheck_invalidates_previous_valid_session(self):
+        from tools.sidecar.handlers import submission
+        with TemporaryDirectory() as tmp, patch.object(submission, "_CHANNEL_SESSIONS_DIR", Path(tmp)), patch.object(submission, "_session_browser") as browser:
+            submission._write_session("liepin", {"login_status": "session_valid", "verification_source": "owned_playwright"})
+            browser.check.side_effect = RuntimeError("browser closed")
+            with self.assertRaises(RuntimeError):
+                handle_channel_session_check({"meta": {"correlation_id": "recheck"}, "channel": "liepin"})
+            self.assertEqual(submission._read_session("liepin")["login_status"], "session_unknown")
+
+    def test_start_opens_owned_browser_before_reporting_success(self):
+        from tools.sidecar.handlers import submission
+        with TemporaryDirectory() as tmp, patch.object(submission, "_CHANNEL_SESSIONS_DIR", Path(tmp)), patch.object(submission, "_session_browser", create=True) as browser:
+            result = handle_channel_session_start({"meta": {"correlation_id": "start"}, "channel": "liepin"})
+            browser.start.assert_called_once_with(Path(tmp) / "liepin/browser_profile", "https://www.liepin.com/")
+            self.assertTrue(result["browser_automation"]["opened_login_page"])
+
+    def test_browser_failure_cannot_report_opened_login_page(self):
+        from tools.sidecar.handlers import submission
+        with TemporaryDirectory() as tmp, patch.object(submission, "_CHANNEL_SESSIONS_DIR", Path(tmp)), patch.object(submission, "_session_browser", create=True) as browser:
+            browser.start.side_effect = RuntimeError("PLAYWRIGHT_UNAVAILABLE")
+            with self.assertRaisesRegex(RuntimeError, "PLAYWRIGHT_UNAVAILABLE"):
+                handle_channel_session_start({"meta": {"correlation_id": "failed"}, "channel": "liepin"})
+
+    def test_frontend_cannot_forge_valid_session_or_account_identity(self):
+        from tools.sidecar.handlers import submission
+        with TemporaryDirectory() as tmp, patch.object(submission, "_CHANNEL_SESSIONS_DIR", Path(tmp)), patch.object(submission, "_session_browser", create=True) as browser:
+            browser.check.return_value = {"login_signals": {"login_required": True}}
+            result = handle_channel_session_check({"meta": {"correlation_id": "check"}, "channel": "liepin", "login_signals": {"authenticated_user_visible": True}, "account_identity": {"nickname": "forged"}})
+            self.assertEqual(result["session"]["login_status"], "login_required")
+            self.assertNotEqual(result["session"]["account_identity"]["display_name_or_nickname"], "forged")
+            browser.check.assert_called_once_with(Path(tmp) / "liepin/browser_profile")
 
 
 class SubmissionListTests(unittest.TestCase):
@@ -527,7 +576,17 @@ class SubmissionRetryTests(unittest.TestCase):
                     )
 
 
-class ChannelSessionTests(unittest.TestCase):
+class SessionBrowserStubTests(unittest.TestCase):
+    def setUp(self):
+        # 合同测试只替代后端浏览器观察；不再由请求参数决定登录结果。
+        self.browser = self.enterContext(patch("tools.sidecar.handlers.submission._session_browser"))
+        self.browser.check.return_value = {
+            "login_signals": {"authenticated_user_visible": True},
+            "account_identity": {"display_name_or_nickname": "Verifier", "masked_phone_or_email_suffix": "13800123456", "avatar_presence": True},
+        }
+
+
+class ChannelSessionTests(SessionBrowserStubTests):
     def test_channel_session_requires_and_validates_channel(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             sessions_dir = Path(tmp_dir) / "channel_sessions"
@@ -612,6 +671,11 @@ class ChannelSessionTests(unittest.TestCase):
         self.assertTrue(log_artifact_exists)
 
     def test_channel_session_check_requires_positive_login_signal(self) -> None:
+        self.browser.check.side_effect = [
+            {"login_signals": {"login_modal_absent": True}},
+            {"login_signals": {"login_required": True}},
+            self.browser.check.return_value,
+        ]
         with TemporaryDirectory() as tmp_dir:
             sessions_dir = Path(tmp_dir) / "channel_sessions"
             with patch(
@@ -751,7 +815,7 @@ def _check_mode_confirmation_items() -> list[str]:
     ]
 
 
-class SubmissionCheckModeTests(unittest.TestCase):
+class SubmissionCheckModeTests(SessionBrowserStubTests):
     def test_check_mode_requires_preflight_channel_lead_resume_and_valid_session(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -936,7 +1000,7 @@ class SubmissionCheckModeTests(unittest.TestCase):
         self.assertEqual(rate_limited["steps"][0]["status"], "blocked")
 
 
-class FeedbackIterationTests(unittest.TestCase):
+class FeedbackIterationTests(SessionBrowserStubTests):
     def test_feedback_iteration_lists_items_requires_action_and_preserves_artifacts(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

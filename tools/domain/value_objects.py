@@ -32,6 +32,12 @@ class Candidate:
     source: str
     merged_sources: tuple[str, ...]
     legal_entity: str = ""
+    platform: str = ""
+    platform_job_id: str = ""
+    platform_job_type: str = ""
+    job_profile_id: str = ""
+    jd_status: str = ""
+    source_jd_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -52,6 +58,8 @@ class ChannelFailure:
     channel_id: str
     reason: str
     details: str
+    not_submitted: bool = False
+    submission_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -60,6 +68,7 @@ class DeliveryResult:
     success: bool
     submission_id: str
     message: str
+    outcome: str = ""
 
 
 # --- GUI value objects ---

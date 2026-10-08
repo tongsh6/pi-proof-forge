@@ -2,6 +2,26 @@
 
 本文是 P0-017 `authorized_external_l3_live_run` 的人工执行真源。它只描述如何准备、复核和审计一次真实渠道 L3 验证，不保存 Job URL、确认值、简历路径、profile 路径、密码、验证码或短信码。
 
+## 已存 App 投递的只读统一验收（2026-10-01）
+
+官方 API 默认简历及 App 原生 PDF 已有真实成功记录时，使用以下入口复用已有证据。此模式不调用旧实时命令、不访问平台、不消耗额度、不改写原投递日志，不要求重新登录或提供 Token。它不会赋予新投递授权。
+
+```bash
+python3 -m tools.acceptance.external_l3 --run-id <audit-id> \
+  --saved-submission <api-or-native-submission-id> \
+  --page-evidence outputs/acceptance/<scenario>/<native-page-record>.json
+```
+
+- 多条提交和页面证据可重复传入对应参数。仅允许已有 `api-`/`native-` 提交编号；页面证据限定在项目 `outputs/acceptance`。
+- 先在 App 选择原投递，核对岗位、审批版本、回执来源、指纹和本地证据状态。反馈只录入真实已知信息；未收到招聘反馈时可记录明确标注的个人复盘，不能伪造回复。
+- 每条提交必须通过原批准快照、实际业务回执解析、日志步骤、岗位/版本身份和 SQLite 成功占位校验。API 的平台文本观测与指定 PDF 的字节绑定分别表示，不伪造浏览器步骤。
+- 原页面动作/重启证据必须覆盖每条提交；每种路线至少有一个真实 App 反馈保存、重启读回样本。审计汇总不能代替页面验收，合成测试只证明校验逻辑。
+- 新反馈页面记录的 `native_page_acceptance.surface` 为 `tauri_desktop_app`，动作必须包含 `select_submission/view_evidence/save_personal_feedback/restart_app/read_saved_feedback`，并以 `feedback_records` 映射实际读回的提交编号与 iteration ID。`restart_verified/feedback_readback_verified` 须同时为 true；非页面 surface、泛化动作或其他记录的 ID 均不能通过。未知状态期间的合法旧反馈保持 historical；只有当前完整证据绑定且已在 App 读回的反馈满足本轮样本要求。
+- 报告仍写 `external-l3-validation.json/.md`，`validation_mode=saved_app_records`；只有状态 `external_validated` 且完成门禁无 blocker 才通过。报告包含来源文件指纹，不复制反馈全文、业务响应、招聘方标识或签名 URL。
+- 丢失或损坏证据时保留原投递状态并报告不完整；已有成功/未知记录不得通过重新投递补证。原始日志不补写反向引用，本报告通过同源 ID、文件指纹和页面证据关联原记录。
+
+下方为旧 Playwright **新实时运行** 的兼容说明，其 profile、人工确认与授权模板条件只适用于该模式。
+
 ## 适用边界
 
 - 仅适用于 `acceptance_external_l3` 的 Liepin 真实渠道验证。

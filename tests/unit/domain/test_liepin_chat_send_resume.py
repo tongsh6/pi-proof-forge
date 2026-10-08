@@ -72,6 +72,29 @@ class ExternalL3ArtifactPage(FakePage):
 
 
 class LiepinChatSendResumeTests(unittest.TestCase):
+    def test_public_job_url_alone_does_not_prove_login(self):
+        self.assertFalse(liepin._is_logged_in(FakePage({})))
+    def test_unbound_local_resume_stops_before_opening_chat_or_sending_platform_resume(self) -> None:
+        main = FakeElement(attrs={
+            "data-jobid": "123456",
+            "data-params": '{"jobId": 123456, "recruiterName": "Sun"}',
+        })
+        send = FakeElement(text="发简历")
+        confirm = FakeElement(text="确定")
+        page = FakePage({
+            liepin.MAIN_CHAT_SELECTOR: FakeLocator([main]),
+            "text=发简历": FakeLocator([send]),
+            ".ant-im-modal-confirm-btns button.ant-im-btn-primary:visible": FakeLocator([confirm]),
+        })
+
+        ok, detail = liepin._send_resume_via_chat(page, page.url, 5000, submit=True)
+
+        self.assertFalse(ok)
+        self.assertEqual(detail, "resume_attachment_binding_unverified")
+        self.assertFalse(main.clicked)
+        self.assertFalse(send.clicked)
+        self.assertFalse(confirm.clicked)
+
     def test_extract_liepin_job_id_from_job_url(self) -> None:
         self.assertEqual(
             liepin._extract_liepin_job_id("https://www.liepin.com/job/123456.shtml"),

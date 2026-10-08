@@ -1360,6 +1360,27 @@
           "children": [
             {
               "type": "frame",
+              "id": "career01",
+              "name": "career01-existing-flow-extension",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "career01txt",
+                  "content": "完整职业档案 / Career profile\n职业摘要 · 工作/合作经历 · 分组能力 · 教育展示选择 · 补充成果\n条目编辑 + 已审核证据关联；保存草稿 → 确认事实，缺项/陈旧版本禁止确认。",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fill": "$text-primary"
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "B4Irb",
               "name": "reHeader",
               "width": "fill_container",
@@ -1691,7 +1712,7 @@
                     {
                       "type": "frame",
                       "id": "lsIBE",
-                      "name": "reGeneratedList",
+                      "name": "reGeneratedList (max 256px, scroll overflow)",
                       "width": "fill_container",
                       "layout": "vertical",
                       "gap": 10,
@@ -1780,7 +1801,7 @@
                           "type": "text",
                           "id": "3oJVk",
                           "fill": "#0F172A",
-                          "content": "Preview / 预览\nResume v5 · A/B Compare · edit",
+                          "content": "Preview / 预览\nA4 · 与导出 PDF 共用 HTML 模板",
                           "fontFamily": "Inter",
                           "fontSize": 14,
                           "fontWeight": "600"
@@ -1789,8 +1810,8 @@
                           "type": "text",
                           "id": "VKzVE",
                           "fill": "#334155",
-                          "content": "Tong Shuanglong\nSenior Platform Engineer\n\nProfessional Summary\nEvidence-first product engineer with platform, delivery and sidecar integration experience.\n\nExperience\n- Built multi-brand app entry architecture with config-driven rollout\n- Improved form completion and delivery readiness through automation workflow design\n\nSkills\nPython · Tauri · React · Delivery Ops",
-                          "fontFamily": "JetBrains Mono",
+                          "content": "共享 HTML 简历纸张\n\n姓名与联系方式\n当前定位与求职意向\n\n核心技能\n单栏、克制留白与明确字重层级\n\n项目经历\n项目标题与时间对齐\n职责、行动与可追溯结果\n\n动态排版真源：\ntools/infra/export/resume_html.py\ntools/infra/export/resume.css\n\n此区域保留预览容器，不重复维护另一套简历模板。",
+                          "fontFamily": "Inter",
                           "fontSize": 11,
                           "fontWeight": "normal"
                         }
@@ -1945,6 +1966,46 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "frame",
+              "id": "docPick1",
+              "name": "Material Document Picker",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "gap": 8,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "docPickTitle",
+                  "content": "选择工作文档 · 名称筛选 → 片段选择 → 查看原文",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "600",
+                  "fill": "$text-primary"
+                },
+                {
+                  "type": "text",
+                  "id": "docPickHelp",
+                  "content": "复用已导入 TXT / Markdown；长文完整分段；选择后提炼，审核后保存。\n来源指纹随卡保留；普通编辑变为待审核，可按原来源重审。\n切卡清空重审草稿，详情加载中禁用保存；可用数按真实候选资格统计。",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                }
+              ]
+            },
+            {
+              "id": "eTxt01",
+              "type": "text",
+              "name": "工作材料手动草稿",
+              "content": "Markdown / TXT 材料 → 选择原文片段 → 模型提炼或手工草稿 → 原文指纹和结果校验 → 审核后保存",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fill": "$text-secondary"
             },
             {
               "type": "frame",
@@ -2289,7 +2350,7 @@
       "y": 3640,
       "name": "Screen/Jobs",
       "width": 1440,
-      "height": 900,
+      "height": 1080,
       "fill": "$bg-primary",
       "cornerRadius": 24,
       "stroke": {
@@ -2462,6 +2523,60 @@
             },
             {
               "type": "frame",
+              "id": "lpDet03",
+              "name": "jobJdBoundReview",
+              "width": "fill_container",
+              "height": 156,
+              "fill": "$bg-inset",
+              "cornerRadius": 12,
+              "layout": "vertical",
+              "gap": 8,
+              "padding": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "lpDet04",
+                  "name": "jobJdBinding",
+                  "fill": "$text-primary",
+                  "content": "JD parser / JD 解析审核 · Bound source / 绑定来源: lead → profile",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "lpDet05",
+                  "name": "jobJdSource",
+                  "fill": "$text-secondary",
+                  "content": "Full JD + Source URL / 完整正文与来源（绑定时只读）",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "lpDet06",
+                  "name": "jobJdActions",
+                  "fill": "$accent",
+                  "content": "Parse / 解析 · Review title + keywords / 审核标题与关键词\nSave incomplete / 保存未完整 · Save reviewed / 保存完整画像",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "lpDet07",
+                  "name": "jobJdUnbind",
+                  "fill": "$text-secondary",
+                  "content": "Unbind / 解除绑定 · Clear draft / 清空草稿\n切换其他岗位清稿与绑定；同源解析保留绑定，更新原岗位",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "jihK8",
               "name": "jobsGrid",
               "width": "fill_container",
@@ -2606,9 +2721,67 @@
                           "id": "r3Gh4",
                           "name": "leadFiltersText",
                           "fill": "$text-secondary",
-                          "content": "Source: All   Status: Active   Favorited only   Search leads...",
+                          "content": "Saved leads / 本地筛选: Status · Favorites · Company / Position",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "lpJob01",
+                      "name": "liepinOnlineSearch",
+                      "width": "fill_container",
+                      "height": 116,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 12,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "$accent"
+                      },
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "lpJob02",
+                          "name": "liepinSearchTitle",
+                          "fill": "$text-primary",
+                          "content": "Search Liepin online / 猎聘在线搜索",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpJob03",
+                          "name": "liepinSearchInput",
+                          "fill": "$text-secondary",
+                          "content": "Keyword / 关键词 [Java 后端]   Search and import / 搜索并导入",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpJob04",
+                          "name": "liepinSearchOutcome",
+                          "fill": "$text-secondary",
+                          "content": "Received / 获取 3 · Added / 新增 2 · Draft / 草稿",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpJob05",
+                          "name": "liepinSearchStates",
+                          "fill": "$text-secondary",
+                          "content": "成功零结果与阻断分别展示 · 保留本地筛选和数据",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
                           "fontWeight": "normal"
                         }
                       ]
@@ -2690,6 +2863,64 @@
                       "fontFamily": "Inter",
                       "fontSize": 14,
                       "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "lpJob06",
+                      "name": "liepinJdSummary",
+                      "width": "fill_container",
+                      "height": 138,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 12,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "$accent"
+                      },
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "lpJob07",
+                          "name": "liepinJdSummaryTitle",
+                          "fill": "$text-primary",
+                          "content": "Summary only / 摘要 · 待补完整 JD\n官方薪资原文 · 工作地区；缺失显示未提供 · 已审核官方岗位可准备默认简历审批，成功跳转指定运行；已尝试岗位阻断",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpJob08",
+                          "name": "liepinJdSummaryBody",
+                          "fill": "$text-secondary",
+                          "content": "Source link / 来源链接 · Fetched at / 获取时间\n转画像为未完整草稿，补齐 JD 并审核后匹配\n支持手动整理：摘要、逐行要求、关键词；来源绑定保留",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpDet01",
+                          "name": "liepinFullJdAction",
+                          "fill": "$accent",
+                          "content": "Fetch full JD / 获取完整 JD → 上方解析审核区",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpDet02",
+                          "name": "liepinFullJdFailure",
+                          "fill": "$text-secondary",
+                          "content": "失败保留原稿 · 获取后仍待解析和人工审核",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
                     },
                     {
                       "type": "frame",
@@ -2802,6 +3033,27 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "frame",
+              "id": "jobsflow08",
+              "name": "jobsflow08-existing-flow-extension",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "jobsflow08txt",
+                  "content": "使用已保存 JD 生成定制简历 / Generate from saved JD\nactive + 完整 JD → Quick Run 精确选中目标；不自动运行。",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fill": "$text-primary"
+                }
+              ]
             }
           ]
         }
@@ -2811,7 +3063,7 @@
       "type": "frame",
       "id": "ihiWw",
       "x": 0,
-      "y": 4580,
+      "y": 4760,
       "name": "Screen/Quick Run",
       "width": 1440,
       "height": 900,
@@ -2926,6 +3178,15 @@
                   }
                 }
               ]
+            },
+            {
+              "id": "qrInp01",
+              "type": "text",
+              "name": "显式生成输入",
+              "content": "材料来源：请选择本次材料  ▾    □ 使用模型润色（默认模板生成）；未选材料时不可启动。",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fill": "$text-secondary"
             },
             {
               "type": "frame",
@@ -3342,6 +3603,36 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "text",
+              "id": "qrSelectEvidence",
+              "name": "Reviewed Evidence Selection",
+              "content": "本次选用的已审核证据：逐项勾选，显示数量；不选则禁用启动。\n模型辅助选材（默认规则选材），不改变已核实事实。\n缺职责/时间/场景/行动/技能 → NEEDS_EVIDENCE；PDF 导出成功不覆盖。",
+              "fontFamily": "Inter",
+              "fontSize": 12,
+              "fill": "$text-secondary"
+            },
+            {
+              "type": "frame",
+              "id": "quickflow08",
+              "name": "quickflow08-existing-flow-extension",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "quickflow08txt",
+                  "content": "定制简历接续 / Tailored resume flow\n已确认职业档案 + 完整 JD → 原 Quick Run\n内容及追溯有效的结果 → 查看并准备 PDF；切换输入清空旧结果。",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fill": "$text-primary"
+                }
+              ]
             }
           ]
         }
@@ -3351,7 +3642,7 @@
       "type": "frame",
       "id": "ZSLCx",
       "x": 0,
-      "y": 5520,
+      "y": 5700,
       "name": "Screen/Agent Run",
       "width": 1440,
       "height": 900,
@@ -3414,6 +3705,45 @@
           "gap": 24,
           "padding": 28,
           "children": [
+            {
+              "type": "frame",
+              "id": "daily18",
+              "name": "Daily Controlled Delivery",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 20,
+              "gap": 10,
+              "fill": "$bg-panel",
+              "cornerRadius": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "day18h",
+                  "content": "每日受控投递 · Asia/Shanghai · 今日确认 0/3 · 占位 0",
+                  "fontFamily": "Inter",
+                  "fontSize": 18,
+                  "fontWeight": "600",
+                  "fill": "$text-primary"
+                },
+                {
+                  "type": "text",
+                  "id": "day18d",
+                  "content": "App 运行时每日一批；关闭或休眠不运行，不补过去日期。\n每日 1–3 次 · 执行 HH:mm（上海） · 到期时间（本机）\n具体岗位 / 可读 PDF 文件名 / SHA256 / 预览；新岗位、新文件、删除另行确认。",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "type": "text",
+                  "id": "day18a",
+                  "content": "保存草稿 → 独立确认清单及上传副作用 → 启用/恢复\n暂停 · 撤销 · 执行今日批次 · 结束中断批次（不重发）\n最近日期记录：成功 / 候选不足 / 登录失效 / 附件位满 / 未决占位",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fill": "$text-primary"
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "GdBiq",
@@ -3616,7 +3946,7 @@
                       "id": "pL0Xx",
                       "name": "agGateHead",
                       "fill": "$text-primary",
-                      "content": "Review Candidates / 候选审批",
+                      "content": "Review Candidates / 候选审批\n固定版本正文预览 · 快照失效禁止批准\n批准后恢复校验；检查、阻断、真实成功分别展示 · 分列 App 自行确认 / 外部观察确认；外部观察不算 App 闭环\n未知结果：核验已有回执（本地读取，不重复投递）\n批次：授权 / 已占用 / 确认成功 / 剩余；历史真实投递占额度",
                       "fontFamily": "Inter",
                       "fontSize": 14,
                       "fontWeight": "600"
@@ -4147,6 +4477,27 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "frame",
+              "id": "dailyrec08",
+              "name": "Daily Recovery - State",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "dailyrec08txt",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fill": "$text-primary",
+                  "content": "批次进度与中断核验 / Batch recovery\n成功 / 未决数量 + 停止原因 + 每项阶段 → 原 PDF 查看与核验\n结束中断批次不重发；成功保留、未开始不改、在途保留未知占位。"
+                }
+              ]
             }
           ]
         }
@@ -4156,7 +4507,7 @@
       "type": "frame",
       "id": "upl7d",
       "x": 0,
-      "y": 6460,
+      "y": 6640,
       "name": "Screen/Submissions",
       "width": 1440,
       "height": 900,
@@ -4211,7 +4562,7 @@
         {
           "type": "frame",
           "id": "SvMgU",
-          "name": "Submissions Main",
+          "name": "Submissions Main (会话由 App 专用浏览器打开和检查)",
           "width": "fill_container",
           "height": "fill_container",
           "fill": "$bg-primary",
@@ -4219,6 +4570,27 @@
           "gap": 24,
           "padding": 28,
           "children": [
+            {
+              "type": "frame",
+              "id": "content01",
+              "name": "content01-existing-flow-extension",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "content01txt",
+                  "content": "固定 PDF 内容检查 / Content validation\n完整职业档案及项目关联 → 固定快照 → 预览同一 PDF → 原批准上传\n原队列保存批准依据；上传/最终发送复核，旧成功只读保持。",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fill": "$text-primary"
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "DzCJj",
@@ -4335,6 +4707,186 @@
                       "content": "email retry"
                     }
                   }
+                }
+              ]
+            },
+            {
+              "id": "nLpn01",
+              "type": "frame",
+              "name": "Submissions - PDF Application",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "gap": 8,
+              "fill": "$bg-panel",
+              "children": [
+                {
+                  "id": "nLpn02",
+                  "type": "text",
+                  "name": "标题",
+                  "content": "PDF Application / PDF 投递",
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "600",
+                  "fill": "$text-primary"
+                },
+                {
+                  "id": "nLpn03",
+                  "type": "text",
+                  "name": "操作",
+                  "content": "打开 App 内登录    检查 App 内会话    检查附件要求",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fill": "$accent"
+                },
+                {
+                  "id": "nLpn04",
+                  "type": "text",
+                  "name": "状态与边界",
+                  "content": "固定 PDF 与岗位，显示姓名-公司简称-岗位简称-YYYYMMDD.序号.PDF 及指纹；简称仍超限时阻止上传。历史快照不改名。会话检查从解析页返回附件页，不提交经历。",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nPdf01",
+                  "type": "text",
+                  "name": "Approval",
+                  "content": "□ 批准此 PDF，并接受自动补全在线简历及随后续投递附带  ·  批准并上传",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nPdf02",
+                  "type": "text",
+                  "name": "Upload states",
+                  "content": "Prepared → Uploading → Attachment pending → Attachment verified；Unknown 不重传",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nPdf03",
+                  "type": "text",
+                  "name": "Delivery controls",
+                  "content": "核验目标 → 开始本次投递 → 检查已有沟通 → 发简历确认并选中批准 fileId → 确认所选 PDF",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nPdf04",
+                  "type": "text",
+                  "name": "Delivery states",
+                  "content": "Communication → Confirmation → Receipt pending → Success；每个写动作只执行一次",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nPdf05",
+                  "type": "text",
+                  "name": "Receipt",
+                  "content": "核验本次回执（不重发）  ·  公司 / 岗位 / 版本 / 审批 / Receipt SHA256",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nPdf06",
+                  "type": "text",
+                  "name": "Guards",
+                  "content": "Busy 禁用操作；错误明确显示；最终发送后绑定冻结，现场附件检查与再次发送禁用；历史回执保持可核验",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nPdf07",
+                  "type": "text",
+                  "name": "Guards",
+                  "content": "Remove attachment / 移除平台附件：成功记录独立确认；原字节/身份/请求前守卫。Unknown 仅可核验原拦截证据与当前原文件，不重删；本地历史保留。",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                }
+              ]
+            },
+            {
+              "id": "nFbk01",
+              "type": "frame",
+              "name": "Submissions - Delivery Feedback",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "gap": 8,
+              "fill": "$bg-panel",
+              "children": [
+                {
+                  "id": "nFbk02",
+                  "type": "text",
+                  "name": "状态与边界",
+                  "content": "Feedback / 反馈迭代",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nFbk03",
+                  "type": "text",
+                  "name": "状态与边界",
+                  "content": "Related submission / 关联投递  ·  公司 / 岗位 / 提交编号",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nFbk04",
+                  "type": "text",
+                  "name": "状态与边界",
+                  "content": "只读证据：审批 / 岗位 / 版本 / 简历指纹 / 回执指纹；Verified 或 Incomplete 不改原投递状态",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nFbk05",
+                  "type": "text",
+                  "name": "状态与边界",
+                  "content": "来源：个人复盘 / 手动招聘反馈  ·  下一步动作  ·  必填反馈内容",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nFbk06",
+                  "type": "text",
+                  "name": "状态与边界",
+                  "content": "保存仅记录计划；不自动生成或投递；重新生成显示原岗位画像并进入 Quick Run",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nFbk07",
+                  "type": "text",
+                  "name": "状态与边界",
+                  "content": "历史：时间 / 来源 / 内容 / 动作；切换清空草稿并丢弃旧请求，重开可读回",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
+                },
+                {
+                  "id": "nFbk08",
+                  "type": "text",
+                  "name": "状态与边界",
+                  "content": "空内容 / Loading / Saving 禁止提交；列表与详情均禁止受控投递重试；Error 保留可恢复状态",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fill": "$text-secondary"
                 }
               ]
             },
@@ -4548,6 +5100,27 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "frame",
+              "id": "pdfflow08",
+              "name": "pdfflow08-existing-flow-extension",
+              "layout": "vertical",
+              "width": "fill_container",
+              "height": "fit_content",
+              "padding": 16,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "pdfflow08txt",
+                  "content": "候选准备接续 / Candidate preparation\n接收生成结果仅预填 → 用户固定并预览 → 原候选清单\n导航不上传、不发送、不勾选候选、不启用授权。\nAgent Run 原生 PDF 只回原审核页；通用审批拒绝混用，缺失轮次显示未记录。",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fill": "$text-primary"
+                }
+              ]
             }
           ]
         }
@@ -4557,7 +5130,7 @@
       "type": "frame",
       "id": "OGiSD",
       "x": 0,
-      "y": 7400,
+      "y": 7580,
       "name": "Screen/Policy",
       "width": 1440,
       "height": 900,
@@ -6909,7 +7482,7 @@
                       "id": "q7NiL",
                       "name": "submissionsTitle",
                       "fill": "$text-primary",
-                      "content": "Submissions / 投递记录",
+                      "content": "Submissions / 投递记录\nAPI 记录：版本关联、返回审批；禁止重复投递",
                       "fontFamily": "Inter",
                       "fontSize": 26,
                       "fontWeight": "700"
@@ -9050,10 +9623,10 @@
       "type": "frame",
       "id": "FWOoc",
       "x": 0,
-      "y": 8400,
+      "y": 8580,
       "name": "Screen/System Settings",
       "width": 1440,
-      "height": 900,
+      "height": 1160,
       "fill": "$bg-primary",
       "cornerRadius": 24,
       "stroke": {
@@ -9292,6 +9865,124 @@
                     },
                     {
                       "type": "frame",
+                      "id": "lpApi01",
+                      "name": "liepinOfficialReadOnly",
+                      "width": "fill_container",
+                      "height": 288,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 12,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "$accent"
+                      },
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "lpApi02",
+                          "name": "liepinOfficialTitle",
+                          "fill": "$text-primary",
+                          "content": "Liepin official read-only / 猎聘官方只读接入",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi03",
+                          "name": "liepinOfficialStatus",
+                          "fill": "$text-secondary",
+                          "content": "Not configured / 未配置 · Read-only / 只读",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi04",
+                          "name": "liepinOfficialAuthorization",
+                          "fill": "$accent",
+                          "content": "Official authorization / 系统浏览器打开官方授权 → liepin.com/mcp/auth；失败提示与可复制地址",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi05",
+                          "name": "liepinOfficialToken",
+                          "fill": "$text-secondary",
+                          "content": "Token [password input] / 提交后清空输入框",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi06",
+                          "name": "liepinOfficialActions",
+                          "fill": "$text-secondary",
+                          "content": "Save locally / 保存到本机 · Check / 验证 · Delete saved credential / 删除已保存凭据",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi07",
+                          "name": "liepinOfficialStorage",
+                          "fill": "$text-secondary",
+                          "content": "本机明文文件 0600 · 不使用钥匙串 · 重启自动读取 · Token 不回显、不写日志",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi10",
+                          "name": "liepinOfficialStoragePath",
+                          "fill": "$text-secondary",
+                          "content": "本机保存路径 / Local storage path: [backend storage_path, selectable]",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi11",
+                          "name": "liepinOfficialStorageError",
+                          "fill": "$text-secondary",
+                          "content": "文件读取失败仍可删除 · 保存/删除失败显示错误 · 验证/读简历需已配置",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi08",
+                          "name": "liepinOfficialResume",
+                          "fill": "$text-secondary",
+                          "content": "Read platform resume / 读取平台简历 ▸ 折叠纯文本预览",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lpApi09",
+                          "name": "liepinOfficialPreviewBoundary",
+                          "fill": "$text-secondary",
+                          "content": "不保存或覆盖资料 · 清理/替换/失败清除预览",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
                       "id": "VCD0u",
                       "name": "setField1Card",
                       "width": "fill_container",
@@ -9310,7 +10001,7 @@
                           "id": "1DdVg",
                           "name": "setField1Text",
                           "fill": "$text-primary",
-                          "content": "Liepin / 通道\nEnabled · priority 1 · session OK",
+                          "content": "Liepin browser delivery / 猎聘浏览器投递\nIndependent of official read-only access / 独立状态",
                           "fontFamily": "Inter",
                           "fontSize": 13,
                           "fontWeight": "normal"
@@ -9337,7 +10028,7 @@
                           "id": "9I79k",
                           "name": "setField2Text",
                           "fill": "$text-primary",
-                          "content": "Email / 通道\nEnabled · fallback on failure · retry once",
+                          "content": "Email / 通道\nSeparate channel · no automatic fallback",
                           "fontFamily": "Inter",
                           "fontSize": 13,
                           "fontWeight": "normal"
@@ -9364,7 +10055,7 @@
                           "id": "fvWlW",
                           "name": "setField3Text",
                           "fill": "$text-primary",
-                          "content": "Fallback Order / 降级顺序\nliepin -> email",
+                          "content": "Available channels / 可选投递通道\nliepin / email",
                           "fontFamily": "Inter",
                           "fontSize": 13,
                           "fontWeight": "normal"

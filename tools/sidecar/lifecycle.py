@@ -36,6 +36,10 @@ def handle_ping(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def handle_shutdown(params: dict[str, Any]) -> dict[str, Any]:
+    from tools.infra.liepin_readonly import liepin_readonly
+    liepin_readonly.unload()
+    from tools.infra.browser.liepin_session import session_browser
+    session_browser.close()
     correlation_id = params["meta"]["correlation_id"]
     return {
         "meta": {"correlation_id": correlation_id},

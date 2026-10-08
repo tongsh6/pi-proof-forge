@@ -1,3 +1,4 @@
+import { CareerProfileEditor } from "./career-profile";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -101,6 +102,32 @@ async function toUploadFilePayload(file: File): Promise<{
   };
 }
 
+function HtmlResumePreview({ html, title }: { html: string; title: string }) {
+  const host = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const element = host.current;
+    if (!element) return;
+    const update = () => setScale(Math.min(1, Math.max(0.2, element.clientWidth / 794)));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={host} className="relative w-full overflow-hidden" style={{ height: Math.ceil(1123 * scale) }}>
+      <iframe
+        title={title}
+        srcDoc={html}
+        sandbox=""
+        referrerPolicy="no-referrer"
+        className="absolute left-0 top-0 border-0 bg-white"
+        style={{ width: 794, height: 1123, transform: `scale(${scale})`, transformOrigin: "top left" }}
+      />
+    </div>
+  );
+}
+
 export function ResumesPage() {
   const { t, i18n } = useTranslation();
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
@@ -111,6 +138,7 @@ export function ResumesPage() {
     useState<MaterialReadinessResult | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [preview, setPreview] = useState<ResumePreview | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewStatus, setPreviewStatus] = useState<string | null>(null);
   const [uploadForm, setUploadForm] = useState<UploadForm>({
     sourcePath: "",
@@ -160,18 +188,22 @@ export function ResumesPage() {
     selectedIdRef.current = resumeId;
     setSelectedId(resumeId);
     setPreviewStatus(null);
+    setPreview(null);
+    setPreviewHtml(null);
     try {
       const result = await getResumePreview(resumeId);
       if (selectedIdRef.current !== resumeId) {
         return;
       }
       setPreview(result.preview);
+      setPreviewHtml(result.preview_html ?? null);
       setPreviewStatus(result.preview_status ?? null);
     } catch (nextError) {
       if (selectedIdRef.current !== resumeId) {
         return;
       }
       setPreview(null);
+      setPreviewHtml(null);
       setPreviewStatus(null);
       setError(getErrorMessage(nextError));
     }
@@ -202,6 +234,7 @@ export function ResumesPage() {
       } else {
         setSelectedId(null);
         setPreview(null);
+        setPreviewHtml(null);
         setPreviewStatus(null);
       }
       setLoadState("ready");
@@ -219,14 +252,14 @@ export function ResumesPage() {
     setProfileSaving(true);
     setError(null);
     try {
-      await updateProfile(profileForm);
+      await updateProfile(profileForm, profile?.revision);
       await loadData();
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
       setProfileSaving(false);
     }
-  }, [loadData, profileForm]);
+  }, [loadData, profileForm, profile?.revision]);
 
   const handleUpload = useCallback(async () => {
     if (!uploadForm.sourceFile && !uploadForm.sourcePath.trim()) {
@@ -368,6 +401,8 @@ export function ResumesPage() {
           {t("pages.resumes.exportedTo", { path: exportedPath })}
         </section>
       ) : null}
+
+      {loadState === "ready" && <CareerProfileEditor profile={profile} onSaved={loadData}/>}
 
       {loadState === "ready" ? (
         <div className="grid gap-5 xl:grid-cols-[320px_320px_minmax(0,1fr)]">
@@ -738,8 +773,8 @@ export function ResumesPage() {
               />
             </div>
 
-            <div className="grid gap-5 2xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]">
-              <div className="space-y-3">
+            <div className="grid gap-5">
+              <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
                 {generatedResumes.map((item) => (
                   <button
                     key={item.resume_id}
@@ -782,7 +817,9 @@ export function ResumesPage() {
               </div>
 
               <div className="min-h-[520px] rounded-card border border-border bg-[#f8fafc] p-6 text-[#334155] shadow-[var(--shadow-card)]">
-                {preview ? (
+                {previewHtml ? (
+                  <HtmlResumePreview html={previewHtml} title={t("pages.resumes.preview.label")} />
+                ) : preview ? (
                   <article className="mx-auto max-w-[720px] space-y-6">
                     <header className="border-b border-[#cbd5e1] pb-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">

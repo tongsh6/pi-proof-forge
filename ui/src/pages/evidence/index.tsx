@@ -1,3 +1,5 @@
+import { MaterialDocumentPicker } from "./material-document-picker";
+import type { MaterialDocumentRef } from "@/lib/sidecar/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -135,6 +137,8 @@ export function EvidencePage() {
   const [importPath, setImportPath] = useState("");
   const [importMode, setImportMode] = useState<EvidenceImportMode>("append");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
+  const [selectedDocument,setSelectedDocument]=useState<MaterialDocumentRef|null>(null);
+  const [reviewTargetId,setReviewTargetId]=useState<string|undefined>(undefined);
   const [generatedDraft, setGeneratedDraft] =
     useState<EvidenceDraftPayload | null>(null);
   const [previewArtifact, setPreviewArtifact] = useState<ArtifactSummary | null>(null);
@@ -147,7 +151,7 @@ export function EvidencePage() {
   const evidenceStats = useMemo(
     () => ({
       total: items.length,
-      ready: items.filter((item) => item.status === "ready" || item.status === "pass")
+      ready: items.filter((item) => item.candidate_pool_eligible === true)
         .length,
       gaps: items.filter(
         (item) => item.status === "gap" || item.status === "needs_review"
@@ -162,10 +166,18 @@ export function EvidencePage() {
     draftState === "generating" ||
     deleteState === "deleting" ||
     importState === "importing";
+  const selectedMaterial = materialSources.find((source) => source.material_id === selectedMaterialId);
+  const reviewMissingItems = generatedDraft ? [
+    !form.title.trim() && "missing_title",
+    !form.results.trim() && "missing_results",
+    !generatedDraft.artifacts.length && "missing_artifacts",
+    !generatedDraft.source_material_ids.length && "missing_source_material_ids",
+  ].filter(Boolean) : [];
 
   const loadDetail = useCallback(async (evidenceId: string) => {
     selectedIdRef.current = evidenceId;
     setSelectedId(evidenceId);
+    setGeneratedDraft(null);setReviewTargetId(undefined);
     setDetailState("loading");
     setDetailError(null);
 
@@ -176,7 +188,7 @@ export function EvidencePage() {
       setPreviewArtifact(result.evidence.artifacts[0] ?? null);
       setForm(toForm(result.evidence));
       setIsDraft(false);
-      setGeneratedDraft(null);
+      setGeneratedDraft(null);setReviewTargetId(undefined);
       setDetailState("ready");
       return result.evidence;
     } catch (nextError) {
@@ -228,7 +240,7 @@ export function EvidencePage() {
           setPreviewArtifact(null);
           setForm(toForm(null));
           setIsDraft(true);
-          setGeneratedDraft(null);
+          setGeneratedDraft(null);setReviewTargetId(undefined);
           setDetailState("ready");
         }
         setLoadState("ready");
@@ -274,7 +286,7 @@ export function EvidencePage() {
     setDetailError(null);
     setDetailState("ready");
     setIsDraft(true);
-    setGeneratedDraft(null);
+    setGeneratedDraft(null);setReviewTargetId(undefined);
     setSaveState("idle");
     setImportMode("create");
   }, []);
@@ -307,6 +319,25 @@ export function EvidencePage() {
     [form]
   );
 
+  const handleManualDraft = useCallback(() => {
+    if (!selectedMaterial || ![".md", ".txt"].includes(selectedMaterial.extension)) return;
+    const draft: EvidenceDraftPayload = { title: "", context: "", actions: "", results: "",
+      stack: [], tags: [], source_material_ids: [selectedMaterial.material_id],
+      artifacts: [{ type: selectedMaterial.extension === ".md" ? "markdown_document" : "text_document",
+        ref: selectedMaterial.material_id, label: selectedMaterial.label || selectedMaterial.filename }],
+      status: "draft_incomplete", candidate_pool_eligible: false,
+      source_documents:selectedDocument?[selectedDocument]:[] };
+    selectedIdRef.current = null;
+    setReviewTargetId(undefined);setGeneratedDraft(draft);
+    updateFormFromDraft(draft);
+    setSelectedId(null);
+    setDetail(null);
+    setPreviewArtifact(null);
+    setIsDraft(true);
+    setDetailState("ready");
+    setDetailError(null);
+  }, [selectedMaterial, selectedDocument, updateFormFromDraft]);
+
   const handleGenerateDraft = useCallback(async () => {
     const materialId =
       selectedMaterialId ||
@@ -319,13 +350,13 @@ export function EvidencePage() {
     setDraftState("generating");
     setDetailError(null);
     try {
-      const result = await generateEvidenceDraft([materialId]);
+      const result = await generateEvidenceDraft([materialId],selectedDocument?.document_id);
       if (!result.draft) {
         setDetailError(result.message);
         setDraftState("idle");
         return;
       }
-      setGeneratedDraft(result.draft);
+      setReviewTargetId(undefined);setGeneratedDraft(result.draft);
       updateFormFromDraft(result.draft);
       setSelectedId(null);
       setDetail(null);
@@ -337,20 +368,21 @@ export function EvidencePage() {
       setDraftState("idle");
       setDetailError(getErrorMessage(nextError));
     }
-  }, [materialSources, selectedMaterialId, t, updateFormFromDraft]);
+  }, [materialSources, selectedMaterialId, selectedDocument, t, updateFormFromDraft]);
 
   const handleSaveReviewedDraft = useCallback(
     async (saveMode: "incomplete" | "eligible") => {
-      if (!generatedDraft) return;
+      if (!generatedDraft || detailState!=="ready") return;
       setSaveState("saving");
       setDetailError(null);
       try {
         const result = await saveEvidenceDraft({
           draft: draftFromForm(generatedDraft),
+          evidence_id: reviewTargetId,
           save_mode: saveMode,
           review: { decision: "approved", reviewed_at: new Date().toISOString() },
         });
-        setGeneratedDraft(null);
+        setGeneratedDraft(null);setReviewTargetId(undefined);
         await loadEvidence(result.evidence_id);
         setSaveState("saved");
       } catch (nextError) {
@@ -358,7 +390,7 @@ export function EvidencePage() {
         setDetailError(getErrorMessage(nextError));
       }
     },
-    [draftFromForm, generatedDraft, loadEvidence]
+    [draftFromForm, generatedDraft, loadEvidence, reviewTargetId, detailState]
   );
 
   const handleSave = useCallback(async () => {
@@ -697,7 +729,7 @@ export function EvidencePage() {
                 {materialSources.map((source) => (
                   <option
                     key={source.material_id}
-                    disabled={source.extension !== ".md"}
+                    disabled={![".md", ".txt"].includes(source.extension)}
                     value={source.material_id}
                   >
                     {source.label || source.filename}
@@ -706,7 +738,7 @@ export function EvidencePage() {
               </select>
               <button
                 className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isBusy || !selectedMaterialId}
+                disabled={isBusy || !selectedMaterialId || !selectedDocument}
                 onClick={() => void handleGenerateDraft()}
                 type="button"
               >
@@ -715,7 +747,11 @@ export function EvidencePage() {
                   ? t("pages.evidence.actions.generatingDraft")
                   : t("pages.evidence.actions.generateDraft")}
               </button>
+              <button type="button" disabled={isBusy || !selectedMaterial || ![".md", ".txt"].includes(selectedMaterial.extension)}
+                className="rounded-card border border-border px-4 py-2 text-sm text-text-primary disabled:opacity-50"
+                onClick={handleManualDraft}>{t("pages.evidence.actions.manualDraft")}</button>
             </div>
+            <MaterialDocumentPicker materialId={selectedMaterialId} onSelect={setSelectedDocument} disabled={isBusy}/>
             {materialSources.length > 0 ? (
               <div className="mt-4 grid gap-3 lg:grid-cols-3">
                 {materialSources.slice(0, 3).map((source) => (
@@ -738,7 +774,7 @@ export function EvidencePage() {
                       </div>
                       <button
                         className="shrink-0 rounded-card border border-border p-2 text-accent transition-colors hover:bg-bg-hover disabled:opacity-50"
-                        disabled={source.extension !== ".md" || isBusy}
+                        disabled={![".md", ".txt"].includes(source.extension) || isBusy}
                         onClick={() => setSelectedMaterialId(source.material_id)}
                         title={t("pages.evidence.materialSources.select")}
                         type="button"
@@ -827,7 +863,7 @@ export function EvidencePage() {
                             <td className="px-4 py-4 text-sm font-semibold text-accent">
                               {item.score}
                             </td>
-                            <td className="px-4 py-4">{renderStatus(item.status)}</td>
+                            <td className="px-4 py-4">{renderStatus(item.candidate_pool_eligible===false&&["ready","pass"].includes(item.status)?"needs_review":item.status)}</td>
                           </tr>
                         );
                       })}
@@ -850,7 +886,7 @@ export function EvidencePage() {
                 <div className="flex items-center gap-2">
                   <button
                     className="rounded-card border border-border p-2 text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isBusy}
+                    disabled={isBusy || detailState!=="ready"}
                     onClick={() =>
                       generatedDraft
                         ? void handleSaveReviewedDraft("eligible")
@@ -890,6 +926,7 @@ export function EvidencePage() {
 
               {detailState === "ready" && (detail || isDraft) ? (
                 <div className="space-y-4 pt-4">
+                  {!generatedDraft && !!detail?.source_material_ids?.length && <button type="button" disabled={isBusy} className="rounded-card border border-accent px-3 py-2 text-sm text-accent" onClick={()=>{setReviewTargetId(detail.evidence_id);setGeneratedDraft({title:form.title,context:form.context,time_range:form.time_range,role_scope:form.role_scope,actions:form.actions,results:form.results,stack:parseCommaList(form.stackText),tags:parseCommaList(form.tagsText),source_material_ids:detail.source_material_ids!,source_documents:detail.source_documents||[],artifacts:detail.source_material_ids!.map(id=>({type:'text_document',ref:id,label:id})),status:'draft_ready_for_review',candidate_pool_eligible:false});}}>{t('materialDocument.reReview')}</button>}
                   {generatedDraft ? (
                     <section className="rounded-card border border-success/40 bg-success/10 p-3">
                       <div className="flex items-start justify-between gap-3">
@@ -904,15 +941,15 @@ export function EvidencePage() {
                           </p>
                         </div>
                         {renderStatus(
-                          generatedDraft.missing_items?.length
+                          reviewMissingItems.length
                             ? "draft_incomplete"
                             : "draft_ready_for_review"
                         )}
                       </div>
-                      {generatedDraft.missing_items?.length ? (
+                      {reviewMissingItems.length ? (
                         <p className="mt-3 text-xs text-warning">
                           {t("pages.evidence.review.missing", {
-                            items: generatedDraft.missing_items.join(", "),
+                            items: reviewMissingItems.join(", "),
                           })}
                         </p>
                       ) : (

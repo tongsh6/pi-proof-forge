@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import {
   Briefcase,
   CheckCircle2,
@@ -18,10 +19,13 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   convertJobLead,
   createJobProfile,
+  fetchLiepinJobDetail,
   generateJobProfileDraft,
   listJobLeads,
   listJobProfiles,
+  prepareLiepinDefault,
   saveJobProfileDraft,
+  searchLiepinJobs,
   updateJobProfile,
 } from "@/lib/sidecar/api";
 import type {
@@ -30,6 +34,7 @@ import type {
   JobLeadsFilters,
   JobProfileListItem,
   JobProfilesFilters,
+  LiepinSearchResult,
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -45,7 +50,7 @@ const DEFAULT_LEAD_FILTERS: JobLeadsFilters = {
   query: "",
 };
 const statusOptions = ["active", "draft", "archived"] as const;
-const leadStatusOptions = ["new", "qualified", "contacted", "archived"] as const;
+const leadStatusOptions = ["draft", "new", "qualified", "contacted", "archived"] as const;
 
 function parseTagsInput(value: string): string[] {
   return value
@@ -94,6 +99,7 @@ function compactList(items: string[], fallback: string, limit = 5): string[] {
 
 export function JobsPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [profiles, setProfiles] = useState<JobProfileListItem[]>([]);
   const [leads, setLeads] = useState<JobLeadListItem[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
@@ -117,14 +123,26 @@ export function JobsPage() {
   const [newTags, setNewTags] = useState("");
   const [jdText, setJdText] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [boundLeadId, setBoundLeadId] = useState<string | null>(null);
+  const [boundProfileId, setBoundProfileId] = useState<string | null>(null);
+  const [fetchingDetail, setFetchingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [preparingReview, setPreparingReview] = useState(false);
+  const [preparationError, setPreparationError] = useState<string | null>(null);
   const [generatedDraft, setGeneratedDraft] =
     useState<JobProfileDraftPayload | null>(null);
+  const [draftKeywords, setDraftKeywords] = useState("");
+  const [draftMustHave, setDraftMustHave] = useState("");
   const [editingProfile, setEditingProfile] = useState<{
     title: string;
     tags: string;
     status: "active" | "draft" | "archived";
   }>({ title: "", tags: "", status: "draft" });
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
+  const [liepinKeyword, setLiepinKeyword] = useState("");
+  const [liepinSearching, setLiepinSearching] = useState(false);
+  const [liepinSearchResult, setLiepinSearchResult] = useState<LiepinSearchResult | null>(null);
+  const [liepinSearchError, setLiepinSearchError] = useState<string | null>(null);
 
   const loadData = useCallback(
     async (
@@ -210,15 +228,121 @@ export function JobsPage() {
   }, [selectedProfile]);
 
   const isBusy =
-    actionState !== "idle" || draftState !== "idle" || convertingLeadId !== null;
+    actionState !== "idle" || draftState !== "idle" || convertingLeadId !== null || liepinSearching || fetchingDetail || preparingReview;
 
-  const fillEditorFromDraft = useCallback((draft: JobProfileDraftPayload) => {
-    setEditingProfile({
-      title: draft.target_role,
-      tags: draft.keywords.join(", "),
-      status: draft.missing_items?.length ? "draft" : "active",
-    });
+  useEffect(() => { setPreparationError(null); }, [selectedLeadId]);
+
+  const handlePrepareReview = useCallback(async () => {
+    if (!selectedLead || preparingReview) return;
+    setPreparingReview(true);
+    setPreparationError(null);
+    try {
+      const result = await prepareLiepinDefault(selectedLead.job_lead_id);
+      if (result.status === "ready" && result.run_id) {
+        navigate(`/agent-run?run_id=${encodeURIComponent(result.run_id)}`);
+      } else {
+        setPreparationError(t(`pages.jobs.liepinPreparation.codes.${result.code}`, {
+          defaultValue: t("pages.jobs.liepinPreparation.failed"),
+        }));
+      }
+    } catch {
+      setPreparationError(t("pages.jobs.liepinPreparation.failed"));
+    } finally {
+      setPreparingReview(false);
+    }
+  }, [selectedLead, preparingReview, navigate, t]);
+
+  const clearJdDraft = useCallback((clearText = true) => {
+    setGeneratedDraft(null);
+    setDraftKeywords("");
+    setBoundLeadId(null);
+    setBoundProfileId(null);
+    setDetailError(null);
+    if (clearText) {
+      setJdText("");
+      setSourceUrl("");
+    }
   }, []);
+
+  const handleSelectProfile = useCallback((profileId: string) => {
+    if (profileId !== selectedProfileId || (boundProfileId && profileId !== boundProfileId)) {
+      clearJdDraft();
+    }
+    setSelectedProfileId(profileId);
+  }, [boundProfileId, clearJdDraft, selectedProfileId]);
+
+  const handleSelectLead = useCallback((leadId: string) => {
+    if (leadId !== selectedLeadId || (boundLeadId && leadId !== boundLeadId)) {
+      clearJdDraft();
+    }
+    setSelectedLeadId(leadId);
+  }, [boundLeadId, clearJdDraft, selectedLeadId]);
+
+  useEffect(() => {
+    if (!boundLeadId) return;
+    const changedLead = activeTab === "leads" && selectedLeadId && selectedLeadId !== boundLeadId;
+    const changedProfile = activeTab === "profiles" && boundProfileId && selectedProfileId && selectedProfileId !== boundProfileId;
+    if (changedLead || changedProfile) clearJdDraft();
+  }, [activeTab, boundLeadId, boundProfileId, clearJdDraft, selectedLeadId, selectedProfileId]);
+
+  const handleFetchLiepinDetail = useCallback(async () => {
+    if (!selectedLead) return;
+    setFetchingDetail(true);
+    setDetailError(null);
+    try {
+      const result = await fetchLiepinJobDetail(selectedLead.job_lead_id);
+      if (result.status !== "pass") {
+        setDetailError(t(`pages.jobs.liepinDetail.codes.${result.code}`, {
+          defaultValue: t("pages.jobs.liepinDetail.failed"),
+        }));
+        return;
+      }
+      setJdText(result.jd_text);
+      setSourceUrl(result.source_url);
+      setBoundLeadId(result.job_lead_id);
+      setBoundProfileId(result.job_profile_id || null);
+      setSelectedProfileId(result.job_profile_id || null);
+      setGeneratedDraft(null);
+      setError(null);
+      setLeads((current) => current.map((lead) => lead.job_lead_id === result.job_lead_id ? {
+        ...lead,
+        source_jd: result.jd_text,
+        source_url: result.source_url,
+        source_jd_sha256: result.source_jd_sha256,
+        jd_status: result.jd_status,
+        job_profile_id: result.job_profile_id,
+      } : lead));
+    } catch {
+      setDetailError(t("pages.jobs.liepinDetail.failed"));
+    } finally {
+      setFetchingDetail(false);
+    }
+  }, [selectedLead, t]);
+
+  const handleLiepinSearch = useCallback(async () => {
+    if (!liepinKeyword.trim()) return;
+    setLiepinSearching(true);
+    setLiepinSearchError(null);
+    setLiepinSearchResult(null);
+    try {
+      const result = await searchLiepinJobs(liepinKeyword.trim());
+      setLiepinSearchResult(result);
+      if (result.status === "pass") {
+        try {
+          const refreshed = await listJobLeads(leadFilters);
+          setLeads(refreshed.items);
+          setSelectedLeadId((current) => refreshed.items.some((item) => item.job_lead_id === current)
+            ? current : refreshed.items[0]?.job_lead_id ?? null);
+        } catch {
+          setLiepinSearchError(t("pages.jobs.liepinSearch.refreshError"));
+        }
+      }
+    } catch {
+      setLiepinSearchError(t("pages.systemSettings.liepinApi.requestError"));
+    } finally {
+      setLiepinSearching(false);
+    }
+  }, [leadFilters, liepinKeyword, t]);
 
   const applyProfileFilters = useCallback(() => {
     setProfileFilters({
@@ -267,6 +391,7 @@ export function JobsPage() {
       });
       setNewTitle("");
       setNewTags("");
+      clearJdDraft();
       resetProfileFilters();
       await loadData(DEFAULT_PROFILE_FILTERS, leadFilters);
       setSelectedProfileId(created.job_profile_id);
@@ -276,7 +401,7 @@ export function JobsPage() {
     } finally {
       setActionState("idle");
     }
-  }, [leadFilters, loadData, newTags, newTitle, resetProfileFilters, t]);
+  }, [clearJdDraft, leadFilters, loadData, newTags, newTitle, resetProfileFilters, t]);
 
   const handleGenerateProfileDraft = useCallback(async () => {
     if (!jdText.trim()) {
@@ -289,30 +414,46 @@ export function JobsPage() {
       const result = await generateJobProfileDraft({
         jd_text: jdText.trim(),
         source_url: sourceUrl.trim() || undefined,
+        job_lead_id: boundLeadId || undefined,
       });
       if (!result.draft) {
         setError(result.message);
         return;
       }
       setGeneratedDraft(result.draft);
-      fillEditorFromDraft(result.draft);
+      setDraftKeywords(result.draft.keywords.join(", "));
+      setDraftMustHave(result.draft.must_have.join("\n"));
+      if (boundLeadId) setSelectedProfileId(boundProfileId);
       setActiveTab("profiles");
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
       setDraftState("idle");
     }
-  }, [fillEditorFromDraft, jdText, sourceUrl, t]);
+  }, [boundLeadId, boundProfileId, jdText, sourceUrl, t]);
+
+  const handleManualDraft = useCallback(() => {
+    const lead = leads.find((item) => item.job_lead_id === boundLeadId);
+    setError(null);
+    setGeneratedDraft({ target_role: lead?.position ?? "", source_jd: jdText,
+      source_url: sourceUrl, jd_summary: "", keywords: [], must_have: [], nice_to_have: [], seniority_signal: [] });
+    setDraftKeywords("");
+    setDraftMustHave("");
+    if (boundLeadId) setSelectedProfileId(boundProfileId);
+    setActiveTab("profiles");
+  }, [boundLeadId, boundProfileId, jdText, leads, sourceUrl]);
 
   const draftFromEditor = useCallback(
     (draft: JobProfileDraftPayload): JobProfileDraftPayload => ({
       ...draft,
-      target_role: editingProfile.title.trim(),
-      keywords: parseTagsInput(editingProfile.tags),
+      keywords: parseTagsInput(draftKeywords),
+      must_have: draftMustHave.split("\n").map((value) => value.trim()).filter(Boolean),
       source_jd: jdText.trim() || draft.source_jd,
       source_url: sourceUrl.trim() || draft.source_url,
+      job_lead_id: boundLeadId || undefined,
+      job_profile_id: boundProfileId || undefined,
     }),
-    [editingProfile, jdText, sourceUrl]
+    [boundLeadId, boundProfileId, draftKeywords, draftMustHave, jdText, sourceUrl]
   );
 
   const handleSaveReviewedDraft = useCallback(
@@ -323,10 +464,13 @@ export function JobsPage() {
       try {
         const result = await saveJobProfileDraft({
           draft: draftFromEditor(generatedDraft),
+          job_lead_id: boundLeadId || undefined,
+          job_profile_id: boundProfileId || undefined,
           save_mode: saveMode,
           review: { decision: "approved", reviewed_at: new Date().toISOString() },
         });
         setGeneratedDraft(null);
+        if (boundLeadId) setBoundProfileId(result.job_profile_id);
         resetProfileFilters();
         await loadData(DEFAULT_PROFILE_FILTERS, leadFilters);
         setSelectedProfileId(result.job_profile_id);
@@ -337,7 +481,7 @@ export function JobsPage() {
         setActionState("idle");
       }
     },
-    [draftFromEditor, generatedDraft, leadFilters, loadData, resetProfileFilters]
+    [boundLeadId, boundProfileId, draftFromEditor, generatedDraft, leadFilters, loadData, resetProfileFilters]
   );
 
   const handleSaveProfile = useCallback(async () => {
@@ -368,6 +512,11 @@ export function JobsPage() {
       setError(null);
       try {
         const result = await convertJobLead(jobLeadId);
+        if (boundLeadId && boundLeadId === jobLeadId) {
+          setBoundProfileId(result.job_profile_id);
+        } else {
+          clearJdDraft();
+        }
         resetProfileFilters();
         await loadData(DEFAULT_PROFILE_FILTERS, leadFilters);
         setSelectedProfileId(result.job_profile_id);
@@ -378,13 +527,8 @@ export function JobsPage() {
         setConvertingLeadId(null);
       }
     },
-    [leadFilters, loadData, resetProfileFilters]
+    [boundLeadId, clearJdDraft, leadFilters, loadData, resetProfileFilters]
   );
-
-  useEffect(() => {
-    if (selectedProfile || !generatedDraft) return;
-    fillEditorFromDraft(generatedDraft);
-  }, [fillEditorFromDraft, generatedDraft, selectedProfile]);
 
   return (
     <div className="space-y-6">
@@ -480,10 +624,11 @@ export function JobsPage() {
           />
           <button
             className="inline-flex items-center justify-center gap-2 rounded-card border border-accent px-4 py-2 text-sm text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
-            disabled={isBusy || (!newTitle.trim() && !newTags.trim())}
+            disabled={isBusy || (!newTitle.trim() && !newTags.trim() && !jdText && !generatedDraft && !boundLeadId)}
             onClick={() => {
               setNewTitle("");
               setNewTags("");
+              clearJdDraft();
             }}
             type="button"
           >
@@ -512,20 +657,37 @@ export function JobsPage() {
             </span>
           ) : null}
         </div>
+        {boundLeadId ? (
+          <div className="mt-4 rounded-card border border-accent/40 bg-accent/10 p-3 text-sm">
+            <p className="text-text-primary">{t("pages.jobs.jdDraft.boundSource")}: {boundLeadId}{boundProfileId ? ` → ${boundProfileId}` : ""}</p>
+            <p className="mt-1 text-text-secondary">{t("pages.jobs.jdDraft.boundHint")}</p>
+            <button className="mt-2 text-accent underline disabled:opacity-50" disabled={isBusy} onClick={() => clearJdDraft(false)} type="button">
+              {t("pages.jobs.jdDraft.unbind")}
+            </button>
+          </div>
+        ) : null}
         <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.45fr)]">
           <textarea
             className="min-h-28 rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
             disabled={isBusy}
-            onChange={(event) => setJdText(event.target.value)}
+            onChange={(event) => {
+              setJdText(event.target.value);
+              setGeneratedDraft(null);
+            }}
             placeholder={t("pages.jobs.jdDraft.jdPlaceholder")}
+            readOnly={Boolean(boundLeadId)}
             value={jdText}
           />
           <div className="grid content-start gap-3">
             <input
               className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
               disabled={isBusy}
-              onChange={(event) => setSourceUrl(event.target.value)}
+              onChange={(event) => {
+                setSourceUrl(event.target.value);
+                setGeneratedDraft(null);
+              }}
               placeholder={t("pages.jobs.jdDraft.sourceUrlPlaceholder")}
+              readOnly={Boolean(boundLeadId)}
               value={sourceUrl}
             />
             <button
@@ -538,6 +700,13 @@ export function JobsPage() {
               {draftState === "generating"
                 ? t("pages.jobs.actions.generatingDraft")
                 : t("pages.jobs.actions.generateDraft")}
+            </button>
+            <button className="rounded-card border border-border px-3 py-2 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={isBusy || (!jdText && !sourceUrl && !generatedDraft && !boundLeadId)} onClick={() => clearJdDraft()} type="button">
+              {t("pages.jobs.jdDraft.clear")}
+            </button>
+            <button className="rounded-card border border-border px-3 py-2 text-sm text-text-primary disabled:opacity-50"
+              disabled={isBusy || !jdText.trim()} onClick={handleManualDraft} type="button">
+              {t("pages.jobs.actions.manualDraft")}
             </button>
             {generatedDraft ? (
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
@@ -567,27 +736,53 @@ export function JobsPage() {
               <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
                 {t("pages.jobs.fields.title")}
               </p>
-              <p className="mt-2 text-sm font-medium text-text-primary">
-                {generatedDraft.target_role || "--"}
-              </p>
+              <input
+                aria-label={t("pages.jobs.jdDraft.reviewTitle")}
+                className="mt-2 w-full rounded-card border border-border bg-bg-hover px-2 py-1 text-sm text-text-primary"
+                disabled={isBusy}
+                value={generatedDraft.target_role}
+                onChange={(event) => setGeneratedDraft((current) => current ? { ...current, target_role: event.target.value } : current)}
+              />
             </div>
             <div className="rounded-card border border-border bg-bg-primary/50 p-3">
               <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
                 {t("pages.jobs.fields.keywords")}
               </p>
-              <p className="mt-2 text-sm text-text-primary">
-                {generatedDraft.keywords.join(", ") || "--"}
-              </p>
+              <input
+                aria-label={t("pages.jobs.jdDraft.reviewKeywords")}
+                className="mt-2 w-full rounded-card border border-border bg-bg-hover px-2 py-1 text-sm text-text-primary"
+                disabled={isBusy}
+                value={draftKeywords}
+                onChange={(event) => setDraftKeywords(event.target.value)}
+              />
             </div>
             <div className="rounded-card border border-border bg-bg-primary/50 p-3">
               <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
                 {t("pages.jobs.jdDraft.missing")}
               </p>
               <p className="mt-2 text-sm text-text-primary">
-                {generatedDraft.missing_items?.join(", ") ||
+                {[
+                  !generatedDraft.target_role.trim() && t("pages.jobs.jdDraft.reviewTitle"),
+                  !generatedDraft.jd_summary.trim() && t("pages.jobs.jdDraft.reviewSummary"),
+                  !draftMustHave.trim() && t("pages.jobs.jdDraft.reviewMustHave"),
+                  !draftKeywords.trim() && t("pages.jobs.jdDraft.reviewKeywords"),
+                ].filter(Boolean).join(", ") ||
                   t("pages.jobs.jdDraft.none")}
               </p>
             </div>
+            <label className="rounded-card border border-border bg-bg-primary/50 p-3 text-xs text-text-muted">
+              {t("pages.jobs.jdDraft.reviewSummary")}
+              <textarea aria-label={t("pages.jobs.jdDraft.reviewSummary")} disabled={isBusy}
+                className="mt-2 min-h-24 w-full rounded-card bg-bg-hover px-2 py-1 text-sm text-text-primary"
+                value={generatedDraft.jd_summary}
+                onChange={(event) => setGeneratedDraft((current) => current ? { ...current, jd_summary: event.target.value } : current)} />
+            </label>
+            <label className="rounded-card border border-border bg-bg-primary/50 p-3 text-xs text-text-muted">
+              {t("pages.jobs.jdDraft.reviewMustHave")}
+              <textarea aria-label={t("pages.jobs.jdDraft.reviewMustHave")} disabled={isBusy}
+                className="mt-2 min-h-24 w-full rounded-card bg-bg-hover px-2 py-1 text-sm text-text-primary"
+                value={draftMustHave} onChange={(event) => setDraftMustHave(event.target.value)} />
+            </label>
           </div>
         ) : null}
       </section>
@@ -713,6 +908,50 @@ export function JobsPage() {
         )}
       </section>
 
+      {activeTab === "leads" ? (
+        <section className="space-y-3 rounded-panel border border-accent/40 bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary">{t("pages.jobs.liepinSearch.title")}</h2>
+            <p className="mt-1 text-sm text-text-secondary">{t("pages.jobs.liepinSearch.subtitle")}</p>
+          </div>
+          <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
+            event.preventDefault();
+            if (!isBusy) void handleLiepinSearch();
+          }}>
+            <label className="min-w-56 flex-1 text-sm text-text-primary">
+              {t("pages.jobs.liepinSearch.keyword")}
+              <input
+                className="mt-2 w-full rounded-card border border-border bg-bg-hover px-3 py-2 outline-none focus:border-accent"
+                disabled={isBusy}
+                onChange={(event) => setLiepinKeyword(event.target.value)}
+                placeholder={t("pages.jobs.liepinSearch.placeholder")}
+                value={liepinKeyword}
+              />
+            </label>
+            <button className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50" disabled={isBusy || !liepinKeyword.trim()} type="submit">
+              <Search size={16} />
+              {t(`pages.jobs.liepinSearch.${liepinSearching ? "searching" : "search"}`)}
+            </button>
+          </form>
+          <p className="text-xs text-text-muted">{t("pages.jobs.liepinSearch.settingsHint")}</p>
+          {liepinSearchResult ? (
+            <p className={`text-sm ${liepinSearchResult.status === "pass" ? "text-text-secondary" : "text-error"}`} role="status">
+              {liepinSearchResult.status === "blocked"
+                ? t(`pages.systemSettings.liepinApi.codes.${liepinSearchResult.code}`, {
+                    defaultValue: t("pages.systemSettings.liepinApi.requestBlocked"),
+                  })
+                : liepinSearchResult.received_count === 0
+                  ? t("pages.jobs.liepinSearch.empty")
+                  : t("pages.jobs.liepinSearch.success", {
+                      received: liepinSearchResult.received_count,
+                      imported: liepinSearchResult.imported_count,
+                    })}
+            </p>
+          ) : null}
+          {liepinSearchError ? <p className="text-sm text-error" role="alert">{liepinSearchError}</p> : null}
+        </section>
+      ) : null}
+
       {loadState === "loading" ? (
         <section className="rounded-panel border border-border bg-bg-panel p-6 text-text-secondary shadow-[var(--shadow-panel)]">
           {t("common.loading")}
@@ -747,7 +986,7 @@ export function JobsPage() {
                       : "border-border hover:bg-bg-hover/60"
                   }`}
                   disabled={isBusy}
-                  onClick={() => setSelectedProfileId(profile.job_profile_id)}
+                  onClick={() => handleSelectProfile(profile.job_profile_id)}
                   type="button"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -847,6 +1086,11 @@ export function JobsPage() {
                 </button>
               </div>
             </div>
+            <button type="button" data-testid="job-generate-resume" className="mt-3 rounded-card border border-accent px-3 py-2 text-sm text-accent disabled:opacity-50"
+              disabled={isBusy || selectedProfile?.status !== "active" || !selectedProfile?.source_jd?.trim()}
+              onClick={() => { if (selectedProfile?.status === "active" && selectedProfile.source_jd?.trim()) navigate(`/quick-run?job_profile_id=${encodeURIComponent(selectedProfile.job_profile_id)}`); }}>
+              {t("pages.jobs.actions.generateResume")}
+            </button>
             {selectedProfile ? (
               <div className="space-y-5 pt-4">
                 <label>
@@ -992,7 +1236,7 @@ export function JobsPage() {
                       selected ? "bg-accent/10" : "hover:bg-bg-hover/60"
                     }`}
                     disabled={isBusy}
-                    onClick={() => setSelectedLeadId(lead.job_lead_id)}
+                    onClick={() => handleSelectLead(lead.job_lead_id)}
                     type="button"
                   >
                     <div className="min-w-0">
@@ -1006,9 +1250,13 @@ export function JobsPage() {
                       </div>
                       <p className="mt-1 text-xs text-text-muted">{lead.job_lead_id}</p>
                     </div>
-                    <p className="truncate text-sm text-text-secondary">
-                      {lead.position || "--"}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-text-secondary">{lead.position || "--"}</p>
+                      <p className="mt-1 text-xs text-text-muted">
+                        {lead.salary || t("pages.jobs.leads.notProvided")} · {lead.location || t("pages.jobs.leads.notProvided")}
+                      </p>
+                      {lead.jd_status === "summary_only" ? <p className="mt-1 text-xs text-warning">{t("pages.jobs.leads.summaryOnly")}</p> : null}
+                    </div>
                     <span
                       className={`w-fit rounded-chip border px-2.5 py-1 text-xs ${sourceTone(
                         lead.source
@@ -1059,6 +1307,10 @@ export function JobsPage() {
                   <p className="mt-2 text-sm text-text-secondary">
                     {selectedLead.position || "--"}
                   </p>
+                  <p className="mt-2 text-sm text-text-secondary">
+                    {t("pages.jobs.leads.salary")}: {selectedLead.salary || t("pages.jobs.leads.notProvided")}
+                    {" · "}{t("pages.jobs.leads.location")}: {selectedLead.location || t("pages.jobs.leads.notProvided")}
+                  </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-card border border-border px-4 py-3">
@@ -1080,6 +1332,45 @@ export function JobsPage() {
                     </p>
                   </div>
                 </div>
+                {selectedLead.jd_status === "summary_only" ? (
+                  <p className="rounded-card border border-warning/40 bg-warning/10 p-3 text-sm text-warning">{t("pages.jobs.leads.summaryHint")}</p>
+                ) : null}
+                {selectedLead.platform === "liepin" ? (
+                  <div className="space-y-2">
+                    <button
+                      className="w-full rounded-card border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+                      disabled={isBusy}
+                      onClick={() => void handleFetchLiepinDetail()}
+                      type="button"
+                    >
+                      {t(`pages.jobs.liepinDetail.${fetchingDetail ? "fetching" : "fetch"}`)}
+                    </button>
+                    <p className="text-xs text-text-muted">{t("pages.jobs.liepinDetail.hint")}</p>
+                    {detailError ? <p className="text-sm text-error" role="alert">{detailError}</p> : null}
+                  </div>
+                ) : null}
+                {selectedLead.source === "liepin_official" ? (
+                  <div className="space-y-2 rounded-card border border-border p-3">
+                    <button
+                      type="button"
+                      className="w-full rounded-card border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+                      disabled={isBusy || selectedLead.jd_status !== "complete_reviewed" || !selectedLead.job_profile_id}
+                      onClick={() => void handlePrepareReview()}
+                    >
+                      {t(`pages.jobs.liepinPreparation.${preparingReview ? "preparing" : "prepare"}`)}
+                    </button>
+                    <p className="text-xs text-text-muted">{t("pages.jobs.liepinPreparation.hint")}</p>
+                    {preparationError ? <p className="text-sm text-error" role="alert">{preparationError}</p> : null}
+                  </div>
+                ) : null}
+                {selectedLead.url?.startsWith("https://") ? (
+                  <a className="inline-flex items-center gap-2 break-all text-sm text-accent underline" href={selectedLead.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink size={15} />{t("pages.jobs.leads.sourceLink")}
+                  </a>
+                ) : null}
+                {selectedLead.fetched_at ? (
+                  <p className="text-xs text-text-muted">{t("pages.jobs.leads.fetchedAt")}: {formatUpdatedAt(selectedLead.fetched_at, i18n.language)}</p>
+                ) : null}
                 <div className="rounded-card border border-border bg-bg-primary p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
                     {t("pages.jobs.leads.followUp")}

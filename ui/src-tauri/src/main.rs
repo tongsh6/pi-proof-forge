@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod liepin_webview;
+
 use serde_json::{json, Value};
 use std::env;
 use std::io::{BufRead, BufReader, Write};
@@ -30,8 +32,16 @@ impl SidecarLaunchConfig {
             ));
         }
 
+        let python_bin = python_override.unwrap_or_else(|| {
+            [".venv/bin/python3", ".venv/bin/python", ".venv/Scripts/python.exe"]
+                .iter()
+                .map(|relative| working_dir.join(relative))
+                .find(|path| path.is_file())
+                .map(|path| path.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "python3".to_string())
+        });
         Ok(Self {
-            python_bin: python_override.unwrap_or_else(|| "python3".to_string()),
+            python_bin,
             script_path,
             working_dir,
         })
@@ -386,22 +396,60 @@ fn run_packaged_smoke_test(
 }
 
 #[tauri::command]
-fn sidecar_request(
+async fn sidecar_request(
     app_handle: AppHandle,
+    window: tauri::WebviewWindow,
     request: String,
-    manager: State<'_, SidecarManager>,
 ) -> Result<String, String> {
-    manager.send(&app_handle, &request)
+    liepin_webview::require_local_command(&window)?;
+    // 模型提炼和 PDF 渲染可较慢；沿用同一 sidecar 串行协议，但不占用主窗口事件线程。
+    tauri::async_runtime::spawn_blocking(move || {
+        app_handle.state::<SidecarManager>().send(&app_handle, &request)
+    }).await.map_err(|_| "SIDECAR_REQUEST_INTERRUPTED".to_string())?
 }
 
 #[tauri::command]
-fn sidecar_shutdown(manager: State<'_, SidecarManager>) -> Result<(), String> {
+fn sidecar_shutdown(window: tauri::WebviewWindow, manager: State<'_, SidecarManager>) -> Result<(), String> {
+    liepin_webview::require_local_command(&window)?;
     manager.shutdown()
+}
+
+fn open_liepin_authorization_with<F>(launch: F) -> Result<(), String>
+where
+    F: FnOnce(&str) -> std::io::Result<bool>,
+{
+    // 固定官方授权入口，不开放任意 URL 或命令执行能力。
+    match launch("https://www.liepin.com/mcp/auth") {
+        Ok(true) => Ok(()),
+        _ => Err("OPEN_AUTHORIZATION_FAILED".to_string()),
+    }
+}
+
+#[tauri::command]
+async fn open_liepin_authorization(window: tauri::WebviewWindow) -> Result<(), String> {
+    liepin_webview::require_local_command(&window)?;
+    tauri::async_runtime::spawn_blocking(|| {
+        open_liepin_authorization_with(|url| {
+            #[cfg(target_os = "macos")]
+            let mut command = Command::new("/usr/bin/open");
+            #[cfg(target_os = "windows")]
+            let mut command = {
+                let mut command = Command::new("rundll32.exe");
+                command.arg("url.dll,FileProtocolHandler");
+                command
+            };
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            let mut command = Command::new("xdg-open");
+            command.arg(url).stdout(Stdio::null()).stderr(Stdio::null())
+                .status().map(|status| status.success())
+        })
+    }).await.map_err(|_| "OPEN_AUTHORIZATION_FAILED".to_string())?
 }
 
 fn main() {
     tauri::Builder::default()
         .manage(SidecarManager::default())
+        .manage(liepin_webview::NativeLiepinSession::default())
         .setup(|app| {
             if smoke_test_requested() {
                 let app_handle = app.handle().clone();
@@ -424,7 +472,21 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             sidecar_request,
-            sidecar_shutdown
+            sidecar_shutdown,
+            open_liepin_authorization,
+            liepin_webview::open_liepin_native_session,
+            liepin_webview::check_liepin_native_session,
+            liepin_webview::inspect_liepin_native_attachments,
+            liepin_webview::upload_liepin_native_pdf,
+            liepin_webview::inspect_uploaded_liepin_pdf,
+            liepin_webview::inspect_liepin_pdf_target,
+            liepin_webview::start_liepin_pdf_communication,
+            liepin_webview::continue_liepin_pdf_delivery,
+            liepin_webview::remove_liepin_native_pdf_attachment,
+            liepin_webview::recheck_liepin_native_pdf_removal,
+            liepin_webview::run_daily_delivery,
+            liepin_webview::change_daily_authorization,
+            liepin_webview::close_interrupted_daily
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -435,10 +497,34 @@ mod tests {
     use super::{
         build_smoke_test_summary, parse_rpc_success_response, resolve_python_bin,
         resolve_repo_root, resolve_resource_root_from_script, SidecarLaunchConfig,
+        open_liepin_authorization_with,
     };
     use serde_json::json;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn authorization_opens_only_fixed_official_https_destination() {
+        let result = open_liepin_authorization_with(|url| {
+            assert_eq!(url, "https://www.liepin.com/mcp/auth");
+            Ok(true)
+        });
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn authorization_reports_unsuccessful_launcher() {
+        assert_eq!(open_liepin_authorization_with(|_| Ok(false)),
+                   Err("OPEN_AUTHORIZATION_FAILED".to_string()));
+    }
+
+    #[test]
+    fn authorization_does_not_expose_launcher_error_details() {
+        let result = open_liepin_authorization_with(|_| {
+            Err(std::io::Error::new(std::io::ErrorKind::NotFound, "private launcher details"))
+        });
+        assert_eq!(result, Err("OPEN_AUTHORIZATION_FAILED".to_string()));
+    }
 
     #[test]
     fn resolves_repo_root_from_manifest_dir() {
@@ -470,6 +556,16 @@ mod tests {
         assert_eq!(config.python_bin, "python-test");
         assert_eq!(config.working_dir, repo_root);
         assert_eq!(config.script_path, script_path);
+
+        let fallback = SidecarLaunchConfig::from_manifest_dir(&manifest_dir, None).unwrap();
+        assert_eq!(fallback.python_bin, "python3");
+        let project_python = repo_root.join(".venv/bin/python3");
+        std::fs::create_dir_all(project_python.parent().unwrap()).unwrap();
+        std::fs::write(&project_python, "").unwrap();
+        let automatic = SidecarLaunchConfig::from_manifest_dir(&manifest_dir, None).unwrap();
+        assert_eq!(automatic.python_bin, project_python.to_string_lossy());
+        let explicit = SidecarLaunchConfig::from_manifest_dir(&manifest_dir, Some("python-test".into())).unwrap();
+        assert_eq!(explicit.python_bin, "python-test");
 
         let _ = std::fs::remove_dir_all(&repo_root);
     }

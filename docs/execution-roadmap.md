@@ -1,5 +1,7 @@
 # Execution Roadmap / 项目推进路线图
 
+> 公开文档中的 `<local-candidate>` 为脱敏占位；真实候选名称、路径与执行安排仅保存在本机记录。
+
 本文件决定“下一步做什么”。`docs/project-ledger.md` 只记录事实，本文件维护推进顺序、依赖和完成口径。
 
 路线图必须同时对齐：
@@ -41,9 +43,113 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 ## Current Focus
 
-`authorized_external_l3_live_run`
+`daily_authorized_delivery`
+
+2026-10-08 首日实投更新：具体历史恢复入口确认后，两份指定旧测试附件已由 App 移除，本地原件/回执保留；原两岗每日授权正式启用。App 首个真实每日批次已完成固定 PDF 全链路，1/1 success、未决 0；后续候选与执行时间仅保存在本机授权记录，App 运行与唤醒条件保持。P0-018 仍唯一 next，真实跨日结果待观测，当前每日 1 岗验收不等于总体每日 3 岗目标全部完成。
+
+2026-10-08 执行授权更新：用户已确认两岗/PDF 与两份旧附件移除。自动审批审查将恢复旧成功记录所需的“固定此 PDF 与目标岗位”按钮判为可能准备旧岗位投递；代码只读恢复分支已核对，仍被拒绝，已请求具体入口确认，未绕过。当前 App 草稿与 14 笔历史成功保持不变，无新增平台写入；P0-018 仍唯一 next，真实每日与跨日验收未完成。
+
+2026-10-08 真实候选准备更新：用户授权实测后，App 官方搜索、完整 JD、Qwen 解析、完整职业简历生成、固定 PDF 及每日清单已走通两个新岗位。修复“职位描述”识别、模型重复超时及附件经历同步提示遮挡。两份 PDF 各两页并已核验；两日限额草稿已保存但未启用，具体清单与新增旧附件永久删除范围待确认。当前三份平台附件占用、无上传控件，本轮没有上传/投递/删除。P0-018 仍唯一 next，实际每日批次与真实跨日结果未完成，详见台账及 daily-candidates-20261008 验收记录。
+
+2026-10-08 中断恢复分支更新：App 每日历史已显示逐项阶段与核验入口，结束中断时保留成功/未开始、上传和发送在途保守置未知，换清单或跨日不能绕过全局未决。已通过隔离 SQLite/测试时钟及本地合成中断状态的原生结束、核验、重启验收；测试数据已归档，真实资料/授权/历史投递未变。此完成 App 恢复分支，不代表真实每日执行成功；P0-018 仍唯一 next，剩余为实际非空授权批次完整执行、平台连续操作与真实多日结果观测。
+
+2026-10-08 App 接续功能更新：Jobs 的完整已保存 JD 可精确进入 Quick Run，完整生成结果可直接进入原 PDF 固定/预览，再到原每日候选清单；不再依赖手抄编号。原生 PDF 与通用 Agent 审批路径已区分，导航不自动授权或写平台。本地非真实岗位样例已走通并在重启后恢复，测试数据已归档、真实数据与授权未变。后续按用户要求继续完善和验证 App 的每日执行能力，不由开发代理代完成业务；真实非空授权和跨日执行仍未验收，P0-018 保持唯一 next。
+
+2026-10-08 用户已明确接受当前完整简历底稿，App 职业档案已确认，内容和排版验收按通过处理，后续持续优化。下一步按已确认档案绑定完整 JD、生成岗位定制版并准备候选清单；不再重复要求确认同一底稿，不将持续优化作为主线前置阻塞。P0-018 保持唯一 next，尚未启用新的每日投递授权。
+
+2026-10-08 前置资料已接入：找回既有确认时间线与原始工作资料，职业档案现含 4 段工作、2 段教育及 5 组能力，原生 App 已回读并导出两页完整底稿，75 条事实可追溯。当前待用户核对并确认底稿，再绑定完整 JD 定制；不得继续将“没有任职/教育资料”作为 blocker。档案未确认、无目标 JD，未新增真实投递，P0-018 仍唯一 next。
+
+2026-10-05 完整简历内容前置已实施：复用原个人资料文件、证据库、A/B 模板、固定 PDF 与批准队列，补齐职业档案编辑确认、完整章节和写操作内容门禁。真实 App 已验草稿保存/重启恢复、缺项阻断、历史 PDF 预览；合成档案通过完整输出验收。下一步先在简历中心补齐并确认真实任职时间轴、教育展示选择和核心能力，补足项目职责/时间，再生成和审核正式版本。当前真实档案仍未确认，在内容验收通过前不新增真实投递；P0-018 保持唯一 next，不把合成样稿或格式验证当作个人简历达标。
+
+2026-10-05 质量前置更新：按用户要求先接通已有目录材料 → 文档片段提炼/审核 → 证据勾选 → App 生成/PDF。新样稿通过一页视觉与全文追溯检查，但两项经历的本人职责/时间仍缺，保持 NEEDS_EVIDENCE。新清单的三条候选在真实 App 当前均未取得完整 JD，尚未建立可启用的投递版本；继续补齐这两类前置缺口，P0-018 仍唯一 next，不把样稿优化或测试钟当作每日实投完成。详细事实见台账与 `outputs/acceptance/resume-quality-20261005/validation.json`。
+
+2026-10-05 实施更新：P0-018 首版已接入持续授权清单、每日共享额度、App 内单批触发、暂停撤销、到期/午夜与未决阻断。真实 App 通过草稿保存、重启恢复、空清单禁止启用和撤销；没有新增发送。非空清单与实际每日执行、WebKit 重载连续操作、真实跨日验收仍待完成，状态保持唯一 next。下一验收项：`外部真实 Tauri 页面自动化：daily_authorized_delivery（首版已实现，待非空授权与跨日实测）`。
+
+2026-10-02 验证更新：用户追加授权的三岗 PDF 批次已完成 3/3；App 新增并真实验证指定旧附件移除，保留本地原件与历史回执，再完成第三笔上传/发送/回执闭环。累计 14 条真实投递证据 verified，当前验证额度全部用完。此为明确授权的补充验证，不是每日自动投递；P0-018 仍为唯一 next，六平台后续顺序不变。
+
+2026-10-01 当前状态：P0-017A 与 P0-017 已通过真实 App 两路线的结果/反馈收口及 11 条历史投递只读统一验收。唯一 next 为 P0-018 每日受控投递；下一验收项：`外部真实 Tauri 页面自动化：daily_authorized_delivery（待实现）`。现有授权批次仍为 10/10 与 1/1，本轮没有新增发送。以下日期段落保留阶段历史，以最新状态为准。
 
 下一次“继续推进项目”默认只处理 `acceptance/journey_implementation_matrix.yaml` 中第一个 `status: next` 的任务。
+
+2026-09-27 重新排程：先完成 P0-011 的猎聘官方凭据与只读接入，P0-017 改为 `blocked`，等待认证、完整 JD、指定简历版本及回执契约就绪。`next` 只表示下一实施任务，不表示已接入或已验收。本次是方案与计划更新，没有启用平台写操作。
+
+2026-09-28 验收更新：P0-011 已完成真实原生只读成功与清理阻断链，状态为 `deep_verified`。既定 S2 单列为 P0-017A `official_delivery_prerequisites`，作为唯一 `next`；P0-017 真实投递保持 `blocked`。新增条目仅明确原有前置工作，尚未开始实施。矩阵 order 仅用于排序，既有 P0 编号不变。
+
+2026-09-29 产品边界纠正：闭环必须由 App 自身完成选岗、准备、审批、发送与回执追踪。开发代理控制招聘网站不算产品能力；外部自动化仅操作 App 做验收。Jobs 默认简历审批入口与结果来源分离已实现，原生防重/未审核阻断/历史来源展示已验；新岗位准备成功链尚待原生验收。已有 1 次真实发送由网站外部观察确认，App 自行确认仍为 0，不能把它计入 10 岗位 App 闭环。后续先补程序可核验回执和生成 PDF 附件绑定，不再用网页观察补写产品成功；保持 P0-017A 唯一 next / P0-017 blocked。
+
+2026-09-29 当日收口：默认简历单笔真实 App 链已通过。一个已授权测试岗位经 App 审核、准备、批准后仅发送一次；实际返回“应聘成功”，修复词表后由 App 本地核验保存回执，状态和追踪跨重启保留。累计实际确认 2 次（App 自行确认 1、历史外部观察 1），10 岗位 App 目标为 1/10。当前 P0-017A 的剩余重点调整为生成 PDF 绑定、通用 API L3/反馈契约及余下批次；不能再以“默认简历回执仍未知”作为 blocker。单笔默认简历成功不解除 PDF 版本绑定要求，也不代表定时投递已启用。
+
+2026-09-29 十岗批次结果：累计 10 个真实岗位已确认成功，包含历史两笔及本轮 8 笔，均为平台默认简历；第一笔已由 App 用精确响应 hash 引用本机接收证据完成程序确认。SQLite 批次上限已耗尽（10/10），不得因原始验收质量差异追加第 11 次。PDF 路线原生会话实测 `LOGIN_PAGE_REDIRECTED_TO_BLANK`，指定附件发送尚未完成；此为近期目标仍未完成的部分，P0-017A 唯一 next 保持。后续先解决产品 PDF 接入与生成/版本绑定，准备完成前不再发真实请求，额外实投需新授权。
+
+### 招聘平台接入批次（2026-09-27）
+
+2026-09-30 本次收口：用户允许平台附件影响后，指定 PDF 已通过 App 完成固定快照、一次上传、平台附件身份与原字节回读绑定、目标会话/确认框核对、最终一次发送和业务回执落盘。额外 `generated_pdf` 批次 1/1 success，与原十岗 10/10 独立，当前测试授权均已耗尽。后续 P0-017A 仅收口通用 API L3/runbook/反馈契约，不能再重复本次上传/实投或把 PDF/授权写成 blocker；每日自动 3 次与六平台后续工作仍按既定顺序推进。
+
+2026-09-30 当时的下一验收项为默认简历/PDF 之后的统一验收与反馈收口，已于 2026-10-01 完成。
+
+2026-09-30 PDF 前置进展：App 自有 Tauri 会话已完成用户登录、程序检查和重启保留，旧 Playwright 空白页已不再阻塞这条兼容路线。App 已读取附件面板要求，并由真实 TXT 材料审核、完整 JD 审核、模板生成及 PDF 导出形成一份本地候选文件。平台实际提示上传将解析补全在线简历、且附件随后续主动投递一起发送；这一影响尚未获得授权，本轮未上传或发送。指定附件身份绑定、发送适配与业务回执仍未完成，不能把剩余工作写成只差授权。补充 1 次 PDF 的批次存储已实现，但未启用实际额度；原十岗仍为 10/10。P0-017A 唯一 next / P0-017 blocked 不变。
+
+方案、来源快照和复用点见 [招聘平台接入方案](../AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md)。用户已确认六平台进入整体目标：猎聘、BOSS直聘、智联招聘、前程无忧 51job 为核心平台，脉脉、拉勾为补充来源。六家都有明确交付任务；优先完成猎聘闭环，保留既有 WIP，不新增通用 MCP 平台或第二套投递引擎。
+
+| 顺序 | 范围与依赖 | 退出条件 |
+| --- | --- | --- |
+| S1 / P0-011 已验收 | 猎聘官方 Token + HTTP，只读搜索/简历读取；复用设置页、sidecar、infra 与 Job Lead | 真实 Tauri 配置/回读脱敏；后端区分有效、失效、限流和非 JSON；真实只读结果可入 Jobs；新协议不要求浏览器 profile；无写请求 |
+| S2 / P0-017A 已验收 | S1 通过后补完整 JD、岗位原始 ID/type、版本绑定；调整平台路由、审批续跑和 API 证据契约，补最小稳定岗位键 / in-flight 防重 | 重启不重复提交成功或未决岗位；完整 JD 经审核；发送内容与已审批版本有可审计绑定；成功/失败/未知回执有依据；未知不重试、不降级邮件；缺任一项则保持阻断 |
+| S3 / P0-017 已验收 | S2 就绪，具体岗位、简历版本和最终提交已授权 | 一次真实投递的业务回执、版本、submission log、L3 与反馈入口互相可追溯；仅记录 blocker 不算完成 |
+| S4 / 当前 P0-018 每日目标 | S3 通过后，扩充防重的并发/跨日验证、上海日界成功计数、单个触发入口、持续授权与受控凭据存储 | 所有启用平台合计每天最多 3 次确认成功；未知占位并暂停；重启/换版本不重投；暂停/撤销有效；连续多日留下真实结果或缺额原因 |
+| S5 / P0-019 BOSS | 猎聘主线及每日目标通过后，修复固定版本的 CLI 只读适配 | 搜索→详情→完整 JD→审核→匹配/定制版本/追踪真实贯通；认证失效、错误和空结果正确区分；只读完成不开放投递 |
+| S6 / P0-020 智联、P0-021 51job | BOSS 只读通过后，分别核实两平台维护路线、认证与岗位读取契约 | 每个平台独立通过在线搜索/详情、完整 JD 及下游闭环；智联旧版支持、51job URL 识别或人工导入均不能代替在线验收 |
+| S7 / P0-022 脉脉、P0-023 拉勾 | 复用已有岗位入口，完成两家补充来源；默认排在 S6 后 | 分别完成真实职位链接+完整 JD 导入、来源/时间标记、审核、匹配/定制版本/人工结果追踪；汇总六平台来源覆盖 6/6，在线接入与投递状态单独展示 |
+| S8 / P0-024 六平台覆盖验收 | 汇总上述各平台已有真实页面与业务证据，补验实际缺口 | 来源覆盖 6/6、四核心在线只读 4/4 分别达标；猎聘人工补 JD 不算在线详情完成，缺失时保留该项 blocker；不要求六平台自动投递，不另建审计框架 |
+
+当前不安装/升级社区 CLI，不下载 Firefox，不开启定时任务。S4 为当前唯一 `next`，S5–S8 仍为 `not_started`；P0-011、P0-017A 与 P0-017 已 `deep_verified`。默认按表串行推进；同批平台独立验收，某平台被外部契约阻塞时可记录原因后重排依赖和唯一 `next`，不删除该平台目标，也不形成并行 WIP。S7 技术依赖 BOSS 只读基线，无须因某个 S6 平台的外部阻塞无限等待。历史 P0-012/013/015/016 证据保留为旧实现验证；迁移到官方 API 后要重验对应受影响切片，不能沿用其状态宣称新路线通过。
+
+六平台来源覆盖的共同完成标准：每家至少 1 个真实来源的完整 JD 样本，贯通来源/获取时间、画像审核、可解释匹配、定制简历版本关联和结果追踪。人工导入/手工反馈必须明确标记；四家核心平台在线只读任务只有真实搜索/详情和失败路径验收通过才可完成，不能以人工样本将其升级为 `deep_verified`。平台投递能力另验实际发送版本、授权和回执。
+
+后续矩阵映射：P0-018 `daily_authorized_delivery`；P0-019 `boss_readonly_integration`；P0-020 `zhilian_readonly_integration`；P0-021 `qiancheng_readonly_integration`；P0-022 `maimai_source_integration`；P0-023 `lagou_source_integration`；P0-024 `six_platform_coverage_acceptance`。这些是目标与待实施验收，不声明新脚本或结果产物已存在。
+
+## Accepted Delivery Goal / 已确认的近期投递目标
+
+2026-09-28 用户要求一次 10 岗位的真实闭环验证批次，偏好低 JD 匹配度且薪资待遇好，目的是尽量避开未来正式求职机会。本批次先验证 1 条完整成功链再扩至 10 条，成功须有实际发送版本与平台回执依据；低匹配不能保证真实投递不影响后续求职。该请求不永久改写下述每日 3 次自动投递目标，亦不把测试/检查结果算作真实投递。当前前置检查与阻断见项目台账，仍沿 P0-017A → P0-017 推进。
+
+2026-09-05 用户同意：先以猎聘单平台完成每日合计 3 个不同岗位的自动投递，再按实际需要扩展平台；每天一个批次即可，不要求三个执行时间点。此处记录已确认方向，不代表功能已实现或真实投递已启用。
+
+2026-09-27 用户补充确认六平台整体覆盖目标，已替换“是否扩展平台按需决定”的规划表述；首个平台和每日目标仍按既有阶段实施。多平台启用后，共用每日合计 3 次的上限，不变为每家 3 次；规划纳入不代表写操作已获授权。
+
+- 首版简历来源：优先从系统基于 Personal Profile、工作材料/Evidence Cards、目标公司与 Job Profile/JD 生成的版本中选择；已有版本适合同类岗位且审核通过时复用，缺少合适版本时沿现有生成链路补齐，再导出 PDF。用户上传的简历是可选的导入/基准资产，不能把“用户提供现成 PDF”设为默认前提，也不能把已有生成能力整体后置。
+- 成功标准：按 `Asia/Shanghai` 自然日统计，所有启用平台合计的目标且上限为 3 次确认成功的投递；候选不足、登录失效或结果不明时报告原因，不以检查模式、模拟成功或重复投递补足次数。
+- 授权目标：支持预先明确渠道、候选范围、简历版本、每日上限和有效期，范围内自动执行、可暂停或撤销；具体岗位与简历的授权记录尚待建立，现有真实投递确认门禁继续生效。
+- 最小路线：官方凭据与只读接入（P0-011 已验收）→ 当前 P0-017A：完整 JD / 版本 / 回执契约及最小持久化防重 → 单次真实投递闭环（P0-017）→ 每日目标（P0-018）→ BOSS（P0-019）→ 智联/51job（P0-020/021）→ 脉脉/拉勾（P0-022/023）。各平台达到规划接入深度后再逐项扩展投递，后续阶段不提前标记完成。
+
+### 已有能力探索（2026-09-05）
+
+以下保留当时的定位与实施历史；当前传输方案、下一步和状态以 2026-09-27 批次表为准，浏览器附件探索不再是默认推进路线。
+
+已核对 `openspec/changes/autonomous-agent-delivery-loop/`、相关 `tools/` 实现与测试、`scripts/`、当前投递产物及 Job Lead bridge WIP；以下结论作为实施起点，不用旧清单的勾选状态替代实际能力判断。
+
+| 能力 | 已有定位 | 处理方向 |
+| --- | --- | --- |
+| 自动/手动模式、单次投递上限 | Agent design 第 2、3 节；`tools/config/fragments.py`、`tools/orchestration/review_stage.py`、`agent_loop.py` | 已有设计和部分实现；复用并接通批准后的执行，单次 `max_deliveries` 不代替每日上限 |
+| 猎聘执行与候选准备 | `tools/submission/liepin.py`、`tools/channels/liepin.py`、现有 External L3 Job Lead bridge WIP | 沿现有渠道修复成功判定并完成真实验证，不新建浏览器投递器 |
+| 频控 | `tools/submission/rate_limit.py` 与 `test_submission_rate_limit.py` | 复用操作频控；当前计数在操作前发生，不能作为每日成功投递数 |
+| 投递日志与运行持久化 | `tools/submission/storage.py`、`tools/infra/persistence/file_run_store.py` | 复用现有记录与产物；优先补必要索引或状态，不预设另建台账服务或数据库 |
+| 幂等 | Agent design 第 10.3 节；tasks C5；`AgentLoop` 的本轮候选去重 | 原设计已存在，当前未找到持久化投递去重接入；补齐跨运行防重，换 run id、日期或简历版本不能自动重投同一岗位 |
+| 每日触发与持续授权 | 已检查 Agent policy/CLI、投递脚本及工作流入口 | 尚未找到对应完整实现；在既有投递流程外增加最小触发与授权范围校验，不引入 Airflow/Celery 或新编排平台 |
+
+P0-017 首批进展（2026-09-05 历史记录）：投递成功判定和 Job Lead bridge 的代码修复已通过本地测试，当时状态为 `next`。生成输入消费和共享 PDF 导出已补齐；Agent `_run_delivery` 已复用 exporter，按尝试保存并传递带版本/指纹的 PDF。`_send_resume_via_chat` 仍未绑定 `resume_path`，当前明确阻断默认平台简历发送；已有 `_upload_resume` 等能力需结合真实页面最小接通。下一步沿 App 自有 Playwright 会话核对附件入口，并完成候选内容审核和岗位有效性确认。缺口应落实为具体字段、证据或接口问题，不转化为要求用户在系统外制作成品 PDF。
+
+生成前置能力已在本地补齐：见 `AIEF/docs/plans/2026-09-05-targeted-resume-generation.md` 与 ledger 的同日进展。已有存量测试岗位候选 PDF、独立追溯和规则评测，当前 71/100、`NEEDS_REVIEW`。接下来审核生成稿与具体缺口、确认岗位有效性，再将选定生成版本接入投递；本地集成测试和 PDF 检查不替代原生 GUI/真实渠道验收，P0-017 当时保持 `next`；当前状态见 2026-09-27 排期。
+
+共享 HTML/CSS 排版已接入正式导出与简历中心；2026-09-05 已在重建的真实 Tauri 调试窗口完成候选选择、预览和 PDF 导出，文件位于 `outputs/<local-candidate>/formal-export/from-native-ui.pdf`。这一前置切片已验证，下一步仍是内容审核和正确 PDF 的投递绑定；每日去重、成功计数与定时入口按上述阶段后续推进。
+
+## Efficiency And Quality / 效率与质量约束
+
+- 工程取舍遵守 `constitution.md` 第 6 条：质量达标、效率优先、成本可控，不做重型工程。
+- 新增内容或功能前遵守第 7 条，先探索已有设计与实现，在当前任务中说明复用点和缺口；对已有能力优先修复或接通。
+- 在当前任务与依赖范围内，优先处理影响用户闭环的具体缺陷；用最小可验收切片推进，不以扩大框架或完善审计层本身作为进展。
+- 方案需要新增依赖、架构层或明显增加模型调用时，简述它解决的实际问题、收益和维护成本；复用当前任务记录即可，不新增固定评审流程。
+- 验证覆盖受影响行为、关键失败路径与必需门禁；只有声明真实旅程完成时，才必须具备对应的真实页面或渠道证据，小改动不重复执行无关全链路。
+- 达到约定验收标准后收口；后续优化仅在存在实际质量缺口、运行瓶颈或重复维护成本时进入任务队列。
 
 ## WIP Rules
 
@@ -282,9 +388,23 @@ Expected evidence:
 - Run record：`outputs/agent_runs/ar_*.json`
 - Review queue：`outputs/review_queue/ar_*.json`
 
-### P0-011 Channel Session Setup
+### P0-011 Channel Session Setup / 官方凭据与只读接入
 
 Status: `deep_verified`
+
+2026-09-28 真实验收完成：承接用户已配置会话，外部 CUA 重新验证连接、读取/展开平台简历、搜索导入 19 条摘要并刷新回读；清理后恢复未配置、预览消失，无凭据搜索明确 AUTH_REQUIRED 且既有线索保留。没有读取 Token、保存简历正文或发起投递。实际动作证据为 `outputs/acceptance/liepin_official_readonly/native-readonly-live-20260928.json`。清理测试后当前会话未配置，后续查询需重新输入官网 Token（官网授权未撤销）。
+
+2026-09-28 早前实施记录：官方只读 HTTP、会话内 Token、Settings 验证/清理/简历预览和 Jobs 搜索入库已经接通，本地回归与前端构建通过，设计/RPC 已同步。真实 Tauri 调试窗口已确认设置入口和后端就绪；当前等待用户在 App 配置 Token，账号业务成功、真实搜索入库和清理动作链仍未验收。`outputs/acceptance/liepin_official_readonly/native-readonly.json` 明确记录 `complete=false`，本任务不因本地测试或设置卡可见而提升完成状态。
+
+2026-09-28 入口修复：已使用固定 `/mcp/auth` 地址与原生系统浏览器命令替代普通外链，外部 CUA 点击后确认 Chrome 的“授权配置 — 猎聘 CLI”标签页。该切片证据为 `outputs/acceptance/liepin_official_readonly/authorization-link-20260928.json`；真实账号验证仍待用户配置 Token。
+
+2026-09-27 原任务安排：复用已有页面和 sidecar，在 infra 接入猎聘官方 Token 与只读 HTTP。认证方法迁移不继承旧 browser 验收结果；当前只有历史账号只读样本和本轮公开契约/元数据核对，App 接入尚待实施。Firefox 下载授权不再是本任务依赖。
+
+2026-09-08 补充：用户实际登录时出现延迟 `about:blank` 跳转，已确认来自当前网站脚本。默认 Chrome 与已有 helper 均不兼容；短暂打开表单不代表可用。Firefox 兼容验证依赖下载尚待授权，下游深度验收继续暂停。
+
+2026-09-09 调研更新：已找到猎聘官方 Token + MCP/CLI 路线，用户完成人工登录；V2 确认简历与搜索的只读成功样本（HTTP 200、业务码 0、简历文本和 20 个不同岗位）。本批 `jobType="2"` 与投递 `jobKind` 的官方编码范围一致；不再以下载 Firefox 作为调研前提。现行 App 的 Playwright 登录方式仍未替换，不能提升本任务验收状态；剩余重点为正式只读接入、完整 JD、指定附件版本与真实投递回执。详见 `docs/reports/2026-09-08-liepin-integration-research.md`。
+
+2026-09-06 复核：原实现只接受前端信号，历史 `deep_verified` 不成立。现已真实接通 App 打开登录窗口与未登录检查，原生证据位于 `outputs/acceptance/app_session_20260906/`；真实人工登录成功与复用仍待验收，不推进下游深度完成声明。
 
 Journey step: `channel_session_setup`
 
@@ -294,13 +414,15 @@ Depends on:
 
 Vision link:
 
-- 在受控投递前建立人工登录/会话边界。
-- 必须验证不保存密码、不绕过验证码、不触发真实投递，只做渠道 session 状态与人工操作入口。
+- 在受控投递前建立官方认证与真实岗位读取边界，为完整 JD 和可解释匹配提供可追溯输入。
+- 用户在官方页面完成登录和取凭据；App 后端只读验证，不保存密码、不处理验证码、不触发简历修改或真实投递。
 
 Expected evidence:
 
-- L1 acceptance：`tests/acceptance/test_scenario_channel_session_setup.py`
-- GUI acceptance：外部真实页面自动化（待实现）
+- 已执行入口：`CUA 原生动作记录：outputs/acceptance/liepin_official_readonly/native-readonly-live-20260928.json`。
+- 原生动作链：配置凭据 → 验证后端只读能力 → 回读仅显示状态 → 搜索 → Jobs 查看真实结果；覆盖失效/清理后的状态复位。
+- 契约验证：分别处理简历 `errCode` / 搜索 `code`、简历文本和列表字段、401/429/非 JSON；确认无写请求和凭据泄露。
+- 9 月 browser 会话脚本及 `tests/acceptance/test_scenario_channel_session_setup.py` 是复用基础和历史证据，需增量更新，不能直接证明官方 Token 切片通过。
 
 ### P0-012 Submission Check Mode
 
@@ -407,15 +529,50 @@ Expected evidence:
 - 交接包字段：`operator_handoff.required_env`、`pre_run_checklist`、`forbidden_inputs`、`runbook`、`preflight_command_template`、`preflight_review_checklist`、`preflight_review_result`、`authorization_readiness_action_plan`、`authorization_intake_checklist`、`authorized_template_release_decision`、`live_run_go_no_go_decision`、`command_template`
 - 证据：`outputs/acceptance/acceptance_external_l3/external-l3-validation.json` 与 `.md`
 
-### P0-017 Authorized External L3 Live Run
+### P0-017A Official Delivery Prerequisites / 既定 S2
 
 Status: `next`
+
+Journey step: `official_delivery_prerequisites`
+
+Depends on:
+
+- `channel_session_setup`
+- `external_l3_authorization_handoff`
+
+沿既定 S2 核实完整 JD、平台原始 ID/type、审核版本与实际发送内容的绑定和回执语义；补齐审批续跑、平台路由、最小稳定岗位键/in-flight 防重以及 API recorder/L3/runbook。仍受 P0-017 的具体目标与最终提交授权边界约束，不因为只读认证通过就试投。该阶段按下述首片推进，旧 browser handoff 的完成状态不替代 API 契约验收。
+
+2026-09-28 首片进展：公开完整 JD 获取、原 Lead/Profile 审核绑定、CLI/App 候选画像一致性和单平台路由已实施。真实 App 读取了一份 294 字 JD 并保留原来源绑定，当前为 `full_unreviewed`；真实解析被模型未配置阻断，原文保留且候选仍不可用。235 项相关回归、前端构建及独立复核通过，仅证明对应代码和输入首片，不提升整体完成状态。
+
+模型进展：用户指定的本地 LM Studio `qwen/qwen3.8-27b` 已通过原生配置/保存/重启回读和真实后端 JD 解析验证；结构化输出兼容已修复。实际解析用已有 294 字快照，原网页刷新本轮不可用；尚未完成原生草稿审核/保存。证据为 `outputs/acceptance/official_delivery_prerequisites/lmstudio-qwen38-20260928.json`。
+
+凭据进展：用户明确不接钥匙串、接受本机明文权限文件；已实现固定用户目录保存（文件 `0600`、目录 `0700`）、正常退出保留和主动删除区分。隔离凭据的真实后端跨进程保存/恢复/删除通过，见 `outputs/acceptance/official_delivery_prerequisites/liepin-local-credential-20260928.json`。用户保存后，本轮又验证真实 App 重启自动恢复、原生验证连接通过；未清理真实保存项。
+
+测试候选进展：官方搜索薪资/地区字段已补齐并经原生列表/详情回读；60 条岗位中按月薪下限至少 35k 初筛 12 条，其中 7 条公开完整 JD 可用。既定测试岗位已在原生 App 解析并保存为待审核画像 （本机画像编号不公开），没有批准投递。候选资料为 `outputs/acceptance/official_delivery_prerequisites/ten-job-candidates-20260928.json`，完整待审核原文存于原 Lead/Profile；实际匹配、简历版本与发送闭环仍待完成。
+
+审批进展：审批前固定 Markdown/PDF 与目标指纹、预览/校验、重复批准幂等、批准后恢复执行、企业排除复查与持久化投递占位已接入。合成样本已通过真实原生预览→批准→明确检查/阻断→重开恢复，未向平台发送；证据为 `outputs/acceptance/official_delivery_prerequisites/review-resume-20260928.json`。文件一致性与本地续跑验证不等于官方接口已能发送该 PDF。
+
+剩余依赖：完成实际候选的画像审核/匹配/简历准备，明确实际发送内容与权威回执，再完成 API L3。官方输入仍只有 jobId/jobKind，当前写入继续以 `official_delivery_contract_unverified` 阻断，不转入旧浏览器或 Email。已请用户选择本次是否接受平台默认简历先投既定测试岗位；未收到选择前保持当前发送边界。P0-017A 尚未整体完成。
+
+Expected evidence:
+
+- 目标入口：`外部真实页面与官方契约验证：投递前置能力（待实现）`。
+- 完整 JD 与审核版本可追溯、实际发送绑定有证据、成功/失败/未知回执有依据；未知结果不重试、不自动切换邮件。
+- 真实 App 的审批/前置检查与辅助契约测试共同验证，无法绑定版本或缺关键接口时保留具体 blocker。
+
+### P0-017 Authorized External L3 Live Run
+
+Status: `blocked`
+
+Blocker（2026-09-28）：官方只读已验收，真实本机凭据恢复与验证已通过；完整 JD 审核、指定简历/附件版本、真实业务回执、审批续跑、最小防重与 API 验收契约仍待 P0-017A 收口。本轮未发生真实投递。
 
 Journey step: `authorized_external_l3_live_run`
 
 Depends on:
 
+- `official_delivery_prerequisites`
 - `external_l3_authorization_handoff`
+- `channel_session_setup`
 
 Vision link:
 
@@ -424,8 +581,10 @@ Vision link:
 
 Expected evidence:
 
+- 下列 session 目录、browser 步骤与旧 runbook 属于当前浏览器实现。官方 API 迁移必须同步 recorder、L3、runbook 与受影响验收，以后端凭据检查和版本/回执证据落实等价门禁；不得伪造浏览器状态文件，或将 Token 填进旧授权模板来放行。
 - L3 主入口：`bash scripts/acceptance/run-acceptance.sh --run-id acceptance_external_l3 --level L3`
 - 前置条件：用户提供 `PIPF_EXTERNAL_L3_AUTHORIZED=true`、`PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=true`、`PIPF_EXTERNAL_L3_SESSION_READY_CONFIRMED=true`、指向已存在共享 session 根目录的 `PIPF_EXTERNAL_L3_SESSION_DIR`、真实 Job URL、resume PDF、profile YAML、确认 job id 与确认 recruiter。
+- 候选准备入口：`python3 -m tools.acceptance.external_l3_job_lead_bridge --lead-source <job_leads.yaml> --lead-index <n> --resume-pdf <resume.pdf> --profile <profile.yaml> --session-dir <session-root>` 可从已验证 Job Lead 与 check-mode submission log 自动生成脱敏确认包和 shell-safe env 模板；该模板默认不授权、不确认最终提交，仍需用户审批候选和授权边界。
 - 人工运行入口：`docs/runbooks/external-l3-live-run.md` 是 P0-017 真实运行 runbook；`operator_handoff.runbook` 和 Markdown 报告必须引用该路径，并声明文件存在状态、SHA256 指纹、必需章节完整性、运行前必须复核、复制命令前必须替换 live 输入、原始 live 输入不持久化。
 - 预检证据：`external-l3-validation.json` 必须包含 `live_run_readiness.ready`、`submit_command_allowed`、`missing_gates` 和逐项 gate 状态；真实输入 gate 必须覆盖 Job URL 格式、resume PDF 文件存在且扩展名有效、profile YAML 文件存在且扩展名有效。
 - Pre-submit blocker 诊断证据：submit 命令启动前产生 live blocker 时，`live_blocker.failed_checks` 与 `live_blocker.diagnostics` 必须直接汇总 missing gates、readiness gates 和输入产物审计摘要；`external-l3-validation.md` 必须同步展示 submit 是否允许启动、missing gates 和输入审计摘要，journey contract 必须拒绝 Markdown 与 JSON blocker 诊断不一致的报告。

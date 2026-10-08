@@ -84,17 +84,8 @@ def _setup_playwright_login_session(
 
 
 def _is_session_ready(page: object) -> bool:
-    current_url = str(getattr(page, "url", "")).lower()
-    if "passport" in current_url or "login" in current_url:
-        return False
-
-    login_prompt = page.locator(
-        "[data-selector='inline-login']:visible, "
-        ".inline-login-container:visible, "
-        "a:has-text('登录'):visible, "
-        "button:has-text('登录/注册'):visible"
-    )
-    return login_prompt.count() == 0
+    from tools.infra.browser.liepin_session import observe_login_page
+    return bool(observe_login_page(page)["login_signals"].get("authenticated_user_visible"))
 
 
 def _wait_for_login_confirmation() -> None:

@@ -96,7 +96,7 @@
         "title": "Personal Profile",
         "subtitle": "Basic identity used by generated resumes.",
         "save": "Save profile",
-        "completeness": "Completeness",
+        "completeness": "Basic information completeness",
         "updatedAt": "Updated {{value}}",
         "missingTitle": "Profile Status",
         "noMissing": "No missing required fields.",
@@ -133,12 +133,13 @@
         "readiness": "Library readiness",
         "ready": "Ready",
         "incomplete": "Incomplete",
-        "noMissing": "Profile, uploaded resume, and work material are complete.",
+        "noMissing": "Career facts are confirmed and work materials are available. An existing resume is optional.",
         "noPreview": "No preview available.",
         "missing": {
           "missing_personal_profile": "Missing personal profile",
           "missing_uploaded_resume": "Missing uploaded resume",
-          "missing_raw_work_material": "Missing work material"
+          "missing_raw_work_material": "Missing work material",
+          "missing_career_profile": "Career profile incomplete or unconfirmed"
         }
       },
       "generated": {
@@ -165,6 +166,8 @@
     },
     "quickRun": {
       "title": "Quick Run",
+      "needsReview": "Resume generated; review required before submission",
+      "needsEvidence": "Information or evidence is incomplete; resume is not ready to submit",
       "subtitle": "Configure and launch a pipeline run directly from your workspace.",
       "pipelineTitle": "Pipeline",
       "pipelineSubtitle": "Evidence → Match → Generate → Evaluate in one pass.",
@@ -188,6 +191,8 @@
       "providerSummary": "Model Configuration",
       "inputSummary": "Run Inputs",
       "materialSource": "Material source",
+      "chooseMaterial": "Select source material",
+      "useLlm": "Use model-assisted evidence selection (rules by default)",
       "selectedProfile": "Selected profile",
       "traceableEvidence": "Traceable evidence",
       "resumePositioning": "Resume positioning",
@@ -213,7 +218,16 @@
       "pipelineCommand": "Pipeline (single pass)",
       "agentCommand": "Agent (multi-round with gate)",
       "agentRunLink": "Agent Run",
-      "agentRunLinkHint": "For multi-round autonomous execution with quality gates and manual review, use the Agent Run page."
+      "agentRunLinkHint": "For multi-round autonomous execution with quality gates and manual review, use the Agent Run page.",
+      "evidenceSelection": "Reviewed evidence for this run",
+      "targetUnavailable": "The target profile is missing, unreviewed, or has no JD. Select a complete profile.",
+      "profileReady": "Your confirmed career profile is ready for this resume.",
+      "profileRequired": "Complete and confirm your career profile in Resumes first.",
+      "openProfile": "View career profile",
+      "openJobs": "Choose a complete JD",
+      "reviewNext": "Content generated. Preview it and review suitability for this job.",
+      "preparePdf": "View and prepare this PDF",
+      "openEvidence": "Review evidence and gaps"
     },
     "evidence": {
       "title": "Evidence",
@@ -236,7 +250,8 @@
         "generateDraft": "Generate Draft",
         "generatingDraft": "Generating...",
         "saveIncomplete": "Save Incomplete",
-        "saveEligible": "Save Eligible"
+        "saveEligible": "Save Eligible",
+        "manualDraft": "Prepare evidence manually"
       },
       "filters": {
         "queryPlaceholder": "Search title, role, or time",
@@ -303,7 +318,7 @@
         "title": "Review required before save",
         "source": "{{count}} source materials linked",
         "missing": "Missing: {{items}}",
-        "eligible": "Results and Markdown artifact references are complete."
+        "eligible": "Results and source artifact references are complete."
       },
       "empty": {
         "list": "No evidence cards yet. Create a blank card or import a source file."
@@ -346,7 +361,9 @@
         "generateDraft": "Parse JD",
         "generatingDraft": "Parsing...",
         "saveIncomplete": "Save Incomplete",
-        "saveComplete": "Save Complete"
+        "saveComplete": "Save Complete",
+        "manualDraft": "Prepare profile manually",
+        "generateResume": "Generate resume from saved JD"
       },
       "jdDraft": {
         "title": "JD to Job Profile",
@@ -356,7 +373,15 @@
         "ready": "Ready for review",
         "incomplete": "Incomplete",
         "missing": "Missing",
-        "none": "None"
+        "none": "None",
+        "boundSource": "Bound job source",
+        "boundHint": "The full JD is ready for parsing and human review. Saving updates this job. Unbind first to edit its source or text manually.",
+        "unbind": "Unbind for manual import",
+        "clear": "Clear JD draft",
+        "reviewTitle": "Review job title",
+        "reviewKeywords": "Review job keywords",
+        "reviewSummary": "JD summary (source facts only)",
+        "reviewMustHave": "Requirements (one per line, source facts only)"
       },
       "filters": {
         "query": "Search",
@@ -377,7 +402,8 @@
         "new": "New",
         "qualified": "Qualified",
         "contacted": "Contacted",
-        "archived": "Archived"
+        "archived": "Archived",
+        "draft": "Draft lead"
       },
       "metrics": {
         "matchScore": "Match Score",
@@ -404,7 +430,10 @@
         "senioritySignal": "Seniority signal"
       },
       "leads": {
-        "searchPlaceholder": "Search company or position",
+        "salary": "Listed salary",
+        "location": "Location",
+        "notProvided": "Not provided",
+        "searchPlaceholder": "Filter saved companies or positions",
         "allStatuses": "All statuses",
         "favoriteOnly": "Favorites only",
         "company": "Company",
@@ -418,11 +447,63 @@
         "followUp": "Follow-up",
         "favoritedHint": "This lead is marked as a priority target for conversion or outreach.",
         "defaultHint": "Review the lead and convert it into a job profile when it is worth matching.",
-        "convert": "Convert to Job Profile"
+        "convert": "Convert to Job Profile",
+        "summaryOnly": "Summary · Full JD needed",
+        "summaryHint": "Only a job summary is available. Conversion creates an incomplete draft. Add the full JD and review it before matching.",
+        "sourceLink": "View job source",
+        "fetchedAt": "Fetched at"
       },
       "errors": {
         "titleRequired": "Profile title is required.",
         "jdRequired": "Paste JD text first."
+      },
+      "liepinSearch": {
+        "title": "Search Liepin online",
+        "subtitle": "Search official Liepin jobs and save local draft leads. The filters above only search saved leads.",
+        "keyword": "Online job keyword",
+        "placeholder": "e.g. Backend engineer, architect",
+        "search": "Search and import",
+        "searching": "Searching…",
+        "settingsHint": "Search uses the official Token saved in System Settings. Add the full JD before reviewing a summary.",
+        "empty": "Request succeeded. Liepin returned no matching jobs. Existing local leads are preserved.",
+        "success": "Received {{received}} jobs and added {{imported}} draft leads. Current local filters still apply.",
+        "refreshError": "Search completed, but the list could not refresh. Existing leads are preserved; refresh manually."
+      },
+      "liepinDetail": {
+        "fetch": "Fetch full JD",
+        "fetching": "Fetching…",
+        "hint": "The full text loads into the parser above and stays linked to this job. Parsing and human review are still required.",
+        "failed": "The full JD could not be fetched. Your draft is preserved. Retry manually later.",
+        "codes": {
+          "INVALID_INPUT": "Invalid job input. Your draft is preserved.",
+          "NETWORK_ERROR": "Could not reach the job page. Check your network and retry manually.",
+          "JOB_DETAIL_UNAVAILABLE": "The job page has no usable full JD. Your draft is preserved.",
+          "JOB_ID_MISMATCH": "The page does not match this job ID. The draft was not replaced.",
+          "INVALID_RESPONSE": "The job page could not be recognized. Your draft is preserved.",
+          "SECURITY_CHALLENGE": "The job page requires a security check. Complete it on the platform and retry manually.",
+          "STORAGE_ERROR": "The full JD could not be saved. Your draft is preserved.",
+          "NOT_FOUND": "The job lead was not found. Refresh the list and retry."
+        }
+      },
+      "liepinPreparation": {
+        "prepare": "Prepare platform resume review",
+        "preparing": "Preparing review…",
+        "hint": "Fetch and review the full JD first. Preparation only reads the current platform resume; sending requires approval on the review page.",
+        "failed": "Could not prepare review. Check the reviewed job and platform credentials.",
+        "codes": {
+          "INVALID_INPUT": "Invalid job selection.",
+          "JOB_REVIEW_REQUIRED": "The full JD and profile need review, or the source JD changed. Fetch and review them again.",
+          "EXCLUDED_TARGET": "This company or legal entity is excluded.",
+          "ALREADY_ATTEMPTED": "This job was already attempted. Duplicate delivery is blocked; check the existing result.",
+          "RESUME_UNAVAILABLE": "Platform resume unavailable. Check Liepin credentials in Settings.",
+          "JOB_DETAIL_UNAVAILABLE": "The current JD could not be verified. Try again later.",
+          "PREPARATION_UNAVAILABLE": "Review preparation is unavailable. Check local records before retrying.",
+          "BATCH_LIMIT_REACHED": "This authorized batch is full. Further delivery requires new authorization.",
+          "BATCH_UNRESOLVED": "Verify the unresolved receipt before preparing more deliveries.",
+          "BATCH_ROUTE_NOT_AUTHORIZED": "The extra authorization only covers a generated PDF.",
+          "CAREER_PROFILE_UNCONFIRMED": "Complete and confirm your career profile in Resumes first.",
+          "RESUME_CONTENT_INCOMPLETE": "The platform resume does not cover the confirmed career history. Update it or use a generated PDF."
+        }
       }
     },
     "agentRun": {
@@ -476,7 +557,11 @@
         "dryRunComplete": "Dry run complete",
         "reviewPending": "Review pending",
         "failed": "Failed",
-        "stopped": "Stopped"
+        "stopped": "Stopped",
+        "deliveryBlocked": "Delivery blocked",
+        "reviewedCheckOnly": "Reviewed; checks only",
+        "snapshotBlocked": "Review files unavailable",
+        "externalConfirmationOnly": "External confirmation only"
       },
       "gates": {
         "matching": "Matching Gate",
@@ -493,7 +578,48 @@
         "fail": "FAIL",
         "running": "RUNNING",
         "waiting": "WAITING"
-      }
+      },
+      "resumeVersion": "Resume version",
+      "snapshotPreview": "Read the resume saved for this review",
+      "snapshotInvalid": "Review files are missing or changed. Generate a new version for review.",
+      "reviewResults": "Execution results after review",
+      "continueApproved": "Continue approved item",
+      "deliveryCodes": {
+        "checked_not_submitted": "Checks passed; nothing sent.",
+        "official_delivery_contract_unverified": "Official sending version and receipt are unverified; nothing sent.",
+        "delivery_already_attempted": "A prior attempt exists or is unresolved; nothing resent.",
+        "delivery_result_unknown": "Outcome unknown. Remaining applications are paused.",
+        "delivery_receipt_missing": "No confirmed receipt. Remaining applications are paused.",
+        "excluded_company": "Blocked by the current company exclusion list.",
+        "excluded_legal_entity": "Blocked by the current legal entity exclusion list.",
+        "submitted": "A confirmed submission receipt was recorded.",
+        "review_execution_failed": "Execution checks did not complete; no success recorded.",
+        "delivery_state_unavailable": "Submission records unavailable; sending stopped.",
+        "other": "Submission incomplete. Check the run record.",
+        "reviewed_channel_unavailable": "This channel cannot send the approved resume; nothing sent.",
+        "delivery_failed": "The channel reported failure; no success recorded.",
+        "platform_resume_changed": "The platform resume changed; nothing sent. Review it again.",
+        "job_detail_changed": "The job description changed; nothing sent.",
+        "official_preflight_failed": "Official preflight checks failed; nothing sent.",
+        "external_observation_confirmed": "Delivery confirmed by external observation; not verified by the App",
+        "receipt_source_unverified": "Historical success has no receipt provenance; not counted as App verification",
+        "delivery_batch_limit_reached": "Authorized batch limit reached. Not sent.",
+        "delivery_batch_unresolved": "An unresolved attempt pauses this batch.",
+        "delivery_batch_route_not_authorized": "This resume route is outside the authorization. Not sent."
+      },
+      "platformDefaultResume": "Liepin default resume (observed before sending)",
+      "generatedPdfResume": "Project-generated PDF",
+      "notEvaluated": "Not evaluated",
+      "appVerifiedCount": "Verified by App",
+      "externalConfirmedCount": "Confirmed externally",
+      "recheckReceipt": "Verify saved receipt",
+      "recheckReceiptHint": "Reads the saved response only. Does not submit again.",
+      "receiptUnavailable": "Receipt evidence is missing or invalid. The result is unchanged; no resubmission.",
+      "batchAuthorized": "Authorized batch limit",
+      "batchConsumed": "Used (includes earlier real attempts)",
+      "batchRemaining": "Remaining slots",
+      "batchConfirmed": "Confirmed successful",
+      "reviewNativePdf": "Review this PDF in Submissions"
     },
     "submissions": {
       "title": "Submission Attempts",
@@ -545,7 +671,7 @@
       },
       "session": {
         "title": "Channel Session",
-        "manualBoundary": "Manual login boundary active. Credentials, captcha, SMS, and final submit stay outside automation.",
+        "manualBoundary": "Start setup opens a dedicated login window. Sign in manually, then check; successful verification saves the session and closes the window. No resume is submitted.",
         "channel": "Submission channel",
         "start": "Start setup",
         "starting": "Starting...",
@@ -591,7 +717,7 @@
       },
       "feedback": {
         "title": "Feedback Iteration",
-        "boundary": "Feedback items, selected actions, preserved artifacts, version comparison, and next check-mode candidate are recorded.",
+        "boundary": "Select a submission, record recruiter feedback or personal notes, and preserve its original version and receipt.",
         "create": "Record iteration",
         "recording": "Recording...",
         "items": "Feedback items",
@@ -599,7 +725,27 @@
         "version": "New version",
         "next": "Next step",
         "record": "Record",
-        "snapshot": "Source snapshot"
+        "snapshot": "Source snapshot",
+        "submission": "Related submission",
+        "chooseSubmission": "Choose a submission",
+        "source": "Feedback source",
+        "notes": "Feedback notes",
+        "planOnly": "Saving records a plan only. Generate in Quick Run; no application is sent.",
+        "targetProfile": "Job profile for next run",
+        "openQuickRun": "Open Quick Run",
+        "openEvidence": "Open Evidence",
+        "openJobs": "Open Jobs",
+        "sources": {
+          "user_note": "Personal note",
+          "manual_recruiter": "Recruiter feedback (manual)"
+        },
+        "actions": {
+          "acknowledge_and_skip": "Record and retain",
+          "add_or_edit_evidence_card": "Plan evidence updates",
+          "update_job_target": "Plan target updates",
+          "regenerate_resume_from_existing_evidence": "Plan resume generation",
+          "prepare_next_check_mode": "Prepare next check"
+        }
       },
       "status": {
         "success": "Success",
@@ -618,6 +764,82 @@
         "jobUrl": "Job URL",
         "resume": "Resume",
         "profile": "Profile"
+      },
+      "apiRetryBlocked": "An App delivery attempt already exists. Verify the receipt in the original approval run.",
+      "openApproval": "View this approval and receipt",
+      "nativePdf": {
+        "quickRun": "Generated resume run ID",
+        "prepare": "Seal PDF and target job",
+        "consent": "I reviewed this PDF and its suitability for the job, and accept platform parsing and inclusion in subsequent applications.",
+        "upload": "Approve and upload this PDF",
+        "inspect": "Inspect saved attachment (no re-upload)",
+        "target": "Inspect target job (no submission)",
+        "communicate": "Start this approved PDF application",
+        "inspectChat": "Inspect this conversation (no send)",
+        "prepareResume": "Inspect resume confirmation",
+        "send": "Confirm application with selected PDF",
+        "receipt": "Verify stored receipt (no resend)",
+        "phase": {
+          "success": "PDF delivery confirmed by business receipt",
+          "final_send_pending": "The final send result awaits verification. Do not send again.",
+          "resume_interaction_pending": "Resume step entered; awaiting confirmed receipt",
+          "delivery_in_flight": "Application reserved; duplicate start blocked",
+          "communication_started": "Communication initiated; PDF delivery receipt pending",
+          "attachment_verified": "Verified: approved PDF upload bytes bound to platform attachment ID; not submitted",
+          "prepared": "PDF sealed; awaiting upload approval",
+          "in_flight": "Upload started; duplicate upload blocked",
+          "uploaded_unverified": "Attachment observed; identity and content verification pending, not submitted",
+          "not_submitted": "Filename rejected before upload; resume with a shorter name and the same PDF",
+          "unknown": "Upload outcome unknown; automatic retry blocked"
+        },
+        "platformFile": "Platform attachment",
+        "removeBoundary": "Remove only this platform attachment. Keep the local PDF, approved snapshot, and delivery receipt.",
+        "removeConsent": "I confirm removing the platform attachment shown above",
+        "remove": "Remove this platform attachment",
+        "removal": {
+          "in_flight": "Removing; do not repeat",
+          "unknown": "Removal outcome unknown; no automatic retry",
+          "not_submitted": "No removal request was sent; attachment retained",
+          "removed": "Platform attachment removed; local history retained"
+        },
+        "recheckRemoval": "Recheck removal (without deleting again)",
+        "preview": "Preview this fixed PDF",
+        "contentNotReady": "This resume is incomplete or its source information has changed. Complete and confirm your career profile in Resumes, then generate a new PDF.",
+        "invalidLinkedRun": "Invalid generation link. Return from Quick Run with a valid result.",
+        "dailyCandidates": "View daily candidates",
+        "recoveryOnly": "This batch has stopped. This run is only for verifying saved attachments and receipts. Other unstarted candidates are retained for a later list after unresolved items are handled.",
+        "receiptNotAvailable": "No saved business receipt confirms the result yet. This check did not send again."
+      },
+      "nativeSession": {
+        "title": "PDF application",
+        "open": "Open sign-in in App",
+        "check": "Check App session",
+        "boundary": "Sign in manually and check attachment requirements here. Upload requires approval of the sealed PDF below; upload is not a job application.",
+        "inspect": "Check attachment requirements",
+        "attachmentInputs": "Observed {{count}} attachment controls",
+        "acceptUnknown": "No format restriction declared by the page",
+        "status": {
+          "not_opened": "Not opened",
+          "opened": "Window opened; sign in and check",
+          "opening": "Opening",
+          "waiting_for_login": "Waiting for manual sign-in",
+          "authenticated": "Authenticated page observed",
+          "blank": "The sign-in page is blank",
+          "security_challenge": "Complete the security verification in the sign-in window",
+          "unverified": "Sign-in not verified",
+          "unavailable": "Could not check the session; ensure the sign-in window is open"
+        }
+      },
+      "evidence": {
+        "verified": "Local delivery evidence verified",
+        "incomplete": "Local evidence incomplete; original result retained",
+        "platform_default": "Platform default resume",
+        "generated_pdf": "Generated PDF",
+        "app_api": "App API receipt",
+        "app_browser": "App native session receipt",
+        "website_history": "Historical external observation",
+        "resumeHash": "Resume fingerprint",
+        "receiptHash": "Receipt fingerprint"
       }
     },
     "policy": {
@@ -717,7 +939,7 @@
       },
       "channels": {
         "title": "Channels",
-        "subtitle": "Delivery channel order, fallback, credential state and last runtime check.",
+        "subtitle": "Select the delivery channel by target platform; automatic cross-channel fallback is disabled.",
         "none": "none",
         "priority": "Priority",
         "fallback": "Fallback",
@@ -725,7 +947,7 @@
         "lastCheck": "Last Check",
         "lastSuccess": "Last Success",
         "lastError": "Last Error",
-        "fallbackOrder": "Fallback Order",
+        "fallbackOrder": "Available delivery channels",
         "connectionTests": "Check Status",
         "credentialStore": "Credential Store",
         "credentialStoreStatus": "Only masked status is shown; plaintext secrets are not returned."
@@ -778,7 +1000,183 @@
       "secretStatus": {
         "title": "Secret Status",
         "updatedAt": "Updated at"
+      },
+      "liepinApi": {
+        "title": "Official Liepin connection",
+        "scope": "This card checks search and resume reading. Real submission requires a separately approved delivery route.",
+        "storageHint": "The Token is saved in a local plaintext file with 0600 permissions, without Keychain, and loaded automatically after restart. It is never displayed or logged.",
+        "storagePath": "Local storage path",
+        "authorization": "Open Liepin authorization",
+        "authorizationFailed": "Could not open the system browser. Copy the address above and open it in your browser.",
+        "token": "Official Token",
+        "tokenPlaceholder": "Paste Token; this field clears when submitted",
+        "set": "Save on this device",
+        "check": "Check connection",
+        "clear": "Delete saved credential",
+        "working": "Working…",
+        "readResume": "Read platform resume",
+        "lastChecked": "Last checked",
+        "resumePreview": "Platform resume preview",
+        "resumeHint": "Plain text preview on this page only. Nothing is saved or copied into your profile.",
+        "resumeEmpty": "The platform resume is empty.",
+        "legacyHint": "The existing browser delivery channels below have separate status from official read-only access.",
+        "requestError": "The request did not complete. Check the backend connection and retry manually.",
+        "requestBlocked": "The request was blocked. Check credential status and retry manually.",
+        "states": {
+          "unconfigured": "Not configured",
+          "unverified": "Not checked",
+          "valid": "Read-only connection valid",
+          "invalid": "Invalid credential",
+          "rate_limited": "Rate limited",
+          "error": "Credential or connection error"
+        },
+        "codes": {
+          "OK": "Request completed.",
+          "AUTH_REQUIRED": "Configure the official Liepin Token in System Settings first.",
+          "AUTH_INVALID": "The Token is invalid or unauthorized. Configure it again.",
+          "RATE_LIMITED": "Liepin has limited requests. Retry manually later.",
+          "NETWORK_ERROR": "Could not connect to Liepin. Check your network and retry manually.",
+          "INVALID_RESPONSE": "Liepin returned an unrecognized response. This action did not complete.",
+          "API_ERROR": "The Liepin API is unavailable. Retry manually later.",
+          "INVALID_INPUT": "Invalid input. Check it and retry.",
+          "STORAGE_ERROR": "Job leads could not be saved. Check local storage and retry.",
+          "CREDENTIAL_STORAGE_ERROR": "The local credential file operation failed. Check the storage path and file permissions, then retry.",
+          "INTERNAL_ERROR": "The request did not complete. Retry manually later."
+        }
       }
     }
+  },
+  "daily": {
+    "title": "Daily controlled delivery",
+    "description": "Runs one batch per Shanghai day while the app is running. Closing or sleeping stops execution; reopening handles today only. Uses fixed PDFs below and stops when attachment space is unavailable.",
+    "today": "Today",
+    "confirmed": "Confirmed",
+    "occupied": "Reserved",
+    "state": "Authorization",
+    "maximum": "Daily maximum",
+    "time": "Time (Shanghai)",
+    "expiry": "Expires (local time)",
+    "scope": "Specific jobs and fixed PDFs. New jobs, versions and attachment deletion require separate approval.",
+    "preview": "Preview PDF",
+    "empty": "No unused prepared PDFs. Review a job, generate a PDF in Quick Run and fix it in Submissions. Uploaded or submitted runs are excluded.",
+    "consent": "I authorize uploading and submitting the saved PDFs to their listed Liepin jobs within this expiry and daily limit, including platform parsing into my online resume and inclusion with subsequent applications.",
+    "save": "Save draft",
+    "activate": "Confirm and enable / resume",
+    "pause": "Pause",
+    "revoke": "Revoke",
+    "run": "Run today",
+    "closeInterrupted": "Close interrupted batch (no resend)",
+    "refresh": "Refresh",
+    "running": "Running; pause stops subsequent actions",
+    "states": {
+      "none": "Not configured",
+      "draft": "Draft, not authorized",
+      "active": "Active",
+      "paused": "Paused",
+      "revoked": "Revoked",
+      "expired": "Expired",
+      "running": "Running / interrupted",
+      "finished": "Finished"
+    },
+    "reasons": {
+      "completed": "Batch target reached",
+      "candidate_shortfall": "Insufficient candidates or remaining quota",
+      "daily_not_active": "Authorization is inactive",
+      "daily_expired": "Authorization expired",
+      "daily_already_run": "Today already has a batch",
+      "daily_not_due": "Not due yet",
+      "daily_date_changed": "Shanghai date changed; stopped",
+      "daily_limit_reached": "Shared daily limit reached",
+      "daily_scope_mismatch": "Job or PDF differs from authorization",
+      "daily_pdf_filename_too_long": "Liepin allows at most 24 characters including the extension. The abbreviated filename is still too long; nothing was uploaded.",
+      "daily_unresolved": "An unresolved attempt or interrupted batch needs verification",
+      "daily_execution_stopped": "Precondition failed; inspect original run",
+      "daily_login_required": "Platform login required",
+      "daily_attachment_capacity": "No unique upload input; attachment limit may be reached",
+      "daily_upload_unconfirmed": "Upload unconfirmed; no automatic retry",
+      "daily_binding_unconfirmed": "Attachment or confirmation not verified",
+      "daily_receipt_unknown": "Receipt unconfirmed; reservation retained, further sending paused",
+      "daily_interrupted": "Interrupted batch closed without resending",
+      "daily_recovery_required": "Interrupted items require verification in their original records.",
+      "NATIVE_OPERATION_BUSY": "A platform operation is running. Wait for it to finish before closing an interrupted batch.",
+      "daily_run_unavailable": "The batch has ended or is unavailable. Refresh to see its current results."
+    },
+    "closePreview": "Close PDF preview",
+    "openJobs": "Prepare a candidate from Jobs",
+    "unresolved": "Unresolved",
+    "stopReason": "Batch stop reason",
+    "reviewItem": "View and verify",
+    "recoveryHint": "Stopped items need verification. Open their original records; the app will not retry uploads or submissions automatically. Successful and unstarted items retain their states.",
+    "phases": {
+      "not_started": "Not started",
+      "uploading": "Uploading / interrupted",
+      "binding_pending": "Upload recorded; verify attachment",
+      "attachment_verified": "Attachment verified",
+      "delivery_in_progress": "Delivery in progress / interrupted",
+      "awaiting_receipt": "Waiting for business receipt",
+      "upload_unconfirmed": "Upload unconfirmed; no reupload",
+      "receipt_unknown": "Receipt unknown; reservation retained",
+      "success": "Confirmed successful",
+      "failed": "Failed; no automatic retry",
+      "record_unavailable": "Record unavailable; inspect snapshot"
+    }
+  },
+  "materialDocument": {
+    "title": "Select a work document",
+    "help": "Find source documents in imported materials. Select a bounded excerpt before extraction; the draft still requires review.",
+    "query": "Filter document names",
+    "search": "Find documents",
+    "select": "Select a document excerpt",
+    "count": "{{matched}} matching / {{total}} total excerpts; showing {{shown}}",
+    "preview": "Read selected source",
+    "reReview": "Review this card against its source"
+  },
+  "career": {
+    "title": "Complete career profile",
+    "help": "Maintain employment, education and capabilities, linked to reviewed project evidence.",
+    "summary": "Professional summary (optional)",
+    "summaryHint": "Leave blank to compose a summary from your confirmed position and latest work scope.",
+    "reviewed": "Career facts confirmed",
+    "draft": "Draft / unconfirmed",
+    "groups": {
+      "work": "Employment / engagements",
+      "skills": "Capabilities",
+      "education": "Education",
+      "extras": "Additional achievements"
+    },
+    "fields": {
+      "company": "Actual employer / contracting organization",
+      "department": "Department",
+      "title": "Position",
+      "start": "Start month",
+      "end": "End month",
+      "scope": "Business scope and personal responsibilities",
+      "contributions": "Contributions (one per line)",
+      "school": "School",
+      "major": "Major",
+      "degree": "Degree",
+      "category": "Capability category",
+      "description": "Description",
+      "achievementTitle": "Achievement title",
+      "url": "Portfolio / reference URL (HTTPS)"
+    },
+    "currentWork": "Current employment / engagement",
+    "currentEducation": "Currently enrolled",
+    "showEducation": "Show education in the resume (uncheck to explicitly omit)",
+    "linkEvidence": "Link reviewed evidence",
+    "linkHint": "Links identify work ownership. Maintain project-specific responsibilities, dates and results in Evidence.",
+    "remove": "Remove this draft entry",
+    "add": {
+      "work": "Add employment",
+      "skills": "Add capability",
+      "education": "Add education",
+      "extras": "Add achievement"
+    },
+    "missing": "Missing information (updated after saving)",
+    "stale": "The profile changed elsewhere. Discard unsaved changes and refresh.",
+    "consent": "I confirm the employer, position, dates, responsibilities, education and achievements are accurate.",
+    "save": "Save career draft",
+    "confirm": "Confirm career facts",
+    "reload": "Discard unsaved changes"
   }
 }

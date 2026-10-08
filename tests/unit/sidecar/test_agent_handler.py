@@ -6,6 +6,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def synthetic_review_pdf(monkeypatch):
+    monkeypatch.setattr('tools.infra.persistence.review_snapshot._render_pdf',
+                        lambda source, destination: destination.write_bytes(b'%PDF-unit-test'))
+
 from tools.sidecar.handlers.agent import (
     handle_agent_get,
     handle_agent_start,
@@ -155,7 +163,7 @@ class TestGetPendingReview:
 
 
 class TestSubmitReview:
-    def test_approves_candidates(self):
+    def test_legacy_queue_without_snapshot_cannot_be_approved(self):
         with TemporaryDirectory() as tmp:
             review_dir = Path(tmp) / "review_queue"
             review_dir.mkdir()
@@ -179,7 +187,8 @@ class TestSubmitReview:
             )
 
             with patch("tools.sidecar.handlers.agent._REVIEW_QUEUE_DIR", review_dir):
-                result = handle_submit_review(
+                with pytest.raises(ValueError, match='review_snapshot'):
+                    handle_submit_review(
                     {
                         "meta": {"correlation_id": "corr_004"},
                         "run_id": "run_001",
@@ -195,8 +204,7 @@ class TestSubmitReview:
 
                 updated = json.loads(queue_file.read_text(encoding="utf-8"))
 
-        assert result["accepted"] == 1
-        assert updated["candidates"][0]["status"] == "approved"
+        assert updated["candidates"][0]["status"] == "pending"
 
 
 class TestQuickRunStart:
@@ -240,6 +248,7 @@ class TestQuickRunStart:
         assert result["status"] == "DONE"
         command = run_mock.call_args.args[0]
         assert command[1] == str(project_root / "tools" / "run_pipeline.py")
+        assert command[command.index("--personal-profile") + 1] == str(project_root / "personal_profile.yaml")
         assert run_mock.call_args.kwargs["cwd"] == str(project_root)
 
     def test_returns_stdout_artifacts_and_matching_scores(self):
@@ -517,9 +526,27 @@ class TestQuickRunStart:
         assert result["traceability"]["evidence"]["raw_source"] == str(
             materials_dir / "mat_001.md"
         )
-        assert result["traceability"]["resume_traceable"] is True
+        assert result["traceability"]["resume_traceable"] is False
+        assert result["resume_readiness"]["deliverable"] is False
         assert run_payload["run"]["material_source"]["material_id"] == "mat_001"
-        assert run_payload["traceability"]["resume_traceable"] is True
+        assert run_payload["traceability"]["resume_traceable"] is False
+
+
+def test_pdf_failure_keeps_generated_artifacts_and_reports_reason(tmp_path, monkeypatch):
+    from tools.sidecar.handlers import agent
+    resume_dir = tmp_path / 'outputs/run-export-failure'
+    resume_dir.mkdir(parents=True)
+    (resume_dir / 'resume_mr-run-export-failure_A.md').write_text('# 候选简历\n', encoding='utf-8')
+    summary = tmp_path / 'outputs/agent_runs/run-export-failure/summary.json'
+    summary.parent.mkdir(parents=True)
+    summary.write_text(json.dumps({'artifacts': {'resume_dir': str(resume_dir)}}), encoding='utf-8')
+    monkeypatch.setattr(agent, '_PROJECT_ROOT', tmp_path)
+    with patch.object(agent, 'markdown_to_pdf', side_effect=RuntimeError('PDF_RENDERER_UNAVAILABLE')):
+        result = agent._quick_run_result_details('run-export-failure', '', '')
+    assert result['resume_pdf'] == ''
+    assert result['pdf_export_error'] == 'PDF_RENDERER_UNAVAILABLE'
+    assert result['artifacts']['resume_dir'] == str(resume_dir)
+    assert result['resume_readiness']['quality_passed'] is False
 
 
 class TestAgentRunStart:
@@ -590,6 +617,7 @@ class TestAgentRunStart:
 
         assert result["status"] == "REVIEW_PENDING"
         assert result["guided_batch"] is True
+        assert all(candidate['snapshot_status'] == 'ready' for candidate in pending['candidates'])
         assert fetched["run"]["guided_batch"] is True
         assert fetched["run"]["selected_candidate_ids"] == [
             "jl-guided-1",

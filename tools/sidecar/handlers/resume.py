@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 import shutil
 import base64
 import binascii
@@ -9,10 +12,10 @@ from typing import Any
 from uuid import uuid4
 
 from tools.infra.export.pdf_exporter import (
-    is_pdf_export_available,
     markdown_to_pdf,
 )
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.infra.export.resume_html import parse_resume_markdown as _parse_preview_markdown, render_resume_html
 
 _OUTPUTS_DIR = Path("outputs")
 _UPLOADED_DIR = Path("uploaded_resumes")
@@ -161,12 +164,12 @@ def _company_from_job_profile_id(job_profile_id: str) -> str:
 
 def _parse_generated_resume(path: Path) -> dict[str, Any]:
     name = path.stem
-    parts = name.split("_")
+    parts = name.removeprefix("resume_").rsplit("_", 1)
     job_profile_id = ""
     score = 0
     company = ""
-    if len(parts) >= 3:
-        report_id = parts[1]
+    if name.startswith("resume_") and len(parts) == 2:
+        report_id = parts[0]
         if report_id.startswith("mr-"):
             job_profile_id = _job_profile_id_from_report_id(report_id)
             score = _score_from_report_id(report_id)
@@ -232,6 +235,9 @@ def _parse_uploaded_text_preview(meta_path: Path, source: Path) -> dict[str, Any
     }
 
 
+from tools.infra.persistence.review_snapshot import read_generation_trace
+
+
 def _find_generated_resume(resume_id: str) -> Path | None:
     for path in _glob_generated_resumes():
         if f"gen_{path.stem}" == resume_id:
@@ -246,83 +252,7 @@ def _find_uploaded_meta(resume_id: str) -> Path | None:
     return None
 
 
-def _parse_preview_markdown(text: str) -> dict[str, Any]:
-    lines = text.splitlines()
-    name = ""
-    summary_lines: list[str] = []
-    skills: list[str] = []
-    experience: list[dict[str, Any]] = []
-    current_section = ""
-    current_experience: dict[str, Any] | None = None
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("# ") and not name:
-            name = stripped[2:].strip()
-            continue
-        if stripped.startswith("Generated at:") or stripped.startswith(
-            "Source report:"
-        ):
-            continue
-        if stripped.startswith("## "):
-            current_section = stripped[3:].strip().lower()
-            if current_section != "experience" and current_experience is not None:
-                experience.append(current_experience)
-                current_experience = None
-            continue
-        if current_section == "10-second summary" and stripped.startswith("- "):
-            value = stripped[2:].strip()
-            summary_lines.append(value)
-            if value.startswith("核心技术栈："):
-                stack_line = value.removeprefix("核心技术栈：").strip()
-                skills.extend(
-                    item.strip() for item in stack_line.split(",") if item.strip()
-                )
-            continue
-        if current_section == "experience" and stripped.startswith("### "):
-            if current_experience is not None:
-                experience.append(current_experience)
-            heading = stripped[4:].strip()
-            company = heading
-            period = ""
-            if "（" in heading and heading.endswith("）"):
-                company, period = heading[:-1].split("（", 1)
-                company = company.strip()
-                period = period.strip()
-            current_experience = {
-                "company": company,
-                "title": "",
-                "period": period,
-                "bullets": [],
-            }
-            continue
-        if current_section == "experience" and stripped.startswith("- "):
-            if current_experience is None:
-                continue
-            bullet = stripped[2:].strip()
-            if bullet.startswith("角色与范围："):
-                current_experience["title"] = bullet.removeprefix(
-                    "角色与范围："
-                ).strip()
-            else:
-                current_experience["bullets"].append(bullet)
-            continue
-
-    if current_experience is not None:
-        experience.append(current_experience)
-
-    return {
-        "name": name,
-        "contact": {"phone": "", "email": "", "city": ""},
-        "summary": " ".join(summary_lines).strip(),
-        "experience": experience,
-        "skills": skills,
-    }
-
-
-def _resolve_pdf_export_destination(destination_text: str, source: Path) -> Path:
+def _resolve_pdf_export_destination(destination_text: str, source: Path, *, generated: bool = False) -> Path:
     destination_value = destination_text.strip()
     if not destination_value:
         raise ValueError("destination path is required")
@@ -339,6 +269,9 @@ def _resolve_pdf_export_destination(destination_text: str, source: Path) -> Path
             "PDF export destination must be a .pdf file path or a directory path; "
             f"existing non-PDF file blocks directory export: {destination}"
         )
+    if generated:
+        from tools.infra.export.resume_filename import pdf_filename_for_resume
+        return destination / pdf_filename_for_resume(source, _OUTPUTS_DIR)
     return destination / f"{source.stem}.pdf"
 
 
@@ -463,11 +396,13 @@ def handle_resume_get_preview(params: dict[str, Any]) -> dict[str, Any]:
 
     generated = _find_generated_resume(resume_id)
     if generated is not None:
-        preview = _parse_preview_markdown(generated.read_text(encoding="utf-8"))
+        markdown_text = generated.read_text(encoding="utf-8")
+        preview = _parse_preview_markdown(markdown_text)
         return {
             "meta": {"correlation_id": correlation_id},
             "resume_id": resume_id,
             "preview": preview,
+            "preview_html": render_resume_html(markdown_text),
         }
 
     uploaded_meta = _find_uploaded_meta(resume_id)
@@ -478,6 +413,7 @@ def handle_resume_get_preview(params: dict[str, Any]) -> dict[str, Any]:
                 "meta": {"correlation_id": correlation_id},
                 "resume_id": resume_id,
                 "preview": _parse_uploaded_text_preview(uploaded_meta, source),
+                "preview_html": render_resume_html(source.read_text(encoding="utf-8", errors="replace")),
                 "preview_status": "available",
             }
         return {
@@ -511,16 +447,11 @@ def handle_resume_export_pdf(params: dict[str, Any]) -> dict[str, Any]:
     if source is None:
         raise KeyError(f"NOT_FOUND: {resume_id}")
 
-    destination = _resolve_pdf_export_destination(destination_text, source)
+    destination = _resolve_pdf_export_destination(destination_text, source, generated=resume_id.startswith('gen_'))
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.suffix.lower() == ".pdf":
         shutil.copy2(source, destination)
     elif source.suffix.lower() == ".md":
-        if not is_pdf_export_available():
-            raise RuntimeError(
-                "PDF export for Markdown requires weasyprint and markdown packages. "
-                "Install with: pip install weasyprint markdown"
-            )
         markdown_to_pdf(source, destination)
     else:
         raise ValueError(f"unsupported resume format: {source.suffix}")
@@ -529,4 +460,5 @@ def handle_resume_export_pdf(params: dict[str, Any]) -> dict[str, Any]:
         "meta": {"correlation_id": correlation_id},
         "resource_id": f"pdf_{uuid4().hex[:8]}",
         "path": str(destination),
+        **({"html_path": str(destination.with_suffix('.html'))} if source.suffix.lower() == '.md' else {}),
     }

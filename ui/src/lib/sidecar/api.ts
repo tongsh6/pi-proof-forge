@@ -1,4 +1,5 @@
 import { RpcClient } from "@/lib/rpc/client";
+import { invoke } from "@tauri-apps/api/core";
 import { TauriRpcTransport } from "@/lib/rpc/tauri-transport";
 import type {
   ChannelSessionResult,
@@ -16,6 +17,7 @@ import type {
   FeedbackIterationResult,
   FeedbackListResult,
   GetPendingReviewResult,
+  PrepareLiepinDefaultResult,
   HandshakeResult,
   AgentRunGetResult,
   AgentRunStartOptions,
@@ -24,6 +26,10 @@ import type {
   JobLeadsFilters,
   JobLeadsListResult,
   JobLeadConvertResult,
+  LiepinCredentialResult,
+  LiepinJobDetailResult,
+  LiepinResumeResult,
+  LiepinSearchResult,
   LlmConnectionCheckResult,
   MaterialListResult,
   MaterialReadinessResult,
@@ -39,6 +45,7 @@ import type {
   OverviewGetResult,
   PingResult,
   ProfileGetResult,
+  CareerProfile,
   ProfileUpdateResult,
   QuickRunCancelResult,
   QuickRunStartOptions,
@@ -64,6 +71,63 @@ const PROTOCOL_VERSION = "1.0.0";
 const REQUESTED_CAPABILITIES = ["events", "file-preview", "pdf-export"];
 
 const client = new RpcClient(new TauriRpcTransport());
+
+export async function openLiepinAuthorization(): Promise<void> {
+  await invoke<void>("open_liepin_authorization");
+}
+
+export type NativeLiepinObservation = {
+  status: string;
+  url?: string;
+  authenticated?: boolean;
+  attachment_view?: {
+    entry_count: number;
+    inputs: { accept: string; multiple: boolean; disabled: boolean }[];
+    hints: string[];
+  };
+};
+
+export async function openLiepinNativeSession(): Promise<NativeLiepinObservation> {
+  return invoke("open_liepin_native_session");
+}
+
+export async function checkLiepinNativeSession(): Promise<NativeLiepinObservation> {
+  return invoke("check_liepin_native_session");
+}
+
+export async function inspectLiepinNativeAttachments(): Promise<NativeLiepinObservation> {
+  return invoke("inspect_liepin_native_attachments");
+}
+
+export type NativePdfPreparation = {meta: {correlation_id: string}; run_id: string; company: string; position: string; matching_score?: number; can_confirm_send?: boolean; account_effects_accepted?: boolean; recovery_only?: boolean;
+  job_lead_id: string; pdf_sha256: string; pdf_path: string; pdf_filename?: string; phase: string; platform_filename?: string; attachment_removal_state?: string};
+export async function prepareLiepinPdf(quickRunId: string): Promise<NativePdfPreparation> {
+  return client.call<NativePdfPreparation>("run.agent.prepareLiepinPdf", {quick_run_id:quickRunId});
+}
+export async function uploadLiepinNativePdf(runId: string, acceptAccountEffects: boolean): Promise<NativePdfPreparation> {
+  return invoke("upload_liepin_native_pdf", {runId,acceptAccountEffects});
+}
+export async function inspectUploadedLiepinPdf(runId: string): Promise<NativePdfPreparation> {
+  return invoke("inspect_uploaded_liepin_pdf", {runId});
+}
+export async function inspectLiepinPdfTarget(runId: string): Promise<NativePdfPreparation> {
+  return invoke("inspect_liepin_pdf_target", {runId});
+}
+export async function startLiepinPdfCommunication(runId: string): Promise<NativePdfPreparation> {
+  return invoke("start_liepin_pdf_communication", {runId});
+}
+export async function continueLiepinPdfDelivery(runId: string, action: "inspect" | "prepare" | "send"): Promise<NativePdfPreparation> {
+  return invoke("continue_liepin_pdf_delivery", {runId,action});
+}
+export async function recheckLiepinNativePdfRemoval(runId: string): Promise<NativePdfPreparation> {
+  return invoke("recheck_liepin_native_pdf_removal", {runId});
+}
+export async function removeLiepinNativePdfAttachment(runId: string, confirmed: boolean): Promise<NativePdfPreparation> {
+  return invoke("remove_liepin_native_pdf_attachment", {runId, confirmed});
+}
+export async function verifyNativePdfReceipt(runId: string): Promise<NativePdfPreparation> {
+  return client.call<NativePdfPreparation>("run.agent.verifyPdfReceipt", {run_id:runId});
+}
 
 export async function bootstrapSidecar(): Promise<{
   handshake: HandshakeResult;
@@ -166,14 +230,16 @@ export async function importEvidence(payload: {
 }
 
 export async function generateEvidenceDraft(
-  materialIds: string[]
+  materialIds: string[], sourceDocumentId?: string
 ): Promise<EvidenceGenerateDraftResult> {
   return client.call<EvidenceGenerateDraftResult>("evidence.generateDraft", {
     material_ids: materialIds,
+    source_document_id: sourceDocumentId,
   });
 }
 
 export async function saveEvidenceDraft(payload: {
+  evidence_id?:string;
   draft: EvidenceDraftPayload;
   save_mode: "incomplete" | "eligible";
   review: { decision: "approved"; reviewed_at?: string };
@@ -183,6 +249,31 @@ export async function saveEvidenceDraft(payload: {
 
 export async function getSettings(): Promise<SettingsGetResult> {
   return client.call<SettingsGetResult>("settings.get");
+}
+
+export async function updateLiepinCredential(
+  payload: { action: "set"; token: string } | { action: "clear" | "check" }
+): Promise<LiepinCredentialResult> {
+  return client.call<LiepinCredentialResult>("settings.liepinCredential", payload);
+}
+
+export async function getLiepinResume(): Promise<LiepinResumeResult> {
+  return client.call<LiepinResumeResult>("settings.liepinResume");
+}
+
+export async function searchLiepinJobs(
+  keyword: string,
+  page = 0
+): Promise<LiepinSearchResult> {
+  return client.call<LiepinSearchResult>("jobs.searchLiepin", { keyword, page });
+}
+
+export async function fetchLiepinJobDetail(
+  jobLeadId: string
+): Promise<LiepinJobDetailResult> {
+  return client.call<LiepinJobDetailResult>("jobs.fetchLiepinDetail", {
+    job_lead_id: jobLeadId,
+  });
 }
 
 export async function updateExclusionList(
@@ -291,6 +382,7 @@ export async function createJobProfile(payload: {
 export async function generateJobProfileDraft(payload: {
   jd_text: string;
   source_url?: string;
+  job_lead_id?: string;
 }): Promise<JobProfileGenerateDraftResult> {
   return client.call<JobProfileGenerateDraftResult>(
     "jobs.generateProfileDraft",
@@ -300,6 +392,8 @@ export async function generateJobProfileDraft(payload: {
 
 export async function saveJobProfileDraft(payload: {
   draft: JobProfileDraftPayload;
+  job_lead_id?: string;
+  job_profile_id?: string;
   save_mode: "incomplete" | "complete";
   review: { decision: "approved"; reviewed_at?: string };
 }): Promise<JobProfileSaveDraftResult> {
@@ -396,14 +490,15 @@ export async function getProfile(): Promise<ProfileGetResult> {
 
 export async function updateProfile(
   patch: Partial<{
+    career: CareerProfile;
     name: string;
     phone: string;
     email: string;
     city: string;
     current_position: string;
-  }>
+  }>, expectedRevision?:string
 ): Promise<ProfileUpdateResult> {
-  return client.call<ProfileUpdateResult>("profile.update", { patch });
+  return client.call<ProfileUpdateResult>("profile.update", { patch, expected_revision:expectedRevision });
 }
 
 export async function listSubmissions(): Promise<SubmissionListResult> {
@@ -450,14 +545,10 @@ export async function startChannelSession(
 }
 
 export async function checkChannelSession(
-  channel: string,
-  loginSignals: Record<string, unknown> = {},
-  accountIdentity?: Record<string, unknown>
+  channel: string
 ): Promise<ChannelSessionResult> {
   return client.call<ChannelSessionResult>("submission.channelSession.check", {
     channel,
-    login_signals: loginSignals,
-    ...(accountIdentity ? { account_identity: accountIdentity } : {}),
   });
 }
 
@@ -497,6 +588,7 @@ export async function listSubmissionFeedback(
 }
 
 export async function createFeedbackIteration(payload: {
+  feedback_source?: "user_note" | "manual_recruiter";
   source_run_id: string;
   source_feedback_items?: FeedbackItem[];
   selected_actions: string[];
@@ -510,6 +602,14 @@ export async function createFeedbackIteration(payload: {
     "submission.feedback.createIteration",
     payload,
   );
+}
+
+export async function prepareLiepinDefault(jobLeadId: string): Promise<PrepareLiepinDefaultResult> {
+  return client.call<PrepareLiepinDefaultResult>("run.agent.prepareLiepinDefault", { job_lead_id: jobLeadId });
+}
+
+export async function recheckReceipt(runId: string, jobLeadId: string): Promise<Pick<GetPendingReviewResult, "meta" | "delivery_results"> & { status: string; code: string }> {
+  return client.call("run.agent.recheckReceipt", { run_id: runId, job_lead_id: jobLeadId });
 }
 
 export async function getPendingReview(
@@ -581,3 +681,23 @@ export async function stopAgentRun(runId: string): Promise<AgentRunStopResult> {
 export function shutdownSidecar(): void {
   client.close();
 }
+
+export type DailyCandidate = {run_id:string;company:string;position:string;pdf_sha256:string;pdf_path:string;pdf_filename?:string;matching_score?:number;job_url:string};
+export type DailyAuthorization = {id:string;state:string;scope:DailyCandidate[];maximum:number;time:string;expires_at:string};
+export type DailyProgressItem = {run_id:string;company:string;position:string;phase:string;quick_run_id:string|null;recovery_required:boolean};
+export type DailyBatchHistory = {id:string;day:string;state:string;reason:string;maximum?:number;confirmed?:number;unresolved?:number;started_at?:string;finished_at?:string|null;items?:DailyProgressItem[]};
+export type DailyStatus = {meta:{correlation_id:string};authorization:DailyAuthorization|null;today:{day:string;confirmed:number;occupied:number;remaining:number;unresolved:number};history:DailyBatchHistory[];candidates:DailyCandidate[];recovery_required?:boolean;recovery_items?:DailyProgressItem[]};
+export async function getDailyStatus():Promise<DailyStatus> {return client.call<DailyStatus>("daily.status",{});}
+export async function saveDailyDraft(params:{run_ids:string[];maximum:number;time:string;expires_at:string}):Promise<DailyStatus> {return client.call<DailyStatus>("daily.save",params);}
+export async function changeDailyAuthorization(id:string,state:string,confirmed=false):Promise<DailyStatus> {return invoke("change_daily_authorization",{id,state,confirmed});}
+export async function runDailyDelivery(force=false):Promise<DailyStatus|{claimed:false;reason:string}> {return invoke("run_daily_delivery",{force});}
+export async function closeInterruptedDaily(id:string):Promise<DailyStatus> {return invoke("close_interrupted_daily",{id});}
+
+export async function previewDailyPdf(runId:string):Promise<{meta:{correlation_id:string};pdf_base64:string;pdf_sha256:string}> {return client.call("daily.preview",{run_id:runId});}
+
+export type MaterialDocumentRef = {material_id:string;document_id:string;sha256:string;label:string};
+export type MaterialDocument = Omit<MaterialDocumentRef,'material_id'> & {char_count:number;text?:string};
+export async function listMaterialDocuments(materialId:string,query=''):Promise<{meta:{correlation_id:string};items:MaterialDocument[];total:number;matched:number}> {return client.call('evidence.listMaterialDocuments',{material_id:materialId,query});}
+export async function readMaterialDocument(materialId:string,documentId:string):Promise<MaterialDocument & {meta:{correlation_id:string};text:string}> {return client.call('evidence.readMaterialDocument',{material_id:materialId,document_id:documentId});}
+
+export async function reviewCareerProfile(revision:string):Promise<ProfileGetResult>{return client.call("profile.review",{expected_revision:revision,confirmed:true});}

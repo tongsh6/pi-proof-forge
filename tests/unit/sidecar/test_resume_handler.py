@@ -12,6 +12,23 @@ from tools.sidecar.handlers.resume import (
 )
 
 
+def test_generated_resume_preserves_full_report_id_with_underscores(tmp_path, monkeypatch):
+    from tools.sidecar.handlers import resume
+    reports, jobs = tmp_path / 'matching_reports', tmp_path / 'job_profiles'
+    reports.mkdir()
+    jobs.mkdir()
+    (reports / 'mr-qr_candidate_20260905.yaml').write_text('job_profile_id: "jp-target"\nscore_total: 85\n', encoding='utf-8')
+    (jobs / 'jp-target.yaml').write_text('company: "目标公司"\n', encoding='utf-8')
+    source = tmp_path / 'resume_mr-qr_candidate_20260905_A.md'
+    source.write_text('# 候选人\n', encoding='utf-8')
+    monkeypatch.setattr(resume, '_MATCHING_REPORT_DIR', reports)
+    monkeypatch.setattr(resume, '_JOB_PROFILE_DIR', jobs)
+    item = resume._parse_generated_resume(source)
+    assert item['job_profile_id'] == 'jp-target'
+    assert item['company'] == '目标公司'
+    assert item['score'] == 85
+
+
 class ResumeListTests(unittest.TestCase):
     def test_returns_empty_when_no_resumes_exist(self) -> None:
         with TemporaryDirectory() as tmp_dir:
@@ -417,12 +434,16 @@ class ResumePreviewTests(unittest.TestCase):
                             "resume_id": "gen_resume_mr-2026-005_A",
                         }
                     )
+            md_content = generated.read_text(encoding="utf-8")
 
         preview = result["preview"]
         self.assertEqual(preview["name"], "Resume Version A")
         self.assertIn("定位：Backend Tech Lead（架构/技术深度）", preview["summary"])
         self.assertIn("Python", preview["skills"])
         self.assertEqual(preview["experience"][0]["company"], "Search Platform Upgrade")
+        from tools.infra.export.pdf_exporter import _markdown_to_html
+        self.assertIn("preview_html", result)
+        self.assertEqual(result["preview_html"], _markdown_to_html(md_content))
 
     def test_preview_not_found_raises(self) -> None:
         with TemporaryDirectory() as tmp_dir:
@@ -534,7 +555,10 @@ class ResumeExportPdfTests(unittest.TestCase):
             generated = outputs_dir / "resume_mr-2026-005_A.md"
             generated.write_text("# Resume\n", encoding="utf-8")
             destination_dir = Path(tmp_dir) / "exports"
-            expected = destination_dir / "resume_mr-2026-005_A.pdf"
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            day = datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y%m%d')
+            expected = destination_dir / f"Resume-未指定公司-未指定岗位-{day}.1.PDF"
             with patch("tools.sidecar.handlers.resume._OUTPUTS_DIR", outputs_dir):
                 with patch(
                     "tools.sidecar.handlers.resume._UPLOADED_DIR",

@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 import unittest
 from tempfile import TemporaryDirectory
 from pathlib import Path
@@ -566,7 +567,7 @@ class EvidenceDraftReviewTests(unittest.TestCase):
             with (
                 patch("tools.sidecar.handlers.materials._MATERIALS_DIR", materials_dir),
                 patch("tools.sidecar.handlers.settings._resolve_policy_path", return_value=policy_path),
-                patch("tools.sidecar.handlers.evidence.LLMClient.post_json", return_value=llm_response) as post_json,
+                patch("tools.infra.llm.client.request.urlopen", return_value=BytesIO(json.dumps(llm_response).encode())) as urlopen,
             ):
                 result = handle_evidence_generate_draft(
                     {
@@ -579,8 +580,10 @@ class EvidenceDraftReviewTests(unittest.TestCase):
         self.assertFalse(result["candidate_pool_eligible"])
         self.assertEqual(result["draft"]["source_material_ids"], ["mat_001"])
         self.assertEqual(result["draft"]["artifacts"][0]["ref"], "mat_001")
-        self.assertEqual(post_json.call_count, 1)
-        self.assertIn("response_format", post_json.call_args.args[1])
+        self.assertEqual(urlopen.call_count, 1)
+        request_payload = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual(request_payload["response_format"]["type"], "json_schema")
+        self.assertEqual(request_payload["response_format"]["json_schema"]["schema"], {"type": "object"})
 
     def test_generate_draft_rejects_invalid_json_without_repair(self) -> None:
         with TemporaryDirectory() as tmp_dir:

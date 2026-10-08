@@ -1,8 +1,10 @@
+import { createDailyTrigger } from "@/lib/sidecar/daily-trigger";
 import { useEffect } from "react";
 import { RouterProvider } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import {
   bootstrapSidecar,
+  runDailyDelivery,
   pingSidecar,
   shutdownSidecar,
 } from "@/lib/sidecar/api";
@@ -19,6 +21,8 @@ export function AppProviders() {
   useEffect(() => {
     let cancelled = false;
     let heartbeatTimer: number | undefined;
+    let dailyTimer: number | undefined;
+    const dailyTick=createDailyTrigger(()=>runDailyDelivery(false));
 
     const connect = async () => {
       setStarting();
@@ -36,6 +40,9 @@ export function AppProviders() {
           capabilities: handshake.capabilities,
           lastHeartbeatAt: ping.timestamp,
         });
+
+        void dailyTick();
+        dailyTimer=window.setInterval(()=>void dailyTick(),60000);
 
         heartbeatTimer = window.setInterval(async () => {
           try {
@@ -66,6 +73,7 @@ export function AppProviders() {
 
     return () => {
       cancelled = true;
+      if (dailyTimer) window.clearInterval(dailyTimer);
       if (heartbeatTimer) {
         window.clearInterval(heartbeatTimer);
       }

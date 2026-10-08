@@ -19,7 +19,7 @@ class EmailChannel:
             return Ok(
                 DeliveryResult(
                     channel_id=self.channel_id,
-                    success=True,
+                    success=False,
                     submission_id=f"dry-email-{request.candidate_id}",
                     message="dry-run",
                 )

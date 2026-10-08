@@ -140,6 +140,9 @@ def _legacy_main() -> int:
         help="Evidence cards directory for this run",
     )
     _ = parser.add_argument("--run-id", help="Run id, default timestamp")
+    _ = parser.add_argument("--personal-profile", default="personal_profile.yaml", help="个人资料 YAML")
+    _ = parser.add_argument("--resume-positioning", default="technical_depth", choices=("technical_depth", "delivery_owner", "custom"))
+    _ = parser.add_argument("--custom-positioning", default="")
     _ = parser.add_argument(
         "--use-llm",
         action="store_true",
@@ -295,6 +298,8 @@ def _legacy_main() -> int:
             "matching": str(matching_output),
             "resume_dir": str(resume_dir),
             "scorecard": str(scorecard_output),
+            "scorecard_json": str(scorecard_output.with_suffix(".json")),
+            "resume_trace": str(resume_dir / f"resume_mr-{run_id}_A.trace.json"),
             "run_record": str(Path("outputs") / "agent_runs" / run_id / "run_log.json"),
         }
     )
@@ -450,6 +455,14 @@ def _legacy_main() -> int:
         str(resume_dir),
         "--evidence-dir",
         str(evidence_dir),
+        "--personal-profile",
+        args.personal_profile,
+        "--job-profile",
+        job_profile,
+        "--resume-positioning",
+        args.resume_positioning,
+        "--custom-positioning",
+        args.custom_positioning,
     ]
     if use_llm:
         gen_cmd.append("--use-llm")

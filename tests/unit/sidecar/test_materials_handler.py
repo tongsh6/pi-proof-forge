@@ -173,12 +173,12 @@ class MaterialHandlerTests(unittest.TestCase):
             incomplete["missing_items"],
             [
                 "missing_personal_profile",
-                "missing_uploaded_resume",
+                "missing_career_profile",
                 "missing_raw_work_material",
             ],
         )
-        self.assertEqual(ready["status"], "ready")
-        self.assertEqual(ready["missing_items"], [])
+        self.assertEqual(ready["status"], "incomplete")
+        self.assertEqual(ready["missing_items"], ["missing_career_profile"])
 
     def test_evidence_can_list_material_sources(self) -> None:
         with TemporaryDirectory() as tmp_dir:

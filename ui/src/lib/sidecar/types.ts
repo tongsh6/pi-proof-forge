@@ -21,6 +21,7 @@ export interface PingResult extends RpcResultBase {
 }
 
 export interface EvidenceListItem {
+  candidate_pool_eligible?:boolean;
   evidence_id: string;
   title: string;
   time_range: string;
@@ -47,6 +48,7 @@ export interface ArtifactSummary {
 }
 
 export interface EvidenceDetail {
+  source_documents?:{material_id:string;document_id:string;sha256:string;label:string}[];
   evidence_id: string;
   title: string;
   time_range: string;
@@ -102,6 +104,7 @@ export interface EvidenceDraftArtifact {
 }
 
 export interface EvidenceDraftPayload {
+  source_documents?: {material_id:string;document_id:string;sha256:string;label:string}[];
   title: string;
   time_range?: string;
   context: string;
@@ -134,6 +137,12 @@ export interface EvidenceSaveDraftResult extends EvidenceMutationResult {
 
 export interface JobProfileListItem {
   job_profile_id: string;
+  job_lead_id?: string;
+  source_url?: string;
+  platform?: string;
+  platform_job_id?: string;
+  platform_job_type?: string;
+  source_jd_sha256?: string;
   title: string;
   company: string;
   status: "active" | "draft" | "archived" | string;
@@ -163,12 +172,24 @@ export interface JobProfilesListResult extends RpcResultBase {
 
 export interface JobLeadListItem {
   job_lead_id: string;
+  job_profile_id?: string;
   company: string;
   position: string;
+  salary?: string;
+  location?: string;
   source: string;
   status: string;
   favorited: boolean;
   updated_at: string;
+  url?: string;
+  source_url?: string;
+  source_jd?: string;
+  source_jd_sha256?: string;
+  platform?: string;
+  platform_job_id?: string;
+  platform_job_type?: string;
+  jd_status?: string;
+  fetched_at?: string;
 }
 
 export interface JobLeadsFilters {
@@ -183,6 +204,29 @@ export interface JobLeadsListResult extends RpcResultBase {
   next_cursor: string | null;
 }
 
+export interface LiepinSearchResult extends RpcResultBase {
+  status: "pass" | "blocked";
+  code: string;
+  message: string;
+  items: JobLeadListItem[];
+  received_count: number;
+  imported_count: number;
+  page: number;
+  auth: LiepinAuthState;
+}
+
+export interface LiepinJobDetailResult extends RpcResultBase {
+  status: "pass" | "blocked";
+  code: string;
+  message: string;
+  job_lead_id: string;
+  job_profile_id: string;
+  jd_text: string;
+  source_url: string;
+  source_jd_sha256: string;
+  jd_status: string;
+}
+
 export interface JobProfileMutationResult extends RpcResultBase {
   job_profile_id: string;
 }
@@ -193,6 +237,12 @@ export interface JobProfileCreateResult extends JobProfileMutationResult {
 }
 
 export interface JobProfileDraftPayload {
+  job_lead_id?: string;
+  job_profile_id?: string;
+  platform?: string;
+  platform_job_id?: string;
+  platform_job_type?: string;
+  source_jd_sha256?: string;
   target_role: string;
   company?: string;
   source_jd: string;
@@ -237,6 +287,11 @@ export interface JobProfileDeleteResult extends JobProfileMutationResult {
 
 export interface JobLeadConvertResult extends RpcResultBase {
   job_profile_id: string;
+  job_lead_id?: string;
+  source_jd?: string;
+  source_url?: string;
+  source_jd_sha256?: string;
+  jd_status?: string;
 }
 
 export interface GatePolicy {
@@ -280,11 +335,35 @@ export interface ChannelConfig {
 
 export type DeliveryMode = "auto" | "manual";
 
+export interface LiepinAuthState {
+  configured: boolean;
+  state: "unconfigured" | "unverified" | "valid" | "invalid" | "rate_limited" | "error";
+  code: string;
+  last_checked_at: string;
+  last_error: string;
+  scope: "read_only";
+  storage: "local_file";
+  storage_path: string;
+  saved: boolean;
+}
+
+export interface LiepinCredentialResult extends RpcResultBase {
+  auth: LiepinAuthState;
+}
+
+export interface LiepinResumeResult extends LiepinCredentialResult {
+  status: "pass" | "blocked";
+  code: string;
+  message: string;
+  resume_text: string;
+}
+
 export interface SettingsGetResult extends RpcResultBase {
   gate_policy: GatePolicy;
   exclusion_list: string[];
   excluded_legal_entities: string[];
   channels: ChannelConfig[];
+  liepin_api: LiepinAuthState;
   llm_config: LlmConfig;
 }
 
@@ -385,11 +464,13 @@ export interface ResumePreviewResult extends RpcResultBase {
   resume_id: string;
   preview: ResumePreview | null;
   preview_status?: string;
+  preview_html?: string;
 }
 
 export interface ResumeExportResult extends RpcResultBase {
   resource_id: string;
   path: string;
+  html_path?: string;
 }
 
 export interface MaterialSourceItem {
@@ -415,7 +496,18 @@ export interface MaterialReadinessResult extends RpcResultBase {
   missing_items: string[];
 }
 
+export interface CareerEntry {
+  id:string; [key:string]:string|boolean|string[]|undefined;
+  current?:boolean; end?:string; contributions?:string[]; evidence_ids?:string[];
+}
+export interface CareerProfile {
+  schema_version:1; summary:string; work:CareerEntry[]; education_visibility:'show'|'omit'; education:CareerEntry[]; skills:CareerEntry[]; extras:CareerEntry[];
+}
+
 export interface ProfilePayload {
+  career?:CareerProfile;
+  revision?:string;
+  career_status?:{reviewed:boolean;ready:boolean;reviewed_at:string;missing:{field:string;label:string}[]};
   name: string;
   phone: string;
   email: string;
@@ -437,6 +529,7 @@ export interface ProfileUpdateResult extends RpcResultBase {
 
 export interface SubmissionListItem {
   submission_id: string;
+  retry_allowed?: boolean;
   company: string;
   position: string;
   channel: string;
@@ -468,7 +561,24 @@ export interface SubmissionDetailStep {
   screenshot_exists: boolean;
 }
 
+export interface SubmissionEvidence {
+  status: "verified" | "incomplete";
+  reason: string;
+  parent_run_id?: string;
+  job_lead_id?: string;
+  job_profile_id?: string;
+  resume_version_id?: string;
+  resume_sha256?: string;
+  receipt_sha256?: string;
+  receipt_source?: string;
+  delivery_kind?: string;
+}
+
 export interface SubmissionDetail extends SubmissionListItem {
+  evidence?: SubmissionEvidence;
+  parent_run_id?: string;
+  job_lead_id?: string;
+  receipt_source?: string;
   started_at: string;
   ended_at: string;
   resume_path: string;
@@ -550,6 +660,8 @@ export interface FeedbackItem {
 }
 
 export interface FeedbackListResult extends RpcResultBase {
+  source_binding?: SubmissionEvidence;
+  iterations?: FeedbackIterationRecord[];
   source_run_id: string;
   source_artifact_path: string;
   items: FeedbackItem[];
@@ -557,6 +669,9 @@ export interface FeedbackListResult extends RpcResultBase {
 }
 
 export interface FeedbackIterationRecord {
+  feedback_source?: "user_note" | "manual_recruiter";
+  source_binding?: SubmissionEvidence;
+  next_quick_run_candidate?: { job_profile_id: string; source_submission_id: string; requires_review: boolean };
   iteration_id: string;
   status: string;
   created_at: string;
@@ -642,15 +757,40 @@ export interface ReviewCandidateItem {
   job_lead_id: string;
   company: string;
   position: string;
-  matching_score: number;
-  evaluation_score: number;
+  matching_score: number | null;
+  evaluation_score: number | null;
   round_index: number;
   resume_version: string;
+  snapshot_status?: "ready" | "invalid";
+  delivery_kind?: "platform_default" | "generated_pdf";
+  status?: string;
+  resume_preview?: string;
   job_url?: string;
 }
 
 export interface GetPendingReviewResult extends RpcResultBase {
+  native_pdf_quick_run_id?: string | null;
   candidates: ReviewCandidateItem[];
+  run_id: string;
+  delivery_results?: ReviewDeliveryResult[];
+}
+
+export interface ReviewDeliveryResult {
+  job_lead_id: string;
+  success: boolean;
+  status: string;
+  code: string;
+  submission_id?: string;
+  receipt_source?: string;
+  app_verified?: boolean;
+}
+
+export interface PrepareLiepinDefaultResult extends RpcResultBase {
+  status: "ready" | "blocked";
+  code: string;
+  run_id?: string;
+  job_profile_id?: string;
+  reused?: boolean;
 }
 
 export interface ReviewDecisionItem {
@@ -663,6 +803,7 @@ export interface ReviewDecisionItem {
 
 export interface SubmitReviewResult extends RpcResultBase {
   accepted: number;
+  delivery_results?: ReviewDeliveryResult[];
 }
 
 export interface QuickRunStartOptions {
@@ -706,6 +847,20 @@ export interface QuickRunStartResult extends RpcResultBase {
   gap_tasks?: string[];
   resume_positioning?: Record<string, string>;
   resume_pdf?: string;
+  resume_readiness?: {
+    status: "NEEDS_EVIDENCE" | "NEEDS_REVIEW";
+    deliverable: boolean;
+    quality_passed: boolean;
+    evaluation_score: number | null;
+    reasons: string[];
+    gap_tasks: string[];
+    content_ready?: boolean;
+    missing_profile_fields?: string[];
+    missing_target_fields?: string[];
+    missing_evidence_fields?: string[];
+    missing_career_fields?: string[];
+  };
+  pdf_export_error?: string;
   traceability?: {
     evidence_card_ids: string[];
     selected_evidence_card_ids?: string[];
@@ -774,9 +929,13 @@ export interface AgentRunSummary {
   review_queue?: Record<string, unknown>;
   run_log?: string;
   stopped_at?: string;
+  deliveries_completed?: number;
+  app_verified_deliveries?: number;
+  externally_confirmed_deliveries?: number;
 }
 
 export interface AgentRunGetResult extends RpcResultBase {
+  delivery_batch?: { batch_id: string; authorized_max: number; consumed: number; remaining: number; confirmed: number; unresolved: number } | null;
   run: AgentRunSummary;
   gate_checks: Array<Record<string, unknown>>;
   events: Array<Record<string, unknown>>;

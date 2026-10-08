@@ -24,10 +24,15 @@ CONTRACT_PATH = ROOT / "acceptance" / "journey_contract.yaml"
 
 def test_channel_session_setup_l1_acceptance_writes_report(tmp_path: Path) -> None:
     sessions_dir = tmp_path / "outputs" / "channel_sessions"
-    with patch(
+    with patch("tools.sidecar.handlers.submission._session_browser") as browser, patch(
         "tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR",
         sessions_dir,
     ):
+        browser.check.side_effect = [
+            {"login_signals": {"login_modal_absent": True}},
+            {"login_signals": {"login_required": True}},
+            {"login_signals": {"authenticated_user_visible": True}, "account_identity": {"display_name_or_nickname": "Verifier", "masked_phone_or_email_suffix": "13800123456", "avatar_presence": True}},
+        ]
         missing_channel_rejected = False
         try:
             handle_channel_session_get({"meta": {"correlation_id": "corr_missing"}})

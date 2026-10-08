@@ -13,6 +13,11 @@ from tools.sidecar.handlers.settings import (
 
 
 class SettingsGetTests(unittest.TestCase):
+    def test_channels_do_not_advertise_automatic_cross_platform_fallback(self) -> None:
+        result = handle_settings_get({"meta": {"correlation_id": "routing-contract"}})
+        liepin = next(channel for channel in result["channels"] if channel["id"] == "liepin")
+        self.assertEqual(liepin["fallback_to"], "")
+
     def test_returns_all_sections(self) -> None:
         params = {"meta": {"correlation_id": "corr_001"}}
         result = handle_settings_get(params)

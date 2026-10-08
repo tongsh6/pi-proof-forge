@@ -12,15 +12,20 @@ from tools.sidecar.handlers.jobs import (
     handle_jobs_generate_profile_draft,
     handle_jobs_list_leads,
     handle_jobs_list_profiles,
+    handle_jobs_search_liepin,
+    handle_jobs_fetch_liepin_detail,
     handle_jobs_save_profile_draft,
     handle_jobs_update_profile,
 )
 from tools.sidecar.router import Router
+from tools.sidecar.handlers import daily_delivery
 from tools.sidecar.lifecycle import handle_handshake, handle_ping, handle_shutdown
 from tools.sidecar.handlers.evidence import (
     handle_evidence_create,
     handle_evidence_delete,
     handle_evidence_generate_draft,
+    handle_list_material_documents,
+    handle_read_material_document,
     handle_evidence_get,
     handle_evidence_import,
     handle_evidence_list,
@@ -28,7 +33,12 @@ from tools.sidecar.handlers.evidence import (
     handle_evidence_update,
 )
 from tools.sidecar.handlers.overview import handle_overview_get
-from tools.sidecar.handlers.profile import handle_profile_get, handle_profile_update
+from tools.sidecar.handlers.native_pdf import handle_prepare_pdf, handle_begin_upload, handle_finish_upload, handle_inspect_pdf_packet, handle_record_pdf_inspection
+from tools.sidecar.handlers.native_pdf import handle_pdf_target_packet, handle_record_pdf_target
+from tools.sidecar.handlers.native_pdf import handle_begin_pdf_delivery, handle_record_pdf_communication
+from tools.sidecar.handlers.native_pdf import handle_pdf_interaction_packet, handle_record_pdf_interaction
+from tools.sidecar.handlers.native_pdf import handle_verify_pdf_receipt, handle_begin_pdf_removal, handle_finish_pdf_removal, handle_recheck_pdf_removal
+from tools.sidecar.handlers.profile import handle_profile_get, handle_profile_update, handle_profile_review
 from tools.sidecar.handlers.resume import (
     handle_resume_export_pdf,
     handle_resume_get_preview,
@@ -49,6 +59,8 @@ from tools.sidecar.handlers.submission import (
 )
 from tools.sidecar.handlers.agent import (
     handle_agent_get,
+    handle_prepare_liepin_default,
+    handle_recheck_receipt,
     handle_agent_start,
     handle_agent_stop,
     handle_create_review_candidates,
@@ -61,6 +73,8 @@ from tools.sidecar.handlers.settings import (
     handle_settings_check_llm_connection,
     handle_settings_get,
     handle_settings_update,
+    handle_settings_liepin_credential,
+    handle_settings_liepin_resume,
 )
 from tools.sidecar.handlers.materials import (
     handle_evidence_list_material_sources,
@@ -83,8 +97,12 @@ def _create_router() -> Router:
     router.register("evidence.delete", handle_evidence_delete)
     router.register("evidence.import", handle_evidence_import)
     router.register("evidence.generateDraft", handle_evidence_generate_draft)
+    router.register("evidence.listMaterialDocuments", handle_list_material_documents)
+    router.register("evidence.readMaterialDocument", handle_read_material_document)
     router.register("evidence.saveDraft", handle_evidence_save_draft)
     router.register("jobs.listLeads", handle_jobs_list_leads)
+    router.register("jobs.searchLiepin", handle_jobs_search_liepin)
+    router.register("jobs.fetchLiepinDetail", handle_jobs_fetch_liepin_detail)
     router.register("jobs.convertLead", handle_jobs_convert_lead)
     router.register("jobs.listProfiles", handle_jobs_list_profiles)
     router.register("jobs.createProfile", handle_jobs_create_profile)
@@ -95,6 +113,7 @@ def _create_router() -> Router:
     router.register("overview.get", handle_overview_get)
     router.register("profile.get", handle_profile_get)
     router.register("profile.update", handle_profile_update)
+    router.register("profile.review", handle_profile_review)
     router.register("resume.list", handle_resume_list)
     router.register("resume.upload", handle_resume_upload)
     router.register("resume.getPreview", handle_resume_get_preview)
@@ -113,16 +132,37 @@ def _create_router() -> Router:
     router.register("submission.feedback.list", handle_feedback_list)
     router.register("submission.feedback.createIteration", handle_feedback_create_iteration)
     router.register("settings.get", handle_settings_get)
+    router.register("settings.liepinCredential", handle_settings_liepin_credential)
+    router.register("settings.liepinResume", handle_settings_liepin_resume)
     router.register("settings.update", handle_settings_update)
     router.register("settings.checkLlmConnection", handle_settings_check_llm_connection)
     router.register("run.quick.start", handle_quick_start)
     router.register("run.quick.cancel", handle_quick_cancel)
     router.register("run.agent.start", handle_agent_start)
     router.register("run.agent.get", handle_agent_get)
+    router.register("run.agent.prepareLiepinDefault", handle_prepare_liepin_default)
+    router.register("run.agent.prepareLiepinPdf", handle_prepare_pdf)
+    router.register("run.agent.beginPdfUpload", handle_begin_upload)
+    router.register("run.agent.finishPdfUpload", handle_finish_upload)
+    router.register("run.agent.inspectPdfPacket", handle_inspect_pdf_packet)
+    router.register("run.agent.recordPdfInspection", handle_record_pdf_inspection)
+    router.register("run.agent.pdfTargetPacket", handle_pdf_target_packet)
+    router.register("run.agent.recordPdfTarget", handle_record_pdf_target)
+    router.register("run.agent.beginPdfDelivery", handle_begin_pdf_delivery)
+    router.register("run.agent.recordPdfCommunication", handle_record_pdf_communication)
+    router.register("run.agent.pdfInteractionPacket", handle_pdf_interaction_packet)
+    router.register("run.agent.recordPdfInteraction", handle_record_pdf_interaction)
+    router.register("run.agent.verifyPdfReceipt", handle_verify_pdf_receipt)
+    router.register("run.agent.beginPdfRemoval", handle_begin_pdf_removal)
+    router.register("run.agent.finishPdfRemoval", handle_finish_pdf_removal)
+    router.register("run.agent.recheckPdfRemoval", handle_recheck_pdf_removal)
+    router.register("run.agent.recheckReceipt", handle_recheck_receipt)
     router.register("run.agent.stop", handle_agent_stop)
     router.register("run.agent.getPendingReview", handle_get_pending_review)
     router.register("run.agent.submitReview", handle_submit_review)
     router.register("run.agent.createReviewCandidates", handle_create_review_candidates)
+    for name in ("status", "save", "change", "claim", "check", "finish", "permit", "preview"):
+        router.register("daily."+name,lambda params, handler=getattr(daily_delivery,"handle_"+name): {"meta":params["meta"],**handler(params)})
     return router
 
 
@@ -220,4 +260,10 @@ def run_stdio_loop() -> None:
 
 
 if __name__ == "__main__":
-    run_stdio_loop()
+    try:
+        run_stdio_loop()
+    finally:
+        from tools.infra.liepin_readonly import liepin_readonly
+        liepin_readonly.unload()
+        from tools.infra.browser.liepin_session import session_browser
+        session_browser.close()

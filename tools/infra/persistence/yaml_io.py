@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import json
 from typing import TypedDict
 
 
@@ -10,6 +11,14 @@ class ParsedDoc(TypedDict):
 
 
 def unquote(value: str) -> str:
+    quoted = re.fullmatch(r'("(?:[^"\\]|\\.)*")\s*(?:#.*)?', value, re.DOTALL)
+    if quoted or (len(value) >= 2 and value.startswith('"') and value.endswith('"')):
+        encoded = quoted.group(1) if quoted else value
+        try:
+            return json.loads(encoded.replace("\n", "\\n"))
+        except ValueError:
+            # 保留已有非 JSON 转义的 YAML 字符串兼容行为。
+            return encoded[1:-1]
     if len(value) >= 2 and (
         (value.startswith('"') and value.endswith('"'))
         or (value.startswith("'") and value.endswith("'"))
@@ -123,6 +132,15 @@ def parse_simple_yaml(text: str) -> ParsedDoc:
                         continue
                     break
                 value = _fold_block_scalar_lines(block_lines)
+            elif raw_value.startswith('"') and not re.search(r'(?<!\\)(?:\\\\)*"(?:\s+#.*)?$', raw_value[1:]):
+                # GUI writer 的历史格式允许双引号内跨行，须完整读入 JD。
+                while not re.search(r'(?<!\\)(?:\\\\)*"(?:\s+#.*)?$', raw_value[1:]):
+                    index += 1
+                    if index >= len(lines):
+                        raise ValueError(f"Unterminated quoted scalar: {key}")
+                    raw_value += "\n" + lines[index].rstrip()
+                value = unquote(raw_value)
+                index += 1
             else:
                 value = unquote(raw_value)
                 index += 1

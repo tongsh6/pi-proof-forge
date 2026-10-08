@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tools.domain.protocols import DeliveryChannel as _DeliveryChannel
-from tools.domain.result import Err, Ok, Result
+from tools.domain.result import Err, Result
 from tools.domain.value_objects import ChannelFailure, DeliveryResult
 
 
@@ -26,27 +26,11 @@ def deliver_with_fallback(
     request: DeliveryRequest,
     channels: list[DeliveryChannel],
 ) -> Result[DeliveryResult, ChannelFailure]:
-    last_error: ChannelFailure | None = None
+    # 保留兼容入口名；未建立跨渠道授权契约前，只执行一次明确目标通道。
     for channel in channels:
-        result = channel.deliver(request)
-        from tools.domain.result import Err, Ok
-
-        if isinstance(result, Ok):
-            return result
-        if isinstance(result, Err):
-            last_error = result.error
-            if not _is_retryable(last_error):
-                return result
-
-    from tools.domain.result import Err
-
-    if last_error is None:
-        return Err(
-            ChannelFailure(channel_id="none", reason="no_channel", details="no channel")
-        )
-    return Err(last_error)
-
-
-def _is_retryable(failure: ChannelFailure) -> bool:
-    lowered = failure.reason.casefold()
-    return lowered in {"timeout", "network_error", "temporary_failure", "retryable"}
+        if channel.channel_id == request.channel:
+            return channel.deliver(request)
+    return Err(ChannelFailure(
+        channel_id=request.channel or "none", reason="no_channel",
+        details="未配置与目标平台匹配的投递通道",
+    ))

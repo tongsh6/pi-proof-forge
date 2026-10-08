@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from tools.submission.storage import (
+    submission_required_steps_evidence as _submission_log_required_steps_evidence,
+)
+
 
 _REDACTED_LIVE_INPUT = "<redacted>"
 _FORBIDDEN_EXTERNAL_L3_ENV = (
@@ -18,14 +22,6 @@ _FORBIDDEN_EXTERNAL_L3_ENV = (
     ("PIPF_EXTERNAL_L3_CAPTCHA_CODE", "captcha_code", "challenge"),
     ("PIPF_EXTERNAL_L3_SMS_CODE", "sms_code", "challenge"),
     ("PIPF_EXTERNAL_L3_RAW_API_KEY", "raw_api_key", "secret"),
-)
-_SUCCESS_SUBMISSION_REQUIRED_STEPS = (
-    "rate_limit",
-    "login_check",
-    "target_verify",
-    "submit_safety",
-    "chat_send_resume",
-    "submit",
 )
 _BROWSER_ARTIFACT_REFERENCE_FIELDS = {
     "browser_artifact_path",
@@ -315,6 +311,8 @@ def write_external_l3_validation(
     run_id: str,
     validation: dict[str, Any],
 ) -> tuple[Path, Path]:
+    if validation.get("validation_mode") == "saved_app_records":
+        return _write_saved_app_validation(root=root, run_id=run_id, validation=validation)
     output_dir = root / "outputs" / "acceptance" / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "external-l3-validation.json"
@@ -1626,6 +1624,7 @@ def submission_log_error_blocker_reason(submission_summary: dict[str, Any]) -> s
         or error.startswith("upload input not found")
         or error.startswith("phase=")
         or error in {
+            "resume_attachment_binding_unverified",
             "confirm_send_button_not_found",
             "main_chat_click_failed",
             "upload_input_not_found",
@@ -1989,56 +1988,6 @@ def _redact_live_text(value: str, redaction_values: list[str]) -> str:
     ):
         redacted = redacted.replace(raw_value, _REDACTED_LIVE_INPUT)
     return redacted
-
-
-def _submission_log_required_steps_evidence(log_payload: dict[str, Any]) -> dict[str, Any]:
-    steps = log_payload.get("steps") if log_payload else []
-    if not isinstance(steps, list):
-        steps = []
-    recorded_steps = [
-        {
-            "name": str(step.get("name", "")),
-            "status": str(step.get("status", "")),
-        }
-        for step in steps
-        if isinstance(step, dict)
-    ]
-    steps_by_name = {step["name"]: step for step in recorded_steps}
-    successful_log = (
-        str(log_payload.get("status", "")) == "success" if log_payload else False
-    )
-    if not successful_log:
-        not_required_reason = (
-            "submission_log_status_not_success" if log_payload else "missing_submission_log"
-        )
-        return {
-            "required_for_successful_submit": list(_SUCCESS_SUBMISSION_REQUIRED_STEPS),
-            "recorded_steps": recorded_steps,
-            "missing_steps": [],
-            "failed_steps": [],
-            "passed": bool(log_payload),
-            "not_required_reason": not_required_reason,
-        }
-
-    missing_steps = [
-        step_name
-        for step_name in _SUCCESS_SUBMISSION_REQUIRED_STEPS
-        if step_name not in steps_by_name
-    ]
-    failed_steps = [
-        step_name
-        for step_name in _SUCCESS_SUBMISSION_REQUIRED_STEPS
-        if step_name in steps_by_name
-        and steps_by_name[step_name]["status"] != "success"
-    ]
-    return {
-        "required_for_successful_submit": list(_SUCCESS_SUBMISSION_REQUIRED_STEPS),
-        "recorded_steps": recorded_steps,
-        "missing_steps": missing_steps,
-        "failed_steps": failed_steps,
-        "passed": not missing_steps and not failed_steps,
-        "not_required_reason": "",
-    }
 
 
 def _submission_traceability_checks(
@@ -4914,3 +4863,126 @@ def _env_nonnegative_int(name: str, default: int) -> int:
     except ValueError:
         return default
     return parsed if parsed >= 0 else default
+
+
+def build_saved_app_validation(*, root: Path, run_id: str, generated_at: str,
+                               submission_ids: list[str], page_evidence: list[Path]) -> dict[str, Any]:
+    """复用已发生的 App 真实动作与受保护回执，不进入旧实时发送入口。"""
+    from tools.infra.submission_evidence import inspect_submission_evidence, _read
+    root=root.resolve()
+    if (not submission_ids or len(submission_ids)>100 or len(set(submission_ids))!=len(submission_ids)
+            or any(not re.fullmatch(r'(?:api|native)-[0-9a-f]{32}', sid) for sid in submission_ids)):
+        raise ValueError('invalid_saved_submission_ids')
+    pages=[];covered=set();feedback_pages={};blockers=[]
+    for path in page_evidence:
+        path=path if path.is_absolute() else root/path
+        try:
+            data,digest=_read(path,root/'outputs/acceptance')
+            observed=[];native=data.get('native_page_acceptance',{})
+            if data.get('default_resume_route_complete') is True and data.get('native_restart_verified') is True:
+                observed=[item['submission_id'] for item in data.get('candidates',[])]
+            elif data.get('status')=='completed' and native.get('restart_verified') is True and native.get('actions'):
+                observed=data.get('observed_submission_ids') or [data.get('artifacts',{}).get('submission_id','')]
+                if native.get('feedback_readback_verified') is True:
+                    required_actions={'select_submission','view_evidence','save_personal_feedback','restart_app','read_saved_feedback'}
+                    if native.get('surface')!='tauri_desktop_app' or not required_actions.issubset(native.get('actions',[])):
+                        raise ValueError('native_page_contract_invalid')
+                    for sid,ids in native.get('feedback_records',{}).items():
+                        if sid in observed and isinstance(ids,list):
+                            feedback_pages.setdefault(sid,set()).update(ids)
+            observed=[sid for sid in observed if sid in submission_ids]
+            if not observed:
+                raise ValueError('page_evidence_missing')
+            covered.update(observed)
+            pages.append({'path':str(path.relative_to(root)),'sha256':digest,'submission_ids':observed})
+        except (OSError,ValueError,KeyError,TypeError,AttributeError):
+            blockers.append('page_evidence_unavailable')
+    rows=[];required_routes=set();feedback_routes=set()
+    for sid in submission_ids:
+        log=root/'outputs/submissions/liepin'/sid/'submission_log.json'
+        evidence=inspect_submission_evidence(root,log)
+        # 报告只保存关联和指纹；不复制原始业务响应、招聘方标识、URL 或简历内容。
+        safe={k:v for k,v in evidence.items() if k not in {'company','position'}}
+        records=[];kind=evidence.get('delivery_kind','')
+        if evidence['status']!='verified':blockers.append(sid+':'+evidence['reason'])
+        if sid not in covered:blockers.append(sid+':native_page_evidence_missing')
+        required_routes.add(kind)
+        for path in sorted((root/'outputs/feedback_iterations').glob('fi_*/iteration_record.json')):
+            try:
+                record,record_sha=_read(path,root/'outputs/feedback_iterations')
+                if record.get('source_run_id')!=sid:continue
+                snapshot=path.parent/'source_snapshot.json';saved_log,snapshot_sha=_read(snapshot,root/'outputs/feedback_iterations')
+                binding=record.get('source_binding',{})
+                saved_inputs=saved_log.get('input_artifacts',{})
+                historical=snapshot_sha!=evidence.get('submission_log_sha256')
+                identity_valid=(saved_log.get('run_id')==sid and saved_inputs.get('parent_run_id')==evidence.get('parent_run_id')
+                    and saved_inputs.get('candidate_id')==evidence.get('job_lead_id') and saved_inputs.get('delivery_attempt_id')==evidence.get('delivery_attempt_id')
+                    and (saved_inputs.get('resume_pdf_sha256') or saved_inputs.get('platform_resume_observed_sha256'))==evidence.get('resume_sha256'))
+                valid=(record.get('source_snapshot_sha256')==binding.get('submission_log_sha256')==snapshot_sha and identity_valid
+                    and binding.get('resume_sha256')==evidence.get('resume_sha256')
+                    and binding.get('resume_version_id')==evidence.get('resume_version_id') and binding.get('parent_run_id')==evidence.get('parent_run_id')
+                    and record.get('real_submit_disabled') is True and record.get('feedback_source') in {'user_note','manual_recruiter'}
+                    and (historical or binding.get('receipt_sha256')==evidence.get('receipt_sha256')))
+                if not valid:
+                    blockers.append(sid+':feedback_binding_mismatch');continue
+                records.append({'iteration_id':record['iteration_id'],'record_path':str(path.relative_to(root)),
+                    'record_sha256':record_sha,'source_snapshot_sha256':snapshot_sha,'feedback_source':record['feedback_source'],'historical':historical})
+            except (OSError,ValueError,KeyError,TypeError,AttributeError):
+                continue
+        if any(not r['historical'] and r['iteration_id'] in feedback_pages.get(sid,set()) for r in records):feedback_routes.add(kind)
+        rows.append({'submission_id':sid,'evidence':safe,'feedback_records':records})
+    for kind in required_routes-feedback_routes:blockers.append(kind+':native_feedback_readback_missing')
+    runbook=root/_EXTERNAL_L3_LIVE_RUN_RUNBOOK
+    if not runbook.is_file() or '## 已存 App 投递的只读统一验收' not in runbook.read_text(encoding='utf-8'):
+        blockers.append('saved_app_runbook_unavailable')
+    blockers=list(dict.fromkeys(blockers));complete=not blockers
+    return {'run_id':run_id,'generated_at':generated_at,'level':'L3','validation_mode':'saved_app_records',
+        'status':'external_validated' if complete else 'saved_evidence_incomplete',
+        'external_submission_attempted':False,'new_network_requests':0,'source_logs_modified':False,
+        'submissions':rows,'page_evidence':pages,'runbook':{'path':_EXTERNAL_L3_LIVE_RUN_RUNBOOK,
+            'sha256':_sha256_file(runbook) if runbook.is_file() else ''},
+        'outcome_summary':{'external_l3_success':complete,'p0_017_complete':complete,'reused_confirmed_submissions':sum(r['evidence']['status']=='verified' for r in rows)},
+        'p0_017_completion_gate':{'p0_017_complete':complete,'completion_blockers':blockers},
+        'safety_invariants':{'read_only_existing_records':True,'no_new_delivery_authorization':True,
+            'no_state_promotion':True,'native_page_evidence_required':True,'feedback_never_implies_recruiter_reply':True}}
+
+
+def _write_saved_app_validation(*, root: Path, run_id: str, validation: dict) -> tuple[Path,Path]:
+    from tools.infra.persistence.review_queue import atomic_write_json
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',run_id) or validation.get('run_id')!=run_id:
+        raise ValueError('invalid_saved_validation_run')
+    directory=root/'outputs/acceptance'/run_id
+    if directory.is_symlink() or not directory.resolve().is_relative_to((root/'outputs/acceptance').resolve()):
+        raise ValueError('invalid_saved_validation_path')
+    directory.mkdir(parents=True,exist_ok=True)
+    json_path=directory/'external-l3-validation.json';markdown=directory/'external-l3-validation.md'
+    atomic_write_json(json_path,validation);json_path.chmod(0o600)
+    lines=['# External L3 已存 App 投递验收','',
+        '只读已有真实投递、批准快照、业务回执和页面验收证据；本次没有新网络请求、没有重新授权或发送，也不改写原提交日志。',
+        '',f"- 状态：`{validation['status']}`",f"- 已核验提交：{validation['outcome_summary']['reused_confirmed_submissions']}",
+        '', '| 提交编号 | 路线 | 证据 | 反馈记录 |','| --- | --- | --- | --- |']
+    for row in validation['submissions']:
+        evidence=row['evidence']
+        lines.append(f"| {row['submission_id']} | {evidence.get('delivery_kind','')} | {evidence['status']} | {len(row['feedback_records'])} |")
+    lines.extend(['','## 阻塞项','']+[f'- `{reason}`' for reason in validation['p0_017_completion_gate']['completion_blockers']])
+    if not validation['p0_017_completion_gate']['completion_blockers']:lines.append('无。')
+    lines.extend(['','## 证据来源','']+[f"- `{p['path']}` / SHA256 `{p['sha256']}`" for p in validation['page_evidence']])
+    lines.extend(['','手动招聘反馈与个人复盘保留来源；业务发送成功不表示招聘方已读、回复或录用。',''])
+    markdown.write_text('\n'.join(lines),encoding='utf-8');markdown.chmod(0o600)
+    return json_path,markdown
+
+
+if __name__ == '__main__':
+    import argparse
+    from datetime import datetime,timezone
+    parser=argparse.ArgumentParser(description='只读验收已保存的 App 投递，不发送网络请求')
+    parser.add_argument('--root',type=Path,default=Path.cwd())
+    parser.add_argument('--run-id',required=True)
+    parser.add_argument('--saved-submission',action='append',required=True)
+    parser.add_argument('--page-evidence',type=Path,action='append',required=True)
+    args=parser.parse_args()
+    result=build_saved_app_validation(root=args.root,run_id=args.run_id,generated_at=datetime.now(timezone.utc).isoformat(),
+        submission_ids=args.saved_submission,page_evidence=args.page_evidence)
+    report,_=write_external_l3_validation(root=args.root,run_id=args.run_id,validation=result)
+    print(json.dumps({'status':result['status'],'report':str(report)},ensure_ascii=False))
+    raise SystemExit(0 if result['status']=='external_validated' else 2)

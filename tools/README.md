@@ -187,6 +187,8 @@ python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output
 export PPF_ENABLE_LIEPIN_SEARCH=1
 
 # BOSS/智联只读职位发现（可选）
+# 2026-09-27：以下为项目旧 adapter 接口，尚未适配上游 2.0.0；不能直接用最新版验证。
+# 上游 master 已移除智联；版本/命令/字段迁移见 AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md。
 # 该路径只调用外部 boss-agent-cli 的 schema/status/search/detail 读操作，不启用投递写操作。
 # 默认关闭，避免 dry-run / 单元测试意外启动外部浏览器或平台访问。
 export PPF_ENABLE_BOSS_AGENT_SEARCH=1
@@ -212,6 +214,23 @@ python3 -m tools.submission.run_submission --platform liepin --job-url "https://
 
 # Agent Loop check mode：复用同一共享登录态，submit 默认关闭，停在最终确认发送前
 PPF_LIEPIN_SESSION_DIR=outputs/submissions PPF_OUTPUT_DIR=outputs/submissions PPF_HEADLESS=0 PPF_BROWSER_CHANNEL=chrome .venv/bin/python -m tools.cli.entrypoints agent --policy policy.yaml --run-id run-agent-liepin-chat-005 --output-dir outputs/agent_runs --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml
+
+# 从已验证 Job Lead 生成 External L3 确认包（默认脱敏 JSON，不触发外部提交）
+python3 -m tools.acceptance.external_l3_job_lead_bridge \
+  --lead-source job_leads/jl-validated-20260513.yaml \
+  --lead-index 1 \
+  --resume-pdf uploaded_resumes/rv_49ab4b78.pdf \
+  --profile profiles/candidate_profile.yaml \
+  --session-dir outputs/submissions
+
+# 生成 shell-safe export 模板；AUTHORIZED / FINAL_SUBMIT_CONFIRMED / SESSION_READY_CONFIRMED 默认均为 false
+python3 -m tools.acceptance.external_l3_job_lead_bridge \
+  --lead-source job_leads/jl-validated-20260513.yaml \
+  --lead-index 1 \
+  --resume-pdf uploaded_resumes/rv_49ab4b78.pdf \
+  --profile profiles/candidate_profile.yaml \
+  --session-dir outputs/submissions \
+  --format env
 
 # 真实小批量频控验证：同一 output-dir 共享 rate-limit 状态；第 3 次应返回 batch_cooldown
 .venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/v1.md --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions/batch-rate-limit-001 --timeout-ms 45000 --browser-channel chrome --no-headless --rate-limit-max-per-batch 2 --rate-limit-cooldown-seconds 900 --rate-limit-daily-limit 30

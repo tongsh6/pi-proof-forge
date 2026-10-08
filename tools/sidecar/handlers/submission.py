@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.infra.browser.liepin_session import session_browser as _session_browser
 
 _SUBMISSIONS_DIR = Path("outputs") / "submissions"
 _CHANNEL_SESSIONS_DIR = Path("outputs") / "channel_sessions"
@@ -14,6 +16,7 @@ _JOB_LEAD_DIR = Path("job_leads")
 _FEEDBACK_ITERATIONS_DIR = Path("outputs") / "feedback_iterations"
 _ALLOWED_RETRY_STRATEGIES = {"same_channel", "fallback_email"}
 _ALLOWED_FEEDBACK_SOURCES = {
+    "submission_receipt",
     "evaluation_scorecard",
     "matching_gap_tasks",
     "gate_decision",
@@ -32,7 +35,7 @@ _ALLOWED_ITERATION_ACTIONS = {
 _SUPPORTED_SUBMISSION_CHANNELS: dict[str, dict[str, str]] = {
     "liepin": {
         "label": "Liepin",
-        "login_url": "https://passport.liepin.com/login/",
+        "login_url": "https://www.liepin.com/",
         "positive_signal": "logged_in_user_ui_or_equivalent_authenticated_signal",
     }
 }
@@ -250,7 +253,17 @@ def _read_session(channel: str) -> dict[str, Any] | None:
     path = _channel_session_path(channel)
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    session = json.loads(path.read_text(encoding="utf-8"))
+    if session.get("login_status") == "session_valid" and session.get("verification_source") != "owned_playwright":
+        session["login_status"] = "session_unknown"
+    return session
+
+
+def _record_browser_failure(channel: str, checked_at: str, error: Exception) -> None:
+    log_path = _write_session_log(channel=channel, terminal_status="session_unknown", checked_at=checked_at,
+        steps=[{"name": "browser_operation", "status": "failed", "detail": str(error)}])
+    _write_session(channel, _session_payload(channel=channel, login_status="session_unknown", checked_at=checked_at,
+        clear_available=_channel_profile_path(channel).is_dir(), log_path=log_path))
 
 
 def _write_session_log(
@@ -295,7 +308,7 @@ def _session_result(
         "steps": steps or [],
         "manual_login_required": session["login_status"] == "waiting_for_manual_login",
         "browser_automation": {
-            "opened_login_page": session["login_status"] == "waiting_for_manual_login",
+            "opened_login_page": any(step.get("name") == "open_channel_login_page" and step.get("status") == "success" for step in (steps or [])),
             "entered_credentials": False,
             "entered_captcha_or_sms": False,
             "captcha_sms_bypass_attempted": False,
@@ -572,7 +585,12 @@ def _feedback_items_from_submission_log(
     artifact = str(log_path)
     items: list[dict[str, str]] = []
     terminal_status = str(payload.get("terminal_status") or payload.get("status") or "")
-    if terminal_status:
+    if terminal_status and _managed_delivery(payload):
+        items.append(_feedback_item(source_type="submission_receipt", source_run_id=source_run_id,
+            source_artifact_path_or_id=artifact, summary=terminal_status,
+            severity_or_priority="info" if terminal_status=="success" else "high",
+            recommended_next_action="acknowledge_and_skip"))
+    elif terminal_status:
         action = (
             "prepare_next_check_mode"
             if terminal_status == "check_mode_success_submit_skipped"
@@ -821,14 +839,22 @@ def _parse_date_range(value: object) -> tuple[datetime | None, datetime | None]:
     return start, end
 
 
+def _managed_delivery(payload: dict[str, Any]) -> bool:
+    inputs=payload.get('input_artifacts',{})
+    return payload.get('transport')=='liepin_api' or (isinstance(inputs,dict) and bool(inputs.get('delivery_attempt_id')))
+
+
 def _submission_item(path: Path) -> dict[str, Any]:
     payload = _load_submission_log(path)
+    inputs = payload.get('input_artifacts', {}) if _managed_delivery(payload) else {}
+    historical_identity = _managed_evidence(path, payload) if _managed_delivery(payload) and (not inputs.get('company') or not inputs.get('position')) else {}
     submitted_at = str(payload.get("ended_at") or payload.get("started_at") or "")
     rate_limit = _step_by_name(payload, "rate_limit")
     return {
         "submission_id": str(payload.get("run_id", path.parent.name)),
-        "company": str(payload.get("company", payload.get("job_company", ""))),
-        "position": str(payload.get("position", payload.get("job_title", ""))),
+        "retry_allowed": not _managed_delivery(payload),
+        "company": str(inputs.get('company') or historical_identity.get("company") or payload.get("company", payload.get("job_company", ""))),
+        "position": str(inputs.get('position') or historical_identity.get("position") or payload.get("position", payload.get("job_title", ""))),
         "channel": str(payload.get("platform", path.parent.parent.name)),
         "mode": str(payload.get("mode", "")),
         "status": str(payload.get("status", "")),
@@ -895,6 +921,9 @@ def handle_submission_detail(params: dict[str, Any]) -> dict[str, Any]:
         else []
     )
     yaml_path = run_dir / "submission_log.yaml"
+    inputs = payload.get('input_artifacts', {}) if _managed_delivery(payload) else {}
+    evidence = _managed_evidence(log_path, payload)
+    api_attempted = payload.get('mode') == 'submit' and any(s['name'] == 'api_submit' or (_managed_delivery(payload) and s['name']=='submit' and s['status']=='success') for s in steps)
     return {
         "meta": {"correlation_id": correlation_id},
         "submission": {
@@ -907,7 +936,11 @@ def handle_submission_detail(params: dict[str, Any]) -> dict[str, Any]:
             "browser_channel": str(payload.get("browser_channel", "")),
             "steps": steps,
             "terminal_status": str(payload.get("terminal_status", payload.get("status", ""))),
-            "resume_version_id": str(payload.get("resume_version_id", "")),
+            "evidence": evidence,
+            "resume_version_id": str(evidence.get("resume_version_id") or inputs.get('resume_version') or payload.get("resume_version_id", "")),
+            "parent_run_id": str(inputs.get('parent_run_id', '')),
+            "job_lead_id": str(inputs.get('candidate_id', '')),
+            "receipt_source": str(inputs.get('receipt_source', '')),
             "adapter_capabilities": payload.get("adapter_capabilities", {}),
             "original_job_lead": payload.get("original_job_lead", {}),
             "final_verified_target": payload.get("final_verified_target", {}),
@@ -916,8 +949,8 @@ def handle_submission_detail(params: dict[str, Any]) -> dict[str, Any]:
             "recovered_target_confirmation": payload.get("recovered_target_confirmation", {}),
             "resume_target_mismatch_warning": payload.get("resume_target_mismatch_warning", {}),
             "next_action": str(payload.get("next_action", "")),
-            "final_submit_attempted": bool(payload.get("final_submit_attempted", False)),
-            "external_submission_attempted": bool(payload.get("external_submission_attempted", False)),
+            "final_submit_attempted": api_attempted or bool(payload.get("final_submit_attempted", False)),
+            "external_submission_attempted": api_attempted or bool(payload.get("external_submission_attempted", False)),
             "log_json_path": str(log_path),
             "log_yaml_path": str(yaml_path) if yaml_path.exists() else "",
         },
@@ -989,6 +1022,10 @@ def handle_submission_retry(params: dict[str, Any]) -> dict[str, Any]:
     for path in _submission_log_paths():
         payload = _load_submission_log(path)
         if str(payload.get("run_id", path.parent.name)) == submission_id:
+            if payload.get('transport') == 'liepin_api':
+                raise ValueError('api_submission_retry_forbidden')
+            if _managed_delivery(payload):
+                raise ValueError('managed_submission_retry_forbidden')
             payload["status"] = "queued"
             payload["retry_count"] = _parse_cursor(payload.get("retry_count")) + 1
             payload["retry_strategy"] = strategy
@@ -1032,6 +1069,13 @@ def handle_channel_session_start(params: dict[str, Any]) -> dict[str, Any]:
     channel = _require_submission_channel(params)
     checked_at = _now_iso()
     config = _SUPPORTED_SUBMISSION_CHANNELS[channel]
+    try:
+        already_logged_in = _session_browser.start(_channel_profile_path(channel), config["login_url"])
+    except (RuntimeError, OSError) as exc:
+        _record_browser_failure(channel, checked_at, exc)
+        raise
+    if already_logged_in is True:
+        return handle_channel_session_check(params)
     steps = [
         {
             "name": "select_submission_channel",
@@ -1040,7 +1084,7 @@ def handle_channel_session_start(params: dict[str, Any]) -> dict[str, Any]:
         },
         {
             "name": "open_channel_login_page",
-            "status": "manual_boundary",
+            "status": "success",
             "detail": config["login_url"],
         },
         {
@@ -1086,11 +1130,16 @@ def handle_channel_session_check(params: dict[str, Any]) -> dict[str, Any]:
     _reject_forbidden_session_params(params)
     channel = _require_submission_channel(params)
     checked_at = _now_iso()
-    signals = params.get("login_signals")
+    try:
+        observation = _session_browser.check(_channel_profile_path(channel))
+    except (RuntimeError, OSError) as exc:
+        _record_browser_failure(channel, checked_at, exc)
+        raise
+    signals = observation.get("login_signals")
     signals = signals if isinstance(signals, dict) else {}
     positive_key = _SUPPORTED_SUBMISSION_CHANNELS[channel]["positive_signal"]
-    positive_signal = bool(signals.get(positive_key) or signals.get("authenticated_user_visible"))
     login_required = bool(signals.get("login_required") or signals.get("not_authenticated"))
+    positive_signal = not login_required and bool(signals.get(positive_key) or signals.get("authenticated_user_visible"))
     login_modal_absent = bool(signals.get("login_modal_absent"))
 
     steps = [
@@ -1166,11 +1215,12 @@ def handle_channel_session_check(params: dict[str, Any]) -> dict[str, Any]:
         channel=channel,
         login_status=login_status,
         checked_at=checked_at,
-        account_identity=_safe_account_identity(params),
+        account_identity=_safe_account_identity(observation),
         session_id=str(previous.get("session_id") or ""),
         clear_available=login_status == "session_valid",
         log_path=log_path,
     )
+    session["verification_source"] = "owned_playwright"
     _write_session(channel, session)
     return _session_result(
         correlation_id,
@@ -1186,6 +1236,7 @@ def handle_channel_session_clear(params: dict[str, Any]) -> dict[str, Any]:
     channel = _require_submission_channel(params)
     checked_at = _now_iso()
     profile_path = _channel_profile_path(channel)
+    _session_browser.close()
     if profile_path.exists():
         shutil.rmtree(profile_path)
     steps = [
@@ -1450,6 +1501,72 @@ def handle_submission_check_mode(params: dict[str, Any]) -> dict[str, Any]:
     return _check_mode_result(correlation_id, payload)
 
 
+def _managed_evidence(log_path: Path, payload: dict) -> dict:
+    if not _managed_delivery(payload):
+        return {}
+    from tools.infra.submission_evidence import inspect_submission_evidence
+    return inspect_submission_evidence(_SUBMISSIONS_DIR.resolve().parents[1], log_path.resolve())
+
+
+def _saved_feedback_iterations(source_run_id: str) -> list[dict]:
+    records=[]
+    for path in sorted(_FEEDBACK_ITERATIONS_DIR.glob("fi_*/iteration_record.json"), reverse=True):
+        if path.is_symlink() or not path.resolve().is_relative_to(_FEEDBACK_ITERATIONS_DIR.resolve()):
+            continue
+        try:
+            record=json.loads(path.read_text())
+            if record.get("source_run_id")==source_run_id:
+                records.append(record)
+        except (OSError, ValueError, AttributeError):
+            continue
+    return records
+
+
+def _create_managed_feedback(params: dict, log_path: Path, payload: dict) -> dict:
+    # 反馈是用户记录及下一步计划，不改业务回执，不调用生成或投递。
+    from tools.infra.persistence.review_queue import atomic_write_json
+    source_run_id=payload["run_id"]
+    items=_feedback_items_from_submission_log(payload, log_path)
+    supplied=_validate_feedback_items(params.get("source_feedback_items"))
+    if supplied and any(item not in items for item in supplied):
+        raise ValueError("feedback_source_mismatch")
+    actions=_selected_iteration_actions(params.get("selected_actions"))
+    if "prepare_next_check_mode" in actions:
+        raise ValueError("managed_feedback_use_quick_run")
+    note=str(params.get("user_notes") or "").strip()
+    if not note:
+        raise ValueError("feedback_note_required")
+    if len(note)>4000:
+        raise ValueError("feedback_note_too_long")
+    source=params.get("feedback_source", "user_note")
+    if source not in {"user_note", "manual_recruiter"}:
+        raise ValueError("unsupported_feedback_source")
+    if params.get("new_or_updated_claims"):
+        raise ValueError("feedback_claims_require_generation")
+    binding=_managed_evidence(log_path,payload)
+    inputs=payload.get("input_artifacts",{})
+    version=binding.get("resume_version_id") or inputs.get("resume_version", "")
+    profile=binding.get("job_profile_id") or inputs.get("job_profile_id", "")
+    if "regenerate_resume_from_existing_evidence" in actions and not profile:
+        raise ValueError("feedback_job_profile_missing")
+    iid=_build_feedback_iteration_id();directory=_FEEDBACK_ITERATIONS_DIR/iid
+    directory.mkdir(parents=True, mode=0o700);directory.chmod(0o700)
+    snapshot=directory/"source_snapshot.json";record_path=directory/"iteration_record.json"
+    snapshot.write_bytes(log_path.read_bytes());snapshot.chmod(0o444)
+    quick_run={"job_profile_id":profile,"source_submission_id":source_run_id,"requires_review":True} if "regenerate_resume_from_existing_evidence" in actions else {}
+    next_step=("quick_run" if quick_run else "evidence" if "add_or_edit_evidence_card" in actions else "jobs" if "update_job_target" in actions else "review_iteration_record")
+    record={"iteration_id":iid,"status":"iteration_recorded","created_at":_now_iso(),"source_run_id":source_run_id,
+        "source_binding":binding,"feedback_source":source,"source_feedback_items":items,"selected_actions":actions,"user_notes":note,
+        "previous_resume_version_id":version,"new_resume_version_id_or_none":"","evidence_card_ids_added_or_updated":[],
+        "job_target_id_or_none":binding.get("job_lead_id", ""),"comparison_summary":{"status":"comparison_unavailable","reason":"no_new_resume_version_created"},
+        "remaining_gap_tasks":[],"next_recommended_step":next_step,"next_quick_run_candidate":quick_run,"next_check_mode_candidate":{},
+        "source_snapshot_path":str(snapshot),"source_snapshot_sha256":hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+        "record_path":str(record_path),"affected_artifacts":{"source_submission_log":str(log_path),"source_snapshot":str(snapshot)},
+        "immutable_source_snapshot":True,"previous_artifacts_preserved":True,"real_submit_disabled":True}
+    atomic_write_json(record_path,record);record_path.chmod(0o600)
+    return _feedback_iteration_result(params["meta"]["correlation_id"],record)
+
+
 def handle_feedback_list(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
     source_run_id = str(params.get("source_run_id") or "").strip()
@@ -1461,7 +1578,9 @@ def handle_feedback_list(params: dict[str, Any]) -> dict[str, Any]:
         "source_run_id": source_run_id,
         "source_artifact_path": str(log_path),
         "items": items,
-        "supported_actions": sorted(_ALLOWED_ITERATION_ACTIONS),
+        "supported_actions": sorted(_ALLOWED_ITERATION_ACTIONS - ({"prepare_next_check_mode"} if _managed_delivery(payload) else set())),
+        "source_binding": _managed_evidence(log_path, payload),
+        "iterations": _saved_feedback_iterations(source_run_id),
     }
 
 
@@ -1470,6 +1589,8 @@ def handle_feedback_create_iteration(params: dict[str, Any]) -> dict[str, Any]:
     source_run_id = str(params.get("source_run_id") or "").strip()
     log_path = _resolve_submission_log_or_raise(source_run_id)
     source_payload = _load_submission_log(log_path)
+    if _managed_delivery(source_payload):
+        return _create_managed_feedback(params, log_path, source_payload)
     source_items = _validate_feedback_items(params.get("source_feedback_items"))
     if not source_items:
         source_items = _feedback_items_from_submission_log(source_payload, log_path)

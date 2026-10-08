@@ -78,10 +78,18 @@ def load_candidates_from_job_leads(base_dir: Path | None = None) -> list[Candida
         return []
 
     candidates: list[Candidate] = []
+    from tools.infra.persistence.job_lead_binding import reviewed_official_profile
+    profile_dir = leads_dir.parent / "job_profiles" if base_dir is not None else JOB_PROFILES_DIR
     for path in sorted(leads_dir.glob("*.yaml")):
         try:
             doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
         except Exception:
+            continue
+        fields = doc.get("scalars", {})
+        if fields.get("id") and fields.get("url"):
+            if fields.get("source") == "liepin_official" and not reviewed_official_profile(fields, profile_dir):
+                continue
+            candidates.append(_make_candidate({**fields, "job_url": fields["url"]}, path.stem, 0))
             continue
         items = doc.get("lists", {}).get("items", [])
         for idx, item in enumerate(items):
@@ -388,11 +396,17 @@ def _search_liepin_for_candidates(
 
 def _make_candidate(data: dict, source_id: str, index: int) -> Candidate:
     return Candidate(
-        candidate_id=f"{source_id}-{index}",
-        direction=data.get("direction", data.get("role_keyword", "backend")),
+        candidate_id=data.get("id") or f"{source_id}-{index}",
+        direction=data.get("direction", data.get("position", data.get("role_keyword", "backend"))),
         company=data.get("company_name", data.get("company", "")),
         job_url=data.get("job_url", ""),
         confidence=float(data.get("confidence", 0.7)),
-        source=f"job_leads:{source_id}",
+        source=data.get("source") or f"job_leads:{source_id}",
         merged_sources=(f"job_leads:{source_id}",),
+        platform=data.get("platform", ""),
+        platform_job_id=data.get("platform_job_id", ""),
+        platform_job_type=data.get("platform_job_type", ""),
+        job_profile_id=data.get("job_profile_id", ""),
+        jd_status=data.get("jd_status", ""),
+        source_jd_sha256=data.get("source_jd_sha256", ""),
     )

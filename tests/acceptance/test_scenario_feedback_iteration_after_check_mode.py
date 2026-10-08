@@ -71,6 +71,7 @@ def test_feedback_iteration_after_check_mode_l1_acceptance_writes_report(
     sessions_dir = tmp_path / "outputs" / "channel_sessions"
     previous_resume_bytes = resume_path.read_bytes()
     with (
+        patch("tools.sidecar.handlers.submission._session_browser.check", return_value={"login_signals": {"authenticated_user_visible": True}}),
         patch("tools.sidecar.handlers.submission._JOB_LEAD_DIR", leads_dir),
         patch("tools.sidecar.handlers.submission._SUBMISSIONS_DIR", submissions_dir),
         patch("tools.sidecar.handlers.submission._CHANNEL_SESSIONS_DIR", sessions_dir),

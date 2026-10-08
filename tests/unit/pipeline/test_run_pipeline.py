@@ -59,6 +59,9 @@ class RunPipelineExclusionTests(unittest.TestCase):
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
         self.assertEqual(code, 0)
         self.assertEqual(run_mock.call_count, 4)
+        generation_command = run_mock.call_args_list[2].args[0]
+        self.assertEqual(generation_command[generation_command.index("--personal-profile") + 1], "personal_profile.yaml")
+        self.assertEqual(generation_command[generation_command.index("--job-profile") + 1], str(job_profile))
         event_types = [event["event_type"] for event in events]
         self.assertEqual(event_types[0], "PIPELINE_START")
         self.assertEqual(event_types[-1], "PIPELINE_DONE")
