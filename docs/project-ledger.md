@@ -6,6 +6,7 @@ Last updated: 2026-10-10
 
 - 用户在 App 投递记录页对候选 ar_20261010133457367833 执行"批准并上传此 PDF"（2026-10-10T13:56:03Z）。平台响应：auth-upload HTTP 200 / flag=1，存储路径 …/ZVYXg-DaQbOZPn7vreU2nQ.PDF，fileLength 587034 与本地 PDF 一致；save-attachment-resume flag=1；list-attachment-resume 返回 1 条，fileName "童双龙-艾诺-模拟-20261010.1"、originalExtension pdf、fileSize 587034；页面提示"上传成功"。结论：猎聘接受 24 个 UTF-16 单元的"姓名-公司-岗位-年月日.序号.PDF"文件名，存储路径保留大写 .PDF，页面显示为小写 .pdf。本地状态 uploaded_unverified，附件身份绑定待用户点"检查已保存附件"；未发送。
 - 移除旧附件的步骤最终没有执行：用户两次点"移除此平台附件"均被 attachment_removal_identity_unverified 拦下，第二次观察时页面已打开 4 分多钟仍为 0 张附件卡片并出现上传控件；上传后平台附件列表只有本次新附件，说明卓胜微、上海皮赛、视涯三份旧附件已在 App 之外被移除。本地三条记录的 attachment_binding 已与平台不一致，App 目前没有平台附件对账机制。第一次拦截曾被误判为页面加载时序问题，现更正。
+- 用户随后点"检查已保存附件（不重传）"（2026-10-10T14:04:54Z）：页面附件卡片 1 张且精确匹配新附件，平台记录 fileName "童双龙-艾诺-模拟-20261010.1"、pdf、587034、auditStatus 1；原字节下载 HTTP 200 / 587034 字节，SHA256 a1b9ebd5…27adf 与本地 PDF 一致；attachment_id 257c822f85W328d953e97a8 已绑定，候选进入 attachment_verified。此结果也证明卡片选择器仍有效，之前 0 张是平台真实为空。候选保持未发送。
 - 证据：outputs/acceptance/pdf-filename-20261010/validation.json，取代 10 月 8 日记录中"新命名的真实平台上传尚未验证"。本轮平台写入：上传 1 次，发送 0，删除 0。
 
 ## 2026-10-10 新格式文件名的真实上传测试：候选已备好，平台步骤待用户在 App 内点击
