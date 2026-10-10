@@ -1,8 +1,8 @@
-version: "2026-10-01"
+version: "2026-10-10"
 mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
-current_focus: "daily_authorized_delivery"
+current_focus: "boss_readonly_integration"
 
 vision_alignment:
   source: "PLAN.md"
@@ -610,9 +610,10 @@ steps:
       - read_only_runbook_and_completion_blockers_recorded
 
   # 2026-10-01：S2/S3 已验收，S4 每日目标为唯一 next，其余平台仍待实施。
+  # 2026-10-10：S4 两日真实批次与跨日结果核验完成，按用户决定收口为 deep_verified；S5 BOSS 只读为唯一 next。
   - id: daily_authorized_delivery
     order: 19
-    status: next
+    status: deep_verified
     journey_stage: external_delivery
     owner_surface: ui/src/pages/agent-run/index.tsx
     user_goal: 在猎聘单次闭环通过后，实现每日单批、持续授权和上海自然日合计最多3次确认成功的受控投递。
@@ -625,14 +626,15 @@ steps:
     depends_on:
     - authorized_external_l3_live_run
     acceptance:
-      script: 外部真实 Tauri 页面自动化：daily_authorized_delivery（首版已实现，待非空授权与跨日实测）
-      depth: deep_required
+      script: 外部真实 Tauri 页面自动化：daily_authorized_delivery（两日真实批次各 1/1 与跨日结果已核验，2026-10-10 按用户决定收口；每日 3 次上限仅隔离测试）
+      depth: deep
       evidence:
       - outputs/acceptance/daily-authorized-delivery-20261005/native-inactive-validation.json
       - outputs/acceptance/app-workflow-20261008/native-validation.json
       - outputs/acceptance/daily-recovery-20261008/native-validation.json
       - outputs/acceptance/daily-candidates-20261008/native-validation.json
       - outputs/acceptance/daily-candidates-20261008/authorized-execution.json
+      - outputs/acceptance/daily-cross-day-20261009/validation.json
       covers:
       - asia_shanghai_daily_success_total_max_three_across_enabled_platforms
       - persistent_dedup_and_unknown_reservation_after_restart
@@ -641,7 +643,7 @@ steps:
       - multi_day_real_results_or_shortfall_reasons
   - id: boss_readonly_integration
     order: 20
-    status: not_started
+    status: next
     journey_stage: jobs
     owner_surface: ui/src/pages/jobs/index.tsx
     user_goal: 修复BOSS社区CLI固定版本适配，真实搜索/详情取得完整JD并进入审核、匹配、简历版本关联和结果追踪。
