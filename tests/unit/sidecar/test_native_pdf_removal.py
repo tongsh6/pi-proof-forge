@@ -94,3 +94,29 @@ def test_unknown_after_any_allowed_request_cannot_be_released(ready):
     packet=begin();finish(packet,valid=False)
     with pytest.raises(ValueError,match='attachment_removal_outcome_unverified'):
         flow.handle_recheck_pdf_removal({'meta':{'correlation_id':'t'},'run_id':'run_test'})
+
+
+def inspect(payload):
+    return flow.handle_record_pdf_inspection({'meta':{'correlation_id':'t'},'run_id':'run_test','observation':{'filename':'cv_test.pdf','status':'unknown','hints':[],
+        'responses':[{'method':'OBSERVE','url':'https://c.liepin.com/resume/edit','http_status':0,'payload':json.dumps(payload)}]}})
+
+
+def test_fresh_check_without_the_attachment_marks_missing_on_platform_and_blocks_removal(ready):
+    # App 外删除后：对账只观测不改绑定，移除返回明确原因，不留占位。
+    _,_,q=ready;q['pdf_upload']={'state':'uploaded_unverified','filename':'cv_test.pdf','pdf_sha256':q['attachment_binding']['pdf_sha256']}
+    current=json.loads(q['pdf_inspection']['observation']['responses'][0]['payload'])
+    atomic_write_json(Path('outputs/review_queue/run_test.json'),q)
+    result=inspect({'attachment_count':0,'attachments':[]})
+    assert result['platform_attachment_state']=='missing_on_platform' and result['phase']=='success' and result['platform_filename']=='cv_test.pdf'
+    with pytest.raises(ValueError,match='attachment_missing_on_platform'):begin()
+    saved=json.loads(Path('outputs/review_queue/run_test.json').read_text())
+    assert 'pdf_attachment_removal' not in saved and saved['attachment_binding']==q['attachment_binding'] and saved['pdf_delivery']==q['pdf_delivery']
+    assert inspect(current)['platform_attachment_state']=='present'
+    assert begin()['state']=='in_flight'
+
+
+def test_check_without_attachment_count_makes_no_platform_claim(ready):
+    _,_,q=ready;q['pdf_upload']={'state':'uploaded_unverified','filename':'cv_test.pdf','pdf_sha256':q['attachment_binding']['pdf_sha256']}
+    atomic_write_json(Path('outputs/review_queue/run_test.json'),q)
+    assert inspect({'attachments':[]})['platform_attachment_state']==''
+    with pytest.raises(ValueError,match='attachment_removal_identity_unverified'):begin()

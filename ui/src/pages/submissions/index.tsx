@@ -307,7 +307,7 @@ export function SubmissionsPage() {
     } catch (error) {
       const message=typeof error === "string" ? error : getErrorMessage(error);
       const contentErrors=['career_profile_unconfirmed','resume_content_incomplete','resume_regeneration_required','resume_generation_changed','resume_pdf_source_changed','resume_evidence_changed','resume_pdf_changed','pdf_generation_trace_invalid'];
-      setNativePdfError(message.includes('daily_pdf_filename_too_long')?t('daily.reasons.daily_pdf_filename_too_long'):message.includes('daily_recovery_required')?t('pages.submissions.nativePdf.recoveryOnly'):message.includes('pdf_receipt_unconfirmed')?t('pages.submissions.nativePdf.receiptNotAvailable'):contentErrors.some(code=>message.includes(code))?t('pages.submissions.nativePdf.contentNotReady'):message);
+      setNativePdfError(message.includes('daily_pdf_filename_too_long')?t('daily.reasons.daily_pdf_filename_too_long'):message.includes('daily_recovery_required')?t('pages.submissions.nativePdf.recoveryOnly'):message.includes('attachment_missing_on_platform')?t('pages.submissions.nativePdf.platformMissing'):message.includes('pdf_receipt_unconfirmed')?t('pages.submissions.nativePdf.receiptNotAvailable'):contentErrors.some(code=>message.includes(code))?t('pages.submissions.nativePdf.contentNotReady'):message);
     }
     finally {setNativeSessionBusy(false);}
   }, [pdfQuickRunId,nativePdf,acceptPdfEffects,acceptAttachmentRemoval,loadData,previewedPdf,t]);
@@ -544,7 +544,7 @@ export function SubmissionsPage() {
                 </label>
                 <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
                   onClick={()=>void handleNativePdf("upload")} className="rounded-card bg-accent px-3 py-2 text-white disabled:opacity-50">{t("pages.submissions.nativePdf.upload")}</button>
-                <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending","success"].includes(nativePdf.phase)}
+                <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending"].includes(nativePdf.phase)}
                   onClick={()=>void handleNativePdf("inspect")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.inspect")}</button>
                 <button type="button" disabled={nativeSessionBusy || nativePdf.phase !== "attachment_verified"}
                   onClick={()=>void handleNativePdf("target")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.target")}</button>
@@ -561,10 +561,11 @@ export function SubmissionsPage() {
                 {nativePdf.phase === "success" && nativePdf.platform_filename && <div className="mt-3 border-t border-border pt-3">
                   <p className="break-all">{t("pages.submissions.nativePdf.platformFile")}: {nativePdf.platform_filename}</p>
                   <p className="text-xs text-text-secondary">{t("pages.submissions.nativePdf.removeBoundary")}</p>
+                  {nativePdf.platform_attachment_state === "missing_on_platform" && nativePdf.attachment_removal_state !== "removed" && <p role="status" className="text-warning">{t("pages.submissions.nativePdf.platformMissing")}</p>}
                   <label className="mt-2 flex items-center gap-2"><input type="checkbox" aria-label={t("pages.submissions.nativePdf.removeConsent")}
-                    checked={acceptAttachmentRemoval} disabled={nativeSessionBusy || ["in_flight","unknown","removed"].includes(nativePdf.attachment_removal_state || "")}
+                    checked={acceptAttachmentRemoval} disabled={nativeSessionBusy || nativePdf.platform_attachment_state === "missing_on_platform" || ["in_flight","unknown","removed"].includes(nativePdf.attachment_removal_state || "")}
                     onChange={event=>setAcceptAttachmentRemoval(event.target.checked)} />{t("pages.submissions.nativePdf.removeConsent")}</label>
-                  <button type="button" disabled={nativeSessionBusy || !acceptAttachmentRemoval || ["in_flight","unknown","removed"].includes(nativePdf.attachment_removal_state || "")}
+                  <button type="button" disabled={nativeSessionBusy || !acceptAttachmentRemoval || nativePdf.platform_attachment_state === "missing_on_platform" || ["in_flight","unknown","removed"].includes(nativePdf.attachment_removal_state || "")}
                     onClick={()=>void handleNativePdf("remove")} className="mt-2 rounded-card border border-error px-3 py-2 text-error disabled:opacity-50">{t("pages.submissions.nativePdf.remove")}</button>
                   {nativePdf.attachment_removal_state === "unknown" && <button type="button" disabled={nativeSessionBusy}
                     onClick={()=>void handleNativePdf("recheckRemoval")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.recheckRemoval")}</button>}

@@ -2,6 +2,13 @@
 
 Last updated: 2026-10-10
 
+## 2026-10-10 平台附件对账：App 外被移除的附件可识别，移除给出明确原因
+
+- 缘起：卓胜微旧记录点"移除此平台附件"两次被 attachment_removal_identity_unverified 拦下，根因是三份旧附件已在 App 外消失而本地仍显示"平台附件在"。先核对既有 pdf_inspection 记录、发送后绑定冻结规则和移除核验，确认缺口只是缺少对账状态与可读原因；没有新增接口、存储或移除流程。
+- 后端：记录附件检查时对已冻结的发送绑定做只读对账，完整附件页观察（含卡片计数）中没有该 fileId/encryAttachmentId 则写 platform_attachment.state=missing_on_platform，再次找到恢复 present；缺少计数的观察不做任何平台结论。移除前核验在新鲜观察未找到附件时返回 attachment_missing_on_platform 而非一般身份未核验，不创建占位；绑定、回执、快照、成功状态不变。
+- 前端：成功卡片在平台附件已不在时显示提示并禁用移除勾选与按钮；"检查已保存附件（不重传）"对成功记录保持可用且只读，用于刷新对账；错误码映射为可读文案；中英文案同步。
+- 验证：先红后绿新增 2 项移除单测与 1 段界面回归断言；tests/unit 的 sidecar、gui、infra 共 712 项通过、1 项可选跳过；前端构建与 v2 约束通过；DESIGN 与 OpenSpec 已同步。真实页面验证待用户在 App 内对卓胜微记录点"检查已保存附件"，App 已重启以加载新后端。本轮无平台写入。
+
 ## 2026-10-10 新格式文件名真实上传通过，旧附件已在 App 外消失
 
 - 用户在 App 投递记录页对候选 ar_20261010133457367833 执行"批准并上传此 PDF"（2026-10-10T13:56:03Z）。平台响应：auth-upload HTTP 200 / flag=1，存储路径 …/ZVYXg-DaQbOZPn7vreU2nQ.PDF，fileLength 587034 与本地 PDF 一致；save-attachment-resume flag=1；list-attachment-resume 返回 1 条，fileName "童双龙-艾诺-模拟-20261010.1"、originalExtension pdf、fileSize 587034；页面提示"上传成功"。结论：猎聘接受 24 个 UTF-16 单元的"姓名-公司-岗位-年月日.序号.PDF"文件名，存储路径保留大写 .PDF，页面显示为小写 .pdf。本地状态 uploaded_unverified，附件身份绑定待用户点"检查已保存附件"；未发送。

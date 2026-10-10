@@ -94,6 +94,8 @@ def _public(queue):
             'phase':queue.get('pdf_delivery',{}).get('state') or ('attachment_verified' if queue.get('attachment_binding') else queue.get('pdf_upload',{}).get('state','prepared')),
             'can_confirm_send':not recovery_only and _confirmation_matches(queue),'recovery_only':recovery_only,
             'platform_filename':queue.get('attachment_binding',{}).get('filename',''),
+            'platform_attachment_state':queue.get('platform_attachment',{}).get('state',''),
+            'platform_attachment_checked_at':queue.get('platform_attachment',{}).get('observed_at',''),
             'attachment_removal_state':queue.get('pdf_attachment_removal',{}).get('state','')}
 
 
@@ -170,6 +172,24 @@ def handle_inspect_pdf_packet(params):
         return {'meta':params['meta'], 'filename':u['filename'], 'pdf_sha256':u['pdf_sha256']}
 
 
+def _platform_attachment_state(q,observation):
+    """已冻结的发送绑定与当前页面附件对账：只观测平台是否仍有该附件，不改绑定、不删除、不重传。"""
+    b=q.get('attachment_binding') or {}
+    if not b or not q.get('pdf_delivery',{}).get('final_send_started'):return ''
+    from tools.infra.liepin_attachment_contract import attachment_filename_matches
+    rows=[];counts=[]
+    try:
+        for response in observation.get('responses',[]):
+            if response.get('method')=='OBSERVE' and response.get('url')=='https://c.liepin.com/resume/edit':
+                value=json.loads(response['payload']);rows+=value.get('attachments',[]);counts.append(value.get('attachment_count'))
+    except (ValueError,TypeError,AttributeError,KeyError):return ''
+    # 没有卡片计数说明不是完整的附件页观察，不做任何平台结论。
+    if len(counts)!=1 or type(counts[0]) is not int:return ''
+    present=any(isinstance(r,dict) and r.get('fileId')==b.get('file_id') and r.get('encryAttachmentId')==b.get('attachment_id')
+                and attachment_filename_matches(r,b.get('filename','')) for r in rows)
+    return 'present' if present else 'missing_on_platform'
+
+
 def handle_record_pdf_inspection(params):
     run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
     observation=params.get('observation')
@@ -178,6 +198,8 @@ def handle_record_pdf_inspection(params):
         q=agent._load_queue(path);u=q.get('pdf_upload',{})
         if not u or observation.get('filename')!=u['filename']:raise ValueError('pdf_upload_identity_mismatch')
         q['pdf_inspection']={'observed_at':agent._utcnow_iso(),'observation':_sanitize_observation(observation)}
+        state=_platform_attachment_state(q,observation)
+        if state:q['platform_attachment']={'state':state,'observed_at':q['pdf_inspection']['observed_at']}
         from tools.infra.liepin_attachment_contract import verify_legacy_filename_rejection
         reconciliation=verify_legacy_filename_rejection(u,observation)
         if reconciliation:u.update(state='not_submitted',reconciliation=reconciliation)
@@ -406,6 +428,10 @@ def handle_verify_pdf_receipt(params):
         return {'meta':params['meta'],**_public(q),'submission_id':submission_id}
 
 
+class _AttachmentMissing(Exception):
+    pass
+
+
 def _checked_removal_target(q,run_id):
     from tools.infra.liepin_attachment_contract import attachment_filename_matches
     c=q['candidates'][0];d=q.get('pdf_delivery',{});b=q.get('attachment_binding',{})
@@ -421,12 +447,17 @@ def _checked_removal_target(q,run_id):
         for response in current['observation']['responses']:
             if response.get('method')=='OBSERVE' and response.get('url')=='https://c.liepin.com/resume/edit':
                 value=json.loads(response['payload']);rows+=value.get('attachments',[]);counts.append(value.get('attachment_count'))
-        if not -5<=age<=120 or len(rows)!=1 or len(counts)!=1 or type(counts[0]) is not int or not 1<=counts[0]<=50:raise ValueError()
+        if not -5<=age<=120 or len(counts)!=1 or type(counts[0]) is not int or not 0<=counts[0]<=50:raise ValueError()
+        if not rows:raise _AttachmentMissing()
+        if len(rows)!=1 or counts[0]<1:raise ValueError()
         record=rows[0];download=record.get('download',{});size=Path(sealed['resume_path']).stat().st_size
         if (record.get('fileId')!=b['file_id'] or record.get('encryAttachmentId')!=b['attachment_id']
             or not attachment_filename_matches(record,b['filename'])
             or record.get('fileSize')!=size or download.get('http_status')!=200 or download.get('byte_length')!=size
             or download.get('sha256')!=sealed['pdf_sha256'] or b.get('pdf_sha256')!=sealed['pdf_sha256']):raise ValueError()
+    except _AttachmentMissing:
+        # 页面已完整观察但没有这份附件：多半已在 App 外移除，给出可读原因，不留占位。
+        raise ValueError('attachment_missing_on_platform') from None
     except (ValueError,KeyError,TypeError,AttributeError,OSError):
         raise ValueError('attachment_removal_identity_unverified') from None
     return b,sealed,counts[0]

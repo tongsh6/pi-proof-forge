@@ -802,6 +802,7 @@
           "not_submitted": "No removal request was sent; attachment retained",
           "removed": "Platform attachment removed; local history retained"
         },
+        "platformMissing": "The latest check did not find this attachment in the Liepin attachment list; it may have been removed outside the App. Local PDF, approved snapshot and receipt are kept, and removal is disabled. Use “Inspect saved attachment (no re-upload)” to refresh.",
         "recheckRemoval": "Recheck removal (without deleting again)",
         "preview": "Preview this fixed PDF",
         "contentNotReady": "This resume is incomplete or its source information has changed. Complete and confirm your career profile in Resumes, then generate a new PDF.",

@@ -100,7 +100,8 @@ export async function inspectLiepinNativeAttachments(): Promise<NativeLiepinObse
 }
 
 export type NativePdfPreparation = {meta: {correlation_id: string}; run_id: string; company: string; position: string; matching_score?: number; can_confirm_send?: boolean; account_effects_accepted?: boolean; recovery_only?: boolean;
-  job_lead_id: string; pdf_sha256: string; pdf_path: string; pdf_filename?: string; phase: string; platform_filename?: string; attachment_removal_state?: string};
+  job_lead_id: string; pdf_sha256: string; pdf_path: string; pdf_filename?: string; phase: string; platform_filename?: string; attachment_removal_state?: string;
+  platform_attachment_state?: string; platform_attachment_checked_at?: string};
 export async function prepareLiepinPdf(quickRunId: string): Promise<NativePdfPreparation> {
   return client.call<NativePdfPreparation>("run.agent.prepareLiepinPdf", {quick_run_id:quickRunId});
 }
