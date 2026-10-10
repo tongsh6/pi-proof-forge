@@ -74,8 +74,8 @@ def resume_approved_candidate(run_id: str, candidate: dict, snapshot_root: Path)
     output = {'job_lead_id': candidate['job_lead_id'], 'success': False, 'submission_id': ''}
     if candidate.get('status') != 'approved':
         raise ValueError('review_approval_required')
-    from tools.policy.exclusions import load_exclusion_policy, match_exclusion
-    exclusions = load_exclusion_policy(snapshot_root.parent.parent / 'policy.yaml')
+    from tools.policy.exclusions import load_exclusion_policy, match_exclusion, resolve_policy_path
+    exclusions = load_exclusion_policy(resolve_policy_path(snapshot_root.parent.parent))
     excluded = match_exclusion(candidate.get('company', ''), candidate.get('legal_entity', ''), exclusions)
     if excluded:
         return {**output, 'code': excluded, 'status': 'blocked'}

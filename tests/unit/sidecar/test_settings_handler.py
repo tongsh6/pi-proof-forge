@@ -174,6 +174,29 @@ class SettingsUpdateTests(unittest.TestCase):
                 stored = handle_settings_get(get_params)
         self.assertEqual(stored["exclusion_list"], payload)
 
+    def test_update_prefers_existing_local_policy_file_in_cwd(self) -> None:
+        # 未设置环境变量时，存在 policy.local.yaml 就读写它，仓库默认 policy.yaml 不被改动。
+        with tempfile.TemporaryDirectory() as tmp_dir, patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PPF_POLICY_PATH", None)
+            root = Path(tmp_dir)
+            repo_policy = root / "policy.yaml"
+            local_policy = root / "policy.local.yaml"
+            repo_policy.write_text('delivery_mode: "auto"\nbatch_review: "false"\n', encoding="utf-8")
+            local_policy.write_text('delivery_mode: "auto"\nbatch_review: "false"\nllm_model: "local-model"\n', encoding="utf-8")
+            previous = os.getcwd()
+            os.chdir(root)
+            try:
+                handle_settings_update({"meta": {"correlation_id": "corr_local"}, "section": "gate_policy",
+                                        "payload": {"delivery_mode": "manual", "batch_review": True}})
+                result = handle_settings_get({"meta": {"correlation_id": "corr_local_get"}})
+            finally:
+                os.chdir(previous)
+            self.assertEqual(repo_policy.read_text(encoding="utf-8"), 'delivery_mode: "auto"\nbatch_review: "false"\n')
+            local_text = local_policy.read_text(encoding="utf-8")
+            self.assertIn('delivery_mode: "manual"', local_text)
+            self.assertIn('llm_model: "local-model"', local_text)
+        self.assertEqual(result["gate_policy"]["delivery_mode"], "manual")
+
     def test_update_rejects_invalid_payload(self) -> None:
         params = {
             "meta": {"correlation_id": "corr_009"},

@@ -2,6 +2,12 @@
 
 Last updated: 2026-10-10
 
+## 2026-10-10 策略文件路径统一：本机配置不再写回仓库 policy.yaml
+
+- 缘起：收口 P0-018 时发现 App 设置页于 9 月 28 日把本机 LM Studio 的 provider、base_url、超时、密钥占位写进了仓库跟踪的 policy.yaml。原因是 sidecar 在未设 PPF_POLICY_PATH 时固定读写 policy.yaml，Tauri 启动 sidecar 不设该变量；另有 native_pdf、agent、approved_delivery 共 5 处排除名单读取硬编码 policy.yaml，与 tools/README 要求的本机配置放 policy.local.yaml 不一致。
+- 实现：tools/policy/exclusions.py 新增 resolve_policy_path，规则为环境变量 PPF_POLICY_PATH > 仓库根已存在的 policy.local.yaml > 仓库默认 policy.yaml；设置页读写、排除名单默认加载和投递前排除检查全部改走同一规则，没有新增配置层或合并逻辑；tools/README 同步说明。先红后绿新增 3 项单测（路径优先级、当前目录默认加载、设置页写入本地文件而仓库文件不变）；tests/unit 与 tests/acceptance 共 826 项通过、1 项可选跳过，v2 约束通过。
+- 本机迁移：两份文件先备份到 ~/backup-manifest/pi-proof-forge/policy-20261010/ 并附回滚说明，再把 policy.yaml 当前内容写入 policy.local.yaml（模型 qwen/qwen3.8-27b、超时 120、密钥占位 lm-studio，不含真实密钥），policy.yaml 还原为仓库版本。真实 sidecar settings.get 读回本地配置与门禁策略通过；App 随后重启以加载新后端。
+
 ## 2026-10-10 平台附件对账：App 外被移除的附件可识别，移除给出明确原因
 
 - 缘起：卓胜微旧记录点"移除此平台附件"两次被 attachment_removal_identity_unverified 拦下，根因是三份旧附件已在 App 外消失而本地仍显示"平台附件在"。先核对既有 pdf_inspection 记录、发送后绑定冻结规则和移除核验，确认缺口只是缺少对账状态与可读原因；没有新增接口、存储或移除流程。

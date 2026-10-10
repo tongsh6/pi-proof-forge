@@ -9,6 +9,7 @@ from tools.infra.llm.client import LLMClient
 from tools.infra.liepin_readonly import liepin_readonly
 from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
 from tools.policy.exclusions import (
+    resolve_policy_path,
     load_delivery_settings,
     load_exclusion_list,
     load_legal_entity_exclusion_list,
@@ -309,10 +310,8 @@ def _load_policy_doc() -> tuple[dict[str, str], dict[str, list[str]]]:
 
 
 def _resolve_policy_path() -> Path | None:
-    env_path = os.environ.get("PPF_POLICY_PATH")
-    if env_path:
-        return Path(env_path)
-    return Path("policy.yaml")
+    # 与排除名单共用同一规则，避免设置页把本机配置写回仓库默认策略文件。
+    return resolve_policy_path()
 
 
 def _models_url(base_url: str) -> str:

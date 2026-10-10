@@ -341,8 +341,8 @@ def _execute_guided_batch_run(
     from tools.infra.persistence.file_run_store import FileRunStore
 
     max_rounds = _coerce_positive_int(options.get("max_rounds"), 2)
-    from tools.policy.exclusions import load_exclusion_policy
-    exclusions = load_exclusion_policy(_PROJECT_ROOT / 'policy.yaml')
+    from tools.policy.exclusions import load_exclusion_policy, resolve_policy_path
+    exclusions = load_exclusion_policy(resolve_policy_path(_PROJECT_ROOT))
     policy = PolicyConfig(
         n_pass_required=1,
         matching_threshold=float(options.get("matching_threshold") or 0.3),
@@ -1075,7 +1075,7 @@ def handle_prepare_liepin_default(params: dict[str, Any]) -> dict[str, Any]:
     from tools.infra.persistence.review_queue import atomic_write_json, locked_review_queue
     from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
     from tools.orchestration.approved_delivery import _job_key
-    from tools.policy.exclusions import load_exclusion_policy, match_exclusion
+    from tools.policy.exclusions import load_exclusion_policy, match_exclusion, resolve_policy_path
 
     base = {'meta': {'correlation_id': params['meta']['correlation_id']}, 'status': 'blocked'}
     lead_id = params.get('job_lead_id')
@@ -1091,7 +1091,7 @@ def handle_prepare_liepin_default(params: dict[str, Any]) -> dict[str, Any]:
                 or not reviewed_official_profile(lead, jobs._JOB_PROFILE_DIR)):
             return {**base, 'code': 'JOB_REVIEW_REQUIRED'}
         if match_exclusion(lead.get('company', ''), lead.get('legal_entity', ''),
-                           load_exclusion_policy(_PROJECT_ROOT / 'policy.yaml')):
+                           load_exclusion_policy(resolve_policy_path(_PROJECT_ROOT))):
             return {**base, 'code': 'EXCLUDED_TARGET'}
         request = DeliveryRequest('', lead_id, 'liepin', '', lead['url'], False, lead)
         store = DeliveryAttemptStore(_PROJECT_ROOT / 'outputs/submissions/delivery_attempts.sqlite3')

@@ -64,8 +64,8 @@ def _validated_generation(quick_run_id):
             or lead.get('job_profile_id')!=run['job_profile_id']
             or trace['target'].get('source_jd_sha256')!=lead.get('source_jd_sha256')):
         raise ValueError('pdf_job_review_required')
-    from tools.policy.exclusions import load_exclusion_policy,match_exclusion
-    if match_exclusion(lead.get('company',''),lead.get('legal_entity',''),load_exclusion_policy(agent._PROJECT_ROOT/'policy.yaml')):
+    from tools.policy.exclusions import load_exclusion_policy,match_exclusion,resolve_policy_path
+    if match_exclusion(lead.get('company',''),lead.get('legal_entity',''),load_exclusion_policy(resolve_policy_path(agent._PROJECT_ROOT))):
         raise ValueError('pdf_target_excluded')
     request=DeliveryRequest('',lead_id,'liepin','',lead['url'],False,lead)
     if DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3').has_attempt(_job_key(request)):
@@ -255,8 +255,8 @@ def handle_begin_pdf_delivery(params):
             if response.get('method')=='OBSERVE':target=json.loads(response['payload'])
         if not all(target.get(k) is True for k in ('url_match','company_present','position_present')) or target.get('challenge') or target.get('unavailable'):
             raise ValueError('pdf_target_verification_required')
-        from tools.policy.exclusions import load_exclusion_policy,match_exclusion
-        if match_exclusion(c.get('company',''),c.get('legal_entity',''),load_exclusion_policy(agent._PROJECT_ROOT/'policy.yaml')):
+        from tools.policy.exclusions import load_exclusion_policy,match_exclusion,resolve_policy_path
+        if match_exclusion(c.get('company',''),c.get('legal_entity',''),load_exclusion_policy(resolve_policy_path(agent._PROJECT_ROOT))):
             raise ValueError('pdf_target_excluded')
         from tools.infra.liepin_job_detail import fetch_liepin_job_detail
         current=fetch_liepin_job_detail(c['job_url'],expected_job_id=str(c['platform_job_id']))

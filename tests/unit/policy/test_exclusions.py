@@ -107,3 +107,31 @@ class ExclusionPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PolicyPathResolutionTests(unittest.TestCase):
+    """本机策略文件优先：环境变量 > 已存在的 policy.local.yaml > 仓库默认 policy.yaml。"""
+
+    def test_local_policy_file_is_preferred_when_env_unset(self) -> None:
+        from tools.policy.exclusions import resolve_policy_path
+        with tempfile.TemporaryDirectory() as tmp_dir, mock.patch.dict(os.environ, {}, clear=True):
+            root = Path(tmp_dir)
+            (root / "policy.yaml").write_text("exclusion_list:\n  - 'Repo Co'\n", encoding="utf-8")
+            self.assertEqual(resolve_policy_path(root), root / "policy.yaml")
+            (root / "policy.local.yaml").write_text("exclusion_list:\n  - 'Local Co'\n", encoding="utf-8")
+            self.assertEqual(resolve_policy_path(root), root / "policy.local.yaml")
+            self.assertEqual(load_exclusion_list(resolve_policy_path(root)), ["Local Co"])
+            with mock.patch.dict(os.environ, {"PPF_POLICY_PATH": str(root / "custom.yaml")}):
+                self.assertEqual(resolve_policy_path(root), root / "custom.yaml")
+
+    def test_default_load_uses_local_policy_in_current_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, mock.patch.dict(os.environ, {}, clear=True):
+            root = Path(tmp_dir)
+            (root / "policy.yaml").write_text("exclusion_list:\n  - 'Repo Co'\n", encoding="utf-8")
+            (root / "policy.local.yaml").write_text("exclusion_list:\n  - 'Local Co'\n", encoding="utf-8")
+            previous = os.getcwd()
+            os.chdir(root)
+            try:
+                self.assertEqual(load_exclusion_list(), ["Local Co"])
+            finally:
+                os.chdir(previous)

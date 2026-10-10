@@ -8,6 +8,20 @@ from pathlib import Path
 from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml, unquote
 
 _DEFAULT_POLICY_PATH = "policy.yaml"
+_LOCAL_POLICY_PATH = "policy.local.yaml"
+
+
+def resolve_policy_path(root: Path | None = None) -> Path:
+    """生效的策略文件：环境变量 PPF_POLICY_PATH > 已存在的本机 policy.local.yaml > 仓库默认 policy.yaml。
+
+    本机 LLM、投递模式等运行配置属于当前机器，不应被写回仓库跟踪的默认策略文件。
+    """
+    env_path = os.environ.get("PPF_POLICY_PATH")
+    if env_path:
+        return Path(env_path)
+    base = Path(root) if root is not None else Path(".")
+    local_path = base / _LOCAL_POLICY_PATH
+    return local_path if local_path.exists() else base / _DEFAULT_POLICY_PATH
 
 
 @dataclass(frozen=True)
@@ -146,10 +160,7 @@ def save_delivery_settings(
 def _resolve_policy_path(path: Path | None) -> Path | None:
     if path is not None:
         return path
-    env_path = os.environ.get("PPF_POLICY_PATH")
-    if env_path:
-        return Path(env_path)
-    return Path(_DEFAULT_POLICY_PATH)
+    return resolve_policy_path()
 
 
 def _merge_entries(*groups: list[str]) -> list[str]:
