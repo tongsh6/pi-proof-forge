@@ -180,3 +180,14 @@ API 迁移同步调整 recorder、L3 readiness、禁止输入处理与 runbook�
 决定（用户 2026-10-11 确认）：三家在线只读任务标为 `blocked` 并记录原因，改为人工导入职位链接与完整 JD，复用现有 Jobs 手工 JD/线索入口，走审核、匹配、定制版本与人工结果追踪；样本在 S8 计入来源覆盖，不冒充在线接入。接下来按 S7 做脉脉、拉勾来源导入，S7 依赖改为已验收的 Jobs 手工入口。本轮未安装社区 CLI，未修改代码，未发生平台写入。
 
 来源：[ai-job-search-cn 访问说明](https://github.com/rockbenben/ai-job-search-cn/blob/main/SETUP.md)、[BOSS HI 用户协议](https://hi.zhipin.com/protocol/)、[BOSS直聘 DeepHire 报道](https://www.21jingji.com/article/20260527/herald/bdcfb21945b50311762860eac946df54.html)、[职决报道](https://zhuanlan.zhihu.com/p/2056839044450062578)、[封禁账号报道](https://m.jiemian.com/article/13552109.html)、[智联 AI 版报道](https://readhub.cn/topic/8lPpVm5tFCJ)、[智联安全应急响应中心](https://src.zhaopin.com/page/view?id=10001)、[51job 隐私条款摘要](https://we.51job.com/service?type=14)、[51job 企业版服务声明](https://ehire.51job.com/HTML/Agreement_c.htm?y=2016)。
+
+同日复核脉脉与拉勾（S7 两家补充来源）：
+
+| 平台 | 官方渠道 | 未登录公开页面实测 | 协议 |
+| --- | --- | --- | --- |
+| 脉脉 | 未找到开发者平台或 API；open.maimai.cn 无法打开；搜索到的"开放平台/接入 API"文章均为泛泛的产品或 SEO 内容，非脉脉官方开发者文档 | 职位搜索页直接跳转手机号/扫码登录，未登录看不到任何岗位 | 服务协议第二条（三）禁止"通过自研、授权代理、默认其他任何第三方登录……对脉脉产品和/或服务等进行任何非正常访问或对其中数据资料进行获取、下载"；第五条禁止"蜘蛛程序、爬虫程序、拟人程序"抓取；第六条可封禁账号、禁止重新注册 |
+| 拉勾 | open.lagou.com 仅一个"拉勾开放平台"存根页，api.lagou.com 无文档端点；第三方核查结论为"未发布公开 API，无 SDK/CLI/MCP/webhook" | 职位搜索页未登录直接触发"访问验证"滑块，未继续 | 用户协议第三条（二）禁止"使用任何机器人软件、脚本等其他方式，自动访问或登录本网站"及"通过其他第三方工具或运营平台如外挂、插件、第三方招聘管理系统（ATS）等接入"，并禁止爬虫与批量检索；违规可封禁账号 |
+
+对 S7 的含义：两家都不能由 App 在线取页面，连职位链接的服务器端校验都会碰到登录或验证。S7 的"真实职位链接 + 完整 JD 导入"只能完全由用户粘贴，App 负责按域名识别来源、标记人工导入与导入时间、做语法层链接校验与 JD 完整性检查，不发起任何平台请求；在线接入与投递能力单独保持未接入。
+
+补充来源：[拉勾公开 API 面第三方核查](https://github.com/api-evangelist/lagou)、[拉勾网用户协议](https://help.lagou.com/staticpage/app/statement/statement.html)、[脉脉服务协议](https://maimai.cn/n/platform/rich-text/maimai_license)。
