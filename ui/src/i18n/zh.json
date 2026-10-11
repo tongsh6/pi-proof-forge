@@ -98,7 +98,25 @@
         "agent_run_completed": "智能运行"
       },
       "openMetric": "查看{{label}}",
-      "gapsClear": "无待办"
+      "gapsClear": "无待办",
+      "funnel": {
+        "title": "投递进展",
+        "subtitle": "受控成功投递的最近一次平台状态分布",
+        "synced": "{{synced}}/{{count}} 条已同步平台进展",
+        "barLabel": "投递进展分布条",
+        "empty": "暂无受控投递，或尚未同步平台进展。",
+        "open": "查看投递记录",
+        "states": {
+          "delivered": "已投递",
+          "viewed": "已查看",
+          "interested": "感兴趣",
+          "interview": "面试邀约",
+          "rejected": "不合适",
+          "closed": "停止招聘",
+          "unknown": "未识别",
+          "unsynced": "未同步"
+        }
+      }
     },
     "resumes": {
       "title": "简历中心",

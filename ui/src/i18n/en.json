@@ -98,7 +98,25 @@
         "agent_run_completed": "Agent"
       },
       "openMetric": "Open {{label}}",
-      "gapsClear": "No gaps"
+      "gapsClear": "No gaps",
+      "funnel": {
+        "title": "Delivery Funnel",
+        "subtitle": "Latest platform status of each managed successful submission",
+        "synced": "{{synced}}/{{count}} submissions synced with platform status",
+        "barLabel": "Delivery status distribution",
+        "empty": "No managed submissions yet, or platform status has not been synced.",
+        "open": "Open submissions",
+        "states": {
+          "delivered": "Delivered",
+          "viewed": "Viewed",
+          "interested": "Interested",
+          "interview": "Interview",
+          "rejected": "Not suitable",
+          "closed": "Hiring closed",
+          "unknown": "Unrecognized",
+          "unsynced": "Not synced"
+        }
+      }
     },
     "resumes": {
       "title": "Resumes",

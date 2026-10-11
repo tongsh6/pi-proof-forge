@@ -4,10 +4,17 @@ import { useNavigate } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
+  Ban,
   Bot,
   Briefcase,
+  CalendarCheck,
   CheckCircle2,
+  CloudOff,
+  Eye,
   FileText,
+  HelpCircle,
+  ThumbsUp,
+  XCircle,
   FolderSearch,
   PlayCircle,
   RefreshCw,
@@ -18,7 +25,13 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { getOverview } from "@/lib/sidecar/api";
 import { notify } from "@/lib/ui";
-import type { OverviewActivity, OverviewGap, OverviewTrendPoint } from "@/lib/sidecar/types";
+import type {
+  OverviewActivity,
+  OverviewFeedbackFunnel,
+  OverviewGap,
+  OverviewMetrics,
+  OverviewTrendPoint,
+} from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -28,6 +41,26 @@ const metricCardKeys = [
   "resume_count",
   "submission_count",
 ] as const;
+
+/**
+ * 投递进展：状态互斥，按“进展 → 终态 → 未知/未同步”排列。
+ * 颜色只做辅助，每行都带图标、文字与计数；同色系用深浅区分相邻阶段。
+ */
+const FUNNEL_STATES: Array<{
+  key: keyof OverviewFeedbackFunnel;
+  icon: LucideIcon;
+  bar: string;
+  text: string;
+}> = [
+  { key: "delivered", icon: Send, bar: "bg-accent/45", text: "text-accent" },
+  { key: "viewed", icon: Eye, bar: "bg-accent", text: "text-accent" },
+  { key: "interested", icon: ThumbsUp, bar: "bg-success/55", text: "text-success" },
+  { key: "interview", icon: CalendarCheck, bar: "bg-success", text: "text-success" },
+  { key: "rejected", icon: XCircle, bar: "bg-error", text: "text-error" },
+  { key: "closed", icon: Ban, bar: "bg-warning", text: "text-warning" },
+  { key: "unknown", icon: HelpCircle, bar: "bg-text-muted", text: "text-text-secondary" },
+  { key: "unsynced", icon: CloudOff, bar: "bg-border", text: "text-text-muted" },
+];
 
 /** 统计卡可点击进入对应页面；图标按指标区分。 */
 const metricCardMeta: Record<
@@ -98,7 +131,7 @@ export function OverviewPage() {
   const navigate = useNavigate();
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
-  const [metrics, setMetrics] = useState<Record<(typeof metricCardKeys)[number], number>>({
+  const [metrics, setMetrics] = useState<OverviewMetrics>({
     evidence_count: 0,
     matched_jobs_count: 0,
     resume_count: 0,
@@ -148,6 +181,13 @@ export function OverviewPage() {
     () => buildTrendPath(trend, 320, 180, 20),
     [trend]
   );
+  const funnel = useMemo(() => {
+    const data = metrics.feedback_funnel;
+    const rows = FUNNEL_STATES.map((state) => ({ ...state, count: data?.[state.key] ?? 0 }));
+    const total = rows.reduce((sum, row) => sum + row.count, 0);
+    const synced = total - (data?.unsynced ?? 0);
+    return { rows, total, synced, segments: rows.filter((row) => row.count > 0) };
+  }, [metrics.feedback_funnel]);
 
   useEffect(() => {
     void loadOverview();
@@ -346,6 +386,82 @@ export function OverviewPage() {
                     <p className="text-sm text-text-secondary">
                       {t("pages.overview.matchTrend.empty")}
                     </p>
+                  )}
+                </div>
+              </article>
+
+              <article
+                data-testid="overview-funnel"
+                className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]"
+              >
+                <div className="border-b border-border pb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-semibold text-text-primary">
+                      {t("pages.overview.funnel.title")}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/submissions")}
+                      className="text-xs text-accent underline-offset-2 hover:underline"
+                    >
+                      {t("pages.overview.funnel.open")}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {t("pages.overview.funnel.subtitle")}
+                  </p>
+                </div>
+                <div className="pt-4">
+                  {funnel.total > 0 ? (
+                    <>
+                      <p className="text-sm text-text-secondary">
+                        {t("pages.overview.funnel.synced", {
+                          synced: funnel.synced,
+                          count: funnel.total,
+                        })}
+                      </p>
+                      <div
+                        className="mt-3 flex h-2.5 w-full gap-0.5 overflow-hidden rounded-chip bg-bg-primary"
+                        role="img"
+                        aria-label={t("pages.overview.funnel.barLabel")}
+                      >
+                        {funnel.segments.map((row) => (
+                          <div
+                            key={row.key}
+                            data-funnel-segment={row.key}
+                            className={`h-full rounded-sm ${row.bar}`}
+                            style={{ width: `${(row.count / funnel.total) * 100}%` }}
+                            title={`${t(`pages.overview.funnel.states.${row.key}`)} ${row.count}`}
+                          />
+                        ))}
+                      </div>
+                      <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                        {funnel.rows.map((row) => {
+                          const RowIcon = row.icon;
+                          return (
+                            <li
+                              key={row.key}
+                              data-funnel-row={row.key}
+                              className={`flex items-center justify-between gap-2 rounded-card border border-border px-3 py-2 text-sm ${
+                                row.count === 0 ? "opacity-50" : ""
+                              }`}
+                            >
+                              <span className="flex min-w-0 items-center gap-2 text-text-secondary">
+                                <RowIcon size={14} className={`shrink-0 ${row.text}`} aria-hidden="true" />
+                                <span className="truncate">
+                                  {t(`pages.overview.funnel.states.${row.key}`)}
+                                </span>
+                              </span>
+                              <span className="font-mono text-sm font-semibold text-text-primary">
+                                {row.count}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </>
+                  ) : (
+                    <p className="text-sm text-text-secondary">{t("pages.overview.funnel.empty")}</p>
                   )}
                 </div>
               </article>

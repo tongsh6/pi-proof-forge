@@ -2,6 +2,13 @@
 
 Last updated: 2026-10-11
 
+## 2026-10-11 P0-025 切片 2 收尾：总览投递进展卡片
+
+- 前端消费后端已有的 `overview.get.metrics.feedback_funnel`：总览右栏在匹配趋势与缺口待办之间新增“投递进展”卡，显示已同步/总数、按状态分段的部分-整体条（零值不画段）与 8 个状态行（图标 + 文字 + 计数，零值弱化），无受控投递时显示空态，入口直达投递记录。类型补 `OverviewFeedbackFunnel`，中英文词条补齐。按 dataviz 规范校验状态色：accent 与 accent-cyan 相邻不可辨（ΔE 6.7），故相邻阶段改用同色深浅并以图标和文字做辅助编码。
+- 先红后绿：新增 `tests/unit/gui/test_overview_feedback_funnel_ui.py`（分段顺序与宽度、计数行、入口导航、空态）；tests/unit/gui 69 项通过，tsc 通过。
+- 设计同步：DESIGN.md Overview 右栏补 Delivery Funnel 节；`.pen` Screen/Overview 右栏插入 `ovFunnel`（`KJlps`），三张右栏卡改为内容高度，Overview 画布增高到 1200 并把其后 8 个画面下移 300。
+- 范围内未做：沟通页招聘方回复的只读读取（切片 3）；`liepin_feedback_sync` 的外部真实 Tauri 页面验收证据仍待按矩阵 covers 整理。
+
 ## 2026-10-11 GUI 交互与布局优化第二批：投递记录页
 
 - 投递页按主任务重排：统计 → PDF 投递 → 尝试记录与运行详情 → 反馈迭代 → 通道会话 → Check Mode 演练（默认收起）。PDF 投递卡新增 8 步步骤条，按阶段推导当前步骤并只把当前步骤按钮标为主按钮，按钮启用逻辑不变。清除会话与两处重试接入确认框，会话清除/重试排队/反馈记录接成功通知；刷新保留内容；会话路径、反馈路径与详情日志路径折叠为“技术详情”；运行详情 sticky 并按 wide 断点降宽。中英文词条补齐。

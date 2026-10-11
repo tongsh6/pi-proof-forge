@@ -994,7 +994,6 @@
       "y": 820,
       "name": "Screen/Overview",
       "width": 1440,
-      "height": 900,
       "fill": "$bg-primary",
       "cornerRadius": 24,
       "stroke": "$border",
@@ -1013,7 +1012,6 @@
           "id": "4CrSQ",
           "name": "Overview Main",
           "width": "fill_container",
-          "height": "fill_container",
           "fill": "$bg-primary",
           "layout": "vertical",
           "gap": 24,
@@ -1166,7 +1164,6 @@
               "id": "fYPjE",
               "name": "ovColumns",
               "width": "fill_container",
-              "height": "fill_container",
               "gap": 20,
               "children": [
                 {
@@ -1174,7 +1171,6 @@
                   "id": "dV1Hc",
                   "name": "ovLeft",
                   "width": "fill_container",
-                  "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
                   "stroke": "$border-light",
@@ -1279,7 +1275,6 @@
                   "id": "1wqT5",
                   "name": "ovRight",
                   "width": 380,
-                  "height": "fill_container",
                   "layout": "vertical",
                   "gap": 20,
                   "children": [
@@ -1288,7 +1283,6 @@
                       "id": "eIBfX",
                       "name": "ovTrend",
                       "width": "fill_container",
-                      "height": 250,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
                       "stroke": "$border-light",
@@ -1411,10 +1405,636 @@
                     },
                     {
                       "type": "frame",
+                      "id": "KJlps",
+                      "name": "ovFunnel",
+                      "width": "fill_container",
+                      "fill": "$bg-panel",
+                      "cornerRadius": "$radius-lg",
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "layout": "vertical",
+                      "gap": 14,
+                      "padding": 20,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "uynZR",
+                          "name": "ovFunnelHead",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "QQVDK",
+                              "name": "ovFunnelTitle",
+                              "fill": "$text-primary",
+                              "content": "Delivery Funnel / 投递进展",
+                              "fontFamily": "Inter",
+                              "fontSize": 15,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZR7vl",
+                              "name": "ovFunnelLink",
+                              "fill": "$accent",
+                              "content": "Open / 查看",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "deaUs",
+                          "name": "ovFunnelSynced",
+                          "fill": "$text-secondary",
+                          "content": "16/16 synced with platform status / 已同步",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "NVYN5",
+                          "name": "ovFunnelBar",
+                          "clip": true,
+                          "width": "fill_container",
+                          "height": 10,
+                          "fill": "$bg-inset",
+                          "cornerRadius": 6,
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": 2,
+                              "id": "P1ZBZR",
+                              "name": "seg-delivered",
+                              "fill": "#1F6F96",
+                              "width": 43,
+                              "height": 10
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": 2,
+                              "id": "u4MLc",
+                              "name": "seg-viewed",
+                              "fill": "$accent",
+                              "width": 170,
+                              "height": 10
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": 2,
+                              "id": "bZ1no",
+                              "name": "seg-rejected",
+                              "fill": "$error",
+                              "width": 85,
+                              "height": 10
+                            },
+                            {
+                              "type": "rectangle",
+                              "cornerRadius": 2,
+                              "id": "ssLTv",
+                              "name": "seg-closed",
+                              "fill": "$warning",
+                              "width": 43,
+                              "height": 10
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "zU8T8",
+                          "name": "ovFunnelRows",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "q4DYD",
+                              "name": "ovFunnelLine1",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "SKTXT",
+                                  "name": "cell-Delivered / 已投递",
+                                  "width": "fill_container",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 8,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "R9tHnI",
+                                      "name": "cellLeft",
+                                      "gap": 6,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "icon",
+                                          "id": "P2c1W0",
+                                          "name": "cellIcon",
+                                          "width": 14,
+                                          "height": 14,
+                                          "icon": "send",
+                                          "library": "lucide",
+                                          "fill": "$accent"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "gQ1fJ",
+                                          "name": "cellLabel",
+                                          "fill": "$text-secondary",
+                                          "content": "Delivered / 已投递",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 11,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "YJS8N",
+                                      "name": "cellCount",
+                                      "fill": "$text-primary",
+                                      "content": "2",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "v2Tyx",
+                                  "name": "cell-Viewed / 已查看",
+                                  "width": "fill_container",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 8,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "xOwik",
+                                      "name": "cellLeft",
+                                      "gap": 6,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "icon",
+                                          "id": "Slac9",
+                                          "name": "cellIcon",
+                                          "width": 14,
+                                          "height": 14,
+                                          "icon": "eye",
+                                          "library": "lucide",
+                                          "fill": "$accent"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "c7uXB",
+                                          "name": "cellLabel",
+                                          "fill": "$text-secondary",
+                                          "content": "Viewed / 已查看",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 11,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "c6CzJ",
+                                      "name": "cellCount",
+                                      "fill": "$text-primary",
+                                      "content": "8",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "M71ID",
+                              "name": "ovFunnelLine2",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "AAE9K",
+                                  "name": "cell-Interested / 感兴趣",
+                                  "opacity": 0.55,
+                                  "width": "fill_container",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 8,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "XQFoX",
+                                      "name": "cellLeft",
+                                      "gap": 6,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "icon",
+                                          "id": "lHjA9",
+                                          "name": "cellIcon",
+                                          "width": 14,
+                                          "height": 14,
+                                          "icon": "thumbs-up",
+                                          "library": "lucide",
+                                          "fill": "$success"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "w2ll1",
+                                          "name": "cellLabel",
+                                          "fill": "$text-secondary",
+                                          "content": "Interested / 感兴趣",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 11,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "AbfzZ",
+                                      "name": "cellCount",
+                                      "fill": "$text-primary",
+                                      "content": "0",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "UN0GA",
+                                  "name": "cell-Interview / 面试邀约",
+                                  "opacity": 0.55,
+                                  "width": "fill_container",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 8,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "mS2ym",
+                                      "name": "cellLeft",
+                                      "gap": 6,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "icon",
+                                          "id": "nXU50",
+                                          "name": "cellIcon",
+                                          "width": 14,
+                                          "height": 14,
+                                          "icon": "calendar-check",
+                                          "library": "lucide",
+                                          "fill": "$success"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "xZZpv",
+                                          "name": "cellLabel",
+                                          "fill": "$text-secondary",
+                                          "content": "Interview / 面试邀约",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 11,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "v55nwZ",
+                                      "name": "cellCount",
+                                      "fill": "$text-primary",
+                                      "content": "0",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "linFq",
+                              "name": "ovFunnelLine3",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "xC9AM",
+                                  "name": "cell-Not suitable / 不合适",
+                                  "width": "fill_container",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 8,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "a4RDoU",
+                                      "name": "cellLeft",
+                                      "gap": 6,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "icon",
+                                          "id": "haPyq",
+                                          "name": "cellIcon",
+                                          "width": 14,
+                                          "height": 14,
+                                          "icon": "circle-x",
+                                          "library": "lucide",
+                                          "fill": "$error"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "wDSoj",
+                                          "name": "cellLabel",
+                                          "fill": "$text-secondary",
+                                          "content": "Not suitable / 不合适",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 11,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "tQSn6",
+                                      "name": "cellCount",
+                                      "fill": "$text-primary",
+                                      "content": "4",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "A7lTP",
+                                  "name": "cell-Hiring closed / 停止招聘",
+                                  "width": "fill_container",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 8,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "Ufdj6",
+                                      "name": "cellLeft",
+                                      "gap": 6,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "icon",
+                                          "id": "VogPk",
+                                          "name": "cellIcon",
+                                          "width": 14,
+                                          "height": 14,
+                                          "icon": "ban",
+                                          "library": "lucide",
+                                          "fill": "$warning"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "Dv676",
+                                          "name": "cellLabel",
+                                          "fill": "$text-secondary",
+                                          "content": "Hiring closed / 停止招聘",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 11,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "jt9UM",
+                                      "name": "cellCount",
+                                      "fill": "$text-primary",
+                                      "content": "2",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "kma3z",
+                              "name": "ovFunnelLine4",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "PIC0k",
+                                  "name": "cell-Unrecognized / 未识别",
+                                  "opacity": 0.55,
+                                  "width": "fill_container",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 8,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "jjbXu",
+                                      "name": "cellLeft",
+                                      "gap": 6,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "icon",
+                                          "id": "ZX9Oo",
+                                          "name": "cellIcon",
+                                          "width": 14,
+                                          "height": 14,
+                                          "icon": "info",
+                                          "library": "lucide",
+                                          "fill": "$text-muted"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "T6TNHi",
+                                          "name": "cellLabel",
+                                          "fill": "$text-secondary",
+                                          "content": "Unrecognized / 未识别",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 11,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "MNktb",
+                                      "name": "cellCount",
+                                      "fill": "$text-primary",
+                                      "content": "0",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "cZHVh",
+                                  "name": "cell-Not synced / 未同步",
+                                  "opacity": 0.55,
+                                  "width": "fill_container",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 8,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "qU2N7",
+                                      "name": "cellLeft",
+                                      "gap": 6,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "icon",
+                                          "id": "Lwjz9",
+                                          "name": "cellIcon",
+                                          "width": 14,
+                                          "height": 14,
+                                          "icon": "cloud-off",
+                                          "library": "lucide",
+                                          "fill": "$text-muted"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "rqgxL",
+                                          "name": "cellLabel",
+                                          "fill": "$text-secondary",
+                                          "content": "Not synced / 未同步",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 11,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "mzJnJ",
+                                      "name": "cellCount",
+                                      "fill": "$text-primary",
+                                      "content": "0",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
                       "id": "iRtVl",
                       "name": "ovGaps",
                       "width": "fill_container",
-                      "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
                       "stroke": "$border-light",
@@ -1529,7 +2149,7 @@
       "type": "frame",
       "id": "nX2o7",
       "x": 0,
-      "y": 1760,
+      "y": 2060,
       "name": "Screen/Resumes",
       "width": 1440,
       "height": 900,
@@ -2061,7 +2681,7 @@
       "type": "frame",
       "id": "JntHF",
       "x": 0,
-      "y": 2700,
+      "y": 3000,
       "name": "Screen/Evidence",
       "width": 1440,
       "height": 900,
@@ -2579,7 +3199,7 @@
       "type": "frame",
       "id": "FLWrf",
       "x": 0,
-      "y": 3640,
+      "y": 3940,
       "name": "Screen/Jobs",
       "width": 1440,
       "height": 1080,
@@ -3288,7 +3908,7 @@
       "type": "frame",
       "id": "ihiWw",
       "x": 0,
-      "y": 4760,
+      "y": 5060,
       "name": "Screen/Quick Run",
       "width": 1440,
       "height": 900,
@@ -3864,7 +4484,7 @@
       "type": "frame",
       "id": "ZSLCx",
       "x": 0,
-      "y": 5700,
+      "y": 6000,
       "name": "Screen/Agent Run",
       "width": 1440,
       "height": 900,
@@ -4719,7 +5339,7 @@
       "type": "frame",
       "id": "upl7d",
       "x": 0,
-      "y": 6640,
+      "y": 6940,
       "name": "Screen/Submissions",
       "width": 1440,
       "height": 900,
@@ -5669,7 +6289,7 @@
       "type": "frame",
       "id": "OGiSD",
       "x": 0,
-      "y": 7580,
+      "y": 7880,
       "name": "Screen/Policy",
       "width": 1440,
       "height": 900,
@@ -10347,7 +10967,7 @@
       "type": "frame",
       "id": "FWOoc",
       "x": 0,
-      "y": 8580,
+      "y": 8880,
       "name": "Screen/System Settings",
       "width": 1440,
       "height": 1160,

@@ -387,11 +387,24 @@ export interface LlmConnectionCheckResult extends RpcResultBase {
   models: string[];
 }
 
+/** 受控成功投递按最近一次平台进展归类的计数；unsynced 表示尚未同步过平台状态。 */
+export interface OverviewFeedbackFunnel {
+  delivered: number;
+  viewed: number;
+  interested: number;
+  interview: number;
+  rejected: number;
+  closed: number;
+  unknown: number;
+  unsynced: number;
+}
+
 export interface OverviewMetrics {
   evidence_count: number;
   matched_jobs_count: number;
   resume_count: number;
   submission_count: number;
+  feedback_funnel?: OverviewFeedbackFunnel;
 }
 
 export interface OverviewActivity {

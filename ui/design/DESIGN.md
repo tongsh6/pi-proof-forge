@@ -91,6 +91,7 @@ Dashboard + Chat 混合模式（方案 B+C）：
   - 左栏 (fill): Recent Activity / 最近活动 — 带图标的活动流列表（简历生成、投递、证据提取、Agent 运行）
   - 右栏 (380px):
     - Match Trend / 匹配趋势 — 折线图 + 渐变面积填充
+    - Delivery Funnel / 投递进展（2026-10-11，P0-025 切片 2）— 读取 `overview.get` 的 `metrics.feedback_funnel`：一条按状态分段的部分-整体条（已投递 → 已查看 → 感兴趣 → 面试邀约 → 不合适 → 停止招聘 → 未识别 → 未同步，段间 2px 间隙，零值不画段），下方两列状态行各带图标、文字与计数，零值行弱化；颜色只做辅助，相邻阶段用同色深浅区分；无受控投递时显示空态；入口“查看投递记录”进入 Submissions。Pen 节点 `ovFunnel`（`KJlps`），Overview 画布因此增高到 1200，右栏三卡改为内容高度。
     - Gaps / 缺口待办 — 红色计数徽标 + 警告项列表
 
 ### 2. Resumes / 简历中心
