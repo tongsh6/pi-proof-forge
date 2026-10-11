@@ -811,6 +811,20 @@
         "recoveryOnly": "This batch has stopped. This run is only for verifying saved attachments and receipts. Other unstarted candidates are retained for a later list after unresolved items are handled.",
         "receiptNotAvailable": "No saved business receipt confirms the result yet. This check did not send again."
       },
+      "platformFeedback": {
+        "sync": "Sync delivery feedback (read-only)",
+        "boundary": "Reads delivery progress from the application-records page inside the App's Liepin session; nothing is sent or clicked; unrecognized states stay \"unknown\".",
+        "summary": "Last sync: {{matched}}/{{total}} submissions matched a platform status, {{unmatched}} rows unmatched.",
+        "notFound": "Application-records page not found; candidate links were recorded and no status was written.",
+        "status": {
+          "delivered": "Delivered",
+          "viewed": "Viewed",
+          "interested": "Interested",
+          "interview": "Interview",
+          "rejected": "Not a fit",
+          "unknown": "Unknown"
+        }
+      },
       "nativeSession": {
         "title": "PDF application",
         "open": "Open sign-in in App",

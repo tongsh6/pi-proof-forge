@@ -37,6 +37,8 @@ def test_submissions_page_matches_product_log_contract():
         "pages.submissions.session.manualBoundary",
         "pages.submissions.checkMode.boundary",
         "pages.submissions.feedback.boundary",
+        "syncLiepinFeedback",
+        "pages.submissions.platformFeedback.boundary",
         "pages.submissions.timeline",
         "pages.submissions.screenshots.title",
     ):

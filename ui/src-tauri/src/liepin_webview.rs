@@ -505,6 +505,56 @@ pub async fn check_liepin_native_session(app: AppHandle, window: WebviewWindow) 
     check_liepin_native_session_inner(app,window).await
 }
 
+fn pick_records_link(discovery:&Value)->Option<Url>{
+    // 只跟随白名单域名下的非首页链接；发现结果是数据，不是指令。
+    discovery["links"].as_array()?.iter().filter_map(|link|link["url"].as_str()?.parse::<Url>().ok())
+        .find(|url|allowed_navigation(url) && !matches!(url.path(),""|"/"))
+}
+
+fn feedback_payload(observation:&Value)->Value{
+    // 观察信封里只取第一条 OBSERVE 的 JSON 载荷；缺失或解析失败一律视为未找到记录页。
+    let response=&observation["responses"][0];
+    let parsed=response["payload"].as_str().and_then(|raw|serde_json::from_str::<Value>(raw).ok()).unwrap_or(json!({}));
+    json!({"status":parsed["status"].as_str().unwrap_or("records_page_not_found"),"page_url":response["url"].as_str().unwrap_or(""),
+           "discovery":parsed["discovery"].clone(),"rows":parsed["rows"].clone()})
+}
+
+async fn navigate_and_settle(browser:&WebviewWindow,target:Url)->Result<(),String>{
+    if !allowed_navigation(&target){return Err("NATIVE_SESSION_PAGE_NOT_READY".into());}
+    browser.navigate(target).map_err(|_|"NATIVE_SESSION_PAGE_NOT_READY")?;
+    tauri::async_runtime::spawn_blocking(||std::thread::sleep(Duration::from_millis(3000))).await.map_err(|_|"NATIVE_SESSION_PAGE_NOT_READY")?;
+    Ok(())
+}
+
+async fn sync_liepin_feedback_inner(app:AppHandle,window:WebviewWindow)->Result<Value,String>{
+    // 只读同步：发现投递记录页、读取状态、交给后端匹配；不发送、不点击业务控件。
+    let checked=check_liepin_native_session_inner(app.clone(),window).await?;
+    if checked["status"]!="authenticated"{return Err("NATIVE_SESSION_LOGIN_REQUIRED".into());}
+    let packet=pdf_rpc(app.clone(),"submission.feedback.syncPacket",json!({})).await?;
+    let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+    let start:Url=packet["discovery"]["start_url"].as_str().unwrap_or("https://c.liepin.com/").parse().map_err(|_|"NATIVE_SESSION_PAGE_NOT_READY")?;
+    navigate_and_settle(&browser,start).await?;
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let discovery=run_pdf_script(&app,&browser,include_str!("liepin_native_feedback_discover.js"),&packet,&nonce).await?;
+    let mut observation=feedback_payload(&discovery);
+    if let Some(target)=pick_records_link(&observation["discovery"]){
+        navigate_and_settle(&browser,target).await?;
+        let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+        let records=run_pdf_script(&app,&browser,include_str!("liepin_native_feedback_records.js"),&packet,&nonce).await?;
+        let mut found=feedback_payload(&records);
+        found["discovery"]=observation["discovery"].clone();
+        observation=found;
+    }
+    pdf_rpc(app,"submission.feedback.recordPlatformStatus",json!({"observation":observation})).await
+}
+
+#[tauri::command]
+pub async fn sync_liepin_feedback(app:AppHandle,window:WebviewWindow)->Result<Value,String>{
+    require_local_command(&window)?;
+    let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    sync_liepin_feedback_inner(app,window).await
+}
+
 #[tauri::command]
 pub async fn inspect_liepin_native_attachments(app: AppHandle, window: WebviewWindow) -> Result<Value,String> {
     require_local_command(&window)?;
@@ -634,6 +684,19 @@ mod tests {
         ] {
             assert_eq!(observe(url, false, login, challenge).unwrap()["can_return_to_attachments"], false);
         }
+    }
+
+    #[test]
+    fn feedback_records_link_only_follows_allowed_non_root_pages() {
+        let discovery=json!({"links":[{"label":"首页","url":"https://c.liepin.com/"},{"label":"我的投递","url":"https://evil.example/apply"},{"label":"投递记录","url":"https://c.liepin.com/resume/apply-record?x=1"}]});
+        assert_eq!(pick_records_link(&discovery).unwrap().as_str(),"https://c.liepin.com/resume/apply-record?x=1");
+        assert!(pick_records_link(&json!({"links":[{"url":"https://c.liepin.com/"}]})).is_none());
+        let envelope=json!({"status":"unknown","filename":"feedback","hints":[],"responses":[{"method":"OBSERVE","url":"https://c.liepin.com/resume/apply-record","http_status":0,"payload":"{\"status\":\"records\",\"rows\":[{\"job_id\":\"1\"}],\"discovery\":{\"links\":[]}}"}]});
+        let payload=feedback_payload(&envelope);
+        assert_eq!(payload["status"],"records");
+        assert_eq!(payload["page_url"],"https://c.liepin.com/resume/apply-record");
+        assert_eq!(payload["rows"][0]["job_id"],"1");
+        assert_eq!(feedback_payload(&json!({"responses":[]}))["status"],"records_page_not_found");
     }
 
     #[test]

@@ -14,6 +14,7 @@ useEffect(fn,deps){const i=cursor++;if(!hooks[i]||!same(hooks[i].deps,deps)){hoo
 let params=new URLSearchParams({quick_run_id:'qr_linked'});const navigations=[];let nativeStatus='waiting_for_login'; const calls=[];const api={listSubmissions:async()=>({items:[]}),getChannelSession:async()=>({session:{login_status:'login_required',account_identity:{}},artifact_paths:{}}),
 openLiepinNativeSession:async()=>{calls.push('open');return{status:'opened'}},checkLiepinNativeSession:async()=>{calls.push('check');return{status:nativeStatus}}};
 api.inspectLiepinNativeAttachments=async()=>{calls.push('inspect');return{status:'authenticated',attachment_view:{inputs:[{accept:'.pdf'}],hints:['支持 PDF']}}};
+api.syncLiepinFeedback=async()=>{calls.push('sync-feedback');return{status:'records',page_url:'https://c.liepin.com/x',matched:[{submission_id:'s1',normalized_status:'viewed',status_label:'已查看',match_basis:'job_id'}],unmatched_rows:0,submissions_total:1,synced_at:'now'}};
 api.prepareLiepinPdf=async id=>{calls.push('prepare:'+id);return{run_id:'prepared',company:'公司',position:'岗位',phase:'prepared',pdf_sha256:'hash',account_effects_accepted:true}};
 api.previewDailyPdf=async id=>{calls.push('preview:'+id);return{pdf_base64:'JVBERi0=',pdf_sha256:'hash'}};
 api.uploadLiepinNativePdf=async(id,accept)=>{calls.push('upload:'+id+':'+accept);return{run_id:id,company:'公司',position:'岗位',phase:'uploaded_unverified',pdf_sha256:'hash'}};
@@ -38,6 +39,7 @@ await button('pages.submissions.nativeSession.check').props.onClick();await sett
 assert.deepEqual(calls,['open','check']);assert.ok(text(tree).includes('pages.submissions.nativeSession.status.waiting_for_login'));
 nativeStatus='authenticated';await button('pages.submissions.nativeSession.check').props.onClick();await settle();
 await button('pages.submissions.nativeSession.inspect').props.onClick();await settle();assert.deepEqual(calls,['open','check','check','inspect']);assert.ok(text(tree).includes('支持 PDF'));
+await button('pages.submissions.platformFeedback.sync').props.onClick();await settle();assert.ok(calls.includes('sync-feedback'),'只读同步走专用命令');assert.ok(text(tree).includes('pages.submissions.platformFeedback.summary'));
 const runInput=nodes(tree).find(n=>n.type==='input'&&n.props['aria-label']==='pages.submissions.nativePdf.quickRun');assert.ok(runInput);runInput.props.onChange({target:{value:'quick'}});await settle();
 await button('pages.submissions.nativePdf.prepare').props.onClick();await settle();assert.ok(button('pages.submissions.nativePdf.upload').props.disabled);assert.ok(button('pages.submissions.nativePdf.dailyCandidates'));await button('pages.submissions.nativePdf.dailyCandidates').props.onClick();assert.equal(navigations.at(-1),'/agent-run');
 assert.equal(nodes(tree).find(n=>n.type==='input'&&n.props['aria-label']==='pages.submissions.nativePdf.consent').props.checked,false);

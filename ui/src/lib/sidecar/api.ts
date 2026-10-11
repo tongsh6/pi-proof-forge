@@ -95,6 +95,10 @@ export async function checkLiepinNativeSession(): Promise<NativeLiepinObservatio
   return invoke("check_liepin_native_session");
 }
 
+export type FeedbackSyncResult = {meta: {correlation_id: string}; status: string; page_url: string; matched: Array<{submission_id: string; normalized_status: string; status_label: string; match_basis: string}>; unmatched_rows: number; submissions_total: number; synced_at: string};
+export async function syncLiepinFeedback(): Promise<FeedbackSyncResult> {
+  return invoke("sync_liepin_feedback");
+}
 export async function inspectLiepinNativeAttachments(): Promise<NativeLiepinObservation> {
   return invoke("inspect_liepin_native_attachments");
 }

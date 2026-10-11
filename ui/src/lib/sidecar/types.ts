@@ -545,6 +545,7 @@ export interface SubmissionListItem {
   };
   rate_limit_status: string;
   rate_limit_detail: string;
+  platform_feedback?: { status: string; label: string; observed_at: string; time_label: string };
 }
 
 export interface SubmissionListResult extends RpcResultBase {

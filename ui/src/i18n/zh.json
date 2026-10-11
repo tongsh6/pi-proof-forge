@@ -811,6 +811,20 @@
         "recoveryOnly": "本批次已停止，此运行仅供核验已保存附件与回执，不继续发送。未开始的其他候选仍保留，待未决项处理后按后续清单安排。",
         "receiptNotAvailable": "尚未保存可确认的业务回执，结果仍未确认；本次核验没有重新发送。"
       },
+      "platformFeedback": {
+        "sync": "同步投递反馈（只读）",
+        "boundary": "在 App 内猎聘会话中只读读取投递记录页的进展；不发送、不点击业务控件；未识别的状态保持“未识别”。",
+        "summary": "最近同步：{{matched}}/{{total}} 条投递匹配到平台状态，{{unmatched}} 行未匹配。",
+        "notFound": "未找到投递记录页，已记录候选链接，没有写入任何状态。",
+        "status": {
+          "delivered": "已投递",
+          "viewed": "已查看",
+          "interested": "感兴趣",
+          "interview": "面试邀约",
+          "rejected": "不合适",
+          "unknown": "未识别"
+        }
+      },
       "nativeSession": {
         "title": "PDF 投递",
         "open": "打开 App 内登录",

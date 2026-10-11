@@ -31,6 +31,7 @@ import {
   openLiepinNativeSession,
   checkLiepinNativeSession,
   inspectLiepinNativeAttachments,
+  syncLiepinFeedback,
   type NativeLiepinObservation,
   prepareLiepinPdf,
   previewDailyPdf,
@@ -43,6 +44,7 @@ import {
   removeLiepinNativePdfAttachment,
   recheckLiepinNativePdfRemoval,
   type NativePdfPreparation,
+  type FeedbackSyncResult,
 } from "@/lib/sidecar/api";
 import type { ChannelSessionResult, FeedbackIterationResult, FeedbackListResult, SubmissionCheckModeResult, SubmissionDetail, SubmissionListItem } from "@/lib/sidecar/types";
 
@@ -274,6 +276,7 @@ export function SubmissionsPage() {
     void loadChannelSession(selectedChannel);
   }, [loadChannelSession, selectedChannel]);
 
+  const [feedbackSync, setFeedbackSync] = useState<FeedbackSyncResult | undefined>();
   const handleNativeSession = useCallback(async (action: "open" | "check" | "inspect") => {
     setNativeSessionBusy(true);
     setNativeAttachmentView(undefined);
@@ -287,6 +290,14 @@ export function SubmissionsPage() {
       setNativeSessionBusy(false);
     }
   }, []);
+
+  const handleFeedbackSync = useCallback(async () => {
+    // 只读同步平台投递进展；失败原因原样显示，不伪造状态。
+    setNativeSessionBusy(true);setNativePdfError("");
+    try {const result=await syncLiepinFeedback();setFeedbackSync(result);await loadData();}
+    catch (error) {setNativePdfError(typeof error === "string" ? error : getErrorMessage(error));}
+    finally {setNativeSessionBusy(false);}
+  }, [loadData]);
 
   const handleNativePdf = useCallback(async (action: "preview" | "prepare" | "upload" | "inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send" | "receipt" | "remove" | "recheckRemoval") => {
     if (nativePdf?.recovery_only && ["upload","communicate","prepareResume","send","remove"].includes(action)) return;
@@ -511,10 +522,16 @@ export function SubmissionsPage() {
                   className="rounded-card border border-border px-3 py-2 text-sm text-text-primary disabled:opacity-50">{t("pages.submissions.nativeSession.check")}</button>
                 <button type="button" disabled={nativeSessionBusy || nativeSession !== "authenticated"} onClick={() => void handleNativeSession("inspect")}
                   className="rounded-card border border-border px-3 py-2 text-sm text-text-primary disabled:opacity-50">{t("pages.submissions.nativeSession.inspect")}</button>
+                <button type="button" disabled={nativeSessionBusy || nativeSession !== "authenticated"} onClick={() => void handleFeedbackSync()}
+                  className="rounded-card border border-border px-3 py-2 text-sm text-text-primary disabled:opacity-50">{t("pages.submissions.platformFeedback.sync")}</button>
               </div>
             </div>
             <p className="mt-2 text-sm text-text-secondary">{t("pages.submissions.nativeSession.boundary")}</p>
             <p className="mt-2 text-sm text-text-primary" role="status">{t(`pages.submissions.nativeSession.status.${nativeSession}`, {defaultValue:t("pages.submissions.nativeSession.status.unavailable")})}</p>
+            <p className="mt-2 text-xs text-text-secondary">{t("pages.submissions.platformFeedback.boundary")}</p>
+            {feedbackSync && <p role="status" className="mt-2 text-sm text-text-primary">{feedbackSync.status === "records"
+              ? t("pages.submissions.platformFeedback.summary", {matched: feedbackSync.matched.length, total: feedbackSync.submissions_total, unmatched: feedbackSync.unmatched_rows})
+              : t("pages.submissions.platformFeedback.notFound")}</p>}
             {nativeAttachmentView && <div className="mt-3 text-sm text-text-secondary">
               <p>{t("pages.submissions.nativeSession.attachmentInputs", {count:nativeAttachmentView.inputs.length})}</p>
               {nativeAttachmentView.inputs.map((input, i) => <p key={`input-${i}`}>{input.accept || t("pages.submissions.nativeSession.acceptUnknown")}</p>)}
@@ -786,6 +803,7 @@ export function SubmissionsPage() {
                         <span className={`rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(item.status)}`}>
                           {submissionStatusLabel(item.status, t)}
                         </span>
+                        {item.platform_feedback?.status && <p className="mt-1 truncate text-xs text-text-secondary">{t(`pages.submissions.platformFeedback.status.${item.platform_feedback.status}`, {defaultValue: item.platform_feedback.status})}{item.platform_feedback.time_label ? ` · ${item.platform_feedback.time_label}` : ""}</p>}
                       </div>
                       <div className="flex justify-end gap-2">
                         <button className="grid h-9 w-9 place-items-center rounded-card border border-border text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={detailState === "loading" && selectedId === item.submission_id} onClick={() => void handleSelect(item.submission_id)} title={t("pages.submissions.details")} type="button" aria-label={t("pages.submissions.details")}>

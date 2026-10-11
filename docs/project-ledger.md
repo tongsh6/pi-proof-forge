@@ -2,6 +2,15 @@
 
 Last updated: 2026-10-11
 
+## 2026-10-11 P0-025 猎聘投递反馈回流首片：只读同步已实现，待真实页面首次运行
+
+- 用户决定先深化 App 与猎聘渠道并选择投递反馈回流。探索确认：官方 14 个工具没有投递进展查询（官网称进展经 App 消息与短信触达），反馈只能由 App 自有已登录会话只读读取页面；App 现有反馈迭代机制来源仅本地评测与手动记录；16 笔受控投递均可由线索文件取得岗位编号与链接。设计见 AIEF/docs/plans/2026-10-11-liepin-feedback-sync.md；矩阵新增 liepin_feedback_sync 为唯一 next，S7 脉脉回到 not_started，路线图同步。
+- 后端：新模块 tools/sidecar/handlers/platform_feedback.py 提供 submission.feedback.syncPacket 与 submission.feedback.recordPlatformStatus：观察脱敏限长后按岗位编号匹配（无编号时公司+岗位唯一精确匹配），状态按关键词归一化为 delivered/viewed/interested/interview/rejected，其余保持 unknown；只追加各记录的 platform_feedback.json 历史与 liepin/platform_feedback_sync.json 同步日志，回执、日志、快照不变；找不到记录页记 records_page_not_found 与脱敏候选链接。反馈项新增 platform_delivery_status 来源与动作建议（不合适→调整岗位，已查看超 7 天→补证据），列表项带平台进展摘要，总览 metrics 增加 feedback_funnel。先红后绿 6 项单测。
+- Rust 与脚本：sync_liepin_feedback 命令复用会话检查、导航白名单、观察回传与操作互斥，先在用户中心发现文本含"投递"的站内链接，再导航到白名单内的非首页链接读取记录；两段脚本只读 DOM，按岗位链接定位卡片提取状态词与时间，不点击任何控件；载荷受原信封 12KB/65KB 限制。新增 1 项 Rust 单测。
+- 前端：投递页登录区新增"同步投递反馈（只读）"按钮、边界说明与同步摘要，列表状态列下显示平台进展徽标与时间；中英文案同步；界面契约与会话回归断言补充。
+- 验证：tests/unit 与 tests/acceptance 共 1081 项通过、1 项可选跳过；Rust 19 项通过；前端构建、v2 约束、路线图检查、AIEF L3 通过。OpenSpec 与 DESIGN 已同步；画布 .pen 因 Pencil 应用未连接本次未同步，待补。
+- 未完成：投递记录页的真实结构尚未观察，首次真实同步由用户在 App 内点击执行；匹配与状态映射按真实观察再收紧；总览漏斗视觉与沟通页回复读取留到后续切片。本轮无平台写入。App 重启以加载新后端与命令。
+
 ## 2026-10-11 平台官方渠道复核：BOSS/智联/51job 在线只读改人工导入，S7 脉脉成为唯一 next
 
 - 用户在 P0-019 开工前要求先核查 BOSS 直聘官方接入渠道，随后扩展到智联与 51job。先探索仓库：BOSS 适配器 tools/infra/discovery/boss_agent_cli.py 为旧命令形态骨架，本机未安装社区 CLI；从固定提交核对了 2.0.0 的真实契约（全局 `--platform --json`、位置参数搜索、`detail <security_id> --job-id`、统一 JSON 信封、岗位对象无 URL）。用户曾同意装进项目 .venv 并先做离线切片，核查结果出来后改变决定；本轮没有安装、没有改代码。

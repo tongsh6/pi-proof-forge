@@ -131,6 +131,9 @@ def _create_router() -> Router:
     router.register("submission.checkMode.start", handle_submission_check_mode)
     router.register("submission.feedback.list", handle_feedback_list)
     router.register("submission.feedback.createIteration", handle_feedback_create_iteration)
+    from tools.sidecar.handlers.platform_feedback import handle_sync_packet, handle_record_platform_status
+    router.register("submission.feedback.syncPacket", handle_sync_packet)
+    router.register("submission.feedback.recordPlatformStatus", handle_record_platform_status)
     router.register("settings.get", handle_settings_get)
     router.register("settings.liepinCredential", handle_settings_liepin_credential)
     router.register("settings.liepinResume", handle_settings_liepin_resume)

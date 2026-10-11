@@ -24,6 +24,7 @@ _ALLOWED_FEEDBACK_SOURCES = {
     "submission_check_mode_terminal_status",
     "target_recovery_result",
     "resume_target_mismatch_warning",
+    "platform_delivery_status",
 }
 _ALLOWED_ITERATION_ACTIONS = {
     "add_or_edit_evidence_card",
@@ -70,6 +71,12 @@ def _build_submission_check_id() -> str:
 def _build_feedback_iteration_id() -> str:
     now = datetime.now(timezone.utc)
     return f"fi_{now.strftime('%Y%m%d%H%M%S%f')}"
+
+
+def _platform_feedback_summary(submission_dir: Path) -> dict[str, str]:
+    # 延迟导入避免循环；平台进展只读，不参与回执核验。
+    from tools.sidecar.handlers.platform_feedback import platform_feedback_summary
+    return platform_feedback_summary(submission_dir)
 
 
 def _submission_log_paths() -> list[Path]:
@@ -610,6 +617,14 @@ def _feedback_items_from_submission_log(
                 recommended_next_action=action,
             )
         )
+    platform_feedback = _platform_feedback_summary(log_path.parent) if _managed_delivery(payload) else {}
+    if platform_feedback:
+        from tools.sidecar.handlers.platform_feedback import recommended_action
+        action, severity = recommended_action(platform_feedback)
+        items.append(_feedback_item(source_type="platform_delivery_status", source_run_id=source_run_id,
+            source_artifact_path_or_id=str(log_path.parent / "platform_feedback.json"),
+            summary=f"{platform_feedback['label'] or platform_feedback['status']} ({platform_feedback['status']})",
+            severity_or_priority=severity, recommended_next_action=action))
     recovery_attempts = payload.get("target_recovery_attempts")
     if isinstance(recovery_attempts, list) and recovery_attempts:
         items.append(
@@ -864,6 +879,7 @@ def _submission_item(path: Path) -> dict[str, Any]:
         "last_step": _last_step(payload),
         "rate_limit_status": rate_limit["status"],
         "rate_limit_detail": rate_limit["detail"],
+        "platform_feedback": _platform_feedback_summary(path.parent) if _managed_delivery(payload) else {},
     }
 
 

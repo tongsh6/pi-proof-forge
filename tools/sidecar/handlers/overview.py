@@ -243,6 +243,11 @@ def _list_recent_activity() -> list[dict[str, str]]:
     ]
 
 
+def _feedback_funnel() -> dict[str, int]:
+    from tools.sidecar.handlers.platform_feedback import feedback_funnel
+    return feedback_funnel()
+
+
 def handle_overview_get(params: dict[str, object]) -> dict[str, object]:
     meta = cast(dict[str, str], params["meta"])
     correlation_id = meta["correlation_id"]
@@ -253,6 +258,7 @@ def handle_overview_get(params: dict[str, object]) -> dict[str, object]:
             "matched_jobs_count": _count_matched_job_profiles(),
             "resume_count": _count_resume_versions(),
             "submission_count": _count_submission_runs(),
+            "feedback_funnel": _feedback_funnel(),
         },
         "recent_activities": _list_recent_activity(),
         "match_trend": _build_match_trend(),
