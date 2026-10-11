@@ -51,7 +51,8 @@ def _canonical_url(value: object) -> str | None:
             or parts.username is not None or parts.password is not None
             or parts.netloc.lower() not in {"www.liepin.com", "www.liepin.com:443"}
             or parts.port not in (None, 443)
-            or not re.fullmatch(r"/job/[0-9]+\.shtml", parts.path)
+            # 企业岗位在 /job/<显示ID>.shtml，猎头岗位（jobType=1）在 /a/<ID>.shtml；两者页面结构一致。
+            or not re.fullmatch(r"/(?:job|a)/[0-9]+\.shtml", parts.path)
         ):
             return None
         # 跟踪 query 和 fragment 不参与岗位定位，也不向外发送。
@@ -169,9 +170,16 @@ def _postings(scripts: list[str]) -> list[dict]:
     return postings
 
 
+_SUBSTANTIVE_BODY_CHARS = 200
+
+
 def _complete_body(text: str) -> bool:
     if any(word in text for word in ("登录后查看", "展开全文", "展开全部", "查看完整职位描述", "查看更多")):
         return False
+    # 2026-10-12 修订：真实 JD 常用“工作内容 / 我们期待你 / Job Responsibilities”等自定标题，
+    # 无截断提示且压缩后正文足量即视为完整；短正文仍须同时具备职责与要求两类实质章节。
+    if len(re.sub(r"\s", "", text)) >= _SUBSTANTIVE_BODY_CHARS:
+        return True
     headings = list(re.finditer(r"(?m)^(?:(?P<duties>(?:岗位|工作|职位)?职责|职位描述(?=[：:\s]|$))|(?:任职|职位|岗位|工作)要求)[：:]?", text))
     kinds = {"职责" if match.group("duties") else "要求" for match in headings}
     if kinds != {"职责", "要求"} or len(re.sub(r"\s", "", text)) < 80:
@@ -196,7 +204,12 @@ def _fetch_html(source_url: str) -> str:
                 charset = response.headers.get_content_charset() or "utf-8"
                 content = response.read(_MAX_RESPONSE_BYTES + 1)
     except HTTPError as exc:
-        failure = "SECURITY_CHALLENGE" if exc.code in (403, 429) else "NETWORK_ERROR" if exc.code >= 500 else "JOB_DETAIL_UNAVAILABLE"
+        # 猎聘对 IP/UA 频次触发时 302 到 safe.liepin.com 的人机验证分发页；如实报告验证挑战，不跟随、不绕过。
+        location = str(exc.headers.get("Location") or "") if exc.headers is not None else ""
+        if 300 <= exc.code < 400 and (urlsplit(location).hostname == "safe.liepin.com" or "captcha" in location.lower()):
+            failure = "SECURITY_CHALLENGE"
+        else:
+            failure = "SECURITY_CHALLENGE" if exc.code in (403, 429) else "NETWORK_ERROR" if exc.code >= 500 else "JOB_DETAIL_UNAVAILABLE"
         exc.close()
     except (URLError, TimeoutError, OSError, HTTPException):
         failure = "NETWORK_ERROR"

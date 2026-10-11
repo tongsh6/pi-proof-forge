@@ -1,8 +1,8 @@
-version: "2026-10-11"
+version: "2026-10-12"
 mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
-current_focus: "maimai_source_integration"
+current_focus: "small_company_high_match_delivery"
 
 vision_alignment:
   source: "PLAN.md"
@@ -722,7 +722,7 @@ steps:
       - url_rule_or_manual_import_does_not_satisfy_online_acceptance
   - id: maimai_source_integration
     order: 23
-    status: next
+    status: not_started
     journey_stage: jobs
     owner_surface: ui/src/pages/jobs/index.tsx
     user_goal: 完成脉脉真实职位链接和完整JD导入，接通审核、匹配、定制简历版本关联及标明人工来源的结果追踪。
@@ -829,3 +829,33 @@ steps:
       - unknown_or_unmatched_rows_stay_unknown_and_receipts_unchanged
       - feedback_items_and_overview_funnel_consume_platform_status
       - records_page_discovery_failure_reported_without_fabrication
+
+  # 2026-10-12：用户决定其他平台（BOSS/智联/51job/脉脉/拉勾）暂不接入，先深化 App 能力；投递实验改为“JD 高匹配 + 微小公司”的猎聘岗位，磨练面试。
+  - id: small_company_high_match_delivery
+    order: 27
+    status: next
+    journey_stage: agent_run
+    owner_surface: ui/src/pages/jobs/index.tsx
+    user_goal: 在 App 内按官方公司规模筛出上海 100 人以下且 JD 高匹配的猎聘岗位，完成完整 JD 读取、画像审核、匹配/简历/Scorecard，由用户授权投递并追踪面试反馈，用小公司演练为大公司求职做准备。
+    vision_link: 用真实高匹配岗位检验“证据卡 → 可解释匹配 → 保真简历 → Scorecard 反驱 → 投递反馈”闭环的生成质量，而不是低匹配批次。
+    design_refs:
+    - PLAN.md
+    - openspec/specs/pi-proof-forge-core.md
+    - ui/design/DESIGN.md
+    - docs/execution-roadmap.md
+    depends_on:
+    - daily_authorized_delivery
+    - liepin_feedback_sync
+    acceptance:
+      script: 外部真实 Tauri 页面自动化：small_company_high_match_delivery（待实现）
+      depth: deep_required
+      evidence:
+      - tests/unit/sidecar/test_liepin_readonly_handlers.py
+      - tests/unit/infra/test_liepin_job_detail.py
+      - tests/unit/infra/test_job_lead_binding_url.py
+      covers:
+      - official_company_facts_persisted_and_size_filter_in_app
+      - headhunter_detail_and_freeform_complete_jd_read_with_identity_rules
+      - high_match_small_company_shortlist_with_matching_resume_and_scorecard
+      - user_authorized_delivery_and_interview_feedback_tracking
+      - captcha_dispatch_reported_not_bypassed_and_no_platform_write_without_approval

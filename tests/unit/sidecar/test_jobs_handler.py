@@ -1052,3 +1052,39 @@ class ManualImportSourceContractTests(unittest.TestCase):
                             "save_mode": "complete",
                         }
                     )
+
+
+class LeadCompanySizeFilterTests(unittest.TestCase):
+    """公司规模按平台文案解析上界；筛选只保留有明确上界且不超过阈值的线索。"""
+
+    def _lead(self, size: str, location: str = "上海") -> dict[str, Any]:
+        return {"job_lead_id": f"jl_{size}", "company": "C", "position": "P", "salary": "", "location": location,
+                "source": "liepin_official", "status": "new", "favorited": False, "created_at": "", "updated_at": "",
+                "url": "", "platform": "liepin", "platform_job_id": "1", "platform_job_type": "2", "jd_status": "",
+                "fetched_at": "", "company_size": size}
+
+    def test_upper_bound_parsing(self) -> None:
+        from tools.sidecar.handlers.jobs import _company_size_upper_bound
+
+        self.assertEqual(_company_size_upper_bound("1-49人"), 49)
+        self.assertEqual(_company_size_upper_bound("50-99人"), 99)
+        self.assertEqual(_company_size_upper_bound("100-499人"), 499)
+        self.assertEqual(_company_size_upper_bound("少于50人"), 49)
+        self.assertEqual(_company_size_upper_bound("50人以下"), 50)
+        self.assertIsNone(_company_size_upper_bound("10000人以上"))
+        self.assertIsNone(_company_size_upper_bound(""))
+        self.assertIsNone(_company_size_upper_bound("保密"))
+
+    def test_filter_by_company_size_max_and_location_query(self) -> None:
+        from tools.sidecar.handlers.jobs import _apply_lead_filters
+
+        items = cast(list[Any], [self._lead("1-49人"), self._lead("50-99人", "北京"), self._lead("100-499人"),
+                                 self._lead("10000人以上"), self._lead("")])
+        kept = _apply_lead_filters(items, {"company_size_max": 99})
+        self.assertEqual([item["company_size"] for item in kept], ["1-49人", "50-99人"])
+        self.assertEqual([item["company_size"] for item in _apply_lead_filters(items, {"company_size_max": 499})],
+                         ["1-49人", "50-99人", "100-499人"])
+        self.assertEqual(len(_apply_lead_filters(items, {"company_size_max": "bad"})), 5)
+        self.assertEqual(len(_apply_lead_filters(items, {"company_size_max": None})), 5)
+        self.assertEqual([item["location"] for item in _apply_lead_filters(items, {"company_size_max": 99, "query": "上海"})],
+                         ["上海"])

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.infra.llm.client import LLMClient
+from tools.infra.llm.client import LLMClient, llm_timeout_from_env
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 
@@ -347,7 +347,7 @@ def _legacy_main() -> int:
                         )
                     }, ensure_ascii=False))
                     prompt = prompt.replace("<POSITIONING>", str(args.custom_positioning or args.resume_positioning))
-                    client = LLMClient(base_url=base_url, api_key=api_key, timeout=120)
+                    client = LLMClient(base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env())
                     response = client.post_json(client.chat_completions_url, {
                         "model": model, "temperature": 0,
                         "messages": [{"role": "user", "content": prompt}],

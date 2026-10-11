@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 from tools.domain.result import Err
 from tools.domain.value_objects import Candidate
-from tools.infra.llm.client import LLMClient
+from tools.infra.llm.client import LLMClient, llm_timeout_from_env
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.policy.audit import write_exclusion_audit
 from tools.policy.exclusions import (
@@ -362,7 +362,7 @@ def _legacy_main() -> int:
                 ],
                 "temperature": 0,
             }
-            client = LLMClient(base_url=base_url, api_key=api_key, timeout=120)
+            client = LLMClient(base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env())
             response = client.post_json(client.chat_completions_url, payload)
             content = client.extract_content(response)
             if content:

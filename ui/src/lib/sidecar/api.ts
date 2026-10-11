@@ -364,6 +364,7 @@ export async function listJobLeads(
     status: null,
     favorited: null,
     query: "",
+    company_size_max: null,
   },
   options: { cursor?: string | null; pageSize?: number } = {}
 ): Promise<JobLeadsListResult> {

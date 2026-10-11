@@ -40,6 +40,8 @@ const leads = ['a', 'b'].map(id => ({ job_lead_id: `lead-${id}`, job_profile_id:
 const calls = [];
 leads[0].salary = '40-70k·15薪';
 leads[0].location = '上海-浦东新区';
+leads[0].company_size = '1-49人';
+leads[0].financing_stage = '天使轮融资';
 let failDetail = false, failPrepare = false;
 const navigations = [];
 leads[0].source = 'liepin_official'; leads[0].jd_status = 'complete_reviewed';
@@ -92,6 +94,10 @@ async function click(label) { const node = button(label); assert.ok(node, `Missi
   assert.ok(button('pages.jobs.actions.generateResume'),'完整JD需有原生成入口');assert.ok(button('pages.jobs.actions.generateResume').props.disabled,'草稿不得生成定制版');
   profiles[0].status='active';profiles[0].source_jd='已审核完整JD';render();await settle();await click('pages.jobs.actions.generateResume');assert.equal(navigations.pop(),'/quick-run?job_profile_id=profile-a');
   await click('pages.jobs.tabs.leads');
+  assert.ok(text(tree).includes('1-49人 · 天使轮融资'), '线索行显示官方公司规模与融资阶段');
+  const sizeFilter = nodes(tree).find(node => node.props?.['data-testid'] === 'lead-size-filter');
+  assert.ok(sizeFilter, '线索筛选区提供公司规模下拉');
+  assert.deepEqual(nodes(sizeFilter).filter(node => node.type === 'option').map(node => node.props.value), ['', '99', '499'], '规模档位：不限 / 100 人以下 / 500 人以下');
   assert.ok(text(tree).includes('40-70k·15薪'), '展示官方薪资原文');
   assert.ok(text(tree).includes('上海-浦东新区'), '展示官方地区原文');
   assert.ok(text(tree).includes('pages.jobs.leads.notProvided'), '未知待遇地区不推断');

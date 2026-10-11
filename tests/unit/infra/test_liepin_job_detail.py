@@ -264,3 +264,62 @@ def test_verified_description_heading_is_a_duties_section(transport,heading):
 def test_description_alias_does_not_relax_required_sections(transport,body):
     respond,_=transport;respond(page(description=body))
     assert_error(lambda:detail.fetch_liepin_job_detail(URL,RAW_ID),'JOB_DETAIL_UNAVAILABLE')
+
+
+HEADHUNTER_URL = "https://www.liepin.com/a/79859227.shtml"
+FREEFORM_JD = (
+    "工作内容\n"
+    "1. 负责公司 ERP 及业务系统的前后端开发与交付，独立完成中小需求的端到端落地，覆盖需求理解、方案设计、编码、联调与上线；\n"
+    "2. 主导系统技术方案的设计与评审，统一系统架构、数据模型与接口规范，把控代码质量与技术风险；\n"
+    "3. 制定开发规范与交付流程，承担团队技术把关（架构评审、技术选型、代码评审）。\n"
+    "我们期待你\n"
+    "- 5 年以上 Java 后端经验，熟悉 Spring Boot、MySQL、Redis 与消息队列；\n"
+    "- 有从 0 到 1 搭建业务系统并长期维护的经历，能独立对接业务方。"
+)
+
+
+def test_headhunter_posting_url_is_read_with_same_identity_rules(transport):
+    """猎头岗位（jobType=1）的公开详情在 /a/<id>.shtml，结构与企业岗位一致，按同样身份规则读取。"""
+    respond, requests = transport
+    respond(page(canonical=HEADHUNTER_URL, identifier="79859227"))
+    result = detail.fetch_liepin_job_detail(HEADHUNTER_URL + "?mscid=soai_pc_001", "79859227")
+    assert result["jd_text"] == JD
+    assert result["source_url"] == HEADHUNTER_URL
+    assert requests[0].full_url == HEADHUNTER_URL
+
+
+def test_headhunter_url_cannot_claim_company_posting_identity(transport):
+    respond, _ = transport
+    respond(page(canonical=URL, identifier=RAW_ID))
+    assert_error(lambda: detail.fetch_liepin_job_detail(HEADHUNTER_URL, RAW_ID), "JOB_ID_MISMATCH")
+
+
+def test_substantive_body_without_standard_headings_is_complete(transport):
+    """真实 JD 常用“工作内容 / 我们期待你 / Job Responsibilities”等标题，足量且无截断提示即为完整。"""
+    respond, _ = transport
+    respond(page(description=FREEFORM_JD))
+    assert detail.fetch_liepin_job_detail(URL, RAW_ID)["jd_text"] == FREEFORM_JD
+
+
+@pytest.mark.parametrize("description", [
+    "会后端开会，项目0-1，可居家办公，",
+    "岗位介绍：" + "负责公司核心业务系统的研发工作，" * 6,
+    FREEFORM_JD + "\n展开全文",
+    FREEFORM_JD + "\n登录后查看完整职位描述",
+])
+def test_short_or_truncated_freeform_body_stays_blocked(transport, description):
+    respond, _ = transport
+    respond(page(description=description))
+    assert_error(lambda: detail.fetch_liepin_job_detail(URL, RAW_ID), "JOB_DETAIL_UNAVAILABLE")
+
+
+@pytest.mark.parametrize("location", [
+    "https://safe.liepin.com/intercept/ip/captcha/dispatch?sourceUrl=aHR0cHM6Ly9leGFtcGxl&__xxx=" + SENSITIVE,
+    "https://www.liepin.com/captcha/verify?from=" + SENSITIVE,
+])
+def test_captcha_dispatch_redirect_is_reported_as_security_challenge(transport, location):
+    """频次拦截时平台 302 到人机验证分发页：如实报告验证挑战，仍只发一次请求、不跟随。"""
+    respond, requests = transport
+    respond(status=302, headers={"Location": location})
+    assert_error(lambda: detail.fetch_liepin_job_detail(URL, RAW_ID), "SECURITY_CHALLENGE")
+    assert len(requests) == 1

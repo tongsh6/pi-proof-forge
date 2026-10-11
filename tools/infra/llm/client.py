@@ -6,6 +6,18 @@ from urllib import request
 from http.client import HTTPResponse
 
 
+def llm_timeout_from_env(default: int = 120) -> int:
+    """管线子进程从 `LLM_TIMEOUT`（App 系统设置的超时秒数，由 sidecar 注入）读取；缺失或非法时回退默认值。"""
+    import os
+
+    raw = os.getenv("LLM_TIMEOUT", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 class LLMClient:
     def __init__(
         self, base_url: str, api_key: str, timeout: int = 120, *, provider: str = ""

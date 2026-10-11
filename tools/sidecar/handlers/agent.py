@@ -573,12 +573,13 @@ def _load_evidence_traces(evidence_artifact: str) -> list[dict[str, Any]]:
 
 
 def _parse_matching_lists(matching_path: Path) -> dict[str, list[str]]:
+    # 匹配阶段失败时报告文件不存在；结果解析必须仍能给出失败原因，而不是 KeyError。
     if not matching_path.exists():
-        return {}
+        return {"gaps": [], "gap_tasks": []}
     try:
         doc = parse_simple_yaml(matching_path.read_text(encoding="utf-8"))
     except OSError:
-        return {}
+        return {"gaps": [], "gap_tasks": []}
     return {
         "gaps": [str(item) for item in doc["lists"].get("gaps", [])],
         "gap_tasks": [str(item) for item in doc["lists"].get("gap_tasks", [])],
@@ -796,7 +797,7 @@ def _quick_run_result_details(
             pass
     advisory_messages = {"保持当前证据完整度，按新 JD 微调关键词", "暂无高优先级补证据任务。"}
     pending_gaps = list(dict.fromkeys(
-        task for task in [*matching_lists["gap_tasks"], *evaluation_gaps]
+        task for task in [*matching_lists.get("gap_tasks", []), *evaluation_gaps]
         if task not in advisory_messages
     ))
     if not resume_traceable:
@@ -829,8 +830,8 @@ def _quick_run_result_details(
         "reason": reason if isinstance(reason, str) else "",
         "score_total": score_total,
         "score_breakdown": score_breakdown,
-        "gaps": matching_lists["gaps"],
-        "gap_tasks": matching_lists["gap_tasks"],
+        "gaps": matching_lists.get("gaps", []),
+        "gap_tasks": matching_lists.get("gap_tasks", []),
         "resume_positioning": resume_positioning or {},
         "resume_pdf": pdf_artifact,
         "pdf_export_error": pdf_export_error,
@@ -882,6 +883,8 @@ def _persisted_llm_runtime_context() -> tuple[dict[str, Any], dict[str, str]]:
     api_key_for_request = clean_str(config.get("api_key_for_request"))
     if api_key_for_request:
         env["LLM_API_KEY"] = api_key_for_request
+    # 系统设置里的超时同样作用于管线各 LLM 阶段；本地大模型通常需要远大于 120 秒。
+    env["LLM_TIMEOUT"] = str(summary["timeout"])
     return summary, env
 
 

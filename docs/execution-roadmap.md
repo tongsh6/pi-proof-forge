@@ -43,7 +43,9 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 ## Current Focus
 
-`maimai_source_integration`
+`small_company_high_match_delivery`
+
+2026-10-12 主线调整与投递实验转向：用户决定 BOSS / 智联 / 51job / 脉脉 / 拉勾因没有可操作的官方 API 或 CLI 暂不接入，先深化 App 自身能力；投递实验不再使用低匹配 JD，改用“JD 高匹配 + 微小公司”的猎聘岗位磨练面试（当前阶段以微小公司投递为主，大公司为后续目标）。为此落地：官方搜索返回的公司规模 / 融资阶段 / 行业 / 经验 / 学历透传到线索与画像，线索列表新增“公司规模”筛选（100 / 500 人以下）且关键词兼容工作地区；完整 JD 读取接受猎头岗位 `/a/<id>.shtml` 并放宽为“无截断提示且正文 ≥ 200 字即完整”；人机验证分发页重定向如实报告为安全挑战。真实数据：10 组关键词检索新增 243 条线索，上海 100 人以下 14 条，入围 7 条中 4 条取得完整 JD（两条猎头岗、两条企业岗），由本地 Qwen 解析并按实验授权保存为完整画像；其余因平台对脚本 UA 的人机验证拦截保持阻断，不绕过。P0-022 `maimai_source_integration` 回到 `not_started`；新增 P0-026 `small_company_high_match_delivery` 为唯一 `next`。下一验收项：`外部真实 Tauri 页面自动化：small_company_high_match_delivery（待实现）`。
 
 2026-10-11 P0-022 首片实施：按《人工导入来源契约》（核心规范新增节）落地：来源链接按域名识别平台（maimai / lagou / boss / zhilian / qiancheng / liepin / other），人工导入平台在完整保存时只做 HTTPS 语法校验、不向平台发请求，画像与线索记录 `platform`、`import_mode: manual`、`source_recorded_at`，岗位页标明“人工导入 · 平台”；新增 `submission.recordManual` 手动投递记录（通道为平台码、`transport/mode: manual`、`status: manual_recorded`、`receipt_source: manual_tracking`，不可重试、可关联反馈），画像详情提供回填表单，投递列表通道显示平台中文名。L1 场景脚本 `tests/acceptance/test_scenario_maimai_source_import.py` 覆盖矩阵五项 covers 并写出旅程报告。状态仍为 `next`：深度验收需用户提供一条真实脉脉职位链接与完整 JD，在真实 Tauri 页面走通导入、生成与手动记录。
 

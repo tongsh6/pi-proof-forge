@@ -250,3 +250,43 @@ def test_malformed_job_fields_revoke_readiness_without_partial_import(official_c
     assert result["code"] == "INVALID_RESPONSE"
     assert result["auth"]["state"] == "error"
     assert list(tmp.iterdir()) == []
+
+
+def test_search_keeps_company_facts_for_small_company_screening(official_client):
+    """官方搜索返回的公司规模/融资阶段/行业必须落到线索与画像，供“微小公司”筛选使用。"""
+    fake, _, tmp = official_client
+    fake.items = [{"jobId": "654321", "jobType": "2", "jobName": "Java 技术负责人", "company": "小而美科技",
+                   "jobDetailUrl": "https://www.liepin.com/job/654321.shtml", "location": "上海-张江",
+                   "salary": "25-40k", "companySize": "1-49人", "financingStage": "天使轮",
+                   "industry": "互联网", "workYears": "5-10年", "education": "本科"}]
+    rpc("settings.liepinCredential", action="set", token="session-only-token")
+    lead = rpc("jobs.searchLiepin", keyword="Java", page=0)["items"][0]
+    assert lead["company_size"] == "1-49人"
+    assert lead["financing_stage"] == "天使轮"
+    assert lead["industry"] == "互联网"
+    assert lead["work_years"] == "5-10年"
+    assert lead["education"] == "本科"
+    saved = parse_simple_yaml(next((tmp / "job_leads").glob("*.yaml")).read_text())["scalars"]
+    assert saved["company_size"] == "1-49人" and saved["financing_stage"] == "天使轮"
+    assert rpc("jobs.listLeads", filters={"company_size_max": 99})["items"][0]["job_lead_id"] == lead["job_lead_id"]
+    assert rpc("jobs.listLeads", filters={"company_size_max": 20})["items"] == []
+    assert rpc("jobs.listLeads", filters={"query": "上海"})["items"][0]["job_lead_id"] == lead["job_lead_id"]
+    assert rpc("jobs.listLeads", filters={"query": "北京"})["items"] == []
+    converted = rpc("jobs.convertLead", job_lead_id=lead["job_lead_id"])
+    profile = parse_simple_yaml((tmp / "profiles" / (converted["job_profile_id"] + ".yaml")).read_text())["scalars"]
+    assert profile["company_size"] == "1-49人" and profile["financing_stage"] == "天使轮" and profile["industry"] == "互联网"
+    listed = rpc("jobs.listProfiles")["items"][0]
+    assert listed["company_size"] == "1-49人" and listed["financing_stage"] == "天使轮"
+
+
+def test_search_without_company_facts_keeps_lead_contract(official_client):
+    fake, _, tmp = official_client
+    fake.items = [{"jobId": "777", "jobType": "2", "jobName": "Java", "company": "无规模信息公司",
+                   "jobDetailUrl": "https://www.liepin.com/job/777.shtml", "companySize": None}]
+    rpc("settings.liepinCredential", action="set", token="session-only-token")
+    lead = rpc("jobs.searchLiepin", keyword="Java", page=0)["items"][0]
+    assert lead["company_size"] == ""
+    assert rpc("jobs.listLeads", filters={"company_size_max": 99})["items"] == []
+    assert "company_size" not in parse_simple_yaml(next((tmp / "job_leads").glob("*.yaml")).read_text())["scalars"]
+    fake.items = [{**fake.items[0], "companySize": 49}]
+    assert rpc("jobs.searchLiepin", keyword="Java", page=0)["code"] == "INVALID_RESPONSE"

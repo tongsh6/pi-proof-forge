@@ -554,7 +554,11 @@
         "summaryOnly": "Summary · Full JD needed",
         "summaryHint": "Only a job summary is available. Conversion creates an incomplete draft. Add the full JD and review it before matching.",
         "sourceLink": "View job source",
-        "fetchedAt": "Fetched at"
+        "fetchedAt": "Fetched at",
+        "companySize": "Company size",
+        "allSizes": "Any size",
+        "sizeUnder100": "Under 100 people",
+        "sizeUnder500": "Under 500 people"
       },
       "errors": {
         "titleRequired": "Profile title is required.",

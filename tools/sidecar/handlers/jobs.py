@@ -95,6 +95,32 @@ class JobLeadItem(TypedDict):
     platform_job_type: str
     jd_status: str
     fetched_at: str
+    company_size: str
+    financing_stage: str
+    industry: str
+    work_years: str
+    education: str
+
+
+# 官方搜索随岗位返回的公司事实；只做透传与筛选，不向平台补抓。
+_COMPANY_FACT_KEYS = ("company_size", "financing_stage", "industry", "work_years", "education")
+_OFFICIAL_COMPANY_FACTS = {"companySize": "company_size", "financingStage": "financing_stage",
+                           "industry": "industry", "workYears": "work_years", "education": "education"}
+
+
+def _company_size_upper_bound(text: str) -> int | None:
+    """解析平台“1-49人 / 少于50人 / 50人以下”文案的人数上界；“10000人以上”等无上界返回 None。"""
+    compact = re.sub(r"\s", "", str(text or ""))
+    match = re.fullmatch(r"(\d+)-(\d+)人", compact)
+    if match:
+        return int(match.group(2))
+    match = re.fullmatch(r"少于(\d+)人", compact)
+    if match:
+        return int(match.group(1)) - 1
+    match = re.fullmatch(r"(\d+)人以下", compact)
+    if match:
+        return int(match.group(1))
+    return None
 
 
 def _glob_files(directory: Path, pattern: str) -> list[Path]:
@@ -154,7 +180,7 @@ def _write_job_profile_file(path: Path, fields: dict[str, Any]) -> None:
         f"reviewed_at: {_quote(fields.get('reviewed_at', ''))}",
     ]
     for key in ("source", "platform", "platform_job_id", "platform_job_type", "source_jd_sha256", "jd_origin",
-                "import_mode", "source_recorded_at"):
+                "import_mode", "source_recorded_at", *_COMPANY_FACT_KEYS):
         if key in fields:
             lines.append(f"{key}: {_quote(fields[key])}")
     _write_list(lines, "keywords", fields.get("keywords", []))
@@ -173,7 +199,7 @@ def _write_job_lead_file(path: Path, fields: dict[str, Any]) -> None:
     values = {key: fields.get(key, default) for key, default in defaults.items()}
     for key in ("platform", "platform_job_id", "platform_job_type", "jd_status", "fetched_at",
                 "source_jd", "source_jd_sha256", "jd_origin", "salary", "location",
-                "import_mode", "source_recorded_at"):
+                "import_mode", "source_recorded_at", *_COMPANY_FACT_KEYS):
         if key in fields:
             values[key] = fields[key]
     # JSON 字符串是合法 YAML 标量，保留换行同时避免外部职位文本注入 YAML 字段。
@@ -219,7 +245,9 @@ def _bound_lead(job_lead_id: object, source_url: str = "") -> tuple[Path, dict[s
 
 
 def _lead_identity(lead: dict[str, str]) -> dict[str, str]:
-    return {key: lead.get(key, "") for key in ("source", "platform", "platform_job_id", "platform_job_type")}
+    identity = {key: lead.get(key, "") for key in ("source", "platform", "platform_job_id", "platform_job_type")}
+    identity.update({key: lead[key] for key in _COMPANY_FACT_KEYS if lead.get(key)})
+    return identity
 
 
 def _preserved_profile_fields(doc: ParsedDoc) -> dict[str, Any]:
@@ -601,6 +629,7 @@ def _build_lead_item(path: Path) -> JobLeadItem | None:
         "source_jd_sha256": s.get("source_jd_sha256", ""),
         "import_mode": s.get("import_mode", ""),
         "source_recorded_at": s.get("source_recorded_at", ""),
+        **{key: s.get(key, "") for key in _COMPANY_FACT_KEYS},
     }
 
 
@@ -611,6 +640,8 @@ def _apply_lead_filters(
     status_filter = str(filters.get("status") or "").strip()
     query_filter = str(filters.get("query") or "").strip().casefold()
     favorited_filter = filters.get("favorited")
+    size_max_raw = filters.get("company_size_max")
+    size_max = size_max_raw if type(size_max_raw) is int else None
 
     filtered: list[JobLeadItem] = []
     for item in items:
@@ -620,8 +651,12 @@ def _apply_lead_filters(
             continue
         if favorited_filter is not None and item["favorited"] != bool(favorited_filter):
             continue
+        if size_max is not None:
+            upper = _company_size_upper_bound(item.get("company_size", ""))
+            if upper is None or upper > size_max:
+                continue
         if query_filter:
-            haystack = f"{item['company']} {item['position']}".casefold()
+            haystack = f"{item['company']} {item['position']} {item.get('location', '')}".casefold()
             if query_filter not in haystack:
                 continue
         filtered.append(item)
@@ -1007,7 +1042,7 @@ def handle_jobs_search_liepin(params: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(url, str) or not url or not isinstance(item.get("company"), str):
                 raise ValueError("invalid official job fields")
             if any(item.get(key) is not None and not isinstance(item[key], str)
-                   for key in ("salary", "location")):
+                   for key in ("salary", "location", *_OFFICIAL_COMPANY_FACTS)):
                 raise ValueError("invalid official pay or location")
             parsed = urlparse(url)
             if (parsed.scheme != "https" or not parsed.hostname
@@ -1023,6 +1058,8 @@ def handle_jobs_search_liepin(params: dict[str, Any]) -> dict[str, Any]:
                 "platform_job_id": job_id, "platform_job_type": job_type,
                 "jd_status": "summary_only", "fetched_at": now,
                 "created_at": now, "updated_at": now,
+                **{field: item[key].strip() for key, field in _OFFICIAL_COMPANY_FACTS.items()
+                   if isinstance(item.get(key), str) and item[key].strip()},
             }
     except (KeyError, TypeError, ValueError):
         return {**base, **liepin_readonly.failure("INVALID_RESPONSE")}

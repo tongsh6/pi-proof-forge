@@ -1,6 +1,18 @@
 # Project Ledger
 
-Last updated: 2026-10-11
+Last updated: 2026-10-12
+
+## 2026-10-12 小公司高匹配投递实验首片（P0-026）：公司事实透传、猎头岗位与自由格式 JD、超时下发
+
+- 决策：用户确定 BOSS / 智联 / 51job / 脉脉 / 拉勾因无官方可操作 API 或 CLI 暂不接入，先深化 App 能力；投递实验改用“JD 高匹配 + 微小公司”的猎聘岗位磨练面试（现阶段以微小公司为主，大公司为后续目标）。矩阵新增 `small_company_high_match_delivery`（order 27）为唯一 `next`，`maimai_source_integration` 回到 `not_started`。
+- 探索结论：官方搜索接口每条岗位已返回 `companySize` / `financingStage` / `industry` / `workYears` / `education`，原 handler 全部丢弃；详情读取只认 `/job/<id>.shtml`（猎头岗位在 `/a/<id>.shtml`，页面结构相同），且完整性判定要求同时出现中文“职责 / 要求”标题，真实 JD（“工作内容 / 我们期待你 / Job Responsibilities”）全部被判为“正文暂不可用”。
+- 规范：核心规范新增“小公司高匹配投递实验契约（2026-10-12）”节：公司事实透传与 `company_size_max` 筛选语义、猎头路径同身份规则、完整性判定修订（无截断提示且 ≥ 200 字即完整，短正文仍须两类章节）。
+- 代码：`jobs.py` 透传五个公司事实到线索/画像并支持规模筛选、关键词兼容地区；`liepin_job_detail.py` 接受 `/a/`、放宽 `_complete_body`、把 `safe.liepin.com` 人机验证分发页的 302 如实报告为 `SECURITY_CHALLENGE`（不跟随、不绕过）；`job_lead_binding.py` 与 `platform_feedback.py` 的岗位身份/ID 正则同步接受 `/a/`；Jobs 页线索行显示规模·融资阶段、筛选区新增公司规模下拉（100 / 500 人以下）、线索详情与画像侧栏带规模。
+- 管线修复：Quick Run 匹配阶段失败（报告文件不存在）时结果解析抛 `KeyError: gap_tasks` 并把错误伪装成 `Unknown method`，现改为返回失败步骤与空缺口；系统设置的 LLM 超时此前从未下发到管线（五处硬编码 120 秒），现经 `LLM_TIMEOUT` 环境变量统一注入，本地 27B 模型的匹配阶段 120 秒必超时是本次真实运行失败的直接原因。
+- 真实数据（App 自有 handler，只读）：10 组关键词 × 2 页检索新增 243 条线索；上海 · 100 人以下 14 条、500 人以下 32 条；入围 7 条中 4 条取得完整 JD（Tech Lead JAVA+AI 50-99 人、高级全栈 1-49 人、CTO/Tech Leader 1-49 人、AI 全栈 50-99 人），由本地 Qwen 解析并以实验授权审核保存为完整画像 `jp_65caa1fc` / `jp_e43441bd` / `jp_19a03f9c` / `jp_a6ea6776`（解析出的必备项随实验日志留档）；其余因平台对脚本 UA 的人机验证拦截保持阻断。已知限制：官方搜索无城市参数，线索地区多为区名（浦东新区等），“上海”关键词会漏掉这些行；猎头 `/a/` 岗位的生成 PDF 沟通路线仍显式阻断，待真实验证。
+- 设置变更：经 App 自有 `settings.update` 把 LLM 超时 120 → 600 秒（原 `policy.local.yaml` 已备份到会话 scratchpad）。
+- 验证：tests/unit + tests/acceptance 全量（1131 通过）、`tools/check_execution_roadmap.py`、tsc、`pnpm --dir ui build` 通过。
+- Quick Run 真实结果（本地 qwen3.8-27b，匹配 + 生成 + 评估均走 LLM，每次 12～17 分钟）：Tech Lead JAVA+AI 匹配 33 / 评估 33；高级全栈 50 / 34；CTO/Tech Leader 32 / 38；AI 全栈 44 / 34；四份均 `deliverable=false`（参考线 78）。LLM 选卡在 8 张可用卡中按岗位切换（MongoDB 改造恒选，全栈岗加入租赁状态机与影展验收，Java 岗加入用友 NC 与伊尔普），项目经历固定取前 3 张；评估卡 must-have 覆盖率四份均为 0%（按 JD 必备项整句匹配，度量失真），量化占比 18%、证据引用 18%。两次 `NEEDS_EVIDENCE` 均指向 `ec_0f6287d2` 缺 `role_scope` / `time_range`（另有 `ec_4b0f457a`、`ec_9a1244c4` 同样缺失）。质量结论与改进计划见会话汇报，后续按 P0-026 推进。
 
 ## 2026-10-11 P0-022 脉脉来源导入首片：人工导入来源契约与手动投递记录
 

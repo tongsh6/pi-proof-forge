@@ -554,7 +554,11 @@
         "summaryOnly": "摘要 · 待补完整 JD",
         "summaryHint": "当前只有岗位摘要。转画像仍为未完整草稿，需补充完整 JD 并审核后用于匹配。",
         "sourceLink": "查看岗位来源",
-        "fetchedAt": "获取时间"
+        "fetchedAt": "获取时间",
+        "companySize": "公司规模",
+        "allSizes": "全部规模",
+        "sizeUnder100": "100 人以下",
+        "sizeUnder500": "500 人以下"
       },
       "errors": {
         "titleRequired": "请填写岗位画像标题。",

@@ -307,6 +307,15 @@ python3 tools/run_agent.py --policy profiles/agent_policy.example.yaml --dry-run
 
 ---
 
+## 小公司高匹配投递实验契约（2026-10-12）
+
+背景：用户决定暂不接入 BOSS/智联/51job/脉脉/拉勾（无官方求职者 API/CLI），先深化 App 自身能力；投递实验改为“JD 高匹配 + 微小公司”的猎聘岗位，用于磨练面试。
+
+- 官方搜索随岗位返回的 `companySize`、`financingStage`、`industry`、`workYears`、`education` 原文须透传到岗位线索（`company_size`、`financing_stage`、`industry`、`work_years`、`education`），随线索转画像/审核保存进入画像；只透传与筛选，不向平台补抓，缺失不推算。
+- 线索列表支持 `company_size_max` 筛选：按平台文案解析人数上界（`1-49人`→49、`少于50人`→49、`50人以下`→50），无明确上界（`10000人以上`、空值、`保密`）在设定阈值时一律排除；关键词筛选同时匹配公司、职位与工作地区原文。
+- 猎头岗位（官方 `jobType=1`）的公开详情位于 `https://www.liepin.com/a/<id>.shtml`，与企业岗位 `/job/<id>.shtml` 页面结构一致：完整 JD 读取、来源 URL 身份比对与反馈同步的岗位 ID 提取同样接受该路径，原始岗位 ID 相符、不跟随重定向等既有规则不变。生成 PDF 沟通路线对 `/a/` 岗位仍保持显式阻断，待真实验证后再开放。
+- 完整 JD 判定修订：真实 JD 常用“工作内容 / 我们期待你 / Job Responsibilities”等自定标题，固定中文“职责/要求”标题不再是必要条件。无登录/展开/截断提示且压缩后正文 ≥ 200 字即视为完整；更短的正文仍须同时具备职责与要求两类实质章节。一句话岗位（如“会后端开会，项目0-1”）与纯介绍段落仍不升级为完整 JD。
+
 ## 变更流程
 
 1. 使用 `/opsx:propose` 提交变更提案

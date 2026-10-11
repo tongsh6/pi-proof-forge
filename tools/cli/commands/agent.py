@@ -116,12 +116,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     llm_client = None
     llm_model = ""
     if args.llm:
-        from tools.infra.llm.client import LLMClient
+        from tools.infra.llm.client import LLMClient, llm_timeout_from_env
         import os as _os
         llm_base = _os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
         llm_key = _os.getenv("LLM_API_KEY", "lm-studio")
         llm_model = args.llm_model or _os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
-        llm_client = LLMClient(base_url=llm_base, api_key=llm_key, timeout=120)
+        llm_client = LLMClient(base_url=llm_base, api_key=llm_key, timeout=llm_timeout_from_env())
 
     if evidence_cards and args.full_pipeline:
         loop = composer.build_agent_loop(

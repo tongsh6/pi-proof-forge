@@ -391,6 +391,7 @@ class TestQuickRunStart:
             assert env["LLM_PROVIDER"] == "lm_studio"
             assert env["LLM_MODEL"] == "local-model"
             assert env["LLM_BASE_URL"] == "http://127.0.0.1:1234/v1"
+            assert env["LLM_TIMEOUT"] == str(summary["timeout"]), "系统设置超时必须下发给管线各 LLM 阶段"
             assert run_payload["run"]["llm_config_summary"] == summary
 
     def test_quick_run_uses_latest_material_source_and_isolated_evidence_dir(self):
@@ -547,6 +548,22 @@ def test_pdf_failure_keeps_generated_artifacts_and_reports_reason(tmp_path, monk
     assert result['pdf_export_error'] == 'PDF_RENDERER_UNAVAILABLE'
     assert result['artifacts']['resume_dir'] == str(resume_dir)
     assert result['resume_readiness']['quality_passed'] is False
+
+
+def test_failed_matching_step_without_report_reports_reason_instead_of_crashing(tmp_path, monkeypatch):
+    """匹配阶段（如本地模型超时）失败时报告文件不存在，结果解析应给出失败步骤而不是 KeyError。"""
+    from tools.sidecar.handlers import agent
+    summary = tmp_path / 'outputs/agent_runs/run-match-failed/summary.json'
+    summary.parent.mkdir(parents=True)
+    summary.write_text(json.dumps({'status': 'FAILED', 'failed_step': 'matching-scoring',
+                                   'artifacts': {'matching': 'matching_reports/mr-run-match-failed.yaml',
+                                                 'resume_dir': 'outputs/run-match-failed'}}), encoding='utf-8')
+    monkeypatch.setattr(agent, '_PROJECT_ROOT', tmp_path)
+    result = agent._quick_run_result_details('run-match-failed', '', 'LLM timeout')
+    assert result['failed_step'] == 'matching-scoring'
+    assert result['gaps'] == [] and result['gap_tasks'] == []
+    assert result['score_total'] is None
+    assert result['resume_readiness']['deliverable'] is False
 
 
 class TestAgentRunStart:

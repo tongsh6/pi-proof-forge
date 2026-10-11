@@ -19,7 +19,7 @@ def same_official_source_url(left: str, right: str) -> bool:
                     or parsed.scheme != "https" or parsed.hostname != "www.liepin.com"
                     or parsed.username is not None or parsed.password is not None
                     or parsed.port not in (None, 443)
-                    or not re.fullmatch(r"/job/[0-9]+\.shtml", parsed.path)):
+                    or not re.fullmatch(r"/(?:job|a)/[0-9]+\.shtml", parsed.path)):
                 return False
             paths.append(parsed.path)
         except (TypeError, ValueError):

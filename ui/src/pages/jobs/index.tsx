@@ -47,7 +47,12 @@ const DEFAULT_LEAD_FILTERS: JobLeadsFilters = {
   status: null,
   favorited: null,
   query: "",
+  company_size_max: null,
 };
+const leadSizeOptions = [
+  { value: "99", key: "sizeUnder100" },
+  { value: "499", key: "sizeUnder500" },
+] as const;
 const statusOptions = ["active", "draft", "archived"] as const;
 const leadStatusOptions = ["draft", "new", "qualified", "contacted", "archived"] as const;
 
@@ -113,6 +118,7 @@ export function JobsPage() {
   const [tagInput, setTagInput] = useState("");
   const [leadQueryInput, setLeadQueryInput] = useState("");
   const [leadStatusInput, setLeadStatusInput] = useState("");
+  const [leadSizeInput, setLeadSizeInput] = useState("");
   const [leadFavoriteOnly, setLeadFavoriteOnly] = useState(false);
   const [profileFilters, setProfileFilters] = useState<JobProfilesFilters>(
     DEFAULT_PROFILE_FILTERS
@@ -396,12 +402,14 @@ export function JobsPage() {
       status: leadStatusInput || null,
       favorited: leadFavoriteOnly ? true : null,
       query: leadQueryInput.trim(),
+      company_size_max: leadSizeInput ? Number(leadSizeInput) : null,
     });
-  }, [leadFavoriteOnly, leadQueryInput, leadStatusInput]);
+  }, [leadFavoriteOnly, leadQueryInput, leadSizeInput, leadStatusInput]);
 
   const resetLeadFilters = useCallback(() => {
     setLeadQueryInput("");
     setLeadStatusInput("");
+    setLeadSizeInput("");
     setLeadFavoriteOnly(false);
     setLeadFilters(DEFAULT_LEAD_FILTERS);
   }, []);
@@ -967,6 +975,20 @@ export function JobsPage() {
                 </option>
               ))}
             </select>
+            <select
+              aria-label={t("pages.jobs.leads.companySize")}
+              className="rounded-card border border-border bg-bg-panel px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+              data-testid="lead-size-filter"
+              onChange={(event) => setLeadSizeInput(event.target.value)}
+              value={leadSizeInput}
+            >
+              <option value="">{t("pages.jobs.leads.allSizes")}</option>
+              {leadSizeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(`pages.jobs.leads.${option.key}`)}
+                </option>
+              ))}
+            </select>
             <label className="inline-flex items-center gap-2 rounded-card border border-border px-3 py-2 text-sm text-text-primary">
               <input
                 checked={leadFavoriteOnly}
@@ -1219,7 +1241,7 @@ export function JobsPage() {
                 <div>
                   <h3 className="text-xl font-semibold text-text-primary">{selectedProfile.title}</h3>
                   <p className="mt-1 text-sm text-text-secondary">
-                    {[selectedProfile.company, formatUpdatedAt(selectedProfile.updated_at, i18n.language)].filter(Boolean).join(" · ")}
+                    {[selectedProfile.company, selectedProfile.company_size, formatUpdatedAt(selectedProfile.updated_at, i18n.language)].filter(Boolean).join(" · ")}
                   </p>
                   {selectedProfile.import_mode === "manual" ? (
                     <p className="mt-1 text-xs text-text-muted">
@@ -1490,6 +1512,11 @@ export function JobsPage() {
                           {lead.company || "--"}
                         </p>
                       </div>
+                      {lead.company_size || lead.financing_stage ? (
+                        <p className="mt-1 truncate text-xs text-text-muted">
+                          {[lead.company_size, lead.financing_stage].filter(Boolean).join(" · ")}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm text-text-secondary">{lead.position || "--"}</p>
@@ -1555,6 +1582,7 @@ export function JobsPage() {
                   <p className="mt-2 text-sm text-text-secondary">
                     {t("pages.jobs.leads.salary")}: {selectedLead.salary || t("pages.jobs.leads.notProvided")}
                     {" · "}{t("pages.jobs.leads.location")}: {selectedLead.location || t("pages.jobs.leads.notProvided")}
+                    {selectedLead.company_size ? ` · ${t("pages.jobs.leads.companySize")}: ${[selectedLead.company_size, selectedLead.financing_stage, selectedLead.industry].filter(Boolean).join(" / ")}` : null}
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">

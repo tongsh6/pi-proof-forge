@@ -145,6 +145,9 @@ export interface JobProfileListItem {
   source_jd_sha256?: string;
   /** 人工导入（粘贴 JD）时为 "manual"，界面标明“人工导入 · 平台”。 */
   import_mode?: string;
+  company_size?: string;
+  financing_stage?: string;
+  industry?: string;
   source_recorded_at?: string;
   title: string;
   company: string;
@@ -195,6 +198,11 @@ export interface JobLeadListItem {
   fetched_at?: string;
   import_mode?: string;
   source_recorded_at?: string;
+  company_size?: string;
+  financing_stage?: string;
+  industry?: string;
+  work_years?: string;
+  education?: string;
 }
 
 export interface JobLeadsFilters {
@@ -202,6 +210,8 @@ export interface JobLeadsFilters {
   status: string | null;
   favorited: boolean | null;
   query: string;
+  /** 公司人数上界（含），例如 99 表示 100 人以下；null 不限 */
+  company_size_max: number | null;
 }
 
 export interface JobLeadsListResult extends RpcResultBase {
