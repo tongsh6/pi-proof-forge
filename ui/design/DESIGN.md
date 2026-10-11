@@ -1282,3 +1282,15 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 **Pen 节点**：Implementation Constraints 新增约束卡 `Depth & Vocabulary - UX Batch 4`（`wzkfN`）。本批不改画面结构，不新增组件。
 
 **验证**：tsc、vite build 通过；tests/unit/gui 73 项通过（新增 `tests/unit/gui/test_evidence_detail_view_mode_ui.py`，先红后绿；`test_evidence_rereview_ui.py` 的断言改为“切换卡片后保存按钮可以不存在，存在时必须禁用”）；内置浏览器 1440×900 读回：证据详情只读 / 编辑 / 取消切换与栏高 1714→1261px、画像详情 1134→655px、职业档案编辑器 2991→848px 且吸底栏可见、投递详情步骤名中文与回执折叠、高级工具折叠、每日投递卡新顺序与“更多操作”、快速运行无评分条、策略页分组导航按钮的 class 随切换变化。未做：Tauri 原生窗口读回；PDF 投递卡固定后的流程区与审批面板在只读模式下不可触发，按源码检查。
+
+### 2026-10-11 全局长任务指示（UX 第五批）
+
+起因：快速运行在后端同步执行，执行期间切到别的页面会让页面卸载、结果被丢弃，用户也看不到任何进度。本批不加依赖，只用现有 zustand。
+
+- 新增 `ui/src/state/task-store.ts`：按任务类型记录 `running / done / error`、开始与结束时间、所属岗位画像与结果；目前只有 `quickRun`。
+- 快速运行页：启动时登记任务；结束时无论页面是否已切走、目标是否已改变，都把结果写入 store 并弹出成功 / 失败通知，只有本页状态仍按版本守卫更新。回到页面时：任务仍在进行则恢复“运行中”与计时并禁止重复启动；任务已结束且属于当前岗位画像则读回结果；失败则显示失败原因。
+- SideNav 底部：有任务进行中时显示一行“快速运行 · 目标 进行中”带旋转图标，点击回到快速运行页；任务结束后该行消失，完成情况由全局通知承担。
+- 词条：`shell.taskRunning`、`shell.taskOpen`。
+- 测试：新增 `tests/unit/gui/test_task_store.py`；`test_quick_run_inputs_ui.py` 补 `@/state/task-store` mock；tests/unit/gui 74 项通过，tsc、vite build 通过。
+- 读回：内置浏览器以只读桥接（对 `run.quick.start` 延迟 8 秒后拒绝）走通“启动 → 切到总览看到指示 → 点指示回到页面为运行中 → 任务结束后指示消失并弹出失败通知 → 页面回到可运行态”。
+- Pen 节点：Implementation Constraints 新增约束卡 `Background Tasks - UX Batch 5`（`YTTf3`）。

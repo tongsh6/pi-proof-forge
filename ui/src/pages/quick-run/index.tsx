@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
+import { useTaskStore, type BackgroundTask } from "@/state/task-store";
 import { notify } from "@/lib/ui";
 import {
   getSettings,
@@ -132,6 +133,9 @@ export function QuickRunPage() {
   const [quickRunResult, setQuickRunResult] = useState<QuickRunStartResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  // 全局任务：页面切走后运行仍在进行，侧栏显示进度；回到页面时恢复计时或读回同一目标的结果。
+  const task = useTaskStore((state) => state.tasks.quickRun);
+  const restoredTaskRef = useRef<BackgroundTask | undefined>(undefined);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const quickRunInFlightRef = useRef(false);
   const [availableEvidence,setAvailableEvidence]=useState<EvidenceListItem[]>([]);
@@ -207,6 +211,36 @@ export function QuickRunPage() {
   const selectedProfile = jobProfiles.find(
     (jp) => jp.job_profile_id === selectedProfileId,
   );
+
+  useEffect(() => {
+    if (!task || restoredTaskRef.current === task) return;
+    if (task.status === "running") {
+      restoredTaskRef.current = task;
+      if (!quickRunInFlightRef.current) {
+        setRunState("running");
+        setStartedAt(task.startedAt);
+      }
+      return;
+    }
+    if (quickRunInFlightRef.current || !selectedProfileId) return;
+    restoredTaskRef.current = task;
+    if (task.result && task.profileId === selectedProfileId && quickRunResult === null) {
+      setQuickRunId(task.result.run_id);
+      setQuickRunStatus(task.result.status);
+      setQuickRunResult(task.result);
+      setRunState(task.status === "done" ? "done" : "error");
+      if (task.status === "error") setRunError(task.detail ?? null);
+      setElapsedSeconds(Math.max(0, Math.floor(((task.finishedAt ?? task.startedAt) - task.startedAt) / 1000)));
+    } else if (runState === "running") {
+      // 本实例在等待别处启动的任务：失败则显示失败原因，否则回到可运行态。
+      if (task.status === "error") {
+        setRunState("error");
+        setRunError(task.detail ?? null);
+      } else {
+        setRunState("ready_to_run");
+      }
+    }
+  }, [task, selectedProfileId, quickRunResult, runState]);
   const activeJobProfiles = jobProfiles.filter((jp) => jp.status === "active" && jp.source_jd?.trim());
   const targetAvailable = selectedProfile?.status === "active" && Boolean(selectedProfile.source_jd?.trim());
   const providerSummary = [
@@ -265,9 +299,17 @@ export function QuickRunPage() {
 
   const handleStartQuickRun = useCallback(async () => {
     if (!canStartRun || quickRunInFlightRef.current) return;
+    if (useTaskStore.getState().tasks.quickRun?.status === "running") return;
     quickRunInFlightRef.current = true;
     const version = selectionVersion.current;
     const now = Date.now();
+    const taskStore = useTaskStore.getState();
+    taskStore.start({
+      kind: "quickRun",
+      label: `${t("pages.quickRun.title")} · ${selectedProfile?.title ?? selectedProfileId}`,
+      path: "/quick-run",
+      profileId: selectedProfileId,
+    });
     setStartedAt(now);
     setElapsedSeconds(0);
     setRunState("running");
@@ -286,31 +328,35 @@ export function QuickRunPage() {
           require_llm: useLlm,
         },
       });
+      // 无论页面是否已切走或目标是否已改变，任务结果都记入全局 store 并提示；只有本页状态按版本守卫更新。
+      const finished = result.status === "DONE" || result.status === "SKIPPED";
+      const reason = `${result.status}${result.exit_code != null ? ` (${result.exit_code})` : ""}`;
+      if (finished) {
+        taskStore.finish("quickRun", result);
+        notify("success", t("toasts.quickRun.done"));
+      } else {
+        taskStore.fail("quickRun", reason);
+        notify("error", t("toasts.quickRun.failed"), reason);
+      }
       if (version !== selectionVersion.current) return;
       setQuickRunId(result.run_id);
       setQuickRunStatus(result.status);
       setQuickRunResult(result);
       setElapsedSeconds(Math.max(0, Math.floor((Date.now() - now) / 1000)));
-      const finished = result.status === "DONE" || result.status === "SKIPPED";
       setRunState(finished ? "done" : "error");
-      if (!finished) {
-        const reason = `${result.status}${result.exit_code != null ? ` (${result.exit_code})` : ""}`;
-        setRunError(reason);
-        notify("error", t("toasts.quickRun.failed"), reason);
-      } else {
-        notify("success", t("toasts.quickRun.done"));
-      }
+      if (!finished) setRunError(reason);
     } catch (e) {
-      if (version !== selectionVersion.current) return;
       const message = getErrorMessage(e);
+      taskStore.fail("quickRun", message);
+      notify("error", t("toasts.quickRun.failed"), message);
+      if (version !== selectionVersion.current) return;
       setRunState("error");
       setRunError(message);
-      notify("error", t("toasts.quickRun.failed"), message);
     } finally {
       quickRunInFlightRef.current = false;
       if (version !== selectionVersion.current) setRunState("ready_to_run");
     }
-  }, [canStartRun, eligibleEvidenceIds, resumePositioning, selectedProfileId, selectedMaterialId, useLlm]);
+  }, [canStartRun, eligibleEvidenceIds, resumePositioning, selectedProfileId, selectedProfile?.title, selectedMaterialId, useLlm, t]);
 
 
   // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。

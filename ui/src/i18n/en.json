@@ -16,7 +16,9 @@
     "waitingForHeartbeat": "Waiting for heartbeat",
     "bannerHint": "Write actions stay disabled until the backend is ready.",
     "switchLanguage": "Switch language: {{language}}",
-    "refreshPage": "Refresh this page"
+    "refreshPage": "Refresh this page",
+    "taskRunning": "{{label}} running",
+    "taskOpen": "View progress"
   },
   "sidecar": {
     "state": {

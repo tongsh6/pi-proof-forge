@@ -1,7 +1,8 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAppShellStore } from "@/state/app-shell-store";
 import { useSidecarStore } from "@/state/sidecar-store";
+import { useTaskStore } from "@/state/task-store";
 import {
   LayoutDashboard,
   FileText,
@@ -13,6 +14,7 @@ import {
   Shield,
   Settings,
   Languages,
+  LoaderCircle,
 } from "lucide-react";
 
 const navItems = [
@@ -45,6 +47,8 @@ export function SideNav() {
   const state = useSidecarStore((store) => store.state);
   const sidecarVersion = useSidecarStore((store) => store.sidecarVersion);
   const lastHeartbeatAt = useSidecarStore((store) => store.lastHeartbeatAt);
+  const runningTask = useTaskStore((store) => Object.values(store.tasks).find((task) => task?.status === "running"));
+  const navigate = useNavigate();
 
   const heartbeatLabel = lastHeartbeatAt
     ? new Date(lastHeartbeatAt).toLocaleString(i18n.language)
@@ -86,6 +90,18 @@ export function SideNav() {
       </div>
 
       <div className="space-y-1 border-t border-border p-3">
+        {runningTask ? (
+          <button
+            type="button"
+            data-testid="task-indicator"
+            className="flex w-full items-center gap-2 rounded-card px-3 py-2 text-left text-xs text-accent transition-colors hover:bg-bg-hover"
+            onClick={() => navigate(runningTask.path)}
+            title={t("shell.taskOpen")}
+          >
+            <LoaderCircle size={14} className="shrink-0 animate-spin" aria-hidden="true" />
+            <span className="truncate">{t("shell.taskRunning", { label: runningTask.label })}</span>
+          </button>
+        ) : null}
         <div
           className="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary"
           title={`${t("shell.lastHeartbeat")}: ${heartbeatLabel}${sidecarVersion ? ` · v${sidecarVersion}` : ""}`}

@@ -16,7 +16,9 @@
     "waitingForHeartbeat": "等待心跳",
     "bannerHint": "后端未就绪时，写操作按钮会被禁用。",
     "switchLanguage": "切换语言：{{language}}",
-    "refreshPage": "刷新当前页"
+    "refreshPage": "刷新当前页",
+    "taskRunning": "{{label}} 进行中",
+    "taskOpen": "查看进度"
   },
   "sidecar": {
     "state": {
