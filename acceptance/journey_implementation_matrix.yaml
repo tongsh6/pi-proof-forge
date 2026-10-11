@@ -1,8 +1,8 @@
-version: "2026-10-10"
+version: "2026-10-11"
 mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
-current_focus: "boss_readonly_integration"
+current_focus: "maimai_source_integration"
 
 vision_alignment:
   source: "PLAN.md"
@@ -641,9 +641,11 @@ steps:
       - single_trigger_and_concurrent_run_guard
       - authorization_expiry_pause_revoke
       - multi_day_real_results_or_shortfall_reasons
+  # 2026-10-11：BOSS/智联/51job 无官方渠道，在线只读标为 blocked 并改人工导入；S7 脉脉为唯一 next，S8 以人工样本计入来源覆盖。
   - id: boss_readonly_integration
     order: 20
-    status: next
+    status: blocked
+    blocker: 2026-10-11 核查：BOSS 直聘没有面向求职者或第三方 App 的官方接口（仅企业 ATS 白名单、官方 AI 产品封闭），社区 CLI 依赖本机浏览器会话且与平台协议冲突；用户决定改为人工导入链接与完整 JD，在线只读不实施。
     journey_stage: jobs
     owner_surface: ui/src/pages/jobs/index.tsx
     user_goal: 修复BOSS社区CLI固定版本适配，真实搜索/详情取得完整JD并进入审核、匹配、简历版本关联和结果追踪。
@@ -668,7 +670,8 @@ steps:
       - manual_import_does_not_satisfy_online_acceptance
   - id: zhilian_readonly_integration
     order: 21
-    status: not_started
+    status: blocked
+    blocker: 2026-10-11 核查：智联招聘没有官方求职者接口（AI 版与职悟空为封闭产品），未登录页面薪资打码且完整 JD 需登录，社区客户端已从上游移除；用户决定改为人工导入，在线只读不实施。
     journey_stage: jobs
     owner_surface: ui/src/pages/jobs/index.tsx
     user_goal: 独立确定智联维护路线并完成真实在线搜索/详情及完整JD下游闭环；人工导入不能替代在线接入验收。
@@ -693,7 +696,8 @@ steps:
       - manual_import_does_not_satisfy_online_acceptance
   - id: qiancheng_readonly_integration
     order: 22
-    status: not_started
+    status: blocked
+    blocker: 2026-10-11 核查：前程无忧没有官方求职者接口（仅企业 ehire 系统），未登录可读搜索列表但职位详情页触发滑动验证，条款禁止抓取；用户决定改为人工导入，在线只读不实施。
     journey_stage: jobs
     owner_surface: ui/src/pages/jobs/index.tsx
     user_goal: 核实前程无忧51job求职者接入契约并完成真实在线搜索/详情和下游闭环；URL识别不算接入完成。
@@ -718,7 +722,7 @@ steps:
       - url_rule_or_manual_import_does_not_satisfy_online_acceptance
   - id: maimai_source_integration
     order: 23
-    status: not_started
+    status: next
     journey_stage: jobs
     owner_surface: ui/src/pages/jobs/index.tsx
     user_goal: 完成脉脉真实职位链接和完整JD导入，接通审核、匹配、定制简历版本关联及标明人工来源的结果追踪。
@@ -729,7 +733,7 @@ steps:
     - openspec/specs/pi-proof-forge-core.md
     - docs/execution-roadmap.md
     depends_on:
-    - boss_readonly_integration
+    - setup_job_target
     acceptance:
       script: 外部真实 Tauri 页面自动化：maimai_source_integration（待实现）
       depth: deep_required
@@ -753,7 +757,7 @@ steps:
     - openspec/specs/pi-proof-forge-core.md
     - docs/execution-roadmap.md
     depends_on:
-    - boss_readonly_integration
+    - maimai_source_integration
     acceptance:
       script: 外部真实 Tauri 页面自动化：lagou_source_integration（待实现）
       depth: deep_required
@@ -770,7 +774,7 @@ steps:
     status: not_started
     journey_stage: jobs
     owner_surface: ui/src/pages/jobs/index.tsx
-    user_goal: 汇总六平台来源覆盖6/6及四家核心在线只读4/4的真实证据，补验缺口；猎聘人工JD不能替代在线详情。
+    user_goal: 汇总六平台来源覆盖6/6的真实证据并补验缺口：猎聘在线只读已验收，BOSS/智联/51job 以明确标记的人工导入样本计入来源覆盖、在线只读保持 blocked 并保留原因；猎聘人工JD不能替代在线详情。
     vision_link: 确保六平台目标逐项达成，来源、在线读取、投递与反馈能力不互相冒充。
     design_refs:
     - PLAN.md
@@ -779,9 +783,6 @@ steps:
     - docs/execution-roadmap.md
     depends_on:
     - channel_session_setup
-    - boss_readonly_integration
-    - zhilian_readonly_integration
-    - qiancheng_readonly_integration
     - maimai_source_integration
     - lagou_source_integration
     acceptance:
@@ -790,7 +791,7 @@ steps:
       evidence: []
       covers:
       - six_platform_real_source_complete_jd_workflows_six_of_six
-      - core_platform_real_online_search_and_detail_four_of_four
+      - core_platform_online_readonly_liepin_verified_others_blocked_with_recorded_reasons
       - liepin_manual_jd_does_not_satisfy_online_detail
       - reused_real_page_evidence_and_specific_gap_verification
       - read_only_delivery_and_feedback_statuses_separate
