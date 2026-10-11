@@ -1153,3 +1153,90 @@ class FeedbackIterationTests(SessionBrowserStubTests):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ManualSubmissionRecordTests(unittest.TestCase):
+    """手动投递记录：为人工导入的画像记录一次 App 外完成的投递，进入列表且不可重试、不计自动确认。"""
+
+    def _profile_dir(self, root: Path) -> Path:
+        profiles = root / "job_profiles"
+        profiles.mkdir()
+        (profiles / "jp_manual1.yaml").write_text(
+            "\n".join(
+                [
+                    'target_role: "高级后端工程师"',
+                    'company: "示例科技"',
+                    'source_url: "https://maimai.cn/job_detail?jid=123456"',
+                    'status: "active"',
+                    'platform: "maimai"',
+                    'import_mode: "manual"',
+                    'source_jd: "完整 JD 正文"',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return profiles
+
+    def test_record_manual_submission_writes_log_and_lists_without_retry(self):
+        from tools.sidecar.handlers import jobs, submission
+        from tools.sidecar.handlers.submission import handle_submission_record_manual
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profiles = self._profile_dir(root)
+            submissions = root / "outputs" / "submissions"
+            with (
+                patch.object(jobs, "_JOB_PROFILE_DIR", profiles),
+                patch.object(submission, "_SUBMISSIONS_DIR", submissions),
+            ):
+                result = handle_submission_record_manual(
+                    {
+                        "meta": {"correlation_id": "manual_record"},
+                        "job_profile_id": "jp_manual1",
+                        "delivered_at": "2026-10-11T09:30:00+08:00",
+                        "quick_run_id": "qr_demo",
+                        "note": "在脉脉 App 内投递，附带 PDF",
+                    }
+                )
+                log_path = submissions / "maimai" / result["submission_id"] / "submission_log.json"
+                self.assertTrue(log_path.exists())
+                payload = json.loads(log_path.read_text(encoding="utf-8"))
+                listed = handle_submission_list({"meta": {"correlation_id": "manual_list"}})
+                detail = handle_submission_detail({"meta": {"correlation_id": "manual_detail"}, "submission_id": result["submission_id"]})
+                with self.assertRaises(ValueError):
+                    handle_submission_retry({"meta": {"correlation_id": "manual_retry"}, "submission_id": result["submission_id"], "strategy": "same_channel"})
+
+        self.assertEqual(result["status"], "manual_recorded")
+        self.assertEqual(payload["transport"], "manual")
+        self.assertEqual(payload["mode"], "manual")
+        self.assertEqual(payload["platform"], "maimai")
+        self.assertEqual(payload["receipt_source"], "manual_tracking")
+        self.assertEqual(payload["company"], "示例科技")
+        self.assertEqual(payload["position"], "高级后端工程师")
+        self.assertEqual(payload["job_profile_id"], "jp_manual1")
+        self.assertEqual(payload["quick_run_id"], "qr_demo")
+        self.assertEqual([step["name"] for step in payload["steps"]], ["manual_record"])
+        item = listed["items"][0]
+        self.assertEqual(item["submission_id"], result["submission_id"])
+        self.assertEqual(item["channel"], "maimai")
+        self.assertEqual(item["status"], "manual_recorded")
+        self.assertEqual(item["mode"], "manual")
+        self.assertFalse(item["retry_allowed"])
+        self.assertEqual(detail["submission"]["receipt_source"], "manual_tracking")
+        self.assertEqual(detail["submission"]["resume_version_id"], "qr_demo")
+
+    def test_record_manual_requires_existing_profile(self):
+        from tools.sidecar.handlers import jobs, submission
+        from tools.sidecar.handlers.submission import handle_submission_record_manual
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profiles = root / "job_profiles"
+            profiles.mkdir()
+            with (
+                patch.object(jobs, "_JOB_PROFILE_DIR", profiles),
+                patch.object(submission, "_SUBMISSIONS_DIR", root / "outputs" / "submissions"),
+            ):
+                with self.assertRaises(KeyError):
+                    handle_submission_record_manual({"meta": {"correlation_id": "x"}, "job_profile_id": "jp_missing"})

@@ -22,6 +22,7 @@ import {
   listJobLeads,
   listJobProfiles,
   prepareLiepinDefault,
+  recordManualSubmission,
   saveJobProfileDraft,
   searchLiepinJobs,
   updateJobProfile,
@@ -148,6 +149,10 @@ export function JobsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   // 画像详情默认只读；切换画像时退出编辑态。
   const [profileEditing, setProfileEditing] = useState(false);
+  // 手动投递记录表单（画像详情只读视图内的折叠区块）。
+  const [manualDeliveredAt, setManualDeliveredAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [manualNote, setManualNote] = useState("");
+  const [manualSaving, setManualSaving] = useState(false);
 
   // 首次加载显示占位；之后的重载保留列表与详情，不整页回到 loading。
   const loadData = useCallback(
@@ -1085,14 +1090,22 @@ export function JobsPage() {
                         {profile.company || profile.business_domain || "--"}
                       </p>
                     </div>
-                    <span
-                      className={`shrink-0 rounded-chip border px-2.5 py-1 text-xs ${statusTone(
-                        profile.status
-                      )}`}
-                    >
-                      {t(`pages.jobs.status.${profile.status}`, {
-                        defaultValue: profile.status,
-                      })}
+                    <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {profile.import_mode === "manual" ? (
+                        <span className="rounded-chip border border-border px-2 py-1 text-xs text-text-secondary" data-testid="profile-manual-import">
+                          {t("pages.jobs.manualImport")}
+                          {profile.platform ? ` · ${t(`codes.platform.${profile.platform}`, { defaultValue: profile.platform })}` : ""}
+                        </span>
+                      ) : null}
+                      <span
+                        className={`rounded-chip border px-2.5 py-1 text-xs ${statusTone(
+                          profile.status
+                        )}`}
+                      >
+                        {t(`pages.jobs.status.${profile.status}`, {
+                          defaultValue: profile.status,
+                        })}
+                      </span>
                     </span>
                   </div>
                   <p className="mt-4 line-clamp-2 min-h-10 text-sm text-text-secondary">
@@ -1208,6 +1221,13 @@ export function JobsPage() {
                   <p className="mt-1 text-sm text-text-secondary">
                     {[selectedProfile.company, formatUpdatedAt(selectedProfile.updated_at, i18n.language)].filter(Boolean).join(" · ")}
                   </p>
+                  {selectedProfile.import_mode === "manual" ? (
+                    <p className="mt-1 text-xs text-text-muted">
+                      {t("pages.jobs.manualImport")}
+                      {selectedProfile.platform ? ` · ${t(`codes.platform.${selectedProfile.platform}`, { defaultValue: selectedProfile.platform })}` : ""}
+                      {selectedProfile.source_recorded_at ? ` · ${t("pages.jobs.sourceRecordedAt")} ${formatUpdatedAt(selectedProfile.source_recorded_at, i18n.language)}` : ""}
+                    </p>
+                  ) : null}
                   <span className={`mt-2 inline-flex rounded-chip border px-2.5 py-1 text-xs ${statusTone(selectedProfile.status)}`}>
                     {t(`pages.jobs.status.${selectedProfile.status}`)}
                   </span>
@@ -1250,6 +1270,66 @@ export function JobsPage() {
                 <details className="rounded-card border border-border">
                   <summary className="cursor-pointer select-none px-3 py-2 text-sm">{t("pages.jobs.fields.sourceJd")}</summary>
                   <p className="whitespace-pre-wrap break-words px-3 pb-3 text-sm text-text-primary">{selectedProfile.source_jd || "--"}</p>
+                </details>
+                <details className="rounded-card border border-border" data-testid="job-manual-submission">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-sm">{t("pages.jobs.manualSubmission.title")}</summary>
+                  <div className="space-y-3 px-3 pb-3 text-sm">
+                    <p className="text-xs text-text-secondary">{t("pages.jobs.manualSubmission.hint")}</p>
+                    <label className="block">
+                      <span className="text-xs text-text-muted">{t("pages.jobs.manualSubmission.deliveredAt")}</span>
+                      <input
+                        type="date"
+                        aria-label={t("pages.jobs.manualSubmission.deliveredAt")}
+                        className="mt-1 w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                        value={manualDeliveredAt}
+                        disabled={manualSaving}
+                        onChange={(event) => setManualDeliveredAt(event.target.value)}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-text-muted">{t("pages.jobs.manualSubmission.note")}</span>
+                      <textarea
+                        aria-label={t("pages.jobs.manualSubmission.note")}
+                        className="mt-1 min-h-16 w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                        placeholder={t("pages.jobs.manualSubmission.notePlaceholder")}
+                        maxLength={2000}
+                        value={manualNote}
+                        disabled={manualSaving}
+                        onChange={(event) => setManualNote(event.target.value)}
+                      />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        data-testid="job-manual-submission-save"
+                        className="rounded-card border border-accent bg-accent px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                        disabled={manualSaving || !manualDeliveredAt}
+                        onClick={() => {
+                          void (async () => {
+                            setManualSaving(true);
+                            try {
+                              await recordManualSubmission({
+                                job_profile_id: selectedProfile.job_profile_id,
+                                delivered_at: `${manualDeliveredAt}T12:00:00+08:00`,
+                                note: manualNote,
+                              });
+                              setManualNote("");
+                              notify("success", t("toasts.jobs.manualRecorded"));
+                            } catch (error) {
+                              setError(getErrorMessage(error));
+                            } finally {
+                              setManualSaving(false);
+                            }
+                          })();
+                        }}
+                      >
+                        {manualSaving ? t("pages.jobs.manualSubmission.saving") : t("pages.jobs.manualSubmission.submit")}
+                      </button>
+                      <button type="button" className="text-sm text-accent underline" onClick={() => navigate("/submissions")}>
+                        {t("pages.jobs.manualSubmission.open")}
+                      </button>
+                    </div>
+                  </div>
                 </details>
               </div>
             ) : null}
@@ -1423,7 +1503,9 @@ export function JobsPage() {
                         lead.source
                       )}`}
                     >
-                      {lead.source ? t(`codes.source.${lead.source}`, { defaultValue: lead.source }) : "--"}
+                      {lead.import_mode === "manual"
+                        ? `${t("pages.jobs.manualImport")}${lead.platform ? ` · ${t(`codes.platform.${lead.platform}`, { defaultValue: lead.platform })}` : ""}`
+                        : lead.source ? t(`codes.source.${lead.source}`, { defaultValue: lead.source }) : "--"}
                     </span>
                     <span
                       className={`w-fit rounded-chip border px-2.5 py-1 text-xs ${statusTone(
@@ -1453,7 +1535,9 @@ export function JobsPage() {
                 {t("pages.jobs.leads.detailTitle")}
               </h2>
               <p className="mt-1 text-sm text-text-secondary">
-                {selectedLead?.source ? t(`codes.source.${selectedLead.source}`, { defaultValue: selectedLead.source }) : "--"}
+                {selectedLead?.import_mode === "manual"
+                  ? `${t("pages.jobs.manualImport")}${selectedLead.platform ? ` · ${t(`codes.platform.${selectedLead.platform}`, { defaultValue: selectedLead.platform })}` : ""}`
+                  : selectedLead?.source ? t(`codes.source.${selectedLead.source}`, { defaultValue: selectedLead.source }) : "--"}
               </p>
             </div>
             {selectedLead ? (

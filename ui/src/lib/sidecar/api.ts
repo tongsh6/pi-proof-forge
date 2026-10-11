@@ -523,6 +523,16 @@ export async function getSubmissionDetail(
   });
 }
 
+/** 手动投递记录：用户在 App 外投递后回填；后端写入与自动投递同位置的记录，不可重试。 */
+export async function recordManualSubmission(payload: {
+  job_profile_id: string;
+  delivered_at?: string;
+  quick_run_id?: string;
+  note?: string;
+}): Promise<{ meta: { correlation_id: string }; submission_id: string; status: string; platform: string; delivered_at: string }> {
+  return client.call("submission.recordManual", payload);
+}
+
 export async function retrySubmission(
   submissionId: string,
   strategy: "same_channel" | "fallback_email" = "same_channel"

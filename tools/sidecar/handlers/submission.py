@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 import hashlib
 import shutil
 from datetime import datetime, timezone
@@ -867,7 +868,7 @@ def _submission_item(path: Path) -> dict[str, Any]:
     rate_limit = _step_by_name(payload, "rate_limit")
     return {
         "submission_id": str(payload.get("run_id", path.parent.name)),
-        "retry_allowed": not _managed_delivery(payload),
+        "retry_allowed": not _managed_delivery(payload) and str(payload.get("transport", "")) != "manual",
         "company": str(inputs.get('company') or historical_identity.get("company") or payload.get("company", payload.get("job_company", ""))),
         "position": str(inputs.get('position') or historical_identity.get("position") or payload.get("position", payload.get("job_title", ""))),
         "channel": str(payload.get("platform", path.parent.parent.name)),
@@ -956,7 +957,7 @@ def handle_submission_detail(params: dict[str, Any]) -> dict[str, Any]:
             "resume_version_id": str(evidence.get("resume_version_id") or inputs.get('resume_version') or payload.get("resume_version_id", "")),
             "parent_run_id": str(inputs.get('parent_run_id', '')),
             "job_lead_id": str(inputs.get('candidate_id', '')),
-            "receipt_source": str(inputs.get('receipt_source', '')),
+            "receipt_source": str(inputs.get('receipt_source') or payload.get("receipt_source", "")),
             "adapter_capabilities": payload.get("adapter_capabilities", {}),
             "original_job_lead": payload.get("original_job_lead", {}),
             "final_verified_target": payload.get("final_verified_target", {}),
@@ -1026,6 +1027,69 @@ def handle_submission_list(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def handle_submission_record_manual(params: dict[str, Any]) -> dict[str, Any]:
+    """手动投递记录：用户在 App 外完成投递后回填一条记录。
+
+    规范：openspec/specs/pi-proof-forge-core.md「人工导入来源契约」。写入与自动投递相同的
+    submission_log.json 位置，transport/mode 为 manual，status 为 manual_recorded，不计入自动确认数、不可重试。
+    """
+    from tools.sidecar.handlers import jobs as _jobs
+
+    correlation_id = params["meta"]["correlation_id"]
+    job_profile_id = str(params.get("job_profile_id") or "").strip()
+    if not job_profile_id:
+        raise ValueError("job_profile_id_required")
+    profile_path = _jobs._profile_path(job_profile_id)
+    if not profile_path.exists():
+        raise KeyError(f"NOT_FOUND: {job_profile_id}")
+    scalars = _jobs._read_yaml_doc(profile_path)["scalars"]
+    source_url = str(scalars.get("source_url", "")).strip()
+    platform = str(scalars.get("platform") or _jobs.platform_from_url(source_url) or "other")
+    delivered_at = str(params.get("delivered_at") or "").strip() or _now_iso()
+    if _safe_parse_iso_datetime(delivered_at) is None:
+        raise ValueError("delivered_at_invalid")
+    note = str(params.get("note") or "").strip()[:2000]
+    quick_run_id = str(params.get("quick_run_id") or "").strip()
+    run_id = f"manual-{uuid4().hex[:12]}"
+    recorded_at = _now_iso()
+    payload: dict[str, Any] = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "platform": platform,
+        "transport": "manual",
+        "mode": "manual",
+        "status": "manual_recorded",
+        "terminal_status": "manual_recorded",
+        "receipt_source": "manual_tracking",
+        "company": str(scalars.get("company", "")),
+        "position": str(scalars.get("target_role", "")),
+        "job_url": source_url,
+        "job_profile_id": job_profile_id,
+        "job_lead_id": str(scalars.get("job_lead_id", "")),
+        "quick_run_id": quick_run_id,
+        "resume_version_id": quick_run_id,
+        "note": note,
+        "started_at": delivered_at,
+        "ended_at": delivered_at,
+        "recorded_at": recorded_at,
+        "final_submit_attempted": False,
+        "external_submission_attempted": True,
+        "steps": [{"name": "manual_record", "status": "recorded", "detail": note}],
+    }
+    run_dir = _SUBMISSIONS_DIR / platform / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    log_path = run_dir / "submission_log.json"
+    log_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "submission_id": run_id,
+        "status": "manual_recorded",
+        "platform": platform,
+        "delivered_at": delivered_at,
+        "log_json_path": str(log_path),
+    }
+
+
 def handle_submission_retry(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
     submission_id = str(params["submission_id"])
@@ -1040,6 +1104,8 @@ def handle_submission_retry(params: dict[str, Any]) -> dict[str, Any]:
         if str(payload.get("run_id", path.parent.name)) == submission_id:
             if payload.get('transport') == 'liepin_api':
                 raise ValueError('api_submission_retry_forbidden')
+            if payload.get('transport') == 'manual':
+                raise ValueError('manual_record_retry_forbidden')
             if _managed_delivery(payload):
                 raise ValueError('managed_submission_retry_forbidden')
             payload["status"] = "queued"

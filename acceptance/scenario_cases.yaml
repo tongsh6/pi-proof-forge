@@ -2473,3 +2473,29 @@ cases:
           - "external_l3_runner_records_command_error_as_live_blocker"
           - "external_l3_runner_records_post_submit_feedback_trace"
           - "external_l3_runner_persists_json_and_markdown_evidence"
+
+  - case_id: "maimai_source_integration"
+    status: "ready_for_implementation"
+    priority: "P0"
+    persona: "solo_technical_job_seeker"
+    entry_point: "jobs"
+    depends_on:
+      - "setup_job_target"
+    user_goal: >
+      用户把脉脉上看到的职位链接与完整 JD 粘贴进岗位中心，App 按域名识别平台并标明人工导入，
+      不向脉脉发任何请求；审核保存为完整画像后可进入 Quick Run 生成定制简历；
+      用户在脉脉 App 内自行投递后，在 App 里回填一条手动投递记录，进入投递记录并可关联反馈。
+
+    scope:
+      includes:
+        - "paste_full_jd_with_maimai_source_url"
+        - "platform_recognized_from_url_domain"
+        - "manual_platform_source_url_not_fetched"
+        - "manual_import_label_platform_and_source_recorded_at"
+        - "link_only_rejected_as_complete_jd"
+        - "manual_submission_record_with_resume_run_link"
+        - "manual_record_not_retryable_and_feedback_linkable"
+      excludes:
+        - "maimai_online_search_or_detail_fetch"
+        - "maimai_login_or_automation"
+        - "app_delivery_to_maimai"

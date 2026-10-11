@@ -27,7 +27,7 @@ def test_journey_contract_loads_and_references_ready_cases() -> None:
     assert contract.selected_cases == contract.case_ids
     assert "feedback_iteration_after_check_mode" in contract.selected_cases
     assert "external_l3_submission_validation" in contract.selected_cases
-    assert len(contract.case_contracts) == 10
+    assert len(contract.case_contracts) == 11
 
 
 def test_journey_contract_requires_exact_stage_order(tmp_path: Path) -> None:

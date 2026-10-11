@@ -153,7 +153,8 @@ def _write_job_profile_file(path: Path, fields: dict[str, Any]) -> None:
         f"review_decision: {_quote(fields.get('review_decision', ''))}",
         f"reviewed_at: {_quote(fields.get('reviewed_at', ''))}",
     ]
-    for key in ("source", "platform", "platform_job_id", "platform_job_type", "source_jd_sha256", "jd_origin"):
+    for key in ("source", "platform", "platform_job_id", "platform_job_type", "source_jd_sha256", "jd_origin",
+                "import_mode", "source_recorded_at"):
         if key in fields:
             lines.append(f"{key}: {_quote(fields[key])}")
     _write_list(lines, "keywords", fields.get("keywords", []))
@@ -171,7 +172,8 @@ def _write_job_lead_file(path: Path, fields: dict[str, Any]) -> None:
                 "created_at": "", "updated_at": ""}
     values = {key: fields.get(key, default) for key, default in defaults.items()}
     for key in ("platform", "platform_job_id", "platform_job_type", "jd_status", "fetched_at",
-                "source_jd", "source_jd_sha256", "jd_origin", "salary", "location"):
+                "source_jd", "source_jd_sha256", "jd_origin", "salary", "location",
+                "import_mode", "source_recorded_at"):
         if key in fields:
             values[key] = fields[key]
     # JSON 字符串是合法 YAML 标量，保留换行同时避免外部职位文本注入 YAML 字段。
@@ -304,6 +306,31 @@ def _job_draft_prompt(jd_text: str, source_url: str) -> str:
         "source_jd 和 source_url 已由 App 原样保存，不要生成。只返回 JSON。\n\n"
         f"JD:\n{jd_text}"
     )
+
+
+# 来源链接按域名识别平台；识别只看域名，不向平台发请求。
+_PLATFORM_DOMAINS: tuple[tuple[str, str], ...] = (
+    ("maimai.cn", "maimai"),
+    ("lagou.com", "lagou"),
+    ("zhipin.com", "boss"),
+    ("zhaopin.com", "zhilian"),
+    ("51job.com", "qiancheng"),
+    ("liepin.com", "liepin"),
+)
+# 这些平台的协议禁止脚本访问，链接会触发登录或验证页：人工导入时只做 HTTPS 语法校验，不做可达性 GET。
+MANUAL_IMPORT_PLATFORMS = frozenset({"maimai", "lagou", "boss", "zhilian", "qiancheng"})
+
+
+def platform_from_url(source_url: str) -> str:
+    if not source_url.strip():
+        return ""
+    host = (urlparse(source_url.strip()).hostname or "").lower()
+    if not host:
+        return "other"
+    for domain, platform in _PLATFORM_DOMAINS:
+        if host == domain or host.endswith("." + domain):
+            return platform
+    return "other"
 
 
 def _check_source_url_accessible(
@@ -456,6 +483,8 @@ def _build_profile_item(
         "source_url": doc["scalars"].get("source_url", ""),
         "job_lead_id": doc["scalars"].get("job_lead_id", ""),
         "source_jd_sha256": doc["scalars"].get("source_jd_sha256", ""),
+        "import_mode": doc["scalars"].get("import_mode", ""),
+        "source_recorded_at": doc["scalars"].get("source_recorded_at", ""),
         **_lead_identity(doc["scalars"]),
     }
 
@@ -570,6 +599,8 @@ def _build_lead_item(path: Path) -> JobLeadItem | None:
         "job_profile_id": s.get("job_profile_id", ""),
         "source_jd": s.get("source_jd", ""),
         "source_jd_sha256": s.get("source_jd_sha256", ""),
+        "import_mode": s.get("import_mode", ""),
+        "source_recorded_at": s.get("source_recorded_at", ""),
     }
 
 
@@ -864,33 +895,54 @@ def handle_jobs_save_profile_draft(params: dict[str, object]) -> dict[str, objec
         raise ValueError("complete job profile requires JD text, role, must_have, keywords, and summary")
     digest = hashlib.sha256(normalized["source_jd"].encode()).hexdigest()
     from_public_detail = binding and lead.get("jd_origin") == "public_page" and lead.get("source_jd_sha256") == digest
+    # 人工导入：没有官方线索绑定（或线索本身就是人工 JD）；平台按链接域名识别。
+    manual_source = (not binding) or lead.get("source", "manual_jd") == "manual_jd"
+    platform = str(normalized.get("platform") or lead.get("platform") or platform_from_url(normalized["source_url"]))
     if mode == "complete" and from_public_detail:
         source_check = {"checked": True, "accessible": True, "status": "verified_public_detail", "verified_at": lead.get("fetched_at", "")}
+    elif mode == "complete" and manual_source and platform in MANUAL_IMPORT_PLATFORMS and normalized["source_url"]:
+        parsed_url = urlparse(normalized["source_url"])
+        if parsed_url.scheme != "https" or not parsed_url.netloc:
+            source_check = {"checked": True, "accessible": False, "status": "invalid_url"}
+        else:
+            source_check = {"checked": False, "accessible": None, "status": "manual_platform_not_checked", "platform": platform}
     elif mode == "complete":
         source_check = _check_source_url_accessible(normalized["source_url"])
     else:
         source_check = {"checked": False, "accessible": False, "status": "not_required"}
-    if mode == "complete" and normalized["source_url"] and not source_check.get("accessible"):
+    if mode == "complete" and normalized["source_url"] and source_check.get("checked") and not source_check.get("accessible"):
         raise ValueError("job_source_unavailable")
     now = _utcnow_iso()
+    source_recorded_at = str(existing.get("source_recorded_at") or (now if normalized["source_url"] else ""))
     if not binding and mode == "complete" and normalized["source_url"]:
         lead_id = f"jl_{uuid4().hex[:8]}"
         lead = {"id": lead_id, "source": "manual_jd", "url": normalized["source_url"],
-                "company": normalized["company"], "position": normalized["target_role"], "created_at": now}
+                "company": normalized["company"], "position": normalized["target_role"], "created_at": now,
+                "platform": platform, "import_mode": "manual", "source_recorded_at": source_recorded_at}
         binding = (_lead_path(lead_id), lead)
     fields = {**normalized, "job_lead_id": str(lead_id or ""), "source_jd_sha256": digest,
               "jd_origin": "public_page" if from_public_detail else "manual_input",
+              "import_mode": "manual" if manual_source else str(existing.get("import_mode", "")),
+              "source_recorded_at": source_recorded_at,
               "status": "active" if mode == "complete" else "saved_incomplete",
               "created_at": existing.get("created_at") or now, "updated_at": now,
               "review_decision": "approved" if mode == "complete" else "",
               "reviewed_at": str(review.get("reviewed_at") or now) if mode == "complete" else "",
               "missing_items": missing}
+    if platform:
+        fields["platform"] = platform
     _write_job_profile_file(profile_path, fields)
     if binding:
         lead.update({"job_profile_id": profile_id, "source_jd": normalized["source_jd"],
                      "source_jd_sha256": digest, "jd_origin": fields["jd_origin"],
                      "jd_status": "complete_reviewed" if mode == "complete" else "full_unreviewed",
                      "updated_at": now})
+        if manual_source:
+            lead.setdefault("import_mode", "manual")
+            if platform and not lead.get("platform"):
+                lead["platform"] = platform
+            if source_recorded_at and not lead.get("source_recorded_at"):
+                lead["source_recorded_at"] = source_recorded_at
         _write_job_lead_file(binding[0], lead)
     return {"meta": {"correlation_id": correlation_id}, "job_profile_id": profile_id,
             "job_lead_id": str(lead_id or ""), "status": "saved_complete" if mode == "complete" else "saved_incomplete",

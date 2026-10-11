@@ -143,6 +143,9 @@ export interface JobProfileListItem {
   platform_job_id?: string;
   platform_job_type?: string;
   source_jd_sha256?: string;
+  /** 人工导入（粘贴 JD）时为 "manual"，界面标明“人工导入 · 平台”。 */
+  import_mode?: string;
+  source_recorded_at?: string;
   title: string;
   company: string;
   status: "active" | "draft" | "archived" | string;
@@ -190,6 +193,8 @@ export interface JobLeadListItem {
   platform_job_type?: string;
   jd_status?: string;
   fetched_at?: string;
+  import_mode?: string;
+  source_recorded_at?: string;
 }
 
 export interface JobLeadsFilters {

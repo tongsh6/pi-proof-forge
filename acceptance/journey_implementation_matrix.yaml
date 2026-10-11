@@ -737,7 +737,8 @@ steps:
     acceptance:
       script: 外部真实 Tauri 页面自动化：maimai_source_integration（待实现）
       depth: deep_required
-      evidence: []
+      evidence:
+      - tests/acceptance/test_scenario_maimai_source_import.py
       covers:
       - maimai_real_source_url_and_complete_jd_sample
       - source_timestamp_and_manual_import_labeled

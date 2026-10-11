@@ -615,6 +615,18 @@
       },
       "detail": {
         "generation": "Generation parameters"
+      },
+      "manualImport": "Manual import",
+      "sourceRecordedAt": "Source recorded",
+      "manualSubmission": {
+        "title": "Record a manual submission",
+        "hint": "Log an application you sent yourself on the platform; it appears in Submissions and can take feedback. The app sends nothing.",
+        "deliveredAt": "Delivered at",
+        "note": "Note",
+        "notePlaceholder": "e.g. applied in the Maimai app with the PDF version",
+        "submit": "Save record",
+        "saving": "Saving…",
+        "open": "Open Submissions"
       }
     },
     "agentRun": {
@@ -873,7 +885,8 @@
         "failed": "Failed",
         "blocked": "Blocked",
         "queued": "Queued",
-        "unknown": "Unknown"
+        "unknown": "Unknown",
+        "manual_recorded": "Manual record"
       },
       "fields": {
         "company": "Company",
@@ -1471,7 +1484,8 @@
       "saved": "Job profile saved",
       "converted": "Lead converted to a job profile",
       "draftSaved": "Profile draft saved",
-      "detailFetched": "Full JD loaded into the editor"
+      "detailFetched": "Full JD loaded into the editor",
+      "manualRecorded": "Manual submission recorded"
     },
     "quickRun": {
       "done": "Quick run finished",
@@ -1577,7 +1591,8 @@
       "login_required": "Login required",
       "open_channel_login_page": "Open login page",
       "upload_trigger": "Trigger upload",
-      "target_recovery_attempt_when_configured": "Target recovery attempt"
+      "target_recovery_attempt_when_configured": "Target recovery attempt",
+      "manual_record": "Manual submission record"
     },
     "browser": {
       "tauri_webkit": "In-app browser",
@@ -1601,7 +1616,13 @@
       "technical_depth": "Technical depth"
     },
     "platform": {
-      "liepin": "Liepin"
+      "liepin": "Liepin",
+      "maimai": "Maimai",
+      "lagou": "Lagou",
+      "boss": "BOSS Zhipin",
+      "zhilian": "Zhaopin",
+      "qiancheng": "51job",
+      "other": "Other"
     }
   }
 }

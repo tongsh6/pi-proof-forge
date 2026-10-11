@@ -177,6 +177,15 @@ App 内岗位定制与候选准备衔接（2026-10-08）：
 - PDF 版本/指纹、平台实际发送的附件或在线简历身份、审批记录须可关联。接口只有岗位参数不构成版本绑定证据；无法核验时保持阻断，不自动覆盖在线简历或降低为默认平台简历。
 - 复用 `SubmissionRecorder` 与 External L3，新增适合 API 的认证、目标、版本绑定、提交和回执证据契约；未知/失败/重复/成功分别记录。无权威业务成功依据时 `DeliveryResult.success=false`。Token 接入不得沿用“原始密钥 env 进入 L3 模板”的做法，应通过后端凭据引用解决。
 
+#### 人工导入来源契约（2026-10-11，S7 脉脉 / 拉勾首版，BOSS / 智联 / 51job 人工导入同用）
+
+- 来源链接按域名识别平台并记录 `platform`：`maimai.cn` → `maimai`，`lagou.com` → `lagou`，`zhipin.com` → `boss`，`zhaopin.com` → `zhilian`，`51job.com` → `qiancheng`，`liepin.com` → `liepin`，其余 → `other`。识别只看域名，不向平台发请求。
+- 人工导入（用户粘贴完整 JD，可附来源链接）保存为完整画像时，对 `maimai`、`lagou`、`boss`、`zhilian`、`qiancheng` 的来源链接只做 HTTPS 语法校验，不做可达性 GET（平台协议禁止脚本访问，且会触发登录或验证页）；`source_url_check.status` 记为 `manual_platform_not_checked`。其他域名沿用现有可达性检查。
+- 人工导入的画像与线索记录 `import_mode: manual`、`platform` 与 `source_recorded_at`（用户保存来源的时间）；线索 `source` 保持 `manual_jd`。界面在画像卡、画像详情与线索列表标明“人工导入 · 平台名”。
+- 仅链接不算完整 JD：`source_jd` 为空或只是 URL 时保持 `missing_jd_text`，不能保存为完整画像。
+- 来源覆盖、在线只读、真实投递分别验收：人工导入样本计入来源覆盖，不表示该平台具备在线只读或 App 投递能力。人工导入平台的投递只能由用户在 App 外完成，并以“手动投递记录”形式回填（见下条）。
+- 手动投递记录：用户可为任一画像记录一次 App 外完成的投递（平台、投递时间、可选简历运行编号与备注）。记录写入 `outputs/submissions/<platform>/<run_id>/submission_log.json`，`channel` 为平台码、`transport: manual`、`mode: manual`、`status: manual_recorded`、`receipt_source: manual_tracking`，步骤只有一条 `manual_record`；列表与详情标明“手动记录”，不计入 App 自动确认数，不可重试，可作为反馈迭代的关联投递。
+
 #### 真实投递结果与反馈收口（2026-10-01）
 
 - Submissions 详情统一展示两条 App 路线的审批运行、岗位、简历版本/指纹、回执来源与本地证据完整性。完整性检查只读已有批准快照、业务回执和 SQLite 尝试记录；缺失、被改动、结果未知或仅外部观察时不得显示核验通过，也不得改变原投递状态或补发。

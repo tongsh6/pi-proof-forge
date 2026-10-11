@@ -2,6 +2,14 @@
 
 Last updated: 2026-10-11
 
+## 2026-10-11 P0-022 脉脉来源导入首片：人工导入来源契约与手动投递记录
+
+- 探索结论：粘贴 JD 加可选来源链接的人工导入链路已存在，但完整保存时后端会对来源链接发 GET 校验可达性，与脉脉 / 拉勾协议禁止脚本访问冲突；没有平台识别、人工导入标记、来源时间与手动投递记录。
+- 规范：核心规范新增“人工导入来源契约”节（域名识别平台、人工平台不做 GET、`import_mode` / `platform` / `source_recorded_at`、仅链接不算完整 JD、来源覆盖与在线 / 投递能力分开、手动投递记录契约）。
+- 后端（先红后绿）：`jobs.py` 新增 `platform_from_url` 与 `MANUAL_IMPORT_PLATFORMS`，保存时对人工平台记 `manual_platform_not_checked`，画像 / 线索写入与列表输出新字段；`submission.py` 新增 `handle_submission_record_manual`（`submission.recordManual`），手动记录不可重试、详情回执来源为 `manual_tracking`。新增单测 4 + 2 项；tests/unit（非 GUI）全部通过。
+- 前端：类型与词条（平台中文名、人工导入、手动投递表单、`manual_recorded` 状态、`manual_record` 步骤）；岗位页画像卡 / 详情 / 线索行标明“人工导入 · 平台”，画像详情新增“记录一次手动投递”折叠表单；投递页通道显示平台中文名。tsc、tests/unit/gui 74 项通过。
+- 验收：新增 L1 场景脚本 `tests/acceptance/test_scenario_maimai_source_import.py`，契约与场景用例目录加入 `maimai_source_integration`（契约用例数 11），矩阵登记证据，tests/acceptance 97 项通过。深度验收待用户提供真实脉脉链接与完整 JD。
+
 ## 2026-10-11 GUI 空工作区首次启动走查（UX 第七批）
 
 - 用户同意先做空工作区走查再回主线。打包版复制到隔离目录并清空资源目录内的数据后直接运行，桌面控制逐页截图。

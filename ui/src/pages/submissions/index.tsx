@@ -715,7 +715,7 @@ export function SubmissionsPage() {
                       </div>
                       <div className="min-w-0">
                         <span className={`inline-flex max-w-full rounded-chip border px-2 py-0.5 text-xs font-medium ${channelClassName(item.channel)}`}>
-                          <span className="truncate">{channelLabel(item, t("pages.submissions.unknownChannel"))}</span>
+                          <span className="truncate">{t(`codes.platform.${item.channel}`, { defaultValue: channelLabel(item, t("pages.submissions.unknownChannel")) })}</span>
                         </span>
                       </div>
                       <p className="truncate text-text-secondary">{formatDate(item.submitted_at, i18n.language)}</p>
@@ -768,7 +768,7 @@ export function SubmissionsPage() {
                     </div>
                     <div>
                       <dt className="text-xs text-text-muted">{t("pages.submissions.fields.channel")}</dt>
-                      <dd className="mt-1 text-text-primary">{channelLabel(detail, t("pages.submissions.unknownChannel"))}</dd>
+                      <dd className="mt-1 text-text-primary">{t(`codes.platform.${detail.channel}`, { defaultValue: channelLabel(detail, t("pages.submissions.unknownChannel")) })}</dd>
                     </div>
                     <div>
                       <dt className="text-xs text-text-muted">{t("pages.submissions.fields.browser")}</dt>

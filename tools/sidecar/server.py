@@ -55,6 +55,7 @@ from tools.sidecar.handlers.submission import (
     handle_submission_check_mode,
     handle_submission_detail,
     handle_submission_list,
+    handle_submission_record_manual,
     handle_submission_retry,
 )
 from tools.sidecar.handlers.agent import (
@@ -124,6 +125,7 @@ def _create_router() -> Router:
     router.register("submission.detail", handle_submission_detail)
     router.register("submission.list", handle_submission_list)
     router.register("submission.retry", handle_submission_retry)
+    router.register("submission.recordManual", handle_submission_record_manual)
     router.register("submission.channelSession.get", handle_channel_session_get)
     router.register("submission.channelSession.start", handle_channel_session_start)
     router.register("submission.channelSession.check", handle_channel_session_check)

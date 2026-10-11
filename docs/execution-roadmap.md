@@ -45,6 +45,8 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 `maimai_source_integration`
 
+2026-10-11 P0-022 首片实施：按《人工导入来源契约》（核心规范新增节）落地：来源链接按域名识别平台（maimai / lagou / boss / zhilian / qiancheng / liepin / other），人工导入平台在完整保存时只做 HTTPS 语法校验、不向平台发请求，画像与线索记录 `platform`、`import_mode: manual`、`source_recorded_at`，岗位页标明“人工导入 · 平台”；新增 `submission.recordManual` 手动投递记录（通道为平台码、`transport/mode: manual`、`status: manual_recorded`、`receipt_source: manual_tracking`，不可重试、可关联反馈），画像详情提供回填表单，投递列表通道显示平台中文名。L1 场景脚本 `tests/acceptance/test_scenario_maimai_source_import.py` 覆盖矩阵五项 covers 并写出旅程报告。状态仍为 `next`：深度验收需用户提供一条真实脉脉职位链接与完整 JD，在真实 Tauri 页面走通导入、生成与手动记录。
+
 2026-10-11 P0-025 收口：用户决定按三次真实只读同步证据将 `liepin_feedback_sync` 标为 `deep_verified`（限制如实保留：同步由用户点击触发而非外部自动化；两笔“停止招聘”待下次同步更新；切片 3 沟通页回复只读读取未做，若立项另建条目）。按 2026-10-11 平台复核时的既定顺序，P0-022 `maimai_source_integration` 恢复为唯一 `next`；下一验收项：`外部真实 Tauri 页面自动化：maimai_source_integration（待实现）`。
 
 2026-10-11 P0-025 进度：三次真实只读同步（06:26Z / 06:42Z / 07:00Z）均在 App 自有猎聘会话内完成，17 行记录中 16 笔受控投递全部按岗位编号匹配，第三次读到 14 笔真实状态（暂不合适 4、已查看 8、已投递 2），2 笔“停止招聘”当次归为 unknown（closed 映射随后落地，待下次同步更新），平台写入 0；总览“投递进展”卡已用真实数据读回。证据与只读边界汇总见 `outputs/acceptance/liepin-feedback-sync-20261011/validation.json`，矩阵已挂证据。限制：三次同步由用户点击触发而非外部自动化；切片 3（沟通页回复只读读取）未做。`liepin_feedback_sync` 仍为唯一 `next`，是否按现有证据收口为 `deep_verified` 以及之后的 next（S7 脉脉或切片 3）由用户决定。下一验收项：`外部真实 Tauri 页面自动化：liepin_feedback_sync（三次真实只读同步 16/16 匹配已留档，待用户决定收口）`。

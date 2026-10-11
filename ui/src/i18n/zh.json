@@ -615,6 +615,18 @@
       },
       "detail": {
         "generation": "生成参数"
+      },
+      "manualImport": "人工导入",
+      "sourceRecordedAt": "来源记录于",
+      "manualSubmission": {
+        "title": "记录一次手动投递",
+        "hint": "在平台上自己投完后回填，进入投递记录并可关联反馈；不会由 App 发送任何内容。",
+        "deliveredAt": "投递时间",
+        "note": "备注",
+        "notePlaceholder": "例如：用脉脉 App 投递，附带 PDF 版本",
+        "submit": "保存记录",
+        "saving": "保存中…",
+        "open": "查看投递记录"
       }
     },
     "agentRun": {
@@ -873,7 +885,8 @@
         "failed": "失败",
         "blocked": "已阻断",
         "queued": "已排队",
-        "unknown": "未知"
+        "unknown": "未知",
+        "manual_recorded": "手动记录"
       },
       "fields": {
         "company": "公司",
@@ -1471,7 +1484,8 @@
       "saved": "岗位画像已保存",
       "converted": "线索已转为岗位画像",
       "draftSaved": "画像草稿已保存",
-      "detailFetched": "完整 JD 已载入解析区"
+      "detailFetched": "完整 JD 已载入解析区",
+      "manualRecorded": "已记录手动投递"
     },
     "quickRun": {
       "done": "快速运行已完成",
@@ -1577,7 +1591,8 @@
       "login_required": "需要登录",
       "open_channel_login_page": "打开登录页",
       "upload_trigger": "触发上传",
-      "target_recovery_attempt_when_configured": "目标恢复尝试"
+      "target_recovery_attempt_when_configured": "目标恢复尝试",
+      "manual_record": "手动记录投递"
     },
     "browser": {
       "tauri_webkit": "App 内置浏览器",
@@ -1601,7 +1616,13 @@
       "technical_depth": "技术深度"
     },
     "platform": {
-      "liepin": "猎聘"
+      "liepin": "猎聘",
+      "maimai": "脉脉",
+      "lagou": "拉勾",
+      "boss": "BOSS 直聘",
+      "zhilian": "智联招聘",
+      "qiancheng": "前程无忧",
+      "other": "其他来源"
     }
   }
 }

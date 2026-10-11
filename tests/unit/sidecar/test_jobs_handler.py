@@ -899,3 +899,156 @@ class JobsConvertLeadTests(unittest.TestCase):
                 self.assertTrue(
                     (profiles_dir / f"{result['job_profile_id']}.yaml").exists()
                 )
+
+
+class ManualImportSourceContractTests(unittest.TestCase):
+    """人工导入来源契约：按域名识别平台；人工平台不做可达性 GET；记录平台、人工导入与来源时间；仅链接不算完整 JD。"""
+
+    def _draft(self, source_url: str, source_jd: str = "脉脉招聘高级后端工程师，负责交易链路稳定性，要求 Python 与分布式系统经验。") -> dict[str, Any]:
+        return {
+            "target_role": "高级后端工程师",
+            "company": "示例科技",
+            "source_jd": source_jd,
+            "jd_summary": "负责交易链路稳定性。",
+            "source_url": source_url,
+            "must_have": ["Python"],
+            "keywords": ["分布式"],
+            "nice_to_have": [],
+            "business_domain": "互联网",
+            "seniority_signal": ["高级"],
+            "tone": "technical",
+        }
+
+    def test_platform_from_url_recognizes_known_domains(self) -> None:
+        from tools.sidecar.handlers.jobs import platform_from_url
+
+        self.assertEqual(platform_from_url("https://maimai.cn/job_detail?jid=1"), "maimai")
+        self.assertEqual(platform_from_url("https://m.maimai.cn/job/1"), "maimai")
+        self.assertEqual(platform_from_url("https://www.lagou.com/wn/jobs/1.html"), "lagou")
+        self.assertEqual(platform_from_url("https://www.zhipin.com/job_detail/1.html"), "boss")
+        self.assertEqual(platform_from_url("https://jobs.zhaopin.com/1.htm"), "zhilian")
+        self.assertEqual(platform_from_url("https://jobs.51job.com/shanghai/1.html"), "qiancheng")
+        self.assertEqual(platform_from_url("https://www.liepin.com/job/1.shtml"), "liepin")
+        self.assertEqual(platform_from_url("https://jobs.example.com/1"), "other")
+        self.assertEqual(platform_from_url(""), "")
+        self.assertEqual(platform_from_url("https://notmaimai.cn/x"), "other")
+
+    def test_complete_save_with_maimai_link_skips_fetch_and_labels_manual_import(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            profiles_dir = root / "job_profiles"
+            leads_dir = root / "job_leads"
+            profiles_dir.mkdir()
+            leads_dir.mkdir()
+            with (
+                patch("tools.sidecar.handlers.jobs._JOB_PROFILE_DIR", profiles_dir),
+                patch("tools.sidecar.handlers.jobs._JOB_LEAD_DIR", leads_dir),
+                patch(
+                    "tools.sidecar.handlers.jobs._check_source_url_accessible",
+                    side_effect=AssertionError("人工导入平台不得向平台发请求"),
+                ),
+            ):
+                result = cast(
+                    dict[str, Any],
+                    handle_jobs_save_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_manual_maimai"},
+                            "draft": self._draft("https://maimai.cn/job_detail?jid=123456"),
+                            "review": {"decision": "approved", "reviewed_at": "2026-10-11T00:00:00Z"},
+                            "save_mode": "complete",
+                        }
+                    ),
+                )
+                profile_text = (profiles_dir / f"{result['job_profile_id']}.yaml").read_text(encoding="utf-8")
+                lead_text = (leads_dir / f"{result['job_lead_id']}.yaml").read_text(encoding="utf-8")
+                profiles = cast(
+                    dict[str, Any],
+                    handle_jobs_list_profiles(
+                        {
+                            "meta": {"correlation_id": "corr_manual_list"},
+                            "cursor": None,
+                            "page_size": 20,
+                            "sort": {"field": "updated_at", "order": "desc"},
+                            "filters": {"status": "active", "query": "", "tags": []},
+                        }
+                    ),
+                )
+                leads = cast(
+                    dict[str, Any],
+                    handle_jobs_list_leads(
+                        {
+                            "meta": {"correlation_id": "corr_manual_leads"},
+                            "cursor": None,
+                            "page_size": 20,
+                            "sort": {"field": "updated_at", "order": "desc"},
+                            "filters": {"source": None, "status": None, "favorited": None, "query": ""},
+                        }
+                    ),
+                )
+
+        self.assertEqual(result["status"], "saved_complete")
+        self.assertEqual(result["source_url_check"]["status"], "manual_platform_not_checked")
+        self.assertEqual(result["source_url_check"]["platform"], "maimai")
+        self.assertIn('platform: "maimai"', profile_text)
+        self.assertIn('import_mode: "manual"', profile_text)
+        self.assertIn("source_recorded_at: ", profile_text)
+        self.assertIn('platform: "maimai"', lead_text)
+        self.assertIn('source: "manual_jd"', lead_text)
+        self.assertIn('import_mode: "manual"', lead_text)
+        item = profiles["items"][0]
+        self.assertEqual(item["platform"], "maimai")
+        self.assertEqual(item["import_mode"], "manual")
+        self.assertTrue(item["source_recorded_at"])
+        lead_item = leads["items"][0]
+        self.assertEqual(lead_item["platform"], "maimai")
+        self.assertEqual(lead_item["import_mode"], "manual")
+
+    def test_other_domain_still_requires_accessibility_check(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            profiles_dir = root / "job_profiles"
+            leads_dir = root / "job_leads"
+            profiles_dir.mkdir()
+            leads_dir.mkdir()
+            with (
+                patch("tools.sidecar.handlers.jobs._JOB_PROFILE_DIR", profiles_dir),
+                patch("tools.sidecar.handlers.jobs._JOB_LEAD_DIR", leads_dir),
+                patch(
+                    "tools.sidecar.handlers.jobs._check_source_url_accessible",
+                    return_value={"checked": True, "accessible": False, "status": "job_source_unavailable"},
+                ),
+            ):
+                with self.assertRaises(ValueError) as raised:
+                    handle_jobs_save_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_other_domain"},
+                            "draft": self._draft("https://jobs.example.com/1"),
+                            "review": {"decision": "approved", "reviewed_at": "2026-10-11T00:00:00Z"},
+                            "save_mode": "complete",
+                        }
+                    )
+        self.assertEqual(str(raised.exception), "job_source_unavailable")
+
+    def test_link_only_jd_cannot_be_saved_complete(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            profiles_dir = root / "job_profiles"
+            leads_dir = root / "job_leads"
+            profiles_dir.mkdir()
+            leads_dir.mkdir()
+            with (
+                patch("tools.sidecar.handlers.jobs._JOB_PROFILE_DIR", profiles_dir),
+                patch("tools.sidecar.handlers.jobs._JOB_LEAD_DIR", leads_dir),
+            ):
+                with self.assertRaises(ValueError):
+                    handle_jobs_save_profile_draft(
+                        {
+                            "meta": {"correlation_id": "corr_link_only"},
+                            "draft": self._draft(
+                                "https://maimai.cn/job_detail?jid=123456",
+                                source_jd="https://maimai.cn/job_detail?jid=123456",
+                            ),
+                            "review": {"decision": "approved", "reviewed_at": "2026-10-11T00:00:00Z"},
+                            "save_mode": "complete",
+                        }
+                    )

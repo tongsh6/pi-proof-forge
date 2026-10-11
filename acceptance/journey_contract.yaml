@@ -37,6 +37,7 @@ selected_cases:
   - "submission_check_mode"
   - "feedback_iteration_after_check_mode"
   - "external_l3_submission_validation"
+  - "maimai_source_integration"
 
 case_contracts:
   first_launch_configure_lm_studio:
@@ -120,6 +121,47 @@ case_contracts:
         status: "not_started"
         evidence: ""
         message: "A reviewed job target and linked job lead can be read by Quick Run and Agent Run."
+
+  maimai_source_integration:
+    primary_stage: "jobs"
+    supporting_stages:
+      - "quick_run"
+      - "submissions"
+    required_outputs:
+      - "manual_import_job_profile_saved"
+      - "manual_import_job_lead_saved"
+      - "manual_submission_record"
+    acceptance_rules:
+      - rule_id: "maimai_real_source_url_and_complete_jd_sample"
+        level: "L1"
+        stage: "jobs"
+        status: "not_started"
+        evidence: ""
+        message: "A Maimai job link plus the full pasted JD saves as a complete, active job profile without the app requesting the platform."
+      - rule_id: "source_timestamp_and_manual_import_labeled"
+        level: "L1"
+        stage: "jobs"
+        status: "not_started"
+        evidence: ""
+        message: "Profile and lead carry platform=maimai, import_mode=manual and source_recorded_at; list items expose them for the manual-import label."
+      - rule_id: "review_matching_resume_version_and_manual_tracking"
+        level: "L1"
+        stage: "submissions"
+        status: "not_started"
+        evidence: ""
+        message: "The reviewed profile is Quick Run eligible and a manual submission record links a resume run, is not retryable and can take feedback."
+      - rule_id: "link_only_not_complete_jd"
+        level: "L1"
+        stage: "jobs"
+        status: "not_started"
+        evidence: ""
+        message: "A source_jd that is only a URL cannot be saved as a complete profile."
+      - rule_id: "source_coverage_separate_from_online_and_delivery_capability"
+        level: "L1"
+        stage: "submissions"
+        status: "not_started"
+        evidence: ""
+        message: "Manual platforms are never fetched (manual_platform_not_checked) and manual records use receipt_source=manual_tracking, never counted as app delivery."
 
   quick_run_generate_and_evaluate_resume:
     primary_stage: "quick_run"
