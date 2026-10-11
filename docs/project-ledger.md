@@ -8,7 +8,8 @@ Last updated: 2026-10-11
 - 实施：颜色 token 改为 RGB 通道 + `<alpha-value>`；i18n 新增 `codes.*` 字典（34 个步骤名、浏览器通道、来源、模式、平台）；证据详情栏改只读视图 + 编辑切换，技术信息与导入附件折叠，材料来源去重复卡并加步骤提示，文档预览去 YAML 头；画像详情只读 / 编辑切换，JD 解析成为新建主路径，猎聘搜索折叠，线索主按钮按状态；投递详情步骤名中文化、回执 JSON 折叠、标题改公司·岗位、ID 进技术详情、反馈下拉去 ID、边界说明压短可展开、旧通道会话与 Check Mode 合并为折叠的“高级与演练工具”；每日投递卡按状态重排、授权设置与历史折叠、单一主按钮与“更多操作”、勾选句压短并保留完整条款；职业档案条目折叠为一行摘要、操作栏吸底；自主运行无运行时显示空态；快速运行未运行时隐藏评分条。
 - 先红后绿：新增 `tests/unit/gui/test_evidence_detail_view_mode_ui.py`；`test_evidence_rereview_ui.py` 断言改为“保存按钮可不存在，存在必禁用”，守护的不变量不变。tests/unit/gui 73 项通过，tsc、vite build 通过。
 - 读回：内置浏览器 1440×900 逐层核对证据 / 岗位 / 投递 / 智能运行 / 简历 / 快速运行 / 策略页的深层区块，结果见 DESIGN.md 第四批“验证”；原生窗口未读回。注意浏览器面板在后台时 CSS 过渡会冻结，核对高亮要看 class 而不是 computed style。
-- 设计同步：DESIGN.md 追加“UX 第四批”章节；`.pen` Implementation Constraints 新增约束卡 `wzkfN`（需用户在 VS Code 保存）。代码未提交，待用户确认。
+- 设计同步：DESIGN.md 追加“UX 第四批”章节；`.pen` Implementation Constraints 新增约束卡 `wzkfN`（需用户在 VS Code 保存）。
+- 提交与打包：第三、四批代码与文档已提交为 30689a9（`.pen` 待保存后另提）。`tauri build --bundles app` 打包成功（19:23），`ui/scripts/verify_packaged_app.py` 冒烟校验通过（握手 1.0.0、sidecar 0.1.0、ping ready）。原生窗口视觉读回未做：用户拒绝了本会话的桌面控制权限，打包版实例未启动；打包产物在 `ui/src-tauri/target/release/bundle/macos/PiProofForge.app`，可由用户自行打开核对。
 
 ## 2026-10-11 GUI 一级页面布局与引导优化（UX 第三批）
 
