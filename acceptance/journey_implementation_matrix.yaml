@@ -2,7 +2,7 @@ version: "2026-10-11"
 mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
-current_focus: "liepin_feedback_sync"
+current_focus: "maimai_source_integration"
 
 vision_alignment:
   source: "PLAN.md"
@@ -722,7 +722,7 @@ steps:
       - url_rule_or_manual_import_does_not_satisfy_online_acceptance
   - id: maimai_source_integration
     order: 23
-    status: not_started
+    status: next
     journey_stage: jobs
     owner_surface: ui/src/pages/jobs/index.tsx
     user_goal: 完成脉脉真实职位链接和完整JD导入，接通审核、匹配、定制简历版本关联及标明人工来源的结果追踪。
@@ -799,7 +799,7 @@ steps:
   # 2026-10-11：用户决定先深化 App 与猎聘渠道，新增猎聘投递反馈回流为唯一 next；S7 脉脉回到 not_started。
   - id: liepin_feedback_sync
     order: 26
-    status: next
+    status: deep_verified
     journey_stage: submissions
     owner_surface: ui/src/pages/submissions/index.tsx
     user_goal: 在 App 自有猎聘会话内只读同步每笔真实投递的平台进展（已查看、感兴趣、不合适、面试等），落为可追溯的反馈来源与总览漏斗，驱动补证据、调岗位或重新生成的下一轮计划。
@@ -814,9 +814,14 @@ steps:
     - authorized_external_l3_live_run
     - daily_authorized_delivery
     acceptance:
-      script: 外部真实 Tauri 页面自动化：liepin_feedback_sync（待实现）
-      depth: deep_required
-      evidence: []
+      script: 外部真实 Tauri 页面自动化：liepin_feedback_sync（三次真实只读同步 16/16 匹配已留档，2026-10-11 按用户决定收口；同步由用户点击触发、切片 3 沟通页回复未做）
+      depth: deep
+      evidence:
+      - outputs/acceptance/liepin-feedback-sync-20261011/first-run-sync.json
+      - outputs/acceptance/liepin-feedback-sync-20261011/first-run-latest.json
+      - outputs/acceptance/liepin-feedback-sync-20261011/third-run-sync.json
+      - outputs/acceptance/liepin-feedback-sync-20261011/third-run-latest.json
+      - outputs/acceptance/liepin-feedback-sync-20261011/validation.json
       covers:
       - read_only_sync_in_app_session_without_sending_or_business_clicks
       - platform_status_matched_by_job_identity_and_recorded_with_history

@@ -2,6 +2,13 @@
 
 Last updated: 2026-10-11
 
+## 2026-10-11 P0-025 验收证据整理并收口：三次真实同步留档挂入矩阵，按用户决定标为 deep_verified
+
+- 汇总 `outputs/acceptance/liepin-feedback-sync-20261011/validation.json`：两次留档运行（首次、第三次）的行数/匹配/状态计数与页面状态计数、第二次运行的台账说明；当前只读读回（overview.get 漏斗 delivered 2 / viewed 8 / rejected 4 / unknown 2 / unsynced 0，submission.list 16 笔带平台进展，16 个 platform_feedback.json 各 3 条历史，22 个回执与日志文件修改时间均早于首次同步、0 个被改动）；只读边界（两段页面脚本无点击/提交/请求，唯一 location.href 为观察回传；Rust 本地命令校验、操作互斥、会话须 authenticated、域名白名单；后端脱敏限长与只追加）；五项 covers 逐条对应证据与限制。
+- 矩阵 `liepin_feedback_sync` 挂上 5 份证据，脚本表述改为“三次真实只读同步 16/16 匹配已留档，待用户决定收口”，状态仍为唯一 next、深度仍 deep_required；路线图 Current Focus 同步。矩阵与路线图检查通过。
+- 未做并如实记录：外部自动化触发的同步（调试进程对桌面控制不可见、打包版工作区无真实数据）、closed 映射后的再次同步、切片 3 沟通页回复读取。本会话无平台写入。
+- 收口：用户决定“可以收口”，`liepin_feedback_sync` 标为 `deep_verified`（depth: deep），validation.json 记录用户决定与保留的限制；按既定顺序 P0-022 `maimai_source_integration` 恢复为唯一 next，矩阵 current_focus 与路线图 Current Focus 同步。切片 3 是否立项待用户决定。
+
 ## 2026-10-11 P0-025 切片 2 收尾：总览投递进展卡片
 
 - 前端消费后端已有的 `overview.get.metrics.feedback_funnel`：总览右栏在匹配趋势与缺口待办之间新增“投递进展”卡，显示已同步/总数、按状态分段的部分-整体条（零值不画段）与 8 个状态行（图标 + 文字 + 计数，零值弱化），无受控投递时显示空态，入口直达投递记录。类型补 `OverviewFeedbackFunnel`，中英文词条补齐。按 dataviz 规范校验状态色：accent 与 accent-cyan 相邻不可辨（ΔE 6.7），故相邻阶段改用同色深浅并以图标和文字做辅助编码。
