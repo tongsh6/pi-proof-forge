@@ -4,6 +4,10 @@ const config: Config = {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      screens: {
+        // 设计规范：1280-1365 为降宽区间，1366 起恢复完整右栏宽度。
+        wide: "1366px",
+      },
       colors: {
         "bg-primary": "var(--bg-primary)",
         "bg-panel": "var(--bg-panel)",

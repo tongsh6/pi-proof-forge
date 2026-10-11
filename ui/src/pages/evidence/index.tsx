@@ -2,9 +2,10 @@ import { MaterialDocumentPicker } from "./material-document-picker";
 import type { MaterialDocumentRef } from "@/lib/sidecar/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
+import { Save as SaveIcon } from "lucide-react";
 import {
   FileUp,
-  Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -14,6 +15,7 @@ import {
   Upload,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
+import { confirmAction, notify } from "@/lib/ui";
 import {
   createEvidence,
   deleteEvidence,
@@ -114,6 +116,9 @@ function selectedArtifactCount(detail: EvidenceDetail | null): number {
 
 export function EvidencePage() {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  // 允许从总览等页面带 ?status=gap 直接进入已筛选列表。
+  const initialStatus = searchParams.get("status") ?? "";
   const [items, setItems] = useState<EvidenceListItem[]>([]);
   const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -128,10 +133,11 @@ export function EvidencePage() {
   const [importState, setImportState] = useState<"idle" | "importing">("idle");
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [evidenceFilters, setEvidenceFilters] =
-    useState<EvidenceFilters>(DEFAULT_FILTERS);
+  const [evidenceFilters, setEvidenceFilters] = useState<EvidenceFilters>(() =>
+    initialStatus ? { ...DEFAULT_FILTERS, status: initialStatus } : DEFAULT_FILTERS
+  );
   const [queryInput, setQueryInput] = useState("");
-  const [statusInput, setStatusInput] = useState("");
+  const [statusInput, setStatusInput] = useState(initialStatus);
   const [roleInput, setRoleInput] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [importPath, setImportPath] = useState("");
@@ -202,9 +208,14 @@ export function EvidencePage() {
     }
   }, []);
 
+  const hasLoadedRef = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 首次加载显示占位；保存/删除后的重载保留列表与详情面板，不整页回到 loading。
   const loadEvidence = useCallback(
     async (preferredEvidenceId?: string | null) => {
-      setLoadState("loading");
+      if (hasLoadedRef.current) setRefreshing(true);
+      else setLoadState("loading");
       setError(null);
       try {
         const [result, materialResult] = await Promise.all([
@@ -243,17 +254,25 @@ export function EvidencePage() {
           setGeneratedDraft(null);setReviewTargetId(undefined);
           setDetailState("ready");
         }
+        hasLoadedRef.current = true;
         setLoadState("ready");
       } catch (nextError) {
-        setItems([]);
-        setSelectedId(null);
-        setDetail(null);
-        setPreviewArtifact(null);
-        setError(getErrorMessage(nextError));
-        setLoadState("error");
+        const message = getErrorMessage(nextError);
+        setError(message);
+        if (hasLoadedRef.current) {
+          notify("error", t("common.refreshFailed"), message);
+        } else {
+          setItems([]);
+          setSelectedId(null);
+          setDetail(null);
+          setPreviewArtifact(null);
+          setLoadState("error");
+        }
+      } finally {
+        setRefreshing(false);
       }
     },
-    [evidenceFilters, loadDetail]
+    [evidenceFilters, loadDetail] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   useEffect(() => {
@@ -364,6 +383,7 @@ export function EvidencePage() {
       setIsDraft(true);
       setDetailState("ready");
       setDraftState("idle");
+      notify("info", t("toasts.evidence.draftGenerated"));
     } catch (nextError) {
       setDraftState("idle");
       setDetailError(getErrorMessage(nextError));
@@ -385,6 +405,7 @@ export function EvidencePage() {
         setGeneratedDraft(null);setReviewTargetId(undefined);
         await loadEvidence(result.evidence_id);
         setSaveState("saved");
+        notify("success", t("toasts.evidence.draftSaved"));
       } catch (nextError) {
         setSaveState("idle");
         setDetailError(getErrorMessage(nextError));
@@ -420,6 +441,7 @@ export function EvidencePage() {
         await loadEvidence(selectedId);
       }
       setSaveState("saved");
+      notify("success", t("toasts.evidence.saved"));
     } catch (nextError) {
       setSaveState("idle");
       setDetailError(getErrorMessage(nextError));
@@ -428,12 +450,20 @@ export function EvidencePage() {
 
   const handleDelete = useCallback(async () => {
     if (!selectedId || isDraft) return;
+    const confirmed = await confirmAction({
+      title: t("confirmations.evidence.deleteCard.title"),
+      description: t("confirmations.evidence.deleteCard.description"),
+      confirmLabel: t("confirmations.evidence.deleteCard.confirm"),
+      tone: "danger",
+    });
+    if (!confirmed) return;
     setDeleteState("deleting");
     setDetailError(null);
     try {
       await deleteEvidence(selectedId);
       setDeleteState("idle");
       await loadEvidence();
+      notify("success", t("toasts.evidence.deleted"));
     } catch (nextError) {
       setDeleteState("idle");
       setDetailError(getErrorMessage(nextError));
@@ -464,6 +494,7 @@ export function EvidencePage() {
         setImportMode("append");
         setImportState("idle");
         await loadEvidence(result.evidence_id);
+        notify("success", t("toasts.evidence.imported"));
       } catch (nextError) {
         setImportState("idle");
         setDetailError(getErrorMessage(nextError));
@@ -475,6 +506,13 @@ export function EvidencePage() {
   const handleArtifactDelete = useCallback(
     async (resourceId: string) => {
       if (!selectedId || !detail) return;
+      const confirmed = await confirmAction({
+        title: t("confirmations.evidence.deleteArtifact.title"),
+        description: t("confirmations.evidence.deleteArtifact.description"),
+        confirmLabel: t("confirmations.evidence.deleteArtifact.confirm"),
+        tone: "danger",
+      });
+      if (!confirmed) return;
       const remainingArtifacts = detail.artifacts
         .map((artifact) => artifact.resource_id ?? "")
         .filter((artifactId) => artifactId && artifactId !== resourceId);
@@ -485,6 +523,7 @@ export function EvidencePage() {
         await updateEvidence(selectedId, { artifacts: remainingArtifacts });
         await loadEvidence(selectedId);
         setSaveState("saved");
+        notify("success", t("toasts.evidence.artifactRemoved"));
       } catch (nextError) {
         setSaveState("idle");
         setDetailError(getErrorMessage(nextError));
@@ -547,11 +586,12 @@ export function EvidencePage() {
             <RotateCcw size={15} />
           </button>
           <button
-            className="rounded-card border border-error/40 p-2 text-error transition-colors hover:bg-error/10"
+            className="rounded-card border border-error/40 p-2 text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!resourceId || isBusy}
             onClick={() => void handleArtifactDelete(resourceId)}
             type="button"
             title={t("pages.evidence.artifacts.delete")}
+            aria-label={t("pages.evidence.artifacts.delete")}
           >
             <Trash2 size={15} />
           </button>
@@ -575,12 +615,12 @@ export function EvidencePage() {
         <div className="flex items-center gap-3">
           <button
             className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isBusy}
+            disabled={isBusy || refreshing}
             onClick={() => void loadEvidence()}
             type="button"
           >
-            <RefreshCw size={16} />
-            {t("pages.evidence.actions.refresh")}
+            <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? t("common.refreshing") : t("pages.evidence.actions.refresh")}
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
@@ -645,7 +685,13 @@ export function EvidencePage() {
           </section>
 
           <section className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]">
-            <div className="grid gap-3 xl:grid-cols-[minmax(240px,1.4fr)_180px_180px_minmax(220px,1fr)_auto_auto]">
+            <form
+              className="grid gap-3 xl:grid-cols-[minmax(240px,1.4fr)_180px_180px_minmax(220px,1fr)_auto_auto]"
+              onSubmit={(event) => {
+                event.preventDefault();
+                applyFilters();
+              }}
+            >
               <label className="relative">
                 <Search
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
@@ -661,6 +707,7 @@ export function EvidencePage() {
               </label>
               <select
                 className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                aria-label={t("pages.evidence.fields.status")}
                 onChange={(event) => setStatusInput(event.target.value)}
                 value={statusInput}
               >
@@ -685,8 +732,7 @@ export function EvidencePage() {
               />
               <button
                 className="rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-                onClick={applyFilters}
-                type="button"
+                type="submit"
               >
                 {t("pages.evidence.actions.apply")}
               </button>
@@ -697,7 +743,7 @@ export function EvidencePage() {
               >
                 {t("pages.evidence.actions.reset")}
               </button>
-            </div>
+            </form>
           </section>
 
           <section className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]">
@@ -796,7 +842,7 @@ export function EvidencePage() {
             )}
           </section>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_420px]">
             <section className="overflow-hidden rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <div>
@@ -814,20 +860,20 @@ export function EvidencePage() {
                   {t("pages.evidence.empty.list")}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full table-fixed text-left">
-                    <thead className="bg-bg-hover/70 text-xs uppercase tracking-[0.14em] text-text-muted">
-                      <tr>
-                        <th className="w-[36%] px-5 py-3 font-semibold">
+                <div className="max-h-[calc(100vh-14rem)] overflow-auto">
+                  <table className="w-full min-w-[640px] table-fixed text-left">
+                    <thead className="sticky top-0 z-10 bg-bg-panel text-xs uppercase tracking-[0.14em] text-text-muted">
+                      <tr className="bg-bg-hover/70">
+                        <th className="w-[40%] px-5 py-3 font-semibold">
                           {t("pages.evidence.fields.title")}
                         </th>
-                        <th className="w-[18%] px-4 py-3 font-semibold">
+                        <th className="w-[16%] px-4 py-3 font-semibold">
                           {t("pages.evidence.fields.timeRange")}
                         </th>
                         <th className="w-[20%] px-4 py-3 font-semibold">
                           {t("pages.evidence.fields.role")}
                         </th>
-                        <th className="w-[10%] px-4 py-3 font-semibold">
+                        <th className="w-[8%] px-4 py-3 font-semibold">
                           {t("pages.evidence.score")}
                         </th>
                         <th className="w-[16%] px-4 py-3 font-semibold">
@@ -841,24 +887,34 @@ export function EvidencePage() {
                         return (
                           <tr
                             key={item.evidence_id}
-                            className={`cursor-pointer transition-colors ${
+                            className={`cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 ${
                               isSelected ? "bg-accent/10" : "hover:bg-bg-hover/50"
                             }`}
+                            aria-selected={isSelected}
+                            tabIndex={0}
                             onClick={() => void loadDetail(item.evidence_id)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                void loadDetail(item.evidence_id);
+                              }
+                            }}
                           >
                             <td className="px-5 py-4">
-                              <p className="truncate text-sm font-medium text-text-primary">
+                              <p className="truncate text-sm font-medium text-text-primary" title={item.title}>
                                 {item.title}
                               </p>
-                              <p className="mt-1 text-xs text-text-muted">
+                              <p className="mt-1 truncate font-mono text-xs text-text-muted">
                                 {item.evidence_id}
                               </p>
                             </td>
-                            <td className="px-4 py-4 text-sm text-text-secondary">
+                            <td className="whitespace-nowrap px-4 py-4 text-sm text-text-secondary">
                               {formatFallback(item.time_range)}
                             </td>
                             <td className="px-4 py-4 text-sm text-text-secondary">
-                              {formatFallback(item.role_scope)}
+                              <p className="truncate" title={formatFallback(item.role_scope)}>
+                                {formatFallback(item.role_scope)}
+                              </p>
                             </td>
                             <td className="px-4 py-4 text-sm font-semibold text-accent">
                               {item.score}
@@ -873,7 +929,7 @@ export function EvidencePage() {
               )}
             </section>
 
-            <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto">
               <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
                 <div>
                   <h2 className="text-lg font-semibold text-text-primary">
@@ -893,15 +949,17 @@ export function EvidencePage() {
                         : void handleSave()
                     }
                     title={t("pages.evidence.actions.save")}
+                    aria-label={t("pages.evidence.actions.save")}
                     type="button"
                   >
-                    <Pencil size={16} />
+                    <SaveIcon size={16} />
                   </button>
                   <button
                     className="rounded-card border border-error/50 p-2 text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!selectedId || isDraft || deleteState === "deleting"}
                     onClick={() => void handleDelete()}
                     title={t("pages.evidence.actions.delete")}
+                    aria-label={t("pages.evidence.actions.delete")}
                     type="button"
                   >
                     <Trash2 size={16} />

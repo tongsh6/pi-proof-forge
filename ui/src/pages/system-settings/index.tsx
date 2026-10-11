@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
+import { confirmAction, notify } from "@/lib/ui";
 import {
   checkLlmConnection,
   getLiepinResume,
@@ -394,6 +395,24 @@ export function SystemSettingsPage() {
     return llmConnection?.models ?? [];
   }, [llmConnection]);
 
+  const llmDirty = settings
+    ? JSON.stringify(llmForm) !== JSON.stringify(toLlmForm(settings.llm_config))
+    : false;
+
+  // 有未保存的模型配置修改时，重新加载前先确认。
+  const handleReload = useCallback(async () => {
+    if (llmDirty) {
+      const confirmed = await confirmAction({
+        title: t("common.discardTitle"),
+        description: t("common.discardDescription"),
+        confirmLabel: t("common.discard"),
+        tone: "danger",
+      });
+      if (!confirmed) return;
+    }
+    await loadSettings();
+  }, [llmDirty, loadSettings, t]);
+
   const handleSaveLlmConfig = useCallback(async () => {
     setLlmSaveState("saving");
     setLlmError(null);
@@ -403,6 +422,7 @@ export function SystemSettingsPage() {
       setSettings(nextSettings);
       setLlmForm(toLlmForm(nextSettings.llm_config));
       setLlmSaveState("saved");
+      notify("success", t("toasts.systemSettings.saved"));
     } catch (nextError) {
       setLlmSaveState("idle");
       setLlmError(getErrorMessage(nextError));
@@ -416,6 +436,15 @@ export function SystemSettingsPage() {
 
   const handleLiepinCredential = useCallback(async (action: "set" | "check" | "clear") => {
     if (action === "set" && !liepinToken.trim()) return;
+    if (action === "clear") {
+      const confirmed = await confirmAction({
+        title: t("confirmations.systemSettings.clearCredential.title"),
+        description: t("confirmations.systemSettings.clearCredential.description"),
+        confirmLabel: t("confirmations.systemSettings.clearCredential.confirm"),
+        tone: "danger",
+      });
+      if (!confirmed) return;
+    }
     setLiepinAction(action);
     setLiepinError(null);
     setLiepinResume(null);
@@ -426,6 +455,10 @@ export function SystemSettingsPage() {
     try {
       const result = await updateLiepinCredential(payload);
       applyLiepinAuth(result.auth);
+      if (result.auth.code !== "CREDENTIAL_STORAGE_ERROR") {
+        if (action === "set") notify("success", t("toasts.systemSettings.credentialSaved"));
+        if (action === "clear") notify("success", t("toasts.systemSettings.credentialCleared"));
+      }
     } catch {
       setLiepinError(t("pages.systemSettings.liepinApi.requestError"));
     } finally {
@@ -476,6 +509,7 @@ export function SystemSettingsPage() {
         }));
       }
       setLlmCheckState("checked");
+      notify("success", t("toasts.systemSettings.connectionOk"));
     } catch (nextError) {
       setLlmCheckState("idle");
       setLlmError(getErrorMessage(nextError));
@@ -495,17 +529,18 @@ export function SystemSettingsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
-            onClick={() => void loadSettings()}
-            disabled={liepinAction !== null}
+            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void handleReload()}
+            disabled={liepinAction !== null || loadState === "loading"}
             type="button"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            {t("common.retry")}
+            {t("common.refresh")}
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={activeSection !== "llm" || llmSaveState === "saving"}
+            title={activeSection !== "llm" ? t("reasons.systemSettings.channelsNoSave") : undefined}
             onClick={() => void handleSaveLlmConfig()}
             type="button"
           >
@@ -613,7 +648,9 @@ export function SystemSettingsPage() {
                     {(["set", "check", "clear"] as const).map((action) => (
                       <button
                         key={action}
-                        className="rounded-card border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+                        className={action === "clear"
+                          ? "rounded-card border border-error/60 px-3 py-2 text-sm text-error hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          : "rounded-card border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"}
                         disabled={liepinAction !== null || (action === "set"
                           ? !liepinToken.trim()
                           : action === "clear"

@@ -13,7 +13,9 @@
   "shell": {
     "sidecar": "Sidecar",
     "lastHeartbeat": "Last heartbeat",
-    "waitingForHeartbeat": "Waiting for heartbeat"
+    "waitingForHeartbeat": "Waiting for heartbeat",
+    "bannerHint": "Write actions stay disabled until the backend is ready.",
+    "switchLanguage": "Switch language: {{language}}"
   },
   "sidecar": {
     "state": {
@@ -29,7 +31,19 @@
     "loading": "Loading...",
     "empty": "No data available",
     "error": "Something went wrong",
-    "retry": "Retry"
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "close": "Close",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "dismiss": "Dismiss notification",
+    "saved": "Saved",
+    "discardTitle": "Discard unsaved changes?",
+    "discardDescription": "Reloading will drop the changes you have not saved.",
+    "discard": "Discard",
+    "refreshFailed": "Refresh failed; showing the last loaded data",
+    "blockedPrefix": "Not available: "
   },
   "pages": {
     "overview": {
@@ -82,7 +96,9 @@
         "submission_sent": "Submission",
         "evidence_imported": "Evidence",
         "agent_run_completed": "Agent"
-      }
+      },
+      "openMetric": "Open {{label}}",
+      "gapsClear": "No gaps"
     },
     "resumes": {
       "title": "Resumes",
@@ -227,7 +243,16 @@
       "openJobs": "Choose a complete JD",
       "reviewNext": "Content generated. Preview it and review suitability for this job.",
       "preparePdf": "View and prepare this PDF",
-      "openEvidence": "Review evidence and gaps"
+      "openEvidence": "Review evidence and gaps",
+      "runningHint": "The pipeline runs synchronously in the local backend; stage results arrive together when it finishes and it cannot be cancelled midway.",
+      "scoreLabelsFull": {
+        "K": "Keyword coverage",
+        "D": "Depth",
+        "S": "Scenario",
+        "Q": "Quantified results",
+        "E": "Evidence traceability",
+        "R": "Relevance"
+      }
     },
     "evidence": {
       "title": "Evidence",
@@ -257,7 +282,8 @@
         "queryPlaceholder": "Search title, role, or time",
         "allStatuses": "All statuses",
         "rolePlaceholder": "Role filter",
-        "tagsPlaceholder": "Tags, comma-separated"
+        "tagsPlaceholder": "Tags, comma-separated",
+        "gapHint": "Filtered to gaps"
       },
       "stats": {
         "total": "Evidence",
@@ -1194,5 +1220,199 @@
     "save": "Save career draft",
     "confirm": "Confirm career facts",
     "reload": "Discard unsaved changes"
+  },
+  "confirmations": {
+    "evidence": {
+      "deleteCard": {
+        "title": "Delete this evidence card?",
+        "description": "This cannot be undone; matching reports and resumes that rely on it will not update automatically.",
+        "confirm": "Delete"
+      },
+      "deleteArtifact": {
+        "title": "Remove this artifact?",
+        "description": "Only the link to this card is removed; the local file stays.",
+        "confirm": "Remove"
+      }
+    },
+    "submissions": {
+      "clearSession": {
+        "title": "Clear the channel session?",
+        "description": "You will need to log in manually again before submitting.",
+        "confirm": "Clear"
+      },
+      "retrySame": {
+        "title": "Queue a retry on the same channel?",
+        "description": "This sends the submission to the platform again. Check the job and resume version first.",
+        "confirm": "Queue retry"
+      },
+      "retryFallback": {
+        "title": "Queue an email fallback retry?",
+        "description": "The job will be resubmitted through the email channel.",
+        "confirm": "Queue retry"
+      }
+    },
+    "systemSettings": {
+      "clearCredential": {
+        "title": "Delete the saved Liepin credential?",
+        "description": "The official read-only connection stops working until you paste a token again.",
+        "confirm": "Delete"
+      }
+    },
+    "agentRun": {
+      "stop": {
+        "title": "Stop the current run?",
+        "description": "A stopped run does not resume on its own; generated candidates are kept.",
+        "confirm": "Stop"
+      },
+      "reject": {
+        "title": "Reject this candidate?",
+        "description": "It will not be submitted and will not re-enter this review round.",
+        "confirm": "Reject"
+      },
+      "approve": {
+        "title": "Approve and continue?",
+        "description": "Delivery checks continue per policy; whether anything is actually sent depends on the current authorization.",
+        "confirm": "Approve"
+      }
+    },
+    "daily": {
+      "revoke": {
+        "title": "Revoke the daily delivery authorization?",
+        "description": "Nothing runs automatically afterwards; save and confirm a new draft to resume.",
+        "confirm": "Revoke"
+      },
+      "run": {
+        "title": "Run today's batch now?",
+        "description": "The fixed PDFs in the authorized list will be uploaded and submitted, using today's quota.",
+        "confirm": "Run"
+      },
+      "closeInterrupted": {
+        "title": "Close the interrupted batch?",
+        "description": "Nothing is resent; confirmed and not-started items keep their state.",
+        "confirm": "Close"
+      }
+    },
+    "jobs": {
+      "clearDraft": {
+        "title": "Clear the current draft?",
+        "description": "Unsaved title, JD text and generated draft will be removed.",
+        "confirm": "Clear"
+      },
+      "overwriteJd": {
+        "title": "Replace the current text with the fetched JD?",
+        "description": "The JD text and generated draft in the editor will be replaced.",
+        "confirm": "Replace"
+      },
+      "archiveProfile": {
+        "title": "Archive this job profile?",
+        "description": "Archived profiles no longer appear as targets in Quick Run or Agent Run.",
+        "confirm": "Archive and save"
+      }
+    },
+    "career": {
+      "removeEntry": {
+        "title": "Remove this entry?",
+        "description": "Use Reload to restore it before saving; after saving it cannot be undone.",
+        "confirm": "Remove"
+      },
+      "reload": {
+        "title": "Discard unsaved profile changes?",
+        "description": "The saved profile will be reloaded.",
+        "confirm": "Discard"
+      }
+    }
+  },
+  "toasts": {
+    "evidence": {
+      "saved": "Evidence card saved",
+      "deleted": "Evidence card deleted",
+      "imported": "Artifact imported",
+      "artifactRemoved": "Artifact removed",
+      "draftGenerated": "Draft generated; review and save it",
+      "draftSaved": "Draft saved"
+    },
+    "resumes": {
+      "profileSaved": "Basic info saved",
+      "uploaded": "Resume uploaded",
+      "materialUploaded": "Material uploaded",
+      "exported": "PDF exported",
+      "careerSaved": "Career profile draft saved",
+      "careerConfirmed": "Career profile confirmed"
+    },
+    "jobs": {
+      "created": "Job profile created",
+      "saved": "Job profile saved",
+      "converted": "Lead converted to a job profile",
+      "draftSaved": "Profile draft saved",
+      "detailFetched": "Full JD loaded into the editor"
+    },
+    "quickRun": {
+      "done": "Quick run finished",
+      "failed": "Quick run did not finish"
+    },
+    "agentRun": {
+      "started": "Run started",
+      "stopped": "Run stopped",
+      "decisionSubmitted": "Review decision submitted"
+    },
+    "daily": {
+      "saved": "Authorization draft saved",
+      "activated": "Daily delivery enabled",
+      "paused": "Daily delivery paused",
+      "revoked": "Authorization revoked",
+      "triggered": "Today's batch triggered",
+      "closed": "Interrupted batch closed"
+    },
+    "submissions": {
+      "sessionCleared": "Channel session cleared",
+      "retryQueued": "Retry queued",
+      "feedbackSaved": "Feedback recorded"
+    },
+    "policy": {
+      "saved": "Policy saved"
+    },
+    "systemSettings": {
+      "saved": "Model settings saved",
+      "credentialSaved": "Liepin credential saved locally",
+      "credentialCleared": "Liepin credential deleted",
+      "connectionOk": "Connection test passed"
+    }
+  },
+  "reasons": {
+    "quickRun": {
+      "title": "Cannot start yet:",
+      "loading": "data is loading",
+      "running": "a run is in progress",
+      "profileNotReady": "career profile not confirmed",
+      "targetUnavailable": "target job profile unavailable",
+      "materialRequired": "no material source selected",
+      "evidenceRequired": "no reviewed evidence selected"
+    },
+    "jobs": {
+      "titleRequired": "Enter a job profile title below first",
+      "busy": "another action is in progress"
+    },
+    "systemSettings": {
+      "channelsNoSave": "Nothing to save in the Channels section; use “Save locally” inside the Liepin card for the token"
+    },
+    "daily": {
+      "dirty": "Save the draft first",
+      "consent": "Tick the approval statement",
+      "notEditable": "An enabled list is read-only; pause or revoke to edit",
+      "noScope": "The list is empty",
+      "recovery": "Items need verification first",
+      "notActive": "Authorization is not enabled",
+      "running": "A batch is running",
+      "nothingToSave": "No unsaved changes",
+      "notPausable": "Only an active authorization can be paused",
+      "alreadyRevoked": "Authorization already revoked",
+      "notActivatable": "Cannot enable in this state: only a draft or paused authorization can be enabled"
+    },
+    "career": {
+      "consentDirty": "Save the draft before confirming",
+      "consentStale": "The profile changed elsewhere; reload it",
+      "consentMissing": "Fill the missing items before confirming",
+      "saveClean": "No unsaved changes"
+    }
   }
 }

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
   Bot,
+  Briefcase,
   CheckCircle2,
   FileText,
   FolderSearch,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import { getOverview } from "@/lib/sidecar/api";
+import { notify } from "@/lib/ui";
 import type { OverviewActivity, OverviewGap, OverviewTrendPoint } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -26,6 +28,17 @@ const metricCardKeys = [
   "resume_count",
   "submission_count",
 ] as const;
+
+/** 统计卡可点击进入对应页面；图标按指标区分。 */
+const metricCardMeta: Record<
+  (typeof metricCardKeys)[number],
+  { path: string; icon: LucideIcon }
+> = {
+  evidence_count: { path: "/evidence", icon: FolderSearch },
+  matched_jobs_count: { path: "/jobs", icon: Briefcase },
+  resume_count: { path: "/resumes", icon: FileText },
+  submission_count: { path: "/submissions", icon: Send },
+};
 
 const severityToneMap = {
   high: "text-error border-error/40 bg-error/10",
@@ -95,8 +108,13 @@ export function OverviewPage() {
   const [trend, setTrend] = useState<OverviewTrendPoint[]>([]);
   const [gaps, setGaps] = useState<OverviewGap[]>([]);
 
+  const hasLoadedRef = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 首次加载显示占位；之后的刷新保留已有内容，只在页头提示“刷新中”。
   const loadOverview = useCallback(async () => {
-    setLoadState("loading");
+    if (hasLoadedRef.current) setRefreshing(true);
+    else setLoadState("loading");
     setError(null);
 
     try {
@@ -105,12 +123,17 @@ export function OverviewPage() {
       setActivities(result.recent_activities);
       setTrend(result.match_trend);
       setGaps(result.gaps);
+      hasLoadedRef.current = true;
       setLoadState("ready");
     } catch (nextError) {
-      setError(getErrorMessage(nextError));
-      setLoadState("error");
+      const message = getErrorMessage(nextError);
+      setError(message);
+      if (hasLoadedRef.current) notify("error", t("common.refreshFailed"), message);
+      else setLoadState("error");
+    } finally {
+      setRefreshing(false);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const gapSummary = useMemo(
     () => ({
@@ -145,10 +168,11 @@ export function OverviewPage() {
           <button
             type="button"
             onClick={() => void loadOverview()}
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <RefreshCw size={16} />
-            {t("pages.overview.refresh")}
+            <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? t("common.refreshing") : t("pages.overview.refresh")}
           </button>
           <button
             type="button"
@@ -171,31 +195,44 @@ export function OverviewPage() {
         <section className="rounded-panel border border-error/50 bg-bg-panel p-6 shadow-[var(--shadow-panel)]">
           <p className="text-sm font-medium text-error">{t("common.error")}</p>
           <p className="mt-2 text-sm text-text-secondary">{error}</p>
+          <button
+            type="button"
+            onClick={() => void loadOverview()}
+            className="mt-4 inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
+          >
+            <RefreshCw size={16} />
+            {t("common.retry")}
+          </button>
         </section>
       ) : null}
 
       {loadState === "ready" ? (
         <>
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {metricCardKeys.map((metricKey) => (
-              <article
-                key={metricKey}
-                className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-text-secondary">
-                    {t(`pages.overview.metrics.${metricKey}.label`)}
+            {metricCardKeys.map((metricKey) => {
+              const { path, icon: MetricIcon } = metricCardMeta[metricKey];
+              const label = t(`pages.overview.metrics.${metricKey}.label`);
+              return (
+                <button
+                  key={metricKey}
+                  type="button"
+                  onClick={() => navigate(path)}
+                  aria-label={t("pages.overview.openMetric", { label })}
+                  className="rounded-panel border border-border bg-bg-panel p-5 text-left shadow-[var(--shadow-panel)] transition-colors hover:border-accent/60 hover:bg-bg-hover/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-text-secondary">{label}</p>
+                    <MetricIcon size={18} className="text-accent" />
+                  </div>
+                  <p className="mt-4 text-4xl font-semibold text-text-primary">
+                    {metrics[metricKey]}
                   </p>
-                  <CheckCircle2 size={18} className="text-accent" />
-                </div>
-                <p className="mt-4 text-4xl font-semibold text-text-primary">
-                  {metrics[metricKey]}
-                </p>
-                <p className="mt-2 text-sm text-text-secondary">
-                  {t(`pages.overview.metrics.${metricKey}.hint`)}
-                </p>
-              </article>
-            ))}
+                  <p className="mt-2 text-sm text-text-secondary">
+                    {t(`pages.overview.metrics.${metricKey}.hint`)}
+                  </p>
+                </button>
+              );
+            })}
           </section>
 
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
@@ -276,11 +313,11 @@ export function OverviewPage() {
                           strokeLinejoin="round"
                           strokeWidth="3"
                         />
-                        {points.split(" ").map((point) => {
+                        {points.split(" ").map((point, index) => {
                           const [x, y] = point.split(",");
                           return (
                             <circle
-                              key={point}
+                              key={`${index}-${point}`}
                               cx={x}
                               cy={y}
                               fill="#071023"
@@ -292,9 +329,9 @@ export function OverviewPage() {
                         })}
                       </svg>
                       <div className="mt-3 grid gap-2">
-                        {trend.slice(-3).map((point) => (
+                        {trend.slice(-3).map((point, index) => (
                           <div
-                            key={point.date}
+                            key={`${index}-${point.date}`}
                             className="flex items-center justify-between text-sm"
                           >
                             <span className="text-text-secondary">{point.date}</span>
@@ -319,9 +356,17 @@ export function OverviewPage() {
                     <h2 className="text-lg font-semibold text-text-primary">
                       {t("pages.overview.gaps.title")}
                     </h2>
-                    <span className="inline-flex items-center gap-1.5 rounded-chip border border-error/40 bg-error/10 px-2.5 py-1 text-xs font-medium text-error">
-                      <AlertTriangle size={14} />
-                      {t("pages.overview.gapCount", { count: gapSummary.total })}
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-chip border px-2.5 py-1 text-xs font-medium ${
+                        gapSummary.total > 0
+                          ? "border-error/40 bg-error/10 text-error"
+                          : "border-success/40 bg-success/10 text-success"
+                      }`}
+                    >
+                      {gapSummary.total > 0 ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
+                      {gapSummary.total > 0
+                        ? t("pages.overview.gapCount", { count: gapSummary.total })
+                        : t("pages.overview.gapsClear")}
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-text-secondary">
@@ -369,7 +414,7 @@ export function OverviewPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => navigate("/evidence")}
+                  onClick={() => navigate("/evidence?status=gap")}
                   className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
                 >
                   <TrendingUp size={16} />

@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAppShellStore } from "@/state/app-shell-store";
+import { useSidecarStore } from "@/state/sidecar-store";
 import {
   LayoutDashboard,
   FileText,
@@ -26,9 +27,26 @@ const navItems = [
   { path: "/system-settings", icon: Settings, labelKey: "nav.systemSettings" },
 ] as const;
 
+const stateToneMap = {
+  starting: "bg-warning",
+  ready: "bg-success",
+  degraded: "bg-warning",
+  reconnecting: "bg-warning",
+  disconnected: "bg-error",
+  stopped: "bg-text-muted",
+} as const;
+
 export function SideNav() {
   const { t, i18n } = useTranslation();
   const { language, setLanguage } = useAppShellStore();
+  const state = useSidecarStore((store) => store.state);
+  const sidecarVersion = useSidecarStore((store) => store.sidecarVersion);
+  const lastHeartbeatAt = useSidecarStore((store) => store.lastHeartbeatAt);
+
+  const heartbeatLabel = lastHeartbeatAt
+    ? new Date(lastHeartbeatAt).toLocaleString(i18n.language)
+    : t("shell.waitingForHeartbeat");
+  const nextLanguageLabel = language === "en" ? "中文" : "English";
 
   const toggleLanguage = () => {
     const next = language === "en" ? "zh" : "en";
@@ -62,13 +80,29 @@ export function SideNav() {
         ))}
       </div>
 
-      <div className="p-3 border-t border-border">
+      <div className="space-y-1 border-t border-border p-3">
+        <div
+          className="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary"
+          title={`${t("shell.lastHeartbeat")}: ${heartbeatLabel}`}
+          data-testid="sidecar-status"
+        >
+          <span className={`h-2 w-2 shrink-0 rounded-full ${stateToneMap[state]}`} />
+          <span className="truncate">
+            {t("shell.sidecar")} · {t(`sidecar.state.${state}`)}
+          </span>
+          {sidecarVersion ? (
+            <span className="ml-auto shrink-0 font-mono text-text-muted">v{sidecarVersion}</span>
+          ) : null}
+        </div>
         <button
           onClick={toggleLanguage}
           className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+          aria-label={t("shell.switchLanguage", { language: nextLanguageLabel })}
+          title={t("shell.switchLanguage", { language: nextLanguageLabel })}
+          type="button"
         >
           <Languages size={16} />
-          <span>{language === "en" ? "EN" : "中"}</span>
+          <span>{nextLanguageLabel}</span>
         </button>
       </div>
     </nav>

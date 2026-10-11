@@ -17,6 +17,7 @@ const hooks = [];
 let index = 0, effects = [], tree;
 const same = (a, b) => a && b && a.length === b.length && a.every((x, i) => x === b[i]);
 const react = {
+  useRef(initial) { const slot = index++; if (!hooks[slot]) hooks[slot] = { value: { current: initial } }; return hooks[slot].value; },
   useState(initial) {
     const slot = index++;
     if (!hooks[slot]) hooks[slot] = { value: typeof initial === 'function' ? initial() : initial };
@@ -68,6 +69,7 @@ vm.runInNewContext(code, { exports, require: (name) => {
   if (name === 'lucide-react') return new Proxy({}, { get: (_, key) => key });
   if (name === '@/lib/errors') return { getErrorMessage: (error) => error.message };
   if (name === '@/lib/sidecar/api') return api;
+  if (name === '@/lib/ui') return {notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};
   throw new Error(`Unexpected import ${name}`);
 }});
 function render() { index = 0; effects = []; tree = exports.JobsPage(); for (const effect of effects) effect(); }

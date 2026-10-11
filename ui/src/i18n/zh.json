@@ -13,7 +13,9 @@
   "shell": {
     "sidecar": "本地后端连接",
     "lastHeartbeat": "最近心跳",
-    "waitingForHeartbeat": "等待心跳"
+    "waitingForHeartbeat": "等待心跳",
+    "bannerHint": "后端未就绪时，写操作按钮会被禁用。",
+    "switchLanguage": "切换语言：{{language}}"
   },
   "sidecar": {
     "state": {
@@ -29,7 +31,19 @@
     "loading": "加载中...",
     "empty": "暂无数据",
     "error": "出错了",
-    "retry": "重试"
+    "retry": "重试",
+    "cancel": "取消",
+    "confirm": "确认",
+    "close": "关闭",
+    "refresh": "刷新",
+    "refreshing": "刷新中…",
+    "dismiss": "关闭通知",
+    "saved": "已保存",
+    "discardTitle": "放弃未保存的修改？",
+    "discardDescription": "重新加载会丢失当前未保存的修改。",
+    "discard": "放弃修改",
+    "refreshFailed": "刷新失败，已保留上次数据",
+    "blockedPrefix": "暂不可用："
   },
   "pages": {
     "overview": {
@@ -82,7 +96,9 @@
         "submission_sent": "投递",
         "evidence_imported": "证据",
         "agent_run_completed": "智能运行"
-      }
+      },
+      "openMetric": "查看{{label}}",
+      "gapsClear": "无待办"
     },
     "resumes": {
       "title": "简历中心",
@@ -227,7 +243,16 @@
       "openJobs": "选择完整 JD",
       "reviewNext": "本次内容已生成，请继续预览并核对岗位适用性。",
       "preparePdf": "查看并准备此 PDF",
-      "openEvidence": "检查证据与缺项"
+      "openEvidence": "检查证据与缺项",
+      "runningHint": "管线在本地后端同步执行，阶段结果会在结束后一次性返回；执行期间不能中途取消。",
+      "scoreLabelsFull": {
+        "K": "关键词覆盖",
+        "D": "深度",
+        "S": "场景",
+        "Q": "量化成果",
+        "E": "证据追溯",
+        "R": "相关性"
+      }
     },
     "evidence": {
       "title": "证据卡",
@@ -257,7 +282,8 @@
         "queryPlaceholder": "搜索标题、角色或时间",
         "allStatuses": "全部状态",
         "rolePlaceholder": "角色筛选",
-        "tagsPlaceholder": "标签，逗号分隔"
+        "tagsPlaceholder": "标签，逗号分隔",
+        "gapHint": "已按“缺口”筛选"
       },
       "stats": {
         "total": "证据卡",
@@ -1194,5 +1220,199 @@
     "save": "保存职业档案草稿",
     "confirm": "确认职业档案事实",
     "reload": "放弃未保存修改"
+  },
+  "confirmations": {
+    "evidence": {
+      "deleteCard": {
+        "title": "删除这张证据卡？",
+        "description": "删除后不可恢复；依赖它的匹配报告和简历不会自动更新。",
+        "confirm": "删除"
+      },
+      "deleteArtifact": {
+        "title": "移除这个附件？",
+        "description": "只解除与当前证据卡的关联，不会删除本地原文件。",
+        "confirm": "移除"
+      }
+    },
+    "submissions": {
+      "clearSession": {
+        "title": "清除通道会话？",
+        "description": "清除后需要重新手动登录才能继续投递。",
+        "confirm": "清除"
+      },
+      "retrySame": {
+        "title": "排队原通道重试？",
+        "description": "会再次向平台发起投递动作，请确认岗位与简历版本无误。",
+        "confirm": "排队重试"
+      },
+      "retryFallback": {
+        "title": "排队邮件降级重试？",
+        "description": "会通过邮件通道重新投递该岗位。",
+        "confirm": "排队重试"
+      }
+    },
+    "systemSettings": {
+      "clearCredential": {
+        "title": "删除已保存的猎聘凭据？",
+        "description": "删除后官方只读连接不可用，需要重新粘贴 Token。",
+        "confirm": "删除"
+      }
+    },
+    "agentRun": {
+      "stop": {
+        "title": "停止当前运行？",
+        "description": "停止后不会自动恢复，已生成的候选会保留。",
+        "confirm": "停止"
+      },
+      "reject": {
+        "title": "拒绝这个候选？",
+        "description": "拒绝后该候选不会投递，也不会再次进入本轮审批。",
+        "confirm": "拒绝"
+      },
+      "approve": {
+        "title": "批准并继续执行？",
+        "description": "批准后会按策略继续投递检查；是否真实发送取决于当前授权。",
+        "confirm": "批准"
+      }
+    },
+    "daily": {
+      "revoke": {
+        "title": "撤销每日投递授权？",
+        "description": "撤销后不再自动执行；需重新保存草稿并确认才能恢复。",
+        "confirm": "撤销"
+      },
+      "run": {
+        "title": "立即执行今日批次？",
+        "description": "会按授权清单向平台上传并投递固定 PDF，占用今日额度。",
+        "confirm": "执行"
+      },
+      "closeInterrupted": {
+        "title": "结束中断批次？",
+        "description": "不会重新发送；已确认成功和未开始的项保持原状态。",
+        "confirm": "结束"
+      }
+    },
+    "jobs": {
+      "clearDraft": {
+        "title": "清空当前草稿？",
+        "description": "未保存的标题、JD 文本和生成稿会被清除。",
+        "confirm": "清空"
+      },
+      "overwriteJd": {
+        "title": "用获取到的完整 JD 覆盖当前文本？",
+        "description": "当前输入区的 JD 文本和生成稿会被替换。",
+        "confirm": "覆盖"
+      },
+      "archiveProfile": {
+        "title": "归档这个岗位画像？",
+        "description": "归档后不再出现在快速运行和智能运行的目标列表中。",
+        "confirm": "归档并保存"
+      }
+    },
+    "career": {
+      "removeEntry": {
+        "title": "移除这条记录？",
+        "description": "保存前可用“重新载入”恢复；保存后不可撤销。",
+        "confirm": "移除"
+      },
+      "reload": {
+        "title": "放弃未保存的档案修改？",
+        "description": "会重新载入已保存的档案内容。",
+        "confirm": "放弃修改"
+      }
+    }
+  },
+  "toasts": {
+    "evidence": {
+      "saved": "证据卡已保存",
+      "deleted": "证据卡已删除",
+      "imported": "附件已导入",
+      "artifactRemoved": "附件已移除",
+      "draftGenerated": "草稿已生成，请审核后保存",
+      "draftSaved": "草稿已保存"
+    },
+    "resumes": {
+      "profileSaved": "基本资料已保存",
+      "uploaded": "简历已上传",
+      "materialUploaded": "材料已上传",
+      "exported": "PDF 已导出",
+      "careerSaved": "职业档案草稿已保存",
+      "careerConfirmed": "职业档案已确认"
+    },
+    "jobs": {
+      "created": "岗位画像已创建",
+      "saved": "岗位画像已保存",
+      "converted": "线索已转为岗位画像",
+      "draftSaved": "画像草稿已保存",
+      "detailFetched": "完整 JD 已载入解析区"
+    },
+    "quickRun": {
+      "done": "快速运行已完成",
+      "failed": "快速运行未完成"
+    },
+    "agentRun": {
+      "started": "运行已启动",
+      "stopped": "运行已停止",
+      "decisionSubmitted": "审批决定已提交"
+    },
+    "daily": {
+      "saved": "授权草稿已保存",
+      "activated": "每日投递已启用",
+      "paused": "每日投递已暂停",
+      "revoked": "授权已撤销",
+      "triggered": "已触发今日批次",
+      "closed": "中断批次已结束"
+    },
+    "submissions": {
+      "sessionCleared": "通道会话已清除",
+      "retryQueued": "已排队重试",
+      "feedbackSaved": "反馈已记录"
+    },
+    "policy": {
+      "saved": "策略已保存"
+    },
+    "systemSettings": {
+      "saved": "模型配置已保存",
+      "credentialSaved": "猎聘凭据已保存到本机",
+      "credentialCleared": "猎聘凭据已删除",
+      "connectionOk": "连接测试通过"
+    }
+  },
+  "reasons": {
+    "quickRun": {
+      "title": "暂不能启动：",
+      "loading": "数据加载中",
+      "running": "正在运行",
+      "profileNotReady": "职业档案未确认",
+      "targetUnavailable": "目标岗位画像不可用",
+      "materialRequired": "未选择材料来源",
+      "evidenceRequired": "未勾选任何已审核证据"
+    },
+    "jobs": {
+      "titleRequired": "请先在下方填写岗位画像标题",
+      "busy": "有操作进行中"
+    },
+    "systemSettings": {
+      "channelsNoSave": "通道分区没有需要保存的表单；猎聘 Token 请用卡片内的“保存到本机”"
+    },
+    "daily": {
+      "dirty": "先保存草稿",
+      "consent": "需勾选批准声明",
+      "notEditable": "已启用的清单只读，暂停或撤销后可编辑",
+      "noScope": "清单为空",
+      "recovery": "存在待核验项，先处理",
+      "notActive": "授权未启用",
+      "running": "批次执行中",
+      "nothingToSave": "没有未保存的修改",
+      "notPausable": "仅启用中的授权可暂停",
+      "alreadyRevoked": "授权已撤销",
+      "notActivatable": "当前状态不能启用：只有草稿或已暂停的授权可以确认启用"
+    },
+    "career": {
+      "consentDirty": "先保存草稿再确认",
+      "consentStale": "档案已被其他操作更新，请重新载入",
+      "consentMissing": "补齐缺失项后才能确认",
+      "saveClean": "没有未保存的修改"
+    }
   }
 }

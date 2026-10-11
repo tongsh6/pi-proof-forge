@@ -63,6 +63,7 @@ vm.runInNewContext(code, { exports, require: name => {
   if (name === 'lucide-react') return new Proxy({}, { get: (_, key) => key });
   if (name === '@/lib/errors') return { getErrorMessage: error => error.message };
   if (name === '@/lib/sidecar/api') return api;
+  if (name === '@/lib/ui') return {notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};
   throw new Error(`Unexpected import ${name}`);
 }});
 function render() { index = 0; effects = []; tree = exports.SystemSettingsPage(); for (const effect of effects) effect(); }
@@ -80,7 +81,7 @@ function text(node) {
 const button = key => nodes(tree).find(node => node.type === 'button' && text(node).trim() === t(prefix + key));
 const tokenInput = () => nodes(tree).find(node => node.props?.placeholder === t(prefix + 'tokenPlaceholder'));
 async function click(key) { const node = button(key); assert.ok(node, `Missing button ${key}`); assert.ok(!node.props.disabled, `Disabled ${key}`); node.props.onClick(); await settle(); }
-async function reload() { nodes(tree).find(node => node.type === 'button' && text(node).includes(t('common.retry'))).props.onClick(); await settle(); }
+async function reload() { nodes(tree).find(node => node.type === 'button' && text(node).includes(t('common.refresh'))).props.onClick(); await settle(); }
 (async () => {
   render(); await settle();
   assert.ok(text(tree).includes(auth.storage_path), '用户可看到保存路径');

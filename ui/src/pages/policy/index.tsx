@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
+import { confirmAction, notify } from "@/lib/ui";
 import {
   getSettings,
   updateDeliverySettings,
@@ -260,6 +261,7 @@ export function PolicyPage() {
         settings.gate_policy.batch_review
       );
       setDeliverySaveState("saved");
+      notify("success", t("toasts.policy.saved"));
     } catch (nextError) {
       setDeliverySaveState("error");
       setDeliveryError(getErrorMessage(nextError));
@@ -276,6 +278,7 @@ export function PolicyPage() {
         current ? { ...current, exclusion_list: companyEntries } : current
       );
       setCompanySaveState("saved");
+      notify("success", t("toasts.policy.saved"));
     } catch (nextError) {
       setCompanySaveState("error");
       setCompanyError(getErrorMessage(nextError));
@@ -294,11 +297,26 @@ export function PolicyPage() {
           : current
       );
       setLegalEntitySaveState("saved");
+      notify("success", t("toasts.policy.saved"));
     } catch (nextError) {
       setLegalEntitySaveState("error");
       setLegalEntityError(getErrorMessage(nextError));
     }
   }, [legalEntityEntries, settings]);
+
+  // 有未保存修改时，重新加载前先确认。
+  const handleReload = useCallback(async () => {
+    if (companyDirty || legalEntityDirty) {
+      const confirmed = await confirmAction({
+        title: t("common.discardTitle"),
+        description: t("common.discardDescription"),
+        confirmLabel: t("common.discard"),
+        tone: "danger",
+      });
+      if (!confirmed) return;
+    }
+    await loadSettings();
+  }, [companyDirty, legalEntityDirty, loadSettings, t]);
 
   const handleSaveActiveSection = useCallback(async () => {
     if (activeSection === "gate") {
@@ -380,12 +398,13 @@ export function PolicyPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
-            onClick={() => void loadSettings()}
+            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={loadState === "loading"}
+            onClick={() => void handleReload()}
             type="button"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            {t("common.retry")}
+            {t("common.refresh")}
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-accent/60 bg-accent px-4 py-2 text-sm font-semibold text-bg-primary transition-colors hover:bg-accent-cyan disabled:cursor-not-allowed disabled:opacity-60"

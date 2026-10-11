@@ -2,6 +2,7 @@ import {useEffect,useState} from "react";
 import {useTranslation} from "react-i18next";
 import {useNavigate} from "react-router-dom";
 import {getErrorMessage} from "@/lib/errors";
+import {buttonClass,confirmAction,notify} from "@/lib/ui";
 import {getDailyStatus,previewDailyPdf,saveDailyDraft,changeDailyAuthorization,runDailyDelivery,closeInterruptedDaily,type DailyStatus} from "@/lib/sidecar/api";
 
 function localInput(date:Date){return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);}
@@ -26,11 +27,19 @@ export function DailyDeliveryPanel(){
   const recoveryBlocked=Boolean(data?.recovery_required)||Boolean(data?.today.unresolved)||Boolean(a?.scope.some(item=>recoveryIds.has(item.run_id)));
   const errorText=(error:unknown)=>{const message=getErrorMessage(error);const code=message.match(/\b(?:daily_[a-z_]+|NATIVE_OPERATION_BUSY)\b/)?.[0];return code?t('daily.reasons.'+code,{defaultValue:message}):message;};
   const edit=()=>{setDirty(true);setConsent(false);};
-  const act=async(fn:()=>Promise<unknown>)=>{setBusy(true);setError("");setNotice("");try{const result=await fn();if(result&&typeof result==='object'&&'reason'in result)setNotice(String(result.reason));setData(await getDailyStatus());setConsent(false);}catch(e){setError(errorText(e));}finally{setBusy(false);}};
+  // confirmKey 对应 confirmations.daily.*，有值时先弹确认框；successKey 对应 toasts.daily.*。
+  const act=async(fn:()=>Promise<unknown>,options:{confirmKey?:string;successKey?:string}={})=>{
+    if(options.confirmKey&&!(await confirmAction({title:t(`confirmations.daily.${options.confirmKey}.title`),description:t(`confirmations.daily.${options.confirmKey}.description`),confirmLabel:t(`confirmations.daily.${options.confirmKey}.confirm`),tone:'danger'})))return;
+    setBusy(true);setError("");setNotice("");try{const result=await fn();if(result&&typeof result==='object'&&'reason'in result)setNotice(String(result.reason));setData(await getDailyStatus());setConsent(false);if(options.successKey)notify('success',t(`toasts.daily.${options.successKey}`));}catch(e){setError(errorText(e));}finally{setBusy(false);}};
   const inputClass="rounded-card border border-border bg-bg-primary p-2 text-sm disabled:opacity-50";
-  const buttonClass="rounded-card border border-border px-3 py-2 text-sm disabled:opacity-40";
+  const secondary=buttonClass.secondary;
+  // 每个按钮的禁用原因，用于 title 提示。
+  const reason=(key:string)=>t(`reasons.daily.${key}`);
+  const saveReason=!editable?reason('notEditable'):!dirty?reason('nothingToSave'):'';
+  const activateReason=dirty?reason('dirty'):!a||!['draft','paused'].includes(a.state)?reason('notActivatable'):!a.scope.length?reason('noScope'):recoveryBlocked?reason('recovery'):!consent?reason('consent'):'';
+  const runReason=a?.state!=='active'?reason('notActive'):running?reason('running'):recoveryBlocked?reason('recovery'):'';
   return <section data-testid="daily-panel" className="space-y-4 rounded-panel border border-border bg-bg-panel p-5">
-    <div className="flex items-center justify-between"><h2 className="text-lg font-semibold">{t('daily.title')}</h2><button className={buttonClass} disabled={busy} onClick={()=>void act(async()=>getDailyStatus())}>{t('daily.refresh')}</button></div>
+    <div className="flex items-center justify-between"><h2 className="text-lg font-semibold">{t('daily.title')}</h2><button type="button" className={buttonClass.ghost} disabled={busy} onClick={()=>void act(async()=>getDailyStatus())}>{t('daily.refresh')}</button></div>
     <p className="text-sm text-text-secondary">{t('daily.description')}</p>
     {data&&<p className="text-sm">{t('daily.today')} {data.today.day} · {t('daily.confirmed')} {data.today.confirmed}/3 · {t('daily.occupied')} {data.today.occupied} · {t('daily.state')} {t(`daily.states.${a?.state||'none'}`)}</p>}
     <div className="flex flex-wrap gap-4">
@@ -42,18 +51,19 @@ export function DailyDeliveryPanel(){
     <div className="max-h-64 space-y-2 overflow-y-auto">{(editable?data?.candidates:a?.scope)?.map(item=><div key={item.run_id} className="rounded-card border border-border p-3 text-sm">
       <label className="flex gap-2"><input data-testid={`daily-candidate-${item.run_id}`} type="checkbox" checked={selected.includes(item.run_id)} disabled={!editable||busy} onChange={e=>{setSelected(v=>e.target.checked?[...v,item.run_id]:v.filter(x=>x!==item.run_id));edit();}}/>{item.company} · {item.position} {item.matching_score!=null?`· ${item.matching_score}/100`:''}</label>
       {item.pdf_filename&&<p className="mt-1 break-all">PDF: {item.pdf_filename}</p>}
-      <p className="mt-1 break-all text-xs text-text-muted">PDF SHA256: {item.pdf_sha256}</p><button className="text-accent" onClick={()=>void act(async()=>{const pdf=await previewDailyPdf(item.run_id);if(pdf.pdf_sha256!==item.pdf_sha256)throw new Error("daily_scope_mismatch");setPreview("data:application/pdf;base64,"+pdf.pdf_base64);})}>{t('daily.preview')}</button>
+      <p className="mt-1 break-all text-xs text-text-muted">PDF SHA256: {item.pdf_sha256}</p><button type="button" className={buttonClass.link} disabled={busy} onClick={()=>void act(async()=>{const pdf=await previewDailyPdf(item.run_id);if(pdf.pdf_sha256!==item.pdf_sha256)throw new Error("daily_scope_mismatch");setPreview("data:application/pdf;base64,"+pdf.pdf_base64);})}>{t('daily.preview')}</button>
     </div>)}</div>
-    {!data?.candidates.length&&editable&&<div className="space-y-2 text-sm"><p className="text-warning">{t('daily.empty')}</p><button data-testid="daily-open-jobs" className={buttonClass} disabled={busy} onClick={()=>navigate('/jobs')}>{t('daily.openJobs')}</button></div>}
-    {preview&&<div><button className={buttonClass} onClick={()=>setPreview("")}>{t('daily.closePreview')}</button><iframe title={t('daily.preview')} src={preview} className="mt-2 h-[600px] w-full rounded-card border border-border"/></div>}
+    {!data?.candidates.length&&editable&&<div className="space-y-2 text-sm"><p className="text-warning">{t('daily.empty')}</p><button type="button" data-testid="daily-open-jobs" className={secondary} disabled={busy} onClick={()=>navigate('/jobs')}>{t('daily.openJobs')}</button></div>}
+    {preview&&<div><button type="button" className={buttonClass.ghost} onClick={()=>setPreview("")}>{t('daily.closePreview')}</button><iframe title={t('daily.preview')} src={preview} className="mt-2 h-[600px] w-full rounded-card border border-border"/></div>}
     <label className="flex items-start gap-2 text-sm"><input data-testid="daily-consent" aria-label={t('daily.consent')} type="checkbox" checked={consent} disabled={busy||dirty||!a||!['draft','paused'].includes(a.state)} onChange={e=>setConsent(e.target.checked)}/>{t('daily.consent')}</label>
-    <div className="flex flex-wrap gap-2">
-      <button data-testid="daily-save" className={buttonClass} disabled={busy||!editable||!dirty||!expiry||!time} onClick={()=>void act(async()=>{await saveDailyDraft({run_ids:selected,maximum,time,expires_at:new Date(expiry).toISOString()});setDirty(false);})}>{t('daily.save')}</button>
-      <button data-testid="daily-activate" className={buttonClass} disabled={busy||dirty||!consent||!a||!['draft','paused'].includes(a.state)||!a.scope.length||recoveryBlocked} onClick={()=>void act(()=>changeDailyAuthorization(a!.id,'active',true))}>{t('daily.activate')}</button>
-      <button data-testid="daily-pause" className={buttonClass} disabled={!a||a.state!=='active'} onClick={()=>void act(()=>changeDailyAuthorization(a!.id,'paused'))}>{t('daily.pause')}</button>
-      <button data-testid="daily-revoke" className={buttonClass} disabled={!a||a.state==='revoked'} onClick={()=>void act(()=>changeDailyAuthorization(a!.id,'revoked'))}>{t('daily.revoke')}</button>
-      <button data-testid="daily-run" className={buttonClass} disabled={busy||a?.state!=='active'||!!running||recoveryBlocked} onClick={()=>void act(()=>runDailyDelivery(true))}>{t('daily.run')}</button>
-      {running&&<button data-testid="daily-close-interrupted" className={buttonClass} disabled={busy} onClick={()=>void act(()=>closeInterruptedDaily(running.id))}>{t('daily.closeInterrupted')}</button>}
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" data-testid="daily-save" className={secondary} disabled={busy||!editable||!dirty||!expiry||!time} title={saveReason||undefined} onClick={()=>void act(async()=>{await saveDailyDraft({run_ids:selected,maximum,time,expires_at:new Date(expiry).toISOString()});setDirty(false);},{successKey:'saved'})}>{t('daily.save')}</button>
+      <button type="button" data-testid="daily-activate" className={buttonClass.primary} disabled={busy||dirty||!consent||!a||!['draft','paused'].includes(a.state)||!a.scope.length||recoveryBlocked} title={activateReason||undefined} onClick={()=>void act(()=>changeDailyAuthorization(a!.id,'active',true),{successKey:'activated'})}>{t('daily.activate')}</button>
+      <button type="button" data-testid="daily-run" className={buttonClass.primary} disabled={busy||a?.state!=='active'||!!running||recoveryBlocked} title={runReason||undefined} onClick={()=>void act(()=>runDailyDelivery(true),{confirmKey:'run',successKey:'triggered'})}>{t('daily.run')}</button>
+      <span className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden="true"/>
+      <button type="button" data-testid="daily-pause" className={secondary} disabled={busy||!a||a.state!=='active'} title={!a||a.state!=='active'?reason('notPausable'):undefined} onClick={()=>void act(()=>changeDailyAuthorization(a!.id,'paused'),{successKey:'paused'})}>{t('daily.pause')}</button>
+      <button type="button" data-testid="daily-revoke" className={buttonClass.danger} disabled={busy||!a||a.state==='revoked'} title={!a||a.state==='revoked'?reason('alreadyRevoked'):undefined} onClick={()=>void act(()=>changeDailyAuthorization(a!.id,'revoked'),{confirmKey:'revoke',successKey:'revoked'})}>{t('daily.revoke')}</button>
+      {running&&<button type="button" data-testid="daily-close-interrupted" className={buttonClass.danger} disabled={busy} onClick={()=>void act(()=>closeInterruptedDaily(running.id),{confirmKey:'closeInterrupted',successKey:'closed'})}>{t('daily.closeInterrupted')}</button>}
     </div>
     {notice&&<p role="status" className="text-sm text-warning">{t(`daily.reasons.${notice}`,{defaultValue:notice})}</p>}
     {error&&<p role="alert" className="text-sm text-error">{error}</p>}

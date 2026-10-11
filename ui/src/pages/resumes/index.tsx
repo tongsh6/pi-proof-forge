@@ -14,6 +14,7 @@ import {
   UserRoundPen,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
+import { buttonClass, notify } from "@/lib/ui";
 import {
   exportResumePdf,
   getMaterialReadiness,
@@ -209,8 +210,13 @@ export function ResumesPage() {
     }
   }, []);
 
+  const hasLoadedRef = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 首次加载显示占位；之后的刷新保留页面与职业档案编辑器，避免未保存草稿丢失。
   const loadData = useCallback(async () => {
-    setLoadState("loading");
+    if (hasLoadedRef.current) setRefreshing(true);
+    else setLoadState("loading");
     setError(null);
     try {
       const [profileResult, resumesResult, materialsResult, readinessResult] =
@@ -237,12 +243,17 @@ export function ResumesPage() {
         setPreviewHtml(null);
         setPreviewStatus(null);
       }
+      hasLoadedRef.current = true;
       setLoadState("ready");
     } catch (nextError) {
-      setError(getErrorMessage(nextError));
-      setLoadState("error");
+      const message = getErrorMessage(nextError);
+      setError(message);
+      if (hasLoadedRef.current) notify("error", t("common.refreshFailed"), message);
+      else setLoadState("error");
+    } finally {
+      setRefreshing(false);
     }
-  }, [loadPreview]);
+  }, [loadPreview]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     void loadData();
@@ -254,6 +265,7 @@ export function ResumesPage() {
     try {
       await updateProfile(profileForm, profile?.revision);
       await loadData();
+      notify("success", t("toasts.resumes.profileSaved"));
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
@@ -280,6 +292,7 @@ export function ResumesPage() {
       setUploadForm({ sourcePath: "", sourceFile: null, language: "zh", label: "" });
       setShowUploadForm(false);
       await loadData();
+      notify("success", t("toasts.resumes.uploaded"));
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
@@ -305,6 +318,7 @@ export function ResumesPage() {
       setMaterialUploadForm({ sourcePath: "", sourceFile: null, label: "" });
       setShowMaterialUploadForm(false);
       await loadData();
+      notify("success", t("toasts.resumes.materialUploaded"));
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
@@ -330,6 +344,7 @@ export function ResumesPage() {
         destination: exportPath.trim(),
       });
       setExportedPath(result.path);
+      notify("success", t("toasts.resumes.exported"), result.path);
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
@@ -350,12 +365,13 @@ export function ResumesPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
+            className={buttonClass.secondary}
+            disabled={refreshing}
             onClick={() => void loadData()}
             type="button"
           >
-            <RefreshCw size={16} />
-            {t("pages.resumes.refresh")}
+            <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? t("common.refreshing") : t("pages.resumes.refresh")}
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
@@ -417,13 +433,13 @@ export function ResumesPage() {
                 </p>
               </div>
               <button
-                className="inline-flex h-10 w-10 items-center justify-center rounded-card border border-border text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary disabled:opacity-50"
+                className={buttonClass.secondary}
                 disabled={profileSaving}
                 onClick={() => void handleSaveProfile()}
-                title={t("pages.resumes.profile.save")}
                 type="button"
               >
-                <UserRoundPen size={18} />
+                <UserRoundPen size={16} />
+                {t("pages.resumes.profile.save")}
               </button>
             </div>
 

@@ -1,9 +1,20 @@
 import { Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
+import { ToastViewport } from "@/components/feedback/ToastViewport";
 import { useSidecarStore } from "@/state/sidecar-store";
 import { SideNav } from "./SideNav";
 
-const stateToneMap = {
+const bannerToneMap = {
+  starting: "border-warning/40 bg-warning/10",
+  degraded: "border-warning/40 bg-warning/10",
+  reconnecting: "border-warning/40 bg-warning/10",
+  disconnected: "border-error/50 bg-error/10",
+  stopped: "border-border bg-bg-panel",
+  ready: "",
+} as const;
+
+const dotToneMap = {
   starting: "bg-warning",
   ready: "bg-success",
   degraded: "bg-warning",
@@ -12,52 +23,40 @@ const stateToneMap = {
   stopped: "bg-text-muted",
 } as const;
 
+/**
+ * 应用外壳。按设计规范，sidecar 处于 ready 时不占用页面顶部；
+ * 其他状态才显示一条横幅，常驻状态放在侧栏底部。
+ */
 export function AppShell() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const state = useSidecarStore((store) => store.state);
-  const sidecarVersion = useSidecarStore((store) => store.sidecarVersion);
-  const lastHeartbeatAt = useSidecarStore((store) => store.lastHeartbeatAt);
   const error = useSidecarStore((store) => store.error);
-
-  const heartbeatLabel = lastHeartbeatAt
-    ? new Date(lastHeartbeatAt).toLocaleString(i18n.language)
-    : t("shell.waitingForHeartbeat");
+  const showBanner = state !== "ready";
 
   return (
     <div className="flex h-screen w-screen bg-bg-primary">
       <SideNav />
       <main className="flex-1 overflow-y-auto p-6">
-        <section className="mb-6 rounded-panel border border-border bg-bg-panel px-5 py-4 shadow-[var(--shadow-panel)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-text-muted">
-                {t("shell.sidecar")}
-              </p>
-              <div className="mt-2 flex items-center gap-3">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${stateToneMap[state]}`}
-                />
-                <span className="text-sm font-semibold text-text-primary">
-                  {t(`sidecar.state.${state}`)}
-                </span>
-                {sidecarVersion ? (
-                  <span className="rounded-chip border border-border px-2 py-0.5 text-xs text-text-secondary">
-                    v{sidecarVersion}
-                  </span>
-                ) : null}
-              </div>
+        {showBanner ? (
+          <section
+            role={state === "disconnected" ? "alert" : "status"}
+            data-testid="sidecar-banner"
+            className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-card border px-4 py-3 text-sm ${bannerToneMap[state]}`}
+          >
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dotToneMap[state]}`} />
+              <span className="font-medium text-text-primary">
+                {t("shell.sidecar")} · {t(`sidecar.state.${state}`)}
+              </span>
+              {error ? <span className="break-words text-text-secondary">{error}</span> : null}
             </div>
-            <div className="text-right text-sm text-text-secondary">
-              <p>{t("shell.lastHeartbeat")}</p>
-              <p className="mt-1 text-text-primary">{heartbeatLabel}</p>
-            </div>
-          </div>
-          {error ? (
-            <p className="mt-3 text-sm text-warning">{error}</p>
-          ) : null}
-        </section>
+            <span className="text-xs text-text-muted">{t("shell.bannerHint")}</span>
+          </section>
+        ) : null}
         <Outlet />
       </main>
+      <ToastViewport />
+      <ConfirmDialog />
     </div>
   );
 }

@@ -9,11 +9,10 @@ import {
   LoaderCircle,
   Play,
   RefreshCw,
-  Square,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
+import { notify } from "@/lib/ui";
 import {
-  cancelQuickRun,
   getSettings,
   getProfile,
   listEvidence,
@@ -44,14 +43,6 @@ const PIPELINE_STEPS = [
 const SCORE_KEYS = ["K", "D", "S", "Q", "E", "R"] as const;
 const SCORE_MAX = 20;
 
-const QUICK_RUN_TERMINAL_STATUSES = new Set([
-  "DONE",
-  "FAILED",
-  "SKIPPED",
-  "TIMEOUT",
-  "stopped",
-]);
-
 const stageStatusClass: Record<StageStatus, string> = {
   waiting: "border-border bg-bg-primary/60 text-text-secondary",
   running: "border-accent bg-accent/10 text-text-primary",
@@ -72,8 +63,9 @@ function getStageStatus(
   failedStep: string,
   stepIndex: number
 ): StageStatus {
+  // 管线在后端同步执行、没有逐阶段进度；执行期间四个阶段都标为进行中，避免假进度。
   if (runState === "running") {
-    return stepIndex === 0 ? "running" : "waiting";
+    return "running";
   }
   if (status === "DONE" || status === "SKIPPED") {
     return "done";
@@ -237,13 +229,17 @@ export function QuickRunPage() {
         : t("pages.systemSettings.secretMissing"),
     },
   ];
-  const canStartRun =
-    loadState === "ready" && targetAvailable && careerProfile?.career_status?.ready === true &&
-    selectedMaterialId !== "" && eligibleEvidenceIds.length > 0 && runState !== "running";
-  const canCancelRun =
-    quickRunId !== null &&
-    quickRunStatus !== null &&
-    !QUICK_RUN_TERMINAL_STATUSES.has(quickRunStatus);
+  // 不能启动时列出全部原因，供页头提示与按钮 title 使用。
+  const startBlockers = [
+    loadState !== "ready" && "loading",
+    runState === "running" && "running",
+    loadState === "ready" && careerProfile?.career_status?.ready !== true && "profileNotReady",
+    loadState === "ready" && !targetAvailable && "targetUnavailable",
+    loadState === "ready" && selectedMaterialId === "" && "materialRequired",
+    loadState === "ready" && eligibleEvidenceIds.length === 0 && "evidenceRequired",
+  ].filter((item): item is string => Boolean(item));
+  const canStartRun = startBlockers.length === 0;
+  const startBlockerText = startBlockers.map((key) => t(`reasons.quickRun.${key}`)).join("，");
 
   const scoreBars = useMemo(
     () =>
@@ -295,35 +291,27 @@ export function QuickRunPage() {
       setQuickRunStatus(result.status);
       setQuickRunResult(result);
       setElapsedSeconds(Math.max(0, Math.floor((Date.now() - now) / 1000)));
-      setRunState(
-        result.status === "DONE" || result.status === "SKIPPED" ? "done" : "error"
-      );
-      if (result.status !== "DONE" && result.status !== "SKIPPED") {
-        setRunError(
-          `${result.status}${result.exit_code != null ? ` (${result.exit_code})` : ""}`
-        );
+      const finished = result.status === "DONE" || result.status === "SKIPPED";
+      setRunState(finished ? "done" : "error");
+      if (!finished) {
+        const reason = `${result.status}${result.exit_code != null ? ` (${result.exit_code})` : ""}`;
+        setRunError(reason);
+        notify("error", t("toasts.quickRun.failed"), reason);
+      } else {
+        notify("success", t("toasts.quickRun.done"));
       }
     } catch (e) {
       if (version !== selectionVersion.current) return;
+      const message = getErrorMessage(e);
       setRunState("error");
-      setRunError(getErrorMessage(e));
+      setRunError(message);
+      notify("error", t("toasts.quickRun.failed"), message);
     } finally {
       quickRunInFlightRef.current = false;
       if (version !== selectionVersion.current) setRunState("ready_to_run");
     }
   }, [canStartRun, eligibleEvidenceIds, resumePositioning, selectedProfileId, selectedMaterialId, useLlm]);
 
-  const handleCancelQuickRun = async () => {
-    if (!quickRunId) return;
-    setRunError(null);
-    try {
-      await cancelQuickRun(quickRunId);
-      setQuickRunStatus("stopped");
-      setRunState("idle");
-    } catch (e) {
-      setRunError(getErrorMessage(e));
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -385,25 +373,31 @@ export function QuickRunPage() {
             data-automation-id="quick-run-start"
             onClick={() => void handleStartQuickRun()}
             disabled={!canStartRun}
+            title={canStartRun ? undefined : `${t("reasons.quickRun.title")}${startBlockerText}`}
             className="inline-flex h-10 items-center gap-2 rounded-card border border-accent bg-accent px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Play className="h-4 w-4" aria-hidden="true" />
+            {runState === "running" ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Play className="h-4 w-4" aria-hidden="true" />
+            )}
             {runState === "running"
               ? t("pages.quickRun.running")
               : t("pages.quickRun.startRun")}
           </button>
-          {canCancelRun ? (
-            <button
-              type="button"
-              onClick={() => void handleCancelQuickRun()}
-              className="inline-flex h-10 items-center gap-2 rounded-card border border-border px-4 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover"
-            >
-              <Square className="h-4 w-4" aria-hidden="true" />
-              {t("pages.quickRun.cancelRun")}
-            </button>
-          ) : null}
         </div>
       </header>
+
+      {loadState === "ready" && !canStartRun && runState !== "running" ? (
+        <p
+          role="status"
+          data-testid="quick-run-blockers"
+          className="rounded-card border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-warning"
+        >
+          {t("reasons.quickRun.title")}
+          {startBlockerText}
+        </p>
+      ) : null}
 
       {loadState === "loading" ? (
         <section className="rounded-panel border border-border bg-bg-panel p-6 text-text-secondary shadow-[var(--shadow-panel)]">
@@ -491,6 +485,11 @@ export function QuickRunPage() {
           </section>
 
           <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            {runState === "running" ? (
+              <p role="status" className="mb-4 text-xs text-text-secondary">
+                {t("pages.quickRun.runningHint")}
+              </p>
+            ) : null}
             <div className="grid gap-3 xl:grid-cols-4">
               {PIPELINE_STEPS.map((step, index) => {
                 const stageStatus = getStageStatus(
@@ -568,7 +567,7 @@ export function QuickRunPage() {
                     onClick={() => navigate(`/submissions?quick_run_id=${encodeURIComponent(quickRunResult.run_id)}`)}>{t("pages.quickRun.preparePdf")}</button> :
                   <button type="button" className="text-accent underline" onClick={() => navigate("/evidence")}>{t("pages.quickRun.openEvidence")}</button>}
               </div>}
-              <div className="mt-4 h-[360px] overflow-auto rounded-card border border-border bg-[#050A16] p-4 font-mono text-xs leading-6 text-text-secondary">
+              <div className="mt-4 h-[360px] overflow-auto rounded-card border border-border bg-bg-primary p-4 font-mono text-xs leading-6 text-text-secondary">
                 {terminalLines.length > 0 ? (
                   terminalLines.map((line, index) => (
                     <p key={`${index}-${line}`} className="whitespace-pre-wrap break-words">
@@ -599,11 +598,23 @@ export function QuickRunPage() {
               <div className="mt-5 space-y-4">
                 {scoreBars.map((item) => (
                   <div key={item.key}>
-                    <div className="mb-1 flex items-center justify-between text-xs">
-                      <span className="font-medium text-text-primary">{item.key}</span>
-                      <span className="text-text-secondary">{item.score}</span>
+                    <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                      <span
+                        className="truncate font-medium text-text-primary"
+                        title={t(`pages.quickRun.scoreLabelsFull.${item.key}`)}
+                      >
+                        {item.key} · {t(`pages.quickRun.scoreLabelsFull.${item.key}`)}
+                      </span>
+                      <span className="shrink-0 text-text-secondary">{item.score}</span>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-chip bg-bg-primary">
+                    <div
+                      className="h-2 overflow-hidden rounded-chip bg-bg-primary"
+                      role="progressbar"
+                      aria-label={t(`pages.quickRun.scoreLabelsFull.${item.key}`)}
+                      aria-valuemin={0}
+                      aria-valuemax={SCORE_MAX}
+                      aria-valuenow={item.score}
+                    >
                       <div
                         className="h-full rounded-chip bg-accent"
                         style={{ width: item.width }}

@@ -37,6 +37,7 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/agent-run/in
   if(name==='lucide-react')return new Proxy({}, {get:(_,key)=>key});
   if(name==='@/lib/errors')return{getErrorMessage:e=>e.message};
   if(name==='@/lib/sidecar/api')return api;
+  if(name==='@/lib/ui')return {notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};
   throw Error(name);
  }});
 const nodes=v=>Array.isArray(v)?v.flatMap(nodes):v&&typeof v==='object'?[v,...nodes(v.props?.children)]:[];

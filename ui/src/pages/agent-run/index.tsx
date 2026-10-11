@@ -13,6 +13,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
+import { confirmAction, notify } from "@/lib/ui";
 import {
   getAgentRun,
   getPendingReview,
@@ -378,6 +379,7 @@ export function AgentRunPage() {
       setCurrentRunId(result.run_id);
       setSearchParams({ run_id: result.run_id }, { replace: true });
       await loadRun(result.run_id);
+      notify("success", t("toasts.agentRun.started"));
     } catch (nextError) {
       setRunState("error");
       setError(getErrorMessage(nextError));
@@ -396,11 +398,19 @@ export function AgentRunPage() {
 
   const handleStop = useCallback(async () => {
     if (!currentRunId) return;
+    const confirmed = await confirmAction({
+      title: t("confirmations.agentRun.stop.title"),
+      description: t("confirmations.agentRun.stop.description"),
+      confirmLabel: t("confirmations.agentRun.stop.confirm"),
+      tone: "danger",
+    });
+    if (!confirmed) return;
     setRunState("loading");
     setError(null);
     try {
       await stopAgentRun(currentRunId);
       await loadRun(currentRunId);
+      notify("success", t("toasts.agentRun.stopped"));
     } catch (nextError) {
       setRunState("error");
       setError(getErrorMessage(nextError));
@@ -410,6 +420,16 @@ export function AgentRunPage() {
   const handleDecision = useCallback(
     async (jobLeadId: string, action: "approve" | "reject" | "skip") => {
       if (nativePdfQuickRunId) return;
+      // 批准可能触发投递，拒绝不可撤销；跳过不需要确认。
+      if (action !== "skip") {
+        const confirmed = await confirmAction({
+          title: t(`confirmations.agentRun.${action}.title`),
+          description: t(`confirmations.agentRun.${action}.description`),
+          confirmLabel: t(`confirmations.agentRun.${action}.confirm`),
+          tone: action === "reject" ? "danger" : "default",
+        });
+        if (!confirmed) return;
+      }
       setSubmitState("submitting");
       setSubmitError(null);
       try {
@@ -428,6 +448,7 @@ export function AgentRunPage() {
         setSubmitState("done");
         if (currentRunId) await loadRun(currentRunId);
         else await loadPending();
+        notify("success", t("toasts.agentRun.decisionSubmitted"));
       } catch (nextError) {
         setSubmitState("error");
         setSubmitError(getErrorMessage(nextError));
@@ -457,7 +478,6 @@ export function AgentRunPage() {
 
   return (
     <div className="space-y-6">
-      <DailyDeliveryPanel />
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">
@@ -493,7 +513,7 @@ export function AgentRunPage() {
           </button>
           <button
             className="inline-flex h-10 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50"
-            disabled={!currentRunId || runState === "loading"}
+            disabled={runState === "loading" || loadState === "loading"}
             onClick={() => void handleRefreshRun()}
             type="button"
           >
@@ -515,7 +535,9 @@ export function AgentRunPage() {
       {loadState === "loading" ? (
         <p className="text-sm text-text-secondary">{t("common.loading")}</p>
       ) : null}
-      {error ? <p className="text-sm text-error">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-error">{error}</p> : null}
+
+      <DailyDeliveryPanel />
 
       <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
         <h2 className="text-lg font-semibold text-text-primary">
@@ -615,7 +637,7 @@ export function AgentRunPage() {
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_420px]">
         <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
           <div className="mb-4 flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-accent" aria-hidden="true" />
@@ -772,7 +794,7 @@ export function AgentRunPage() {
           </div>
         </section>
 
-        <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
+        <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:self-start">
           <div className="border-b border-border px-5 py-4">
             <h2 className="text-lg font-semibold text-text-primary">
               {t("pages.agentRun.eventStream")}

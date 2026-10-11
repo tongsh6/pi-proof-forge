@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
@@ -16,6 +16,7 @@ import {
   Tag,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
+import { confirmAction, notify } from "@/lib/ui";
 import {
   convertJobLead,
   createJobProfile,
@@ -144,12 +145,17 @@ export function JobsPage() {
   const [liepinSearchResult, setLiepinSearchResult] = useState<LiepinSearchResult | null>(null);
   const [liepinSearchError, setLiepinSearchError] = useState<string | null>(null);
 
+  const hasLoadedRef = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 首次加载显示占位；之后的重载保留列表与详情，不整页回到 loading。
   const loadData = useCallback(
     async (
       nextProfileFilters: JobProfilesFilters = profileFilters,
       nextLeadFilters: JobLeadsFilters = leadFilters
     ) => {
-      setLoadState("loading");
+      if (hasLoadedRef.current) setRefreshing(true);
+      else setLoadState("loading");
       setError(null);
       try {
         const [profileResult, leadResult] = await Promise.all([
@@ -173,17 +179,25 @@ export function JobsPage() {
           }
           return leadResult.items[0]?.job_lead_id ?? null;
         });
+        hasLoadedRef.current = true;
         setLoadState("ready");
       } catch (nextError) {
-        setProfiles([]);
-        setLeads([]);
-        setSelectedProfileId(null);
-        setSelectedLeadId(null);
-        setError(getErrorMessage(nextError));
-        setLoadState("error");
+        const message = getErrorMessage(nextError);
+        setError(message);
+        if (hasLoadedRef.current) {
+          notify("error", t("common.refreshFailed"), message);
+        } else {
+          setProfiles([]);
+          setLeads([]);
+          setSelectedProfileId(null);
+          setSelectedLeadId(null);
+          setLoadState("error");
+        }
+      } finally {
+        setRefreshing(false);
       }
     },
-    [leadFilters, profileFilters]
+    [leadFilters, profileFilters] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   useEffect(() => {
@@ -287,6 +301,16 @@ export function JobsPage() {
 
   const handleFetchLiepinDetail = useCallback(async () => {
     if (!selectedLead) return;
+    // 已有手动输入的 JD 文本且不属于当前线索时，覆盖前先确认。
+    if (jdText.trim() && !(boundLeadId && boundLeadId === selectedLead.job_lead_id)) {
+      const confirmed = await confirmAction({
+        title: t("confirmations.jobs.overwriteJd.title"),
+        description: t("confirmations.jobs.overwriteJd.description"),
+        confirmLabel: t("confirmations.jobs.overwriteJd.confirm"),
+        tone: "danger",
+      });
+      if (!confirmed) return;
+    }
     setFetchingDetail(true);
     setDetailError(null);
     try {
@@ -304,6 +328,7 @@ export function JobsPage() {
       setSelectedProfileId(result.job_profile_id || null);
       setGeneratedDraft(null);
       setError(null);
+      notify("success", t("toasts.jobs.detailFetched"));
       setLeads((current) => current.map((lead) => lead.job_lead_id === result.job_lead_id ? {
         ...lead,
         source_jd: result.jd_text,
@@ -317,7 +342,7 @@ export function JobsPage() {
     } finally {
       setFetchingDetail(false);
     }
-  }, [selectedLead, t]);
+  }, [boundLeadId, jdText, selectedLead, t]);
 
   const handleLiepinSearch = useCallback(async () => {
     if (!liepinKeyword.trim()) return;
@@ -396,6 +421,7 @@ export function JobsPage() {
       await loadData(DEFAULT_PROFILE_FILTERS, leadFilters);
       setSelectedProfileId(created.job_profile_id);
       setActiveTab("profiles");
+      notify("success", t("toasts.jobs.created"));
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
@@ -475,13 +501,14 @@ export function JobsPage() {
         await loadData(DEFAULT_PROFILE_FILTERS, leadFilters);
         setSelectedProfileId(result.job_profile_id);
         setActiveTab("profiles");
+        notify("success", t(saveMode === "complete" ? "toasts.jobs.saved" : "toasts.jobs.draftSaved"));
       } catch (nextError) {
         setError(getErrorMessage(nextError));
       } finally {
         setActionState("idle");
       }
     },
-    [boundLeadId, boundProfileId, draftFromEditor, generatedDraft, leadFilters, loadData, resetProfileFilters]
+    [boundLeadId, boundProfileId, draftFromEditor, generatedDraft, leadFilters, loadData, resetProfileFilters] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const handleSaveProfile = useCallback(async () => {
@@ -489,6 +516,15 @@ export function JobsPage() {
     if (!editingProfile.title.trim()) {
       setError(t("pages.jobs.errors.titleRequired"));
       return;
+    }
+    if (editingProfile.status === "archived" && selectedProfile.status !== "archived") {
+      const confirmed = await confirmAction({
+        title: t("confirmations.jobs.archiveProfile.title"),
+        description: t("confirmations.jobs.archiveProfile.description"),
+        confirmLabel: t("confirmations.jobs.archiveProfile.confirm"),
+        tone: "danger",
+      });
+      if (!confirmed) return;
     }
     setActionState("saving");
     setError(null);
@@ -499,6 +535,7 @@ export function JobsPage() {
         status: editingProfile.status,
       });
       await loadData(profileFilters, leadFilters);
+      notify("success", t("toasts.jobs.saved"));
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
@@ -521,6 +558,7 @@ export function JobsPage() {
         await loadData(DEFAULT_PROFILE_FILTERS, leadFilters);
         setSelectedProfileId(result.job_profile_id);
         setActiveTab("profiles");
+        notify("success", t("toasts.jobs.converted"));
       } catch (nextError) {
         setError(getErrorMessage(nextError));
       } finally {
@@ -544,16 +582,17 @@ export function JobsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:opacity-50"
-            disabled={isBusy}
+            disabled={isBusy || refreshing}
             onClick={() => void loadData(profileFilters, leadFilters)}
             type="button"
           >
-            <RefreshCw size={16} />
-            {t("common.retry")}
+            <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? t("common.refreshing") : t("common.refresh")}
           </button>
           <button
-            className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isBusy || !newTitle.trim()}
+            title={!newTitle.trim() ? t("reasons.jobs.titleRequired") : isBusy ? t("reasons.jobs.busy") : undefined}
             onClick={() => void handleCreateProfile()}
             type="button"
           >
@@ -612,12 +651,17 @@ export function JobsPage() {
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <input
             className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+            aria-label={t("pages.jobs.newProfile.titlePlaceholder")}
             onChange={(event) => setNewTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && newTitle.trim() && !isBusy) void handleCreateProfile();
+            }}
             placeholder={t("pages.jobs.newProfile.titlePlaceholder")}
             value={newTitle}
           />
           <input
             className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+            aria-label={t("pages.jobs.newProfile.tagsPlaceholder")}
             onChange={(event) => setNewTags(event.target.value)}
             placeholder={t("pages.jobs.newProfile.tagsPlaceholder")}
             value={newTags}
@@ -626,9 +670,21 @@ export function JobsPage() {
             className="inline-flex items-center justify-center gap-2 rounded-card border border-accent px-4 py-2 text-sm text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
             disabled={isBusy || (!newTitle.trim() && !newTags.trim() && !jdText && !generatedDraft && !boundLeadId)}
             onClick={() => {
-              setNewTitle("");
-              setNewTags("");
-              clearJdDraft();
+              void (async () => {
+                const hasContent = Boolean(jdText.trim() || generatedDraft || newTitle.trim() || newTags.trim());
+                if (hasContent) {
+                  const confirmed = await confirmAction({
+                    title: t("confirmations.jobs.clearDraft.title"),
+                    description: t("confirmations.jobs.clearDraft.description"),
+                    confirmLabel: t("confirmations.jobs.clearDraft.confirm"),
+                    tone: "danger",
+                  });
+                  if (!confirmed) return;
+                }
+                setNewTitle("");
+                setNewTags("");
+                clearJdDraft();
+              })();
             }}
             type="button"
           >
@@ -805,7 +861,13 @@ export function JobsPage() {
           ))}
         </div>
         {activeTab === "profiles" ? (
-          <div className="flex flex-wrap items-center gap-3">
+          <form
+            className="flex flex-wrap items-center gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyProfileFilters();
+            }}
+          >
             <div className="relative">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
@@ -813,6 +875,7 @@ export function JobsPage() {
               />
               <input
                 className="w-72 rounded-card border border-border bg-bg-panel py-2 pl-9 pr-3 text-sm text-text-primary outline-none focus:border-accent"
+                aria-label={t("pages.jobs.filters.queryPlaceholder")}
                 onChange={(event) => setQueryInput(event.target.value)}
                 placeholder={t("pages.jobs.filters.queryPlaceholder")}
                 value={queryInput}
@@ -832,6 +895,7 @@ export function JobsPage() {
             </select>
             <input
               className="w-64 rounded-card border border-border bg-bg-panel px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+              aria-label={t("pages.jobs.filters.tagsPlaceholder")}
               onChange={(event) => setTagInput(event.target.value)}
               placeholder={t("pages.jobs.filters.tagsPlaceholder")}
               value={tagInput}
@@ -839,22 +903,28 @@ export function JobsPage() {
             <button
               className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               disabled={isBusy}
-              onClick={applyProfileFilters}
-              type="button"
+              type="submit"
             >
               <Filter size={16} />
               {t("pages.jobs.filters.apply")}
             </button>
             <button
-              className="rounded-card border border-border px-4 py-2 text-sm text-text-primary hover:bg-bg-hover"
+              className="rounded-card border border-border px-4 py-2 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50"
+              disabled={isBusy}
               onClick={resetProfileFilters}
               type="button"
             >
               {t("pages.jobs.filters.reset")}
             </button>
-          </div>
+          </form>
         ) : (
-          <div className="flex flex-wrap items-center gap-3">
+          <form
+            className="flex flex-wrap items-center gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyLeadFilters();
+            }}
+          >
             <div className="relative">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
@@ -862,6 +932,7 @@ export function JobsPage() {
               />
               <input
                 className="w-72 rounded-card border border-border bg-bg-panel py-2 pl-9 pr-3 text-sm text-text-primary outline-none focus:border-accent"
+                aria-label={t("pages.jobs.leads.searchPlaceholder")}
                 onChange={(event) => setLeadQueryInput(event.target.value)}
                 placeholder={t("pages.jobs.leads.searchPlaceholder")}
                 value={leadQueryInput}
@@ -891,20 +962,20 @@ export function JobsPage() {
             <button
               className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               disabled={isBusy}
-              onClick={applyLeadFilters}
-              type="button"
+              type="submit"
             >
               <Filter size={16} />
               {t("pages.jobs.filters.apply")}
             </button>
             <button
-              className="rounded-card border border-border px-4 py-2 text-sm text-text-primary hover:bg-bg-hover"
+              className="rounded-card border border-border px-4 py-2 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50"
+              disabled={isBusy}
               onClick={resetLeadFilters}
               type="button"
             >
               {t("pages.jobs.filters.reset")}
             </button>
-          </div>
+          </form>
         )}
       </section>
 
@@ -968,7 +1039,7 @@ export function JobsPage() {
       ) : null}
 
       {loadState === "ready" && activeTab === "profiles" ? (
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_420px]">
           <div className="grid content-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
             {profiles.map((profile) => {
               const selected = profile.job_profile_id === selectedProfileId;
@@ -1063,7 +1134,7 @@ export function JobsPage() {
             ) : null}
           </div>
 
-          <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+          <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto">
             <div className="border-b border-border pb-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1217,8 +1288,8 @@ export function JobsPage() {
       ) : null}
 
       {loadState === "ready" && activeTab === "leads" ? (
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="overflow-hidden rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="overflow-x-auto rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
             <div className="grid grid-cols-[minmax(220px,1.1fr)_minmax(180px,0.8fr)_120px_120px_140px] border-b border-border px-5 py-3 text-xs uppercase tracking-[0.18em] text-text-muted">
               <span>{t("pages.jobs.leads.company")}</span>
               <span>{t("pages.jobs.leads.position")}</span>
@@ -1286,7 +1357,7 @@ export function JobsPage() {
             </div>
           </div>
 
-          <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+          <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto">
             <div className="border-b border-border pb-4">
               <h2 className="text-lg font-semibold text-text-primary">
                 {t("pages.jobs.leads.detailTitle")}
