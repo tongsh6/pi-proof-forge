@@ -152,12 +152,6 @@ function channelLabel(item: SubmissionListItem, unknownChannel: string): string 
   return isFallback(item) && channel.toLowerCase() === "email" ? "Email ↩" : channel;
 }
 
-function detailText(item: SubmissionListItem, fallback: string): string {
-  if (item.error) return item.error;
-  if (item.last_step.detail) return item.last_step.detail;
-  return fallback;
-}
-
 function submissionStatusLabel(status: string, t: (key: string, options?: Record<string, string>) => string): string {
   const normalized = status || "unknown";
   return t(`pages.submissions.status.${normalized}`, { defaultValue: normalized });
@@ -179,6 +173,8 @@ export function SubmissionsPage() {
   const consumedQuickRun = useRef<string | null | undefined>(undefined);
   const { t, i18n } = useTranslation();
   const [items, setItems] = useState<SubmissionListItem[]>([]);
+  // 页内按任务分两个标签：投递一份 PDF / 记录与反馈；带 quick_run_id 深链时直接进投递标签。
+  const [activeTab, setActiveTab] = useState<"deliver" | "records">(requestedQuickRun ? "deliver" : "records");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
@@ -533,17 +529,34 @@ export function SubmissionsPage() {
   const pdfStep = currentPdfStep(nativePdf, previewedPdf === nativePdf?.run_id, acceptPdfEffects);
   const stepClass = (step: number) => (pdfStep === step ? buttonClass.primary : buttonClass.secondary);
 
+  // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => void loadData();
+    window.addEventListener("pipf:refresh", onRefresh);
+    return () => window.removeEventListener("pipf:refresh", onRefresh);
+  }, [loadData]);
+
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">{t("pages.submissions.title")}</h1>
-          <p className="mt-2 text-sm text-text-secondary">{t("pages.submissions.subtitle")}</p>
+          <h1>{t("pages.submissions.title")}</h1>
+          <p className="page-subtitle">{t("pages.submissions.subtitle")}</p>
         </div>
-        <button className={buttonClass.secondary} disabled={retryingId !== null || refreshing} onClick={() => void loadData()} type="button">
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
-          {refreshing ? t("common.refreshing") : t("pages.submissions.refresh")}
-        </button>
+        <div className="page-actions">
+          <div className="seg-tabs" role="tablist" data-testid="submissions-tabs">
+            {(["deliver", "records"] as const).map((tab) => (
+              <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)}>
+                {t(`pages.submissions.tabs.${tab}`)}
+              </button>
+            ))}
+          </div>
+          <button className="page-icon-button" disabled={retryingId !== null || refreshing} onClick={() => void loadData()} type="button" title={t("common.refreshShortcut")}>
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
+            <span className="sr-only">{refreshing ? t("common.refreshing") : t("pages.submissions.refresh")}</span>
+          </button>
+        </div>
       </header>
 
       {loadState === "loading" ? <p className="text-sm text-text-secondary">{t("common.loading")}</p> : null}
@@ -552,25 +565,7 @@ export function SubmissionsPage() {
 
       {loadState === "ready" ? (
         <>
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {stats.map((stat) => {
-              const Icon = stat.icon;
-              return (
-                <div key={stat.key} className="rounded-card border border-border bg-bg-panel p-4 shadow-[var(--shadow-card)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm text-text-secondary">{t(`pages.submissions.stats.${stat.key}`)}</p>
-                      <p className="mt-2 text-2xl font-semibold text-text-primary">{stat.value}</p>
-                    </div>
-                    <span className={`grid h-10 w-10 place-items-center rounded-card border ${stat.className}`}>
-                      <Icon className="h-5 w-5" aria-hidden="true" />
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </section>
-
+          <div className={activeTab === "deliver" ? "space-y-6" : "hidden"} data-testid="submissions-tab-deliver">
           <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.nativeSession.title")}</h2>
@@ -585,9 +580,9 @@ export function SubmissionsPage() {
                   className="rounded-card border border-border px-3 py-2 text-sm text-text-primary disabled:opacity-50">{t("pages.submissions.platformFeedback.sync")}</button>
               </div>
             </div>
-            <p className="mt-2 text-sm text-text-secondary">{t("pages.submissions.nativeSession.boundary")}</p>
+            <div className="mt-2 text-sm text-text-secondary">{t("pages.submissions.nativeSession.boundaryShort")}<details className="mt-1 text-xs text-text-muted"><summary className="cursor-pointer select-none text-accent">{t("common.learnMore")}</summary><p className="mt-1">{t("pages.submissions.nativeSession.boundary")}</p></details></div>
             <p className="mt-2 text-sm text-text-primary" role="status">{t(`pages.submissions.nativeSession.status.${nativeSession}`, {defaultValue:t("pages.submissions.nativeSession.status.unavailable")})}</p>
-            <p className="mt-2 text-xs text-text-secondary">{t("pages.submissions.platformFeedback.boundary")}</p>
+            <p className="mt-2 text-xs text-text-secondary" title={t("pages.submissions.platformFeedback.boundary")}>{t("pages.submissions.platformFeedback.boundaryShort")}</p>
             {feedbackSync && <p role="status" className="mt-2 text-sm text-text-primary">{feedbackSync.status === "records"
               ? t("pages.submissions.platformFeedback.summary", {matched: feedbackSync.matched.length, total: feedbackSync.submissions_total, unmatched: feedbackSync.unmatched_rows})
               : t("pages.submissions.platformFeedback.notFound")}</p>}
@@ -628,7 +623,7 @@ export function SubmissionsPage() {
               {nativePdf && <div className="mt-3 space-y-2">
                 <p>{nativePdf.company} · {nativePdf.position} · {nativePdf.matching_score ?? "--"}/100</p>
                 {nativePdf.pdf_filename&&<p className="break-all">PDF: {nativePdf.pdf_filename}</p>}
-                <p className="break-all">PDF SHA256: {nativePdf.pdf_sha256}</p>
+                <p className="font-mono text-xs text-text-muted" title={nativePdf.pdf_sha256}>{t("pages.submissions.pdfFingerprint")}: {nativePdf.pdf_sha256?.slice(0, 12)}…</p>
                 <p role="status">{t(`pages.submissions.nativePdf.phase.${nativePdf.phase}`, {defaultValue:nativePdf.phase})}</p>
                 {nativePdf.recovery_only&&<p role="status" className="text-warning">{t('pages.submissions.nativePdf.recoveryOnly')}</p>}
                 <div className="flex flex-wrap gap-2">
@@ -639,7 +634,7 @@ export function SubmissionsPage() {
                 {nativePdfPreview&&<iframe title={t('pages.submissions.nativePdf.preview')} src={nativePdfPreview} className="h-[650px] w-full rounded-card border border-border bg-white"/>}
                 <label className="flex items-start gap-2 text-text-secondary">
                   <input type="checkbox" aria-label={t("pages.submissions.nativePdf.consent")} checked={acceptPdfEffects} disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !["prepared","not_submitted"].includes(nativePdf.phase)}
-                    onChange={event=>setAcceptPdfEffects(event.target.checked)} />{t("pages.submissions.nativePdf.consent")}
+                    onChange={event=>setAcceptPdfEffects(event.target.checked)} /><span>{t("pages.submissions.nativePdf.consentShort")}<details className="mt-1 text-xs text-text-muted"><summary className="cursor-pointer select-none text-accent">{t("common.fullTerms")}</summary><p className="mt-1">{t("pages.submissions.nativePdf.consent")}</p></details></span>
                 </label>
                 <div className="flex flex-wrap gap-2">
                 <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
@@ -677,6 +672,21 @@ export function SubmissionsPage() {
               {nativePdfError && <p role="alert" className="mt-2 text-sm text-error">{nativePdfError}</p>}
             </div>
           </section>
+          </div>
+
+          <div className={activeTab === "records" ? "space-y-6" : "hidden"} data-testid="submissions-tab-records">
+          <section className="stat-strip" data-testid="submissions-stats">
+            {stats.map((stat) => {
+              const Icon = stat.icon;
+              return (
+                <span key={stat.key} className="inline-flex items-baseline gap-1.5">
+                  <Icon className={`h-3.5 w-3.5 self-center ${stat.className.split(" ").find((name) => name.startsWith("text-")) ?? ""}`} aria-hidden="true" />
+                  <strong>{stat.value}</strong>
+                  {t(`pages.submissions.stats.${stat.key}`)}
+                </span>
+              );
+            })}
+          </section>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_440px]">
           <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
@@ -698,11 +708,10 @@ export function SubmissionsPage() {
                     <div key={item.submission_id} className={`grid grid-cols-[minmax(110px,1.05fr)_minmax(120px,1.05fr)_76px_118px_70px_58px] gap-3 px-5 py-4 text-sm ${selectedId === item.submission_id ? "bg-accent/5" : ""}`}>
                       <div className="min-w-0">
                         <p className="truncate font-medium text-text-primary">{item.company || item.submission_id}</p>
-                        <p className="mt-1 truncate font-mono text-xs text-text-muted">{item.submission_id}</p>
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-text-primary">{item.position || "--"}</p>
-                        <p className="mt-1 truncate text-xs text-text-secondary">{item.mode || "--"}</p>
+                        <p className="mt-1 truncate text-xs text-text-secondary">{item.mode ? t(`codes.mode.${item.mode}`, { defaultValue: item.mode }) : "--"}</p>
                       </div>
                       <div className="min-w-0">
                         <span className={`inline-flex max-w-full rounded-chip border px-2 py-0.5 text-xs font-medium ${channelClassName(item.channel)}`}>
@@ -724,10 +733,6 @@ export function SubmissionsPage() {
                           <RotateCcw className={`h-4 w-4 ${retryingId === item.submission_id ? "animate-spin" : ""}`} aria-hidden="true" />
                         </button>
                       </div>
-                      <div className="col-span-6 grid gap-2 text-xs text-text-secondary md:grid-cols-2">
-                        <p className="truncate"><span className="text-text-muted">{t("pages.submissions.lastStep")}</span> {item.last_step.name || "--"} · {item.last_step.status || "--"} · {detailText(item, t("pages.submissions.noDetail"))}</p>
-                        <p className="truncate"><span className="text-text-muted">{t("pages.submissions.rateLimit")}</span> {item.rate_limit_status || "--"} · {item.rate_limit_detail || "--"}</p>
-                      </div>
                     </div>
                   ))}
                   {items.length === 0 ? <div className="p-5 text-sm text-text-secondary">{t("pages.submissions.empty")}</div> : null}
@@ -736,7 +741,7 @@ export function SubmissionsPage() {
             </div>
           </section>
 
-          <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto">
+          <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)] xl:sticky xl:top-[6.5rem] xl:max-h-[calc(100vh-8rem)] xl:self-start xl:overflow-y-auto">
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.detailTitle")}</h2>
             </div>
@@ -746,11 +751,11 @@ export function SubmissionsPage() {
               <div className="space-y-5 p-5">
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-base font-semibold text-text-primary">{detail.submission_id}</p>
+                    <p className="text-base font-semibold text-text-primary">{[detail.company, detail.position].filter(Boolean).join(" · ") || detail.submission_id}</p>
                     <span className={`rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(detail.status)}`}>
                       {submissionStatusLabel(detail.status, t)}
                     </span>
-                    {detail.mode ? <span className="rounded-chip border border-border px-2 py-0.5 text-xs text-text-secondary">{detail.mode}</span> : null}
+                    {detail.mode ? <span className="rounded-chip border border-border px-2 py-0.5 text-xs text-text-secondary">{t(`codes.mode.${detail.mode}`, { defaultValue: detail.mode })}</span> : null}
                   </div>
                   <dl className="grid gap-3 text-sm sm:grid-cols-2">
                     <div>
@@ -767,7 +772,7 @@ export function SubmissionsPage() {
                     </div>
                     <div>
                       <dt className="text-xs text-text-muted">{t("pages.submissions.fields.browser")}</dt>
-                      <dd className="mt-1 text-text-primary">{detail.browser_channel || "--"}</dd>
+                      <dd className="mt-1 text-text-primary">{detail.browser_channel ? t(`codes.browser.${detail.browser_channel}`, { defaultValue: detail.browser_channel }) : "--"}</dd>
                     </div>
                     <div className="sm:col-span-2">
                       <dt className="text-xs text-text-muted">{t("pages.submissions.fields.submittedAt")}</dt>
@@ -794,6 +799,7 @@ export function SubmissionsPage() {
                   <details>
                     <summary className="cursor-pointer select-none text-text-muted">{t("pages.submissions.technicalDetails")}</summary>
                     <div className="mt-2 grid gap-2">
+                      <p className="break-all"><span className="text-text-muted">ID</span> {detail.submission_id}</p>
                       <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.resume")}</span> {detail.resume_path || "--"}</p>
                       <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.profile")}</span> {detail.profile_path || "--"}</p>
                       <p className="break-all"><span className="text-text-muted">JSON</span> {detail.log_json_path || "--"}</p>
@@ -814,10 +820,17 @@ export function SubmissionsPage() {
                         </div>
                         <div className="min-w-0 pb-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-medium text-text-primary">{step.name || "--"}</span>
+                            <span className="text-sm font-medium text-text-primary">{step.name ? t(`codes.steps.${step.name}`, { defaultValue: step.name }) : "--"}</span>
                             <span className={`rounded-chip border px-2 py-0.5 text-xs ${statusClassName(step.status)}`}>{step.status || "--"}</span>
                           </div>
-                          <p className="mt-2 break-words text-xs text-text-secondary">{step.detail || "--"}</p>
+                          {/^\s*[{[]/.test(step.detail || "") ? (
+                            <details className="mt-2 text-xs text-text-secondary">
+                              <summary className="cursor-pointer select-none">{t("pages.submissions.detail.receiptReceived")}</summary>
+                              <p className="mt-1 break-words font-mono">{step.detail}</p>
+                            </details>
+                          ) : (
+                            <p className="mt-2 break-words text-xs text-text-secondary">{step.detail || "--"}</p>
+                          )}
                         {step.screenshot ? (
                           <p className="mt-2 break-all font-mono text-xs text-text-muted">
                             {step.screenshot_exists ? step.screenshot_path : t("pages.submissions.missingScreenshot", { path: step.screenshot })}
@@ -861,7 +874,7 @@ export function SubmissionsPage() {
                     <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" />
                     {t("pages.submissions.failure.title")}
                   </h3>
-                  <p className="break-words text-sm text-text-secondary">{detail.error || detail.last_step.detail || t("pages.submissions.failure.empty")}</p>
+                  <p className="break-words text-sm text-text-secondary">{detail.error || (/^\s*[{[]/.test(detail.last_step.detail || "") ? "" : detail.last_step.detail) || t("pages.submissions.failure.empty")}</p>
                   <div className="grid gap-2 text-xs text-text-secondary sm:grid-cols-2">
                     <button className="rounded-card border border-border bg-bg-primary/40 p-3 text-left hover:bg-bg-hover disabled:opacity-50" disabled={retryingId !== null || detail.retry_allowed === false} onClick={() => void handleRetry(detail.submission_id, "same_channel")} type="button">
                       <p className="flex items-center gap-2 text-text-primary"><RotateCcw className="h-4 w-4" aria-hidden="true" />{t("pages.submissions.retryStrategy.sameChannel")}</p>
@@ -897,7 +910,7 @@ export function SubmissionsPage() {
               <select aria-label={t("pages.submissions.feedback.submission")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2 text-text-primary"
                 value={selectedId || ""} disabled={feedbackState === "loading"} onChange={event => { if (event.target.value) void handleSelect(event.target.value); }}>
                 <option value="">{t("pages.submissions.feedback.chooseSubmission")}</option>
-                {items.map(item => <option key={item.submission_id} value={item.submission_id}>{item.company || item.submission_id} · {item.position} · {item.submission_id}</option>)}
+                {items.map(item => <option key={item.submission_id} value={item.submission_id}>{item.company || item.submission_id} · {item.position || "--"} · {formatDate(item.submitted_at, i18n.language)}</option>)}
               </select>
             </label>
             {managedFeedback && <div className="mt-3 space-y-3 text-sm">
@@ -953,11 +966,19 @@ export function SubmissionsPage() {
             {feedbackState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
           </section>
 
+          <details className="fold-section rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]" data-testid="submissions-advanced">
+            <summary>
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+                <span>{t("pages.submissions.advancedTools")}</span>
+                <span className="text-sm font-normal text-text-secondary">{t("pages.submissions.advancedHint")}</span>
+              </span>
+            </summary>
+            <div className="space-y-6 px-5 pb-5">
           <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.session.title")}</h2>
-                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.session.manualBoundary")}</p>
+                <p className="mt-1 text-sm text-text-secondary" title={t("pages.submissions.session.manualBoundary")}>{t("pages.submissions.session.manualBoundaryShort")}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <select className="h-9 rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} aria-label={t("pages.submissions.session.channel")}>
@@ -1064,6 +1085,9 @@ export function SubmissionsPage() {
             {checkModeState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
             </div>
           </details>
+            </div>
+          </details>
+          </div>
         </>
       ) : null}
     </div>

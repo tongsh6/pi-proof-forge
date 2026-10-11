@@ -385,32 +385,43 @@ export function PolicyPage() {
     activeSaving ||
     (activeSection === "exclusions" && !companyDirty && !legalEntityDirty);
 
+  // ⌘R 重新加载（有草稿时先确认丢弃），⌘S 保存当前分组。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => void handleReload();
+    const onSave = () => { if (!activeSaveDisabled) void handleSaveActiveSection(); };
+    window.addEventListener("pipf:refresh", onRefresh);
+    window.addEventListener("pipf:save", onSave);
+    return () => {
+      window.removeEventListener("pipf:refresh", onRefresh);
+      window.removeEventListener("pipf:save", onSave);
+    };
+  }, [handleReload, handleSaveActiveSection, activeSaveDisabled]);
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t("pages.policy.title")}
-          </h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.policy.subtitle")}
-          </p>
+          <h1>{t("pages.policy.title")}</h1>
+          <p className="page-subtitle">{t("pages.policy.subtitle")}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="page-actions">
           <button
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="page-icon-button"
             disabled={loadState === "loading"}
             onClick={() => void handleReload()}
             type="button"
+            title={t("common.refreshShortcut")}
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            {t("common.refresh")}
+            <span className="sr-only">{t("common.refresh")}</span>
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-accent/60 bg-accent px-4 py-2 text-sm font-semibold text-bg-primary transition-colors hover:bg-accent-cyan disabled:cursor-not-allowed disabled:opacity-60"
             onClick={() => void handleSaveActiveSection()}
             type="button"
             disabled={activeSaveDisabled}
+            title={t("common.saveShortcut")}
           >
             <Save className="h-4 w-4" aria-hidden="true" />
             {t("pages.policy.save")}

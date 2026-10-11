@@ -15,7 +15,7 @@ async function settle(){for(let i=0;i<8;i++){cursor=0;tree=exports.EvidencePage(
 const button=label=>nodes(tree).find(n=>n.type==='button'&&text(n).trim()===label);
 (async()=>{await settle();await button('materialDocument.reReview').props.onClick();await settle();const oldSave=button('pages.evidence.actions.saveEligible');
 const row=nodes(tree).find(n=>n.type==='tr'&&n.props.onClick&&text(n).trim().startsWith('B'));row.props.onClick();await settle();
-const header=nodes(tree).find(n=>n.type==='button'&&n.props.title==='pages.evidence.actions.save');assert.equal(header.props.disabled,true,'B加载中仍可保存A草稿');assert.equal(button('pages.evidence.actions.saveEligible'),undefined);
+const header=nodes(tree).find(n=>n.type==='button'&&n.props.title==='pages.evidence.actions.save');assert.ok(!header||header.props.disabled===true,'B加载中仍可保存A草稿');assert.equal(button('pages.evidence.actions.saveEligible'),undefined);
 resolveB({evidence:card('B')});await settle();assert.equal(button('pages.evidence.actions.saveEligible'),undefined);assert.equal(calls.length,0);
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''

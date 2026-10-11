@@ -352,26 +352,31 @@ export function ResumesPage() {
     }
   }, [exportPath, selectedId, t]);
 
+  // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载（刷新保留已有内容与草稿）。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => void loadData();
+    window.addEventListener("pipf:refresh", onRefresh);
+    return () => window.removeEventListener("pipf:refresh", onRefresh);
+  }, [loadData]);
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t("pages.resumes.title")}
-          </h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.resumes.subtitle")}
-          </p>
+          <h1>{t("pages.resumes.title")}</h1>
+          <p className="page-subtitle">{t("pages.resumes.subtitle")}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="page-actions">
           <button
-            className={buttonClass.secondary}
+            className="page-icon-button"
             disabled={refreshing}
             onClick={() => void loadData()}
             type="button"
+            title={t("common.refreshShortcut")}
           >
             <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? t("common.refreshing") : t("pages.resumes.refresh")}
+            <span className="sr-only">{refreshing ? t("common.refreshing") : t("pages.resumes.refresh")}</span>
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
@@ -418,7 +423,30 @@ export function ResumesPage() {
         </section>
       ) : null}
 
-      {loadState === "ready" && <CareerProfileEditor profile={profile} onSaved={loadData}/>}
+      {loadState === "ready" ? (
+        <details
+          className="fold-section rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]"
+          open={!profile?.career_status?.reviewed}
+          data-testid="career-fold"
+        >
+          <summary>
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+              <span>{t(profile?.career_status?.reviewed ? "pages.resumes.career.reviewed" : "pages.resumes.career.pending")}</span>
+              <span className="text-sm font-normal text-text-secondary">
+                {t("pages.resumes.career.counts", {
+                  work: profile?.career?.work.length ?? 0,
+                  education: profile?.career?.education.length ?? 0,
+                  skills: profile?.career?.skills.length ?? 0,
+                })}
+              </span>
+            </span>
+            <span className="text-xs font-normal text-text-muted">{t("pages.resumes.career.expand")}</span>
+          </summary>
+          <div className="px-5 pb-5">
+            <CareerProfileEditor profile={profile} onSaved={loadData} />
+          </div>
+        </details>
+      ) : null}
 
       {loadState === "ready" ? (
         <div className="grid gap-5 xl:grid-cols-[320px_320px_minmax(0,1fr)]">
@@ -588,7 +616,7 @@ export function ResumesPage() {
               </div>
             ) : null}
 
-            <div className="space-y-3">
+            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
               {uploadedResumes.map((item) => (
                 <button
                   key={item.resume_id}

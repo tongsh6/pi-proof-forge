@@ -27,6 +27,9 @@ const navItems = [
   { path: "/system-settings", icon: Settings, labelKey: "nav.systemSettings" },
 ] as const;
 
+/** 导航路径顺序，供壳层的 ⌘1…9 快捷键使用。 */
+export const NAV_PATHS = navItems.map((item) => item.path);
+
 const stateToneMap = {
   starting: "bg-warning",
   ready: "bg-success",
@@ -51,7 +54,8 @@ export function SideNav() {
   const toggleLanguage = () => {
     const next = language === "en" ? "zh" : "en";
     setLanguage(next);
-    i18n.changeLanguage(next);
+    void i18n.changeLanguage(next);
+    document.documentElement.lang = next;
   };
 
   return (
@@ -61,11 +65,12 @@ export function SideNav() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
-        {navItems.map(({ path, icon: Icon, labelKey }) => (
+        {navItems.map(({ path, icon: Icon, labelKey }, index) => (
           <NavLink
             key={path}
             to={path}
             end={path === "/"}
+            title={`${t(labelKey)} ⌘${index + 1}`}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-card text-sm transition-colors duration-[var(--duration-fast)] ${
                 isActive
@@ -83,16 +88,13 @@ export function SideNav() {
       <div className="space-y-1 border-t border-border p-3">
         <div
           className="flex items-center gap-2 px-3 py-2 text-xs text-text-secondary"
-          title={`${t("shell.lastHeartbeat")}: ${heartbeatLabel}`}
+          title={`${t("shell.lastHeartbeat")}: ${heartbeatLabel}${sidecarVersion ? ` · v${sidecarVersion}` : ""}`}
           data-testid="sidecar-status"
         >
           <span className={`h-2 w-2 shrink-0 rounded-full ${stateToneMap[state]}`} />
           <span className="truncate">
             {t("shell.sidecar")} · {t(`sidecar.state.${state}`)}
           </span>
-          {sidecarVersion ? (
-            <span className="ml-auto shrink-0 font-mono text-text-muted">v{sidecarVersion}</span>
-          ) : null}
         </div>
         <button
           onClick={toggleLanguage}

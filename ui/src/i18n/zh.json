@@ -2,8 +2,8 @@
   "nav": {
     "overview": "总览",
     "resumes": "简历中心",
-    "evidence": "证据管理",
-    "jobs": "职位管理",
+    "evidence": "证据卡",
+    "jobs": "岗位中心",
     "quickRun": "快速运行",
     "agentRun": "智能运行",
     "submissions": "投递记录",
@@ -11,11 +11,12 @@
     "systemSettings": "系统设置"
   },
   "shell": {
-    "sidecar": "本地后端连接",
+    "sidecar": "本地服务",
     "lastHeartbeat": "最近心跳",
     "waitingForHeartbeat": "等待心跳",
     "bannerHint": "后端未就绪时，写操作按钮会被禁用。",
-    "switchLanguage": "切换语言：{{language}}"
+    "switchLanguage": "切换语言：{{language}}",
+    "refreshPage": "刷新当前页"
   },
   "sidecar": {
     "state": {
@@ -43,12 +44,21 @@
     "discardDescription": "重新加载会丢失当前未保存的修改。",
     "discard": "放弃修改",
     "refreshFailed": "刷新失败，已保留上次数据",
-    "blockedPrefix": "暂不可用："
+    "blockedPrefix": "暂不可用：",
+    "refreshShortcut": "刷新（⌘R）",
+    "saveShortcut": "保存（⌘S）",
+    "technicalDetails": "技术详情",
+    "learnMore": "了解这一步",
+    "fullTerms": "查看完整授权条款",
+    "moreActions": "更多操作",
+    "edit": "编辑",
+    "cancelEdit": "取消编辑",
+    "notFilled": "未填写"
   },
   "pages": {
     "overview": {
       "title": "概览",
-      "subtitle": "由本地后端服务聚合驱动的桌面首页。",
+      "subtitle": "你的求职进度、待办与最近动态。",
       "startAgent": "启动智能运行",
       "refresh": "刷新",
       "gapCount": "{{count}} 项待办",
@@ -56,19 +66,19 @@
       "metrics": {
         "evidence_count": {
           "label": "证据卡",
-          "hint": "当前工作区中可复用的结构化证据"
+          "hint": "可用于简历的经历与成果"
         },
         "matched_jobs_count": {
           "label": "匹配岗位",
-          "hint": "当前工作区中的匹配报告数量"
+          "hint": "已完成匹配的岗位"
         },
         "resume_count": {
           "label": "简历版本",
-          "hint": "本地检测到的生成简历版本"
+          "hint": "已生成的简历版本"
         },
         "submission_count": {
           "label": "投递次数",
-          "hint": "本地投递尝试目录中的记录"
+          "hint": "累计投递记录"
         }
       },
       "recentActivity": {
@@ -116,11 +126,38 @@
           "unknown": "未识别",
           "unsynced": "未同步"
         }
+      },
+      "setup": {
+        "title": "开始前的几件事",
+        "subtitle": "按顺序完成后，就能为目标岗位生成并投递简历。",
+        "steps": {
+          "llm": {
+            "label": "选择一个模型",
+            "hint": "用于解析岗位描述和整理证据。",
+            "action": "配置模型"
+          },
+          "resumes": {
+            "label": "填写并确认职业档案，导入工作材料",
+            "hint": "简历内容只来自你确认过的经历。",
+            "action": "去简历中心"
+          },
+          "evidence": {
+            "label": "从材料中提炼证据",
+            "hint": "至少一张审核通过的证据卡。",
+            "action": "去提炼证据"
+          },
+          "jobs": {
+            "label": "添加一个目标岗位",
+            "hint": "粘贴岗位描述即可。",
+            "action": "添加岗位"
+          }
+        },
+        "done": "已完成"
       }
     },
     "resumes": {
       "title": "简历中心",
-      "subtitle": "维护个人资料、上传简历、系统生成版本、预览与导出。",
+      "subtitle": "填写个人资料与职业档案，导入工作材料，查看并导出生成的简历。",
       "refresh": "刷新",
       "upload": "上传简历",
       "exportPdf": "导出 PDF",
@@ -196,13 +233,19 @@
         "materialSourcePathRequired": "请填写工作材料源文件路径。",
         "selectResume": "请先选择一份简历。",
         "destinationRequired": "请填写导出目标路径。"
+      },
+      "career": {
+        "reviewed": "职业档案已确认",
+        "pending": "职业档案待确认",
+        "counts": "{{work}} 段工作 · {{education}} 段教育 · {{skills}} 组能力",
+        "expand": "展开编辑"
       }
     },
     "quickRun": {
       "title": "快速运行",
       "needsReview": "简历已生成，需审核后再投递",
       "needsEvidence": "资料或证据不完整，当前简历不可投递",
-      "subtitle": "从工作区配置并启动管道运行。",
+      "subtitle": "为选定岗位一次性生成匹配报告、简历草稿与质量评分。",
       "pipelineTitle": "管道流程",
       "pipelineSubtitle": "证据提炼 → 匹配评分 → 简历生成 → 质量评测，一键完成。",
       "steps": {
@@ -270,11 +313,12 @@
         "Q": "量化成果",
         "E": "证据追溯",
         "R": "相关性"
-      }
+      },
+      "modelLine": "模型"
     },
     "evidence": {
       "title": "证据卡",
-      "subtitle": "维护证据卡、附件和缺口标记，作为所有匹配与生成的事实源。",
+      "subtitle": "从工作材料中提炼可核实的经历与成果，作为简历内容的事实来源。",
       "listTitle": "证据列表",
       "listCount": "已加载 {{count}} 张证据卡",
       "artifactFallback": "附件",
@@ -294,7 +338,9 @@
         "generatingDraft": "生成中...",
         "saveIncomplete": "保存未完整",
         "saveEligible": "保存可用卡",
-        "manualDraft": "手动整理证据"
+        "manualDraft": "手动整理证据",
+        "edit": "编辑",
+        "cancelEdit": "取消编辑"
       },
       "filters": {
         "queryPlaceholder": "搜索标题、角色或时间",
@@ -322,7 +368,10 @@
       },
       "score": "分数",
       "sections": {
-        "detail": "证据详情"
+        "detail": "证据详情",
+        "basics": "基本信息",
+        "content": "内容",
+        "technical": "技术详情"
       },
       "fields": {
         "title": "标题",
@@ -335,7 +384,8 @@
         "stack": "技术栈",
         "stackTags": "技术栈与标签",
         "tags": "标签",
-        "artifacts": "附件"
+        "artifacts": "附件",
+        "sourceMaterials": "来源材料"
       },
       "artifacts": {
         "title": "附件",
@@ -347,7 +397,8 @@
         "preview": "预览",
         "delete": "删除",
         "reupload": "重新上传",
-        "size": "{{count}} 个附件"
+        "size": "{{count}} 个附件",
+        "importTitle": "导入附件"
       },
       "materialSources": {
         "title": "材料来源",
@@ -356,7 +407,9 @@
         "empty": "暂无材料来源。请先在简历中心上传 Markdown 或文本工作材料。",
         "noPreview": "暂无预览。",
         "selectPlaceholder": "选择 Markdown 材料",
-        "select": "选择材料"
+        "select": "选择材料",
+        "summaryHint": "选择一份材料，提炼成证据卡",
+        "stepsHint": "先选择一份材料，再选择其中一个片段，然后提炼。"
       },
       "review": {
         "title": "保存前需要审核",
@@ -376,7 +429,7 @@
     },
     "jobs": {
       "title": "岗位中心",
-      "subtitle": "管理岗位画像、岗位线索、匹配上下文与转化操作。",
+      "subtitle": "保存目标岗位与岗位描述，用于匹配和定制简历。",
       "profileCount": "已加载 {{count}} 个岗位画像",
       "detailTitle": "画像详情",
       "tabs": {
@@ -407,7 +460,10 @@
         "saveIncomplete": "保存未完整",
         "saveComplete": "保存完整画像",
         "manualDraft": "手动整理画像",
-        "generateResume": "使用已保存 JD 生成定制简历"
+        "generateResume": "使用已保存 JD 生成定制简历",
+        "create": "创建画像",
+        "edit": "编辑画像",
+        "cancelEdit": "取消编辑"
       },
       "jdDraft": {
         "title": "岗位描述转画像",
@@ -548,11 +604,19 @@
           "CAREER_PROFILE_UNCONFIRMED": "请先在简历中心补全并确认职业档案。",
           "RESUME_CONTENT_INCOMPLETE": "平台简历未覆盖已确认的完整履历，请先完善简历或使用 App 生成 PDF。"
         }
+      },
+      "create": {
+        "title": "新建岗位画像",
+        "hint": "输入标题直接创建，或粘贴岗位描述让系统解析。",
+        "titleOnly": "不粘贴岗位描述，仅用标题创建"
+      },
+      "detail": {
+        "generation": "生成参数"
       }
     },
     "agentRun": {
       "title": "智能运行",
-      "subtitle": "多轮运行与门禁，可选人工审批。",
+      "subtitle": "按每日授权自动投递，或在本地演练多轮筛选与门禁。",
       "start": "启动",
       "startDryRun": "本地演练",
       "stop": "停止",
@@ -663,11 +727,18 @@
       "batchConsumed": "已占用（含历史实际尝试）",
       "batchRemaining": "剩余名额",
       "batchConfirmed": "已确认成功",
-      "reviewNativePdf": "前往此 PDF 审核页"
+      "reviewNativePdf": "前往此 PDF 审核页",
+      "tabs": {
+        "daily": "每日受控投递",
+        "agent": "自主运行（本地演练）"
+      },
+      "modelLine": "模型",
+      "noRunTitle": "尚未运行",
+      "noRunHint": "选择岗位画像后点“本地演练”，这里会显示每一轮的筛选、门禁与事件。"
     },
     "submissions": {
-      "title": "投递尝试",
-      "subtitle": "来自本地后端日志的最近投递尝试。",
+      "title": "投递记录",
+      "subtitle": "查看每次投递的结果、平台进展与反馈。",
       "refresh": "刷新",
       "runsTitle": "尝试记录",
       "detailTitle": "运行详情",
@@ -739,7 +810,8 @@
           "channel_unavailable": "通道不可用",
           "failed": "失败",
           "unknown": "未知"
-        }
+        },
+        "manualBoundaryShort": "打开专用窗口手动登录，然后点“检查”。"
       },
       "checkMode": {
         "title": "Check Mode 演练",
@@ -865,7 +937,8 @@
           "resume": "检查沟通并准备简历",
           "send": "确认发送",
           "receipt": "核验回执"
-        }
+        },
+        "consentShort": "我已审核这份 PDF，批准上传并用于投递"
       },
       "platformFeedback": {
         "sync": "同步投递反馈（只读）",
@@ -880,7 +953,8 @@
           "rejected": "不合适",
           "closed": "停止招聘",
           "unknown": "未识别"
-        }
+        },
+        "boundaryShort": "只读取投递记录页，不发送、不点击。"
       },
       "nativeSession": {
         "title": "PDF 投递",
@@ -900,7 +974,8 @@
           "security_challenge": "需要在登录窗口完成网站安全验证",
           "unverified": "尚未确认登录",
           "unavailable": "无法检查会话，请确认登录窗口已打开"
-        }
+        },
+        "boundaryShort": "先在独立窗口手动登录，再回来检查附件要求；上传不等于投递。"
       },
       "evidence": {
         "verified": "本地投递证据完整",
@@ -913,11 +988,22 @@
         "resumeHash": "简历指纹",
         "receiptHash": "回执指纹"
       },
-      "technicalDetails": "技术详情（路径与指纹）"
+      "technicalDetails": "技术详情（路径与指纹）",
+      "tabs": {
+        "deliver": "投递一份 PDF",
+        "records": "记录与反馈"
+      },
+      "pdfFingerprint": "PDF 指纹",
+      "detail": {
+        "receiptReceived": "已收到平台回执，原文见技术详情。",
+        "rawReceipt": "回执原文"
+      },
+      "advancedTools": "高级与演练工具",
+      "advancedHint": "旧通道会话与 Check Mode 演练，日常投递不需要。"
     },
     "policy": {
       "title": "策略配置",
-      "subtitle": "管理门禁规则与企业排除策略。",
+      "subtitle": "设定投递前的筛选条件与不投递的企业。",
       "save": "保存",
       "nav": {
         "gate": "门禁策略",
@@ -992,7 +1078,7 @@
     },
     "systemSettings": {
       "title": "系统设置",
-      "subtitle": "读取桌面本地后端返回的当前配置快照。",
+      "subtitle": "配置模型与招聘平台连接。",
       "save": "保存",
       "readOnly": "只读",
       "secretConfigured": "已配置（掩码）",
@@ -1192,7 +1278,12 @@
       "success": "已确认成功",
       "failed": "明确失败，不自动重试",
       "record_unavailable": "记录不可用，需检查固定快照"
-    }
+    },
+    "fingerprint": "PDF 指纹",
+    "descriptionShort": "App 开着时每天按设定时间投一批，只用清单里固定的 PDF。",
+    "consentShort": "我批准按此清单自动上传并投递这些 PDF",
+    "settings": "授权设置",
+    "history": "历史批次"
   },
   "materialDocument": {
     "title": "选择工作文档",
@@ -1250,7 +1341,9 @@
     "consent": "我确认公司、职务、时间、职责、教育和补充成果等信息真实准确。",
     "save": "保存职业档案草稿",
     "confirm": "确认职业档案事实",
-    "reload": "放弃未保存修改"
+    "reload": "放弃未保存修改",
+    "expandEntry": "展开编辑",
+    "now": "至今"
   },
   "confirmations": {
     "evidence": {
@@ -1444,6 +1537,68 @@
       "consentStale": "档案已被其他操作更新，请重新载入",
       "consentMissing": "补齐缺失项后才能确认",
       "saveClean": "没有未保存的修改"
+    }
+  },
+  "codes": {
+    "steps": {
+      "login_check": "登录检查",
+      "open_job_page": "打开岗位页",
+      "receipt": "平台回执",
+      "rate_limit": "频率限制检查",
+      "target_verify": "核验目标岗位",
+      "chat_send_resume": "沟通并发送简历",
+      "submit": "提交投递",
+      "target_check": "检查目标岗位",
+      "resume_observed": "观察简历状态",
+      "idempotency": "防重复检查",
+      "credential_check": "凭据检查",
+      "authorization": "授权检查",
+      "api_submit": "接口投递",
+      "dom_snapshot": "页面快照",
+      "upload_resume": "上传简历",
+      "upload_prepare": "准备上传",
+      "submit_safety": "投递安全检查",
+      "resume_attachment_binding": "附件绑定",
+      "page_mode": "页面模式",
+      "playwright": "浏览器自动化",
+      "submit_skipped": "跳过投递",
+      "send_resume_path_check": "发送简历路径检查",
+      "open_target": "打开目标岗位",
+      "attachment_check": "附件检查",
+      "select_submission_channel": "选择投递通道",
+      "positive_login_signal": "登录信号",
+      "credential_entry": "输入凭据",
+      "captcha_sms": "短信验证",
+      "login_state_check": "登录状态检查",
+      "manual_login_required": "需要手动登录",
+      "login_required": "需要登录",
+      "open_channel_login_page": "打开登录页",
+      "upload_trigger": "触发上传",
+      "target_recovery_attempt_when_configured": "目标恢复尝试"
+    },
+    "browser": {
+      "tauri_webkit": "App 内置浏览器",
+      "official_api": "官方接口",
+      "liepin": "猎聘网页"
+    },
+    "source": {
+      "liepin_official": "猎聘官方",
+      "job_leads": "本地线索",
+      "job_url_path": "手动链接",
+      "api_receipt_recheck": "回执复核",
+      "app_browser": "App 内置浏览器",
+      "live_official_search_and_public_detail": "官方搜索"
+    },
+    "mode": {
+      "submit": "正式投递",
+      "check": "演练",
+      "auto": "自动",
+      "manual": "人工",
+      "legacy_subprocess": "旧版流程",
+      "technical_depth": "技术深度"
+    },
+    "platform": {
+      "liepin": "猎聘"
     }
   }
 }

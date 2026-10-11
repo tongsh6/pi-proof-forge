@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ToastViewport } from "@/components/feedback/ToastViewport";
 import { useSidecarStore } from "@/state/sidecar-store";
-import { SideNav } from "./SideNav";
+import { NAV_PATHS, SideNav } from "./SideNav";
 
 const bannerToneMap = {
   starting: "border-warning/40 bg-warning/10",
@@ -35,11 +35,40 @@ export function AppShell() {
   const showBanner = state !== "ready";
   const mainRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
+  const navigate = useNavigate();
 
   // 主内容区是唯一滚动容器，切换页面时回到顶部，避免带着上一页的滚动位置进入新页。
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [pathname]);
+
+  // 桌面快捷键：⌘/Ctrl+1…9 切换页面，⌘R 刷新当前页，⌘S 保存当前页。
+  // 页面通过监听 window 上的 pipf:refresh / pipf:save 事件接入，不需要注册回调。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const editing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+      const key = event.key.toLowerCase();
+      if (key >= "1" && key <= "9" && !editing) {
+        const path = NAV_PATHS[Number(key) - 1];
+        if (path) {
+          event.preventDefault();
+          navigate(path);
+        }
+        return;
+      }
+      if (key === "r" && !event.shiftKey) {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent("pipf:refresh"));
+      } else if (key === "s" && !event.shiftKey) {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent("pipf:save"));
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [navigate]);
 
   return (
     <div className="flex h-screen w-screen bg-bg-primary">

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
+  ArrowRight,
   Ban,
   Bot,
   Briefcase,
@@ -23,8 +24,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
-import { getOverview } from "@/lib/sidecar/api";
-import { notify } from "@/lib/ui";
+import { getMaterialReadiness, getOverview, getSettings, listJobProfiles } from "@/lib/sidecar/api";
+import { buttonClass, notify } from "@/lib/ui";
 import type {
   OverviewActivity,
   OverviewFeedbackFunnel,
@@ -34,6 +35,25 @@ import type {
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
+type SetupKey = "llm" | "resumes" | "evidence" | "jobs";
+type SetupState = Record<SetupKey, boolean>;
+
+/** 开始前清单：按用户旅程排序，每一步对应一个页面入口；页头主按钮指向第一个未完成项。 */
+const SETUP_STEPS: Array<{ key: SetupKey; path: string }> = [
+  { key: "llm", path: "/system-settings" },
+  { key: "resumes", path: "/resumes" },
+  { key: "evidence", path: "/evidence" },
+  { key: "jobs", path: "/jobs" },
+];
+
+/** 辅助读取：失败或未实现时返回 null，不影响总览主数据的加载状态。 */
+async function readOptional<T>(call: () => Promise<T>): Promise<T | null> {
+  try {
+    return await call();
+  } catch {
+    return null;
+  }
+}
 
 const metricCardKeys = [
   "evidence_count",
@@ -140,6 +160,7 @@ export function OverviewPage() {
   const [activities, setActivities] = useState<OverviewActivity[]>([]);
   const [trend, setTrend] = useState<OverviewTrendPoint[]>([]);
   const [gaps, setGaps] = useState<OverviewGap[]>([]);
+  const [setup, setSetup] = useState<SetupState | null>(null);
 
   const hasLoadedRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -156,6 +177,21 @@ export function OverviewPage() {
       setActivities(result.recent_activities);
       setTrend(result.match_trend);
       setGaps(result.gaps);
+      const [settings, readiness, profiles] = await Promise.all([
+        readOptional(() => getSettings()),
+        readOptional(() => getMaterialReadiness()),
+        readOptional(() => listJobProfiles()),
+      ]);
+      setSetup(
+        settings && readiness && profiles
+          ? {
+              llm: Boolean(settings.llm_config?.provider && settings.llm_config?.model),
+              resumes: readiness.status === "ready",
+              evidence: result.metrics.evidence_count > 0,
+              jobs: profiles.items.length > 0,
+            }
+          : null
+      );
       hasLoadedRef.current = true;
       setLoadState("ready");
     } catch (nextError) {
@@ -189,38 +225,49 @@ export function OverviewPage() {
     return { rows, total, synced, segments: rows.filter((row) => row.count > 0) };
   }, [metrics.feedback_funnel]);
 
+  const nextStep = useMemo(
+    () => (setup ? SETUP_STEPS.find((step) => !setup[step.key]) ?? null : null),
+    [setup]
+  );
+
   useEffect(() => {
     void loadOverview();
   }, [loadOverview]);
 
+  // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => void loadOverview();
+    window.addEventListener("pipf:refresh", onRefresh);
+    return () => window.removeEventListener("pipf:refresh", onRefresh);
+  }, [loadOverview]);
+
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t("pages.overview.title")}
-          </h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.overview.subtitle")}
-          </p>
+          <h1>{t("pages.overview.title")}</h1>
+          <p className="page-subtitle">{t("pages.overview.subtitle")}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="page-actions">
           <button
             type="button"
+            className="page-icon-button"
             onClick={() => void loadOverview()}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-60"
+            title={t("common.refreshShortcut")}
           >
             <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? t("common.refreshing") : t("pages.overview.refresh")}
+            <span className="sr-only">{refreshing ? t("common.refreshing") : t("pages.overview.refresh")}</span>
           </button>
           <button
             type="button"
-            onClick={() => navigate("/agent-run")}
-            className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            data-testid="overview-primary-action"
+            onClick={() => navigate(nextStep ? nextStep.path : "/agent-run")}
+            className={buttonClass.primary}
           >
-            <PlayCircle size={16} />
-            {t("pages.overview.startAgent")}
+            {nextStep ? <ArrowRight size={16} /> : <PlayCircle size={16} />}
+            {nextStep ? t(`pages.overview.setup.steps.${nextStep.key}.action`) : t("pages.overview.startAgent")}
           </button>
         </div>
       </header>
@@ -248,6 +295,48 @@ export function OverviewPage() {
 
       {loadState === "ready" ? (
         <>
+          {setup && nextStep ? (
+            <section
+              data-testid="overview-setup"
+              className="rounded-panel border border-accent/40 bg-bg-panel p-5 shadow-[var(--shadow-panel)]"
+            >
+              <h2 className="text-lg font-semibold text-text-primary">{t("pages.overview.setup.title")}</h2>
+              <p className="mt-1 text-sm text-text-secondary">{t("pages.overview.setup.subtitle")}</p>
+              <ol className="mt-4 grid gap-2 md:grid-cols-2">
+                {SETUP_STEPS.map((step, index) => {
+                  const done = setup[step.key];
+                  return (
+                    <li
+                      key={step.key}
+                      data-setup-step={step.key}
+                      data-setup-done={done ? "true" : "false"}
+                      className={`flex items-center gap-3 rounded-card border border-border px-4 py-3 ${done ? "opacity-60" : "bg-bg-primary/40"}`}
+                    >
+                      {done ? (
+                        <CheckCircle2 size={18} className="shrink-0 text-success" />
+                      ) : (
+                        <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border border-text-muted text-[11px] text-text-muted">
+                          {index + 1}
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-text-primary">{t(`pages.overview.setup.steps.${step.key}.label`)}</p>
+                        <p className="mt-0.5 text-xs text-text-secondary">
+                          {done ? t("pages.overview.setup.done") : t(`pages.overview.setup.steps.${step.key}.hint`)}
+                        </p>
+                      </div>
+                      {!done ? (
+                        <button type="button" className={buttonClass.secondary} onClick={() => navigate(step.path)}>
+                          {t(`pages.overview.setup.steps.${step.key}.action`)}
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          ) : null}
+
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {metricCardKeys.map((metricKey) => {
               const { path, icon: MetricIcon } = metricCardMeta[metricKey];

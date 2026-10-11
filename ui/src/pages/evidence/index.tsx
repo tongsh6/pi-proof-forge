@@ -210,6 +210,16 @@ export function EvidencePage() {
 
   const hasLoadedRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
+  // 详情栏默认只读；新建草稿、模型草稿、重审时自动进入编辑态，切换卡片或保存成功后退出。
+  const [editMode, setEditMode] = useState(false);
+  useEffect(() => {
+    setEditMode(false);
+  }, [selectedId]);
+  useEffect(() => {
+    if (saveState === "saved") setEditMode(false);
+  }, [saveState]);
+  const editing = editMode || isDraft || Boolean(generatedDraft) || Boolean(reviewTargetId);
+  const selectedStatus = items.find((item) => item.evidence_id === selectedId)?.status;
 
   // 首次加载显示占位；保存/删除后的重载保留列表与详情面板，不整页回到 loading。
   const loadEvidence = useCallback(
@@ -601,26 +611,31 @@ export function EvidencePage() {
     );
   };
 
+  // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => void loadEvidence();
+    window.addEventListener("pipf:refresh", onRefresh);
+    return () => window.removeEventListener("pipf:refresh", onRefresh);
+  }, [loadEvidence]);
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t("pages.evidence.title")}
-          </h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.evidence.subtitle")}
-          </p>
+          <h1>{t("pages.evidence.title")}</h1>
+          <p className="page-subtitle">{t("pages.evidence.subtitle")}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="page-actions">
           <button
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            className="page-icon-button"
             disabled={isBusy || refreshing}
             onClick={() => void loadEvidence()}
-            type="button"
+            title={t("common.refreshShortcut")}
           >
             <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? t("common.refreshing") : t("pages.evidence.actions.refresh")}
+            <span className="sr-only">{refreshing ? t("common.refreshing") : t("pages.evidence.actions.refresh")}</span>
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
@@ -663,106 +678,38 @@ export function EvidencePage() {
 
       {loadState === "ready" ? (
         <>
-          <section className="grid gap-4 lg:grid-cols-4">
+          <section className="stat-strip" data-testid="evidence-stats">
             {[
               ["total", evidenceStats.total],
               ["ready", evidenceStats.ready],
               ["gaps", evidenceStats.gaps],
               ["artifacts", evidenceStats.artifacts],
             ].map(([key, value]) => (
-              <div
-                key={key}
-                className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]"
-              >
-                <p className="text-xs uppercase tracking-[0.16em] text-text-muted">
-                  {t(`pages.evidence.stats.${key}`)}
-                </p>
-                <p className="mt-2 text-2xl font-semibold text-text-primary">
-                  {value}
-                </p>
-              </div>
+              <span key={key}>
+                <strong>{value}</strong>
+                {t(`pages.evidence.stats.${key}`)}
+              </span>
             ))}
           </section>
 
-          <section className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]">
-            <form
-              className="grid gap-3 xl:grid-cols-[minmax(240px,1.4fr)_180px_180px_minmax(220px,1fr)_auto_auto]"
-              onSubmit={(event) => {
-                event.preventDefault();
-                applyFilters();
-              }}
-            >
-              <label className="relative">
-                <Search
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-                  size={16}
-                />
-                <input
-                  className="w-full rounded-card border border-border bg-bg-hover py-2 pl-9 pr-3 text-sm text-text-primary outline-none focus:border-accent"
-                  onChange={(event) => setQueryInput(event.target.value)}
-                  placeholder={t("pages.evidence.filters.queryPlaceholder")}
-                  type="text"
-                  value={queryInput}
-                />
-              </label>
-              <select
-                className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                aria-label={t("pages.evidence.fields.status")}
-                onChange={(event) => setStatusInput(event.target.value)}
-                value={statusInput}
-              >
-                <option value="">{t("pages.evidence.filters.allStatuses")}</option>
-                <option value="ready">{t("pages.evidence.status.ready")}</option>
-                <option value="draft">{t("pages.evidence.status.draft")}</option>
-                <option value="gap">{t("pages.evidence.status.gap")}</option>
-              </select>
-              <input
-                className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                onChange={(event) => setRoleInput(event.target.value)}
-                placeholder={t("pages.evidence.filters.rolePlaceholder")}
-                type="text"
-                value={roleInput}
-              />
-              <input
-                className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                onChange={(event) => setTagInput(event.target.value)}
-                placeholder={t("pages.evidence.filters.tagsPlaceholder")}
-                type="text"
-                value={tagInput}
-              />
-              <button
-                className="rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-                type="submit"
-              >
-                {t("pages.evidence.actions.apply")}
-              </button>
-              <button
-                className="rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
-                onClick={resetFilters}
-                type="button"
-              >
-                {t("pages.evidence.actions.reset")}
-              </button>
-            </form>
-          </section>
 
-          <section className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+          <details
+            className="fold-section rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]"
+            open={items.length === 0}
+            data-testid="evidence-material-fold"
+          >
+            <summary>
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
                 <h2 className="text-base font-semibold text-text-primary">
                   {t("pages.evidence.materialSources.title")}
                 </h2>
-                <p className="mt-1 text-sm text-text-secondary">
-                  {t("pages.evidence.materialSources.count", {
-                    count: materialSources.length,
-                  })}
-                </p>
-              </div>
-              <span className="rounded-chip border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs text-accent">
-                {t("pages.evidence.materialSources.source")}
+                <span className="text-sm font-normal text-text-secondary">
+                  {t("pages.evidence.materialSources.count", { count: materialSources.length })} · {t("pages.evidence.materialSources.summaryHint")}
+                </span>
               </span>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
+            </summary>
+            <div className="px-5 pb-5">
+            <div className="flex flex-wrap items-center gap-3">
               <select
                 className="min-w-[220px] rounded-card border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
                 disabled={isBusy || materialSources.length === 0}
@@ -798,61 +745,86 @@ export function EvidencePage() {
                 onClick={handleManualDraft}>{t("pages.evidence.actions.manualDraft")}</button>
             </div>
             <MaterialDocumentPicker materialId={selectedMaterialId} onSelect={setSelectedDocument} disabled={isBusy}/>
-            {materialSources.length > 0 ? (
-              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                {materialSources.slice(0, 3).map((source) => (
-                  <article
-                    key={source.material_id}
-                    className={`rounded-card border p-3 ${
-                      selectedMaterialId === source.material_id
-                        ? "border-accent bg-accent/10"
-                        : "border-border bg-bg-primary/50"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-text-primary">
-                          {source.label || source.filename}
-                        </p>
-                        <p className="mt-1 truncate font-mono text-xs text-text-muted">
-                          {source.material_id} · {source.extension}
-                        </p>
-                      </div>
-                      <button
-                        className="shrink-0 rounded-card border border-border p-2 text-accent transition-colors hover:bg-bg-hover disabled:opacity-50"
-                        disabled={![".md", ".txt"].includes(source.extension) || isBusy}
-                        onClick={() => setSelectedMaterialId(source.material_id)}
-                        title={t("pages.evidence.materialSources.select")}
-                        type="button"
-                      >
-                        <FileUp size={15} />
-                      </button>
-                    </div>
-                    <p className="mt-3 max-h-[48px] overflow-hidden text-xs leading-4 text-text-secondary">
-                      {source.preview ||
-                        t("pages.evidence.materialSources.noPreview")}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            ) : (
+            {materialSources.length === 0 ? (
               <p className="mt-4 rounded-card border border-border bg-bg-primary/30 p-4 text-sm text-text-secondary">
                 {t("pages.evidence.materialSources.empty")}
               </p>
-            )}
-          </section>
+            ) : !selectedDocument ? (
+              <p className="mt-3 text-xs text-text-muted">{t("pages.evidence.materialSources.stepsHint")}</p>
+            ) : null}
+            </div>
+          </details>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_420px]">
             <section className="overflow-hidden rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
-              <div className="flex items-center justify-between border-b border-border px-5 py-4">
-                <div>
+              <div className="border-b border-border px-5 py-4">
+                <div className="flex items-baseline gap-3">
                   <h2 className="text-lg font-semibold text-text-primary">
                     {t("pages.evidence.listTitle")}
                   </h2>
-                  <p className="mt-1 text-sm text-text-secondary">
+                  <p className="text-sm text-text-secondary">
                     {t("pages.evidence.listCount", { count: items.length })}
                   </p>
                 </div>
+                <form
+                  className="mt-3 flex flex-wrap items-center gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    applyFilters();
+                  }}
+                >
+                  <label className="relative min-w-[220px] flex-1">
+                    <Search
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
+                      size={16}
+                    />
+                    <input
+                      className="w-full rounded-card border border-border bg-bg-hover py-2 pl-9 pr-3 text-sm text-text-primary outline-none focus:border-accent"
+                      onChange={(event) => setQueryInput(event.target.value)}
+                      placeholder={t("pages.evidence.filters.queryPlaceholder")}
+                      type="text"
+                      value={queryInput}
+                    />
+                  </label>
+                  <select
+                    className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                    aria-label={t("pages.evidence.fields.status")}
+                    onChange={(event) => setStatusInput(event.target.value)}
+                    value={statusInput}
+                  >
+                    <option value="">{t("pages.evidence.filters.allStatuses")}</option>
+                    <option value="ready">{t("pages.evidence.status.ready")}</option>
+                    <option value="draft">{t("pages.evidence.status.draft")}</option>
+                    <option value="gap">{t("pages.evidence.status.gap")}</option>
+                  </select>
+                  <input
+                    className="w-36 rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                    onChange={(event) => setRoleInput(event.target.value)}
+                    placeholder={t("pages.evidence.filters.rolePlaceholder")}
+                    type="text"
+                    value={roleInput}
+                  />
+                  <input
+                    className="w-44 rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                    onChange={(event) => setTagInput(event.target.value)}
+                    placeholder={t("pages.evidence.filters.tagsPlaceholder")}
+                    type="text"
+                    value={tagInput}
+                  />
+                  <button
+                    className="rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                    type="submit"
+                  >
+                    {t("pages.evidence.actions.apply")}
+                  </button>
+                  <button
+                    className="rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
+                    onClick={resetFilters}
+                    type="button"
+                  >
+                    {t("pages.evidence.actions.reset")}
+                  </button>
+                </form>
               </div>
 
               {items.length === 0 ? (
@@ -860,7 +832,7 @@ export function EvidencePage() {
                   {t("pages.evidence.empty.list")}
                 </div>
               ) : (
-                <div className="max-h-[calc(100vh-14rem)] overflow-auto">
+                <div className="max-h-[calc(100vh-20rem)] overflow-auto">
                   <table className="w-full min-w-[640px] table-fixed text-left">
                     <thead className="sticky top-0 z-10 bg-bg-panel text-xs uppercase tracking-[0.14em] text-text-muted">
                       <tr className="bg-bg-hover/70">
@@ -929,17 +901,41 @@ export function EvidencePage() {
               )}
             </section>
 
-            <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto">
+            <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-[6.5rem] xl:max-h-[calc(100vh-8rem)] xl:self-start xl:overflow-y-auto">
               <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
                 <div>
                   <h2 className="text-lg font-semibold text-text-primary">
                     {t("pages.evidence.sections.detail")}
                   </h2>
-                  <p className="mt-1 font-mono text-xs text-text-muted">
-                    {selectedId ?? (isDraft ? "draft" : "--")}
+                  <p className="mt-1 text-xs text-text-muted">
+                    {isDraft ? t("pages.evidence.status.draft") : selectedStatus ? t(`pages.evidence.status.${selectedStatus}`, { defaultValue: selectedStatus }) : "--"}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {!editing ? (
+                    <button
+                      className="rounded-card border border-border px-3 py-1.5 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+                      data-testid="evidence-edit"
+                      disabled={!selectedId || detailState !== "ready" || isBusy}
+                      onClick={() => setEditMode(true)}
+                      type="button"
+                    >
+                      {t("pages.evidence.actions.edit")}
+                    </button>
+                  ) : null}
+                  {editMode && !isDraft && !generatedDraft && !reviewTargetId ? (
+                    <button
+                      className="rounded-card border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-hover"
+                      onClick={() => {
+                        setEditMode(false);
+                        setForm(toForm(detail));
+                      }}
+                      type="button"
+                    >
+                      {t("pages.evidence.actions.cancelEdit")}
+                    </button>
+                  ) : null}
+                  {editing ? (
                   <button
                     className="rounded-card border border-border p-2 text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isBusy || detailState!=="ready"}
@@ -954,6 +950,7 @@ export function EvidencePage() {
                   >
                     <SaveIcon size={16} />
                   </button>
+                  ) : null}
                   <button
                     className="rounded-card border border-error/50 p-2 text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!selectedId || isDraft || deleteState === "deleting"}
@@ -1036,6 +1033,37 @@ export function EvidencePage() {
                     </section>
                   ) : null}
 
+                  {!editing ? (
+                    <div className="space-y-4" data-testid="evidence-detail-view">
+                      <div>
+                        <h3 className="text-lg font-semibold text-text-primary">{form.title || t("pages.evidence.fields.title")}</h3>
+                        <p className="mt-1 text-sm text-text-secondary">{[form.time_range, form.role_scope].filter(Boolean).join(" · ") || "--"}</p>
+                      </div>
+                      {(
+                        [
+                          ["context", form.context, "text-text-primary"],
+                          ["actions", form.actions, "text-text-primary"],
+                          ["results", form.results, "text-success"],
+                        ] as const
+                      ).map(([field, value, className]) => (
+                        <div key={field}>
+                          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{t(`pages.evidence.fields.${field}`)}</p>
+                          <p className={`mt-1 whitespace-pre-wrap break-words text-sm ${className}`}>{value || "--"}</p>
+                        </div>
+                      ))}
+                      {form.stackText || form.tagsText ? (
+                        <div className="flex flex-wrap gap-2">
+                          {parseCommaList(`${form.stackText},${form.tagsText}`).map((item) => (
+                            <span key={item} className="rounded-chip border border-border bg-bg-hover px-2.5 py-1 text-xs text-text-secondary">
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {editing ? (
+                  <>
                   <label className="block rounded-card border border-border bg-bg-hover/50 p-3">
                     <span className="text-xs uppercase tracking-[0.16em] text-text-muted">
                       {t("pages.evidence.fields.title")}
@@ -1148,6 +1176,8 @@ export function EvidencePage() {
                       value={form.tagsText}
                     />
                   </label>
+                  </>
+                  ) : null}
 
                   <section className="rounded-card border border-border bg-bg-hover/50 p-3">
                     <div className="flex items-center justify-between gap-3">
@@ -1206,7 +1236,9 @@ export function EvidencePage() {
                         </p>
                       </div>
                     ) : null}
-                    <div className="mt-3 grid gap-2">
+                    <details className="mt-3">
+                      <summary className="cursor-pointer select-none text-xs text-text-muted">{t("pages.evidence.artifacts.importTitle")}</summary>
+                    <div className="mt-2 grid gap-2">
                       <input
                         className="rounded-card border border-border bg-bg-panel px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
                         onChange={(event) => setImportPath(event.target.value)}
@@ -1245,7 +1277,16 @@ export function EvidencePage() {
                         </button>
                       </div>
                     </div>
+                    </details>
                   </section>
+
+                  <details className="text-xs text-text-secondary">
+                    <summary className="cursor-pointer select-none text-text-muted">{t("pages.evidence.sections.technical")}</summary>
+                    <div className="mt-2 grid gap-1">
+                      <p className="break-all"><span className="text-text-muted">ID</span> {selectedId ?? "--"}</p>
+                      <p className="break-all"><span className="text-text-muted">{t("pages.evidence.fields.sourceMaterials")}</span> {(detail?.source_material_ids ?? []).join(", ") || "--"}</p>
+                    </div>
+                  </details>
 
                   {saveState === "saved" ? (
                     <p className="text-sm text-success">

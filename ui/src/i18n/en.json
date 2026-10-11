@@ -11,11 +11,12 @@
     "systemSettings": "System Settings"
   },
   "shell": {
-    "sidecar": "Sidecar",
+    "sidecar": "Local service",
     "lastHeartbeat": "Last heartbeat",
     "waitingForHeartbeat": "Waiting for heartbeat",
     "bannerHint": "Write actions stay disabled until the backend is ready.",
-    "switchLanguage": "Switch language: {{language}}"
+    "switchLanguage": "Switch language: {{language}}",
+    "refreshPage": "Refresh this page"
   },
   "sidecar": {
     "state": {
@@ -43,12 +44,21 @@
     "discardDescription": "Reloading will drop the changes you have not saved.",
     "discard": "Discard",
     "refreshFailed": "Refresh failed; showing the last loaded data",
-    "blockedPrefix": "Not available: "
+    "blockedPrefix": "Not available: ",
+    "refreshShortcut": "Refresh (⌘R)",
+    "saveShortcut": "Save (⌘S)",
+    "technicalDetails": "Technical details",
+    "learnMore": "Learn more",
+    "fullTerms": "Full authorization terms",
+    "moreActions": "More actions",
+    "edit": "Edit",
+    "cancelEdit": "Cancel editing",
+    "notFilled": "Not filled in"
   },
   "pages": {
     "overview": {
       "title": "Overview",
-      "subtitle": "Desktop dashboard aggregated from the local sidecar.",
+      "subtitle": "Your job-search progress, to-dos, and recent activity.",
       "startAgent": "Run Agent",
       "refresh": "Refresh",
       "gapCount": "{{count}} open",
@@ -56,19 +66,19 @@
       "metrics": {
         "evidence_count": {
           "label": "Evidence",
-          "hint": "Structured evidence cards ready for reuse"
+          "hint": "Experience and results ready for resumes"
         },
         "matched_jobs_count": {
           "label": "Matched Jobs",
-          "hint": "Matching reports available in the workspace"
+          "hint": "Jobs with a matching report"
         },
         "resume_count": {
           "label": "Resumes",
-          "hint": "Generated resume versions detected locally"
+          "hint": "Generated resume versions"
         },
         "submission_count": {
           "label": "Submissions",
-          "hint": "Recorded delivery attempts in outputs/submissions"
+          "hint": "Submissions recorded so far"
         }
       },
       "recentActivity": {
@@ -116,11 +126,38 @@
           "unknown": "Unrecognized",
           "unsynced": "Not synced"
         }
+      },
+      "setup": {
+        "title": "Before you start",
+        "subtitle": "Finish these in order to generate and deliver a resume for a target job.",
+        "steps": {
+          "llm": {
+            "label": "Choose a model",
+            "hint": "Used to parse job descriptions and organize evidence.",
+            "action": "Configure model"
+          },
+          "resumes": {
+            "label": "Complete your career record and import materials",
+            "hint": "Resume content comes only from what you confirmed.",
+            "action": "Open Resumes"
+          },
+          "evidence": {
+            "label": "Distill evidence from materials",
+            "hint": "At least one reviewed evidence card.",
+            "action": "Open Evidence"
+          },
+          "jobs": {
+            "label": "Add a target job",
+            "hint": "Paste the job description.",
+            "action": "Add job"
+          }
+        },
+        "done": "Done"
       }
     },
     "resumes": {
       "title": "Resumes",
-      "subtitle": "Personal profile, uploaded files, generated versions, preview, and export.",
+      "subtitle": "Fill in your profile and career record, import work materials, then review and export generated resumes.",
       "refresh": "Refresh",
       "upload": "Upload Resume",
       "exportPdf": "Export PDF",
@@ -196,13 +233,19 @@
         "materialSourcePathRequired": "Work material source path is required.",
         "selectResume": "Select a resume first.",
         "destinationRequired": "Destination path is required."
+      },
+      "career": {
+        "reviewed": "Career record confirmed",
+        "pending": "Career record not confirmed yet",
+        "counts": "{{work}} jobs · {{education}} education · {{skills}} skill groups",
+        "expand": "Expand to edit"
       }
     },
     "quickRun": {
       "title": "Quick Run",
       "needsReview": "Resume generated; review required before submission",
       "needsEvidence": "Information or evidence is incomplete; resume is not ready to submit",
-      "subtitle": "Configure and launch a pipeline run directly from your workspace.",
+      "subtitle": "Generate a matching report, resume draft, and quality score for one target job.",
       "pipelineTitle": "Pipeline",
       "pipelineSubtitle": "Evidence → Match → Generate → Evaluate in one pass.",
       "steps": {
@@ -270,11 +313,12 @@
         "Q": "Quantified results",
         "E": "Evidence traceability",
         "R": "Relevance"
-      }
+      },
+      "modelLine": "Model"
     },
     "evidence": {
       "title": "Evidence",
-      "subtitle": "Maintain evidence cards, artifacts, and gaps as the fact source for matching and generation.",
+      "subtitle": "Distill verifiable experience and results from your materials; every resume line traces back here.",
       "listTitle": "Evidence cards",
       "listCount": "{{count}} cards loaded",
       "artifactFallback": "Artifact",
@@ -294,7 +338,9 @@
         "generatingDraft": "Generating...",
         "saveIncomplete": "Save Incomplete",
         "saveEligible": "Save Eligible",
-        "manualDraft": "Prepare evidence manually"
+        "manualDraft": "Prepare evidence manually",
+        "edit": "Edit",
+        "cancelEdit": "Cancel editing"
       },
       "filters": {
         "queryPlaceholder": "Search title, role, or time",
@@ -322,7 +368,10 @@
       },
       "score": "Score",
       "sections": {
-        "detail": "Evidence Detail"
+        "detail": "Evidence Detail",
+        "basics": "Basics",
+        "content": "Content",
+        "technical": "Technical details"
       },
       "fields": {
         "title": "Title",
@@ -335,7 +384,8 @@
         "stack": "Stack",
         "stackTags": "Stack & Tags",
         "tags": "Tags",
-        "artifacts": "Artifacts"
+        "artifacts": "Artifacts",
+        "sourceMaterials": "Source materials"
       },
       "artifacts": {
         "title": "Artifacts",
@@ -347,7 +397,8 @@
         "preview": "Preview",
         "delete": "Delete",
         "reupload": "Re-upload",
-        "size": "{{count}} artifacts"
+        "size": "{{count}} artifacts",
+        "importTitle": "Import artifact"
       },
       "materialSources": {
         "title": "Material Sources",
@@ -356,7 +407,9 @@
         "empty": "No material sources yet. Upload Markdown or text work materials from Resumes first.",
         "noPreview": "No preview available.",
         "selectPlaceholder": "Select Markdown material",
-        "select": "Select material"
+        "select": "Select material",
+        "summaryHint": "Pick a material and distill it into evidence cards",
+        "stepsHint": "Pick a material, then a fragment, then distill."
       },
       "review": {
         "title": "Review required before save",
@@ -376,7 +429,7 @@
     },
     "jobs": {
       "title": "Jobs",
-      "subtitle": "Job profiles, leads, matching context, and conversion actions.",
+      "subtitle": "Keep target jobs and their descriptions for matching and tailored resumes.",
       "profileCount": "{{count}} profiles loaded",
       "detailTitle": "Profile detail",
       "tabs": {
@@ -407,7 +460,10 @@
         "saveIncomplete": "Save Incomplete",
         "saveComplete": "Save Complete",
         "manualDraft": "Prepare profile manually",
-        "generateResume": "Generate resume from saved JD"
+        "generateResume": "Generate resume from saved JD",
+        "create": "Create profile",
+        "edit": "Edit profile",
+        "cancelEdit": "Cancel editing"
       },
       "jdDraft": {
         "title": "JD to Job Profile",
@@ -548,11 +604,19 @@
           "CAREER_PROFILE_UNCONFIRMED": "Complete and confirm your career profile in Resumes first.",
           "RESUME_CONTENT_INCOMPLETE": "The platform resume does not cover the confirmed career history. Update it or use a generated PDF."
         }
+      },
+      "create": {
+        "title": "New job profile",
+        "hint": "Type a title to create, or paste a job description to parse.",
+        "titleOnly": "Create from a title only, without a job description"
+      },
+      "detail": {
+        "generation": "Generation parameters"
       }
     },
     "agentRun": {
       "title": "Agent Run",
-      "subtitle": "Multi-round run with gate and optional manual review.",
+      "subtitle": "Deliver under your daily authorization, or rehearse multi-round screening locally.",
       "start": "Start",
       "startDryRun": "Dry Run",
       "stop": "Stop",
@@ -663,11 +727,18 @@
       "batchConsumed": "Used (includes earlier real attempts)",
       "batchRemaining": "Remaining slots",
       "batchConfirmed": "Confirmed successful",
-      "reviewNativePdf": "Review this PDF in Submissions"
+      "reviewNativePdf": "Review this PDF in Submissions",
+      "tabs": {
+        "daily": "Daily delivery",
+        "agent": "Agent run (local rehearsal)"
+      },
+      "modelLine": "Model",
+      "noRunTitle": "No run yet",
+      "noRunHint": "Pick a job profile and click Local rehearsal; each round’s screening, gates and events will show here."
     },
     "submissions": {
-      "title": "Submission Attempts",
-      "subtitle": "Recent application attempts from sidecar logs.",
+      "title": "Submissions",
+      "subtitle": "Results, platform progress, and feedback for every submission.",
       "refresh": "Refresh",
       "runsTitle": "Attempt Records",
       "detailTitle": "Run Detail",
@@ -739,7 +810,8 @@
           "channel_unavailable": "Unavailable",
           "failed": "Failed",
           "unknown": "Unknown"
-        }
+        },
+        "manualBoundaryShort": "Open the dedicated window, log in manually, then click Check."
       },
       "checkMode": {
         "title": "Check Mode",
@@ -865,7 +937,8 @@
           "resume": "Check chat & prepare resume",
           "send": "Confirm send",
           "receipt": "Verify receipt"
-        }
+        },
+        "consentShort": "I reviewed this PDF and approve uploading it for delivery"
       },
       "platformFeedback": {
         "sync": "Sync delivery feedback (read-only)",
@@ -880,7 +953,8 @@
           "rejected": "Not a fit",
           "closed": "Job closed",
           "unknown": "Unknown"
-        }
+        },
+        "boundaryShort": "Read-only: reads the records page, sends and clicks nothing."
       },
       "nativeSession": {
         "title": "PDF application",
@@ -900,7 +974,8 @@
           "security_challenge": "Complete the security verification in the sign-in window",
           "unverified": "Sign-in not verified",
           "unavailable": "Could not check the session; ensure the sign-in window is open"
-        }
+        },
+        "boundaryShort": "Log in manually in the separate window, then check attachment requirements here; upload is not delivery."
       },
       "evidence": {
         "verified": "Local delivery evidence verified",
@@ -913,11 +988,22 @@
         "resumeHash": "Resume fingerprint",
         "receiptHash": "Receipt fingerprint"
       },
-      "technicalDetails": "Technical details (paths and hashes)"
+      "technicalDetails": "Technical details (paths and hashes)",
+      "tabs": {
+        "deliver": "Deliver a PDF",
+        "records": "Records & feedback"
+      },
+      "pdfFingerprint": "PDF fingerprint",
+      "detail": {
+        "receiptReceived": "Platform receipt received; raw text under Technical details.",
+        "rawReceipt": "Raw receipt"
+      },
+      "advancedTools": "Advanced & rehearsal tools",
+      "advancedHint": "Legacy channel session and Check Mode rehearsal; not needed for daily delivery."
     },
     "policy": {
       "title": "Policy",
-      "subtitle": "Business rules for gating and company exclusions.",
+      "subtitle": "Set the screening thresholds and the companies you never apply to.",
       "save": "Save",
       "nav": {
         "gate": "Gate Policy",
@@ -992,7 +1078,7 @@
     },
     "systemSettings": {
       "title": "System Settings",
-      "subtitle": "Current configuration snapshot returned by the desktop sidecar.",
+      "subtitle": "Configure the model and job-platform connections.",
       "save": "Save",
       "readOnly": "Read-only",
       "secretConfigured": "Configured (masked)",
@@ -1192,7 +1278,12 @@
       "success": "Confirmed successful",
       "failed": "Failed; no automatic retry",
       "record_unavailable": "Record unavailable; inspect snapshot"
-    }
+    },
+    "fingerprint": "PDF fingerprint",
+    "descriptionShort": "While the app is open it delivers one batch a day at the set time, using only the pinned PDFs in the list.",
+    "consentShort": "I approve automatic upload and delivery of these PDFs per this list",
+    "settings": "Authorization settings",
+    "history": "Past batches"
   },
   "materialDocument": {
     "title": "Select a work document",
@@ -1250,7 +1341,9 @@
     "consent": "I confirm the employer, position, dates, responsibilities, education and achievements are accurate.",
     "save": "Save career draft",
     "confirm": "Confirm career facts",
-    "reload": "Discard unsaved changes"
+    "reload": "Discard unsaved changes",
+    "expandEntry": "Expand to edit",
+    "now": "present"
   },
   "confirmations": {
     "evidence": {
@@ -1444,6 +1537,68 @@
       "consentStale": "The profile changed elsewhere; reload it",
       "consentMissing": "Fill the missing items before confirming",
       "saveClean": "No unsaved changes"
+    }
+  },
+  "codes": {
+    "steps": {
+      "login_check": "Login check",
+      "open_job_page": "Open job page",
+      "receipt": "Platform receipt",
+      "rate_limit": "Rate limit check",
+      "target_verify": "Verify target job",
+      "chat_send_resume": "Chat and send resume",
+      "submit": "Submit application",
+      "target_check": "Check target job",
+      "resume_observed": "Observe resume state",
+      "idempotency": "Duplicate check",
+      "credential_check": "Credential check",
+      "authorization": "Authorization check",
+      "api_submit": "API submit",
+      "dom_snapshot": "Page snapshot",
+      "upload_resume": "Upload resume",
+      "upload_prepare": "Prepare upload",
+      "submit_safety": "Submit safety check",
+      "resume_attachment_binding": "Attachment binding",
+      "page_mode": "Page mode",
+      "playwright": "Browser automation",
+      "submit_skipped": "Submit skipped",
+      "send_resume_path_check": "Send-resume path check",
+      "open_target": "Open target",
+      "attachment_check": "Attachment check",
+      "select_submission_channel": "Select channel",
+      "positive_login_signal": "Login signal",
+      "credential_entry": "Credential entry",
+      "captcha_sms": "SMS captcha",
+      "login_state_check": "Login state check",
+      "manual_login_required": "Manual login required",
+      "login_required": "Login required",
+      "open_channel_login_page": "Open login page",
+      "upload_trigger": "Trigger upload",
+      "target_recovery_attempt_when_configured": "Target recovery attempt"
+    },
+    "browser": {
+      "tauri_webkit": "In-app browser",
+      "official_api": "Official API",
+      "liepin": "Liepin web"
+    },
+    "source": {
+      "liepin_official": "Liepin official",
+      "job_leads": "Local leads",
+      "job_url_path": "Manual link",
+      "api_receipt_recheck": "Receipt recheck",
+      "app_browser": "In-app browser",
+      "live_official_search_and_public_detail": "Official search"
+    },
+    "mode": {
+      "submit": "Live submit",
+      "check": "Rehearsal",
+      "auto": "Auto",
+      "manual": "Manual",
+      "legacy_subprocess": "Legacy flow",
+      "technical_depth": "Technical depth"
+    },
+    "platform": {
+      "liepin": "Liepin"
     }
   }
 }

@@ -170,6 +170,8 @@ export function AgentRunPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedRunId = searchParams.get("run_id");
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
+  // 页内两个标签：每日受控投递（主线）/ 自主运行（本地演练）；带 run_id 深链时进入自主运行。
+  const [activeTab, setActiveTab] = useState<"daily" | "agent">(requestedRunId ? "agent" : "daily");
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
@@ -476,58 +478,38 @@ export function AgentRunPage() {
     }
   }, [currentRunId, loadRun, t]);
 
+  // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => void handleRefreshRun();
+    window.addEventListener("pipf:refresh", onRefresh);
+    return () => window.removeEventListener("pipf:refresh", onRefresh);
+  }, [handleRefreshRun]);
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t("pages.agentRun.title")}
-          </h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.agentRun.subtitle")}
-          </p>
+          <h1>{t("pages.agentRun.title")}</h1>
+          <p className="page-subtitle">{t("pages.agentRun.subtitle")}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="h-10 min-w-[220px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-            value={selectedProfileId}
-            onChange={(event) => setSelectedProfileId(event.target.value)}
-            disabled={loadState === "loading" || isRunBusy}
-            aria-label={t("pages.agentRun.jobProfile")}
-          >
-            {jobProfiles.map((profile) => (
-              <option key={profile.job_profile_id} value={profile.job_profile_id}>
-                {profile.title || profile.job_profile_id}
-              </option>
+        <div className="page-actions">
+          <div className="seg-tabs" role="tablist" data-testid="agent-run-tabs">
+            {(["daily", "agent"] as const).map((tab) => (
+              <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)}>
+                {t(`pages.agentRun.tabs.${tab}`)}
+              </button>
             ))}
-          </select>
+          </div>
           <button
-            className="inline-flex h-10 items-center gap-2 rounded-card border border-accent/50 bg-accent/10 px-4 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
-            data-automation-id="agent-run-start"
-            disabled={!selectedProfileId || isRunBusy}
-            onClick={() => void handleStart()}
-            type="button"
-          >
-            <Play className="h-4 w-4" aria-hidden="true" />
-            {t("pages.agentRun.startDryRun")}
-          </button>
-          <button
-            className="inline-flex h-10 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50"
+            className="page-icon-button"
             disabled={runState === "loading" || loadState === "loading"}
             onClick={() => void handleRefreshRun()}
             type="button"
+            title={t("common.refreshShortcut")}
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            {t("pages.agentRun.refresh")}
-          </button>
-          <button
-            className="inline-flex h-10 items-center gap-2 rounded-card border border-error/50 px-3 text-sm text-error hover:bg-error/10 disabled:opacity-50"
-            disabled={!currentRunId || !run || FINAL_STATUSES.has(run.status)}
-            onClick={() => void handleStop()}
-            type="button"
-          >
-            <Square className="h-4 w-4" aria-hidden="true" />
-            {t("pages.agentRun.stop")}
+            <span className="sr-only">{t("pages.agentRun.refresh")}</span>
           </button>
         </div>
       </header>
@@ -537,29 +519,57 @@ export function AgentRunPage() {
       ) : null}
       {error ? <p role="alert" className="text-sm text-error">{error}</p> : null}
 
-      <DailyDeliveryPanel />
+      <div className={activeTab === "daily" ? "" : "hidden"} data-testid="agent-run-tab-daily">
+        <DailyDeliveryPanel />
+      </div>
 
-      <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-        <h2 className="text-lg font-semibold text-text-primary">
-          {t("pages.agentRun.providerSummary")}
-        </h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {providerSummary.map((item) => (
-            <div
-              className="rounded-card border border-border bg-bg-primary/50 p-4"
-              key={item.label}
+      <div className={activeTab === "agent" ? "space-y-6" : "hidden"} data-testid="agent-run-tab-agent">
+      <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="h-10 min-w-[220px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+              value={selectedProfileId}
+              onChange={(event) => setSelectedProfileId(event.target.value)}
+              disabled={loadState === "loading" || isRunBusy}
+              aria-label={t("pages.agentRun.jobProfile")}
             >
-              <p className="text-xs uppercase tracking-[0.08em] text-text-muted">
-                {item.label}
-              </p>
-              <p className="mt-2 truncate text-sm font-medium text-text-primary">
-                {item.value}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+              {jobProfiles.map((profile) => (
+                <option key={profile.job_profile_id} value={profile.job_profile_id}>
+                  {profile.title || profile.job_profile_id}
+                </option>
+              ))}
+            </select>
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded-card border border-accent/50 bg-accent/10 px-4 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
+              data-automation-id="agent-run-start"
+              disabled={!selectedProfileId || isRunBusy}
+              onClick={() => void handleStart()}
+              type="button"
+            >
+              <Play className="h-4 w-4" aria-hidden="true" />
+              {t("pages.agentRun.startDryRun")}
+            </button>
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded-card border border-error/50 px-3 text-sm text-error hover:bg-error/10 disabled:opacity-50"
+              disabled={!currentRunId || !run || FINAL_STATUSES.has(run.status)}
+              onClick={() => void handleStop()}
+              type="button"
+            >
+              <Square className="h-4 w-4" aria-hidden="true" />
+              {t("pages.agentRun.stop")}
+            </button>
+      </div>
 
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
+        <span className="text-text-muted">{t("pages.agentRun.providerSummary")}</span>
+        {providerSummary.map((item) => (
+          <span key={item.label}>
+            <span className="text-text-muted">{item.label}</span> {item.value}
+          </span>
+        ))}
+      </p>
+
+      {run || runState === "loading" || currentRunId ? (
+      <>
       <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div>
@@ -794,7 +804,7 @@ export function AgentRunPage() {
           </div>
         </section>
 
-        <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:self-start">
+        <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)] xl:sticky xl:top-[6.5rem] xl:self-start">
           <div className="border-b border-border px-5 py-4">
             <h2 className="text-lg font-semibold text-text-primary">
               {t("pages.agentRun.eventStream")}
@@ -851,6 +861,14 @@ export function AgentRunPage() {
             </ol>
           ) : null}
         </section>
+      </div>
+      </>
+      ) : (
+      <section className="rounded-panel border border-dashed border-border bg-bg-panel p-8 text-center" data-testid="agent-run-empty">
+        <p className="text-base font-medium text-text-primary">{t("pages.agentRun.noRunTitle")}</p>
+        <p className="mt-2 text-sm text-text-secondary">{t("pages.agentRun.noRunHint")}</p>
+      </section>
+      )}
       </div>
     </div>
   );

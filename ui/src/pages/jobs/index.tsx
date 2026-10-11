@@ -2,11 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
-  Briefcase,
-  CheckCircle2,
   Clock3,
   ExternalLink,
-  FileText,
   Filter,
   Plus,
   RefreshCw,
@@ -147,6 +144,10 @@ export function JobsPage() {
 
   const hasLoadedRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
+  // 新建画像区块默认收起；没有任何画像、或已有解析草稿/绑定线索时自动展开。
+  const [createOpen, setCreateOpen] = useState(false);
+  // 画像详情默认只读；切换画像时退出编辑态。
+  const [profileEditing, setProfileEditing] = useState(false);
 
   // 首次加载显示占位；之后的重载保留列表与详情，不整页回到 loading。
   const loadData = useCallback(
@@ -400,6 +401,16 @@ export function JobsPage() {
     setLeadFilters(DEFAULT_LEAD_FILTERS);
   }, []);
 
+  useEffect(() => {
+    if (loadState === "ready" && profiles.length === 0) setCreateOpen(true);
+  }, [loadState, profiles.length]);
+  useEffect(() => {
+    setProfileEditing(false);
+  }, [selectedProfileId]);
+  useEffect(() => {
+    if (boundLeadId || generatedDraft) setCreateOpen(true);
+  }, [boundLeadId, generatedDraft]);
+
   const handleCreateProfile = useCallback(async () => {
     if (!newTitle.trim()) {
       setError(t("pages.jobs.errors.titleRequired"));
@@ -568,132 +579,71 @@ export function JobsPage() {
     [boundLeadId, clearJdDraft, leadFilters, loadData, resetProfileFilters]
   );
 
+  // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => void loadData(profileFilters, leadFilters);
+    window.addEventListener("pipf:refresh", onRefresh);
+    return () => window.removeEventListener("pipf:refresh", onRefresh);
+  }, [loadData, profileFilters, leadFilters]);
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t("pages.jobs.title")}
-          </h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.jobs.subtitle")}
-          </p>
+          <h1>{t("pages.jobs.title")}</h1>
+          <p className="page-subtitle">{t("pages.jobs.subtitle")}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="page-actions">
           <button
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:opacity-50"
+            type="button"
+            className="page-icon-button"
             disabled={isBusy || refreshing}
             onClick={() => void loadData(profileFilters, leadFilters)}
-            type="button"
+            title={t("common.refreshShortcut")}
           >
             <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? t("common.refreshing") : t("common.refresh")}
+            <span className="sr-only">{refreshing ? t("common.refreshing") : t("common.refresh")}</span>
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isBusy || !newTitle.trim()}
-            title={!newTitle.trim() ? t("reasons.jobs.titleRequired") : isBusy ? t("reasons.jobs.busy") : undefined}
-            onClick={() => void handleCreateProfile()}
+            data-testid="jobs-open-create"
+            disabled={isBusy}
+            onClick={() => {
+              setCreateOpen(true);
+              if (typeof document !== "undefined") {
+                document.getElementById("jobs-create")?.scrollIntoView({ block: "start", behavior: "smooth" });
+                document.getElementById("jobs-create-jd")?.focus();
+              }
+            }}
             type="button"
           >
             <Plus size={16} />
-            {actionState === "creating"
-              ? t("pages.jobs.actions.creating")
-              : t("pages.jobs.actions.newProfile")}
+            {t("pages.jobs.actions.newProfile")}
           </button>
         </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <article className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-text-secondary">
-              {t("pages.jobs.stats.profiles")}
-            </p>
-            <Briefcase size={18} className="text-accent" />
-          </div>
-          <p className="mt-4 text-4xl font-semibold text-text-primary">{profiles.length}</p>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.jobs.stats.active", { count: profileStats.active })}
-          </p>
-        </article>
-        <article className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-text-secondary">
-              {t("pages.jobs.stats.averageMatch")}
-            </p>
-            <CheckCircle2 size={18} className="text-success" />
-          </div>
-          <p className="mt-4 text-4xl font-semibold text-text-primary">
-            {profileStats.averageMatch}
-          </p>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.jobs.stats.evidence", { count: profileStats.evidence })}
-          </p>
-        </article>
-        <article className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-text-secondary">
-              {t("pages.jobs.stats.leads")}
-            </p>
-            <FileText size={18} className="text-warning" />
-          </div>
-          <p className="mt-4 text-4xl font-semibold text-text-primary">{leads.length}</p>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.jobs.stats.favorite", {
-              count: leads.filter((lead) => lead.favorited).length,
-            })}
-          </p>
-        </article>
+      <section className="stat-strip" data-testid="jobs-stats">
+        <span><strong>{profiles.length}</strong>{t("pages.jobs.stats.profiles")} · {t("pages.jobs.stats.active", { count: profileStats.active })}</span>
+        <span><strong>{profileStats.averageMatch}</strong>{t("pages.jobs.stats.averageMatch")} · {t("pages.jobs.stats.evidence", { count: profileStats.evidence })}</span>
+        <span><strong>{leads.length}</strong>{t("pages.jobs.stats.leads")} · {t("pages.jobs.stats.favorite", { count: leads.filter((lead) => lead.favorited).length })}</span>
       </section>
 
-      <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <input
-            className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-            aria-label={t("pages.jobs.newProfile.titlePlaceholder")}
-            onChange={(event) => setNewTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && newTitle.trim() && !isBusy) void handleCreateProfile();
-            }}
-            placeholder={t("pages.jobs.newProfile.titlePlaceholder")}
-            value={newTitle}
-          />
-          <input
-            className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-            aria-label={t("pages.jobs.newProfile.tagsPlaceholder")}
-            onChange={(event) => setNewTags(event.target.value)}
-            placeholder={t("pages.jobs.newProfile.tagsPlaceholder")}
-            value={newTags}
-          />
-          <button
-            className="inline-flex items-center justify-center gap-2 rounded-card border border-accent px-4 py-2 text-sm text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
-            disabled={isBusy || (!newTitle.trim() && !newTags.trim() && !jdText && !generatedDraft && !boundLeadId)}
-            onClick={() => {
-              void (async () => {
-                const hasContent = Boolean(jdText.trim() || generatedDraft || newTitle.trim() || newTags.trim());
-                if (hasContent) {
-                  const confirmed = await confirmAction({
-                    title: t("confirmations.jobs.clearDraft.title"),
-                    description: t("confirmations.jobs.clearDraft.description"),
-                    confirmLabel: t("confirmations.jobs.clearDraft.confirm"),
-                    tone: "danger",
-                  });
-                  if (!confirmed) return;
-                }
-                setNewTitle("");
-                setNewTags("");
-                clearJdDraft();
-              })();
-            }}
-            type="button"
-          >
-            {t("pages.jobs.actions.clearDraft")}
-          </button>
-        </div>
-      </section>
-
-      <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+      <details
+        id="jobs-create"
+        data-testid="jobs-create"
+        className="fold-section rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]"
+        open={createOpen}
+        onToggle={(event) => setCreateOpen(event.currentTarget.open)}
+      >
+        <summary>
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+            <span>{t("pages.jobs.create.title")}</span>
+            <span className="text-sm font-normal text-text-secondary">{t("pages.jobs.create.hint")}</span>
+          </span>
+        </summary>
+        <div className="px-5 pb-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-text-primary">
@@ -724,6 +674,7 @@ export function JobsPage() {
         ) : null}
         <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.45fr)]">
           <textarea
+            id="jobs-create-jd"
             className="min-h-28 rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
             disabled={isBusy}
             onChange={(event) => {
@@ -841,7 +792,68 @@ export function JobsPage() {
             </label>
           </div>
         ) : null}
-      </section>
+        </div>
+        <details className="border-t border-border">
+          <summary className="cursor-pointer select-none px-5 py-3 text-sm text-text-secondary">{t("pages.jobs.create.titleOnly")}</summary>
+          <div className="px-5 pb-5">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+          <input
+            id="jobs-create-title"
+            className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+            aria-label={t("pages.jobs.newProfile.titlePlaceholder")}
+            onChange={(event) => setNewTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && newTitle.trim() && !isBusy) void handleCreateProfile();
+            }}
+            placeholder={t("pages.jobs.newProfile.titlePlaceholder")}
+            value={newTitle}
+          />
+          <input
+            className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+            aria-label={t("pages.jobs.newProfile.tagsPlaceholder")}
+            onChange={(event) => setNewTags(event.target.value)}
+            placeholder={t("pages.jobs.newProfile.tagsPlaceholder")}
+            value={newTags}
+          />
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="jobs-create-submit"
+            disabled={isBusy || !newTitle.trim()}
+            title={!newTitle.trim() ? t("reasons.jobs.titleRequired") : isBusy ? t("reasons.jobs.busy") : undefined}
+            onClick={() => void handleCreateProfile()}
+            type="button"
+          >
+            <Plus size={16} />
+            {actionState === "creating" ? t("pages.jobs.actions.creating") : t("pages.jobs.actions.create")}
+          </button>
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:opacity-50"
+            disabled={isBusy || (!newTitle.trim() && !newTags.trim() && !jdText && !generatedDraft && !boundLeadId)}
+            onClick={() => {
+              void (async () => {
+                const hasContent = Boolean(jdText.trim() || generatedDraft || newTitle.trim() || newTags.trim());
+                if (hasContent) {
+                  const confirmed = await confirmAction({
+                    title: t("confirmations.jobs.clearDraft.title"),
+                    description: t("confirmations.jobs.clearDraft.description"),
+                    confirmLabel: t("confirmations.jobs.clearDraft.confirm"),
+                    tone: "danger",
+                  });
+                  if (!confirmed) return;
+                }
+                setNewTitle("");
+                setNewTags("");
+                clearJdDraft();
+              })();
+            }}
+            type="button"
+          >
+            {t("pages.jobs.actions.clearDraft")}
+          </button>
+        </div>
+          </div>
+        </details>
+      </details>
 
       <section className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-2">
         <div className="flex rounded-card border border-border bg-bg-panel p-1">
@@ -980,11 +992,14 @@ export function JobsPage() {
       </section>
 
       {activeTab === "leads" ? (
-        <section className="space-y-3 rounded-panel border border-accent/40 bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-          <div>
-            <h2 className="text-base font-semibold text-text-primary">{t("pages.jobs.liepinSearch.title")}</h2>
-            <p className="mt-1 text-sm text-text-secondary">{t("pages.jobs.liepinSearch.subtitle")}</p>
-          </div>
+        <details className="fold-section rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]" data-testid="jobs-liepin-search">
+          <summary>
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+              <span>{t("pages.jobs.liepinSearch.title")}</span>
+              <span className="text-sm font-normal text-text-secondary">{t("pages.jobs.liepinSearch.subtitle")}</span>
+            </span>
+          </summary>
+          <div className="space-y-3 px-5 pb-5">
           <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
             event.preventDefault();
             if (!isBusy) void handleLiepinSearch();
@@ -1020,7 +1035,8 @@ export function JobsPage() {
             </p>
           ) : null}
           {liepinSearchError ? <p className="text-sm text-error" role="alert">{liepinSearchError}</p> : null}
-        </section>
+          </div>
+        </details>
       ) : null}
 
       {loadState === "loading" ? (
@@ -1134,7 +1150,7 @@ export function JobsPage() {
             ) : null}
           </div>
 
-          <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto">
+          <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-[6.5rem] xl:max-h-[calc(100vh-8rem)] xl:self-start xl:overflow-y-auto">
             <div className="border-b border-border pb-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1145,16 +1161,39 @@ export function JobsPage() {
                     {selectedProfile?.job_profile_id ?? "--"}
                   </p>
                 </div>
-                <button
-                  className="rounded-card border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
-                  disabled={!selectedProfile || isBusy}
-                  onClick={() => void handleSaveProfile()}
-                  type="button"
-                >
-                  {actionState === "saving"
-                    ? t("pages.jobs.actions.saving")
-                    : t("pages.jobs.actions.save")}
-                </button>
+                <div className="flex items-center gap-2">
+                  {profileEditing ? (
+                    <>
+                      <button
+                        className="rounded-card border border-accent bg-accent px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                        disabled={!selectedProfile || isBusy}
+                        onClick={() => void handleSaveProfile().then(() => setProfileEditing(false))}
+                        type="button"
+                      >
+                        {actionState === "saving"
+                          ? t("pages.jobs.actions.saving")
+                          : t("pages.jobs.actions.save")}
+                      </button>
+                      <button
+                        className="rounded-card border border-border px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover"
+                        onClick={() => setProfileEditing(false)}
+                        type="button"
+                      >
+                        {t("pages.jobs.actions.cancelEdit")}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="rounded-card border border-border px-3 py-2 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50"
+                      data-testid="job-edit-profile"
+                      disabled={!selectedProfile || isBusy}
+                      onClick={() => setProfileEditing(true)}
+                      type="button"
+                    >
+                      {t("pages.jobs.actions.edit")}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
             <button type="button" data-testid="job-generate-resume" className="mt-3 rounded-card border border-accent px-3 py-2 text-sm text-accent disabled:opacity-50"
@@ -1162,7 +1201,59 @@ export function JobsPage() {
               onClick={() => { if (selectedProfile?.status === "active" && selectedProfile.source_jd?.trim()) navigate(`/quick-run?job_profile_id=${encodeURIComponent(selectedProfile.job_profile_id)}`); }}>
               {t("pages.jobs.actions.generateResume")}
             </button>
-            {selectedProfile ? (
+            {selectedProfile && !profileEditing ? (
+              <div className="space-y-4 pt-4" data-testid="job-profile-view">
+                <div>
+                  <h3 className="text-xl font-semibold text-text-primary">{selectedProfile.title}</h3>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {[selectedProfile.company, formatUpdatedAt(selectedProfile.updated_at, i18n.language)].filter(Boolean).join(" · ")}
+                  </p>
+                  <span className={`mt-2 inline-flex rounded-chip border px-2.5 py-1 text-xs ${statusTone(selectedProfile.status)}`}>
+                    {t(`pages.jobs.status.${selectedProfile.status}`)}
+                  </span>
+                </div>
+                {(
+                  [
+                    ["keywords", selectedProfile.keywords, t("pages.jobs.card.noTags")],
+                    ["mustHave", selectedProfile.must_have, t("pages.jobs.card.noRequirements")],
+                  ] as const
+                ).map(([key, values, fallback]) => (
+                  <div key={key}>
+                    <p className="text-xs uppercase tracking-[0.18em] text-text-muted">{t(`pages.jobs.fields.${key}`)}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {compactList(values, fallback).map((value) => (
+                        <span key={`${key}-${value}`} className="rounded-chip border border-border bg-bg-hover px-2.5 py-1 text-xs text-text-secondary">
+                          {value}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <details className="rounded-card border border-border">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-sm">{t("pages.jobs.detail.generation")}</summary>
+                  <div className="space-y-3 px-3 pb-3 text-sm">
+                    {(
+                      [
+                        ["businessDomain", selectedProfile.business_domain || "--"],
+                        ["tone", selectedProfile.tone || "--"],
+                        ["niceToHave", compactList(selectedProfile.nice_to_have, t("pages.jobs.card.noRequirements")).join("、")],
+                        ["senioritySignal", compactList(selectedProfile.seniority_signal, t("pages.jobs.card.noRequirements")).join("、")],
+                      ] as const
+                    ).map(([key, value]) => (
+                      <p key={key}>
+                        <span className="text-text-muted">{t(`pages.jobs.fields.${key}`)}</span>
+                        <span className="ml-2 text-text-primary">{value}</span>
+                      </p>
+                    ))}
+                  </div>
+                </details>
+                <details className="rounded-card border border-border">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-sm">{t("pages.jobs.fields.sourceJd")}</summary>
+                  <p className="whitespace-pre-wrap break-words px-3 pb-3 text-sm text-text-primary">{selectedProfile.source_jd || "--"}</p>
+                </details>
+              </div>
+            ) : null}
+            {selectedProfile && profileEditing ? (
               <div className="space-y-5 pt-4">
                 <label>
                   <span className="text-xs uppercase tracking-[0.18em] text-text-muted">
@@ -1319,7 +1410,6 @@ export function JobsPage() {
                           {lead.company || "--"}
                         </p>
                       </div>
-                      <p className="mt-1 text-xs text-text-muted">{lead.job_lead_id}</p>
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm text-text-secondary">{lead.position || "--"}</p>
@@ -1333,7 +1423,7 @@ export function JobsPage() {
                         lead.source
                       )}`}
                     >
-                      {lead.source || "--"}
+                      {lead.source ? t(`codes.source.${lead.source}`, { defaultValue: lead.source }) : "--"}
                     </span>
                     <span
                       className={`w-fit rounded-chip border px-2.5 py-1 text-xs ${statusTone(
@@ -1357,13 +1447,13 @@ export function JobsPage() {
             </div>
           </div>
 
-          <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto">
+          <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-[6.5rem] xl:max-h-[calc(100vh-8rem)] xl:self-start xl:overflow-y-auto">
             <div className="border-b border-border pb-4">
               <h2 className="text-lg font-semibold text-text-primary">
                 {t("pages.jobs.leads.detailTitle")}
               </h2>
               <p className="mt-1 text-sm text-text-secondary">
-                {selectedLead?.job_lead_id ?? "--"}
+                {selectedLead?.source ? t(`codes.source.${selectedLead.source}`, { defaultValue: selectedLead.source }) : "--"}
               </p>
             </div>
             {selectedLead ? (
@@ -1409,7 +1499,7 @@ export function JobsPage() {
                 {selectedLead.platform === "liepin" ? (
                   <div className="space-y-2">
                     <button
-                      className="w-full rounded-card border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+                      className={`w-full rounded-card border px-3 py-2 text-sm disabled:opacity-50 ${selectedLead.jd_status === "complete_reviewed" ? "border-border text-text-primary hover:bg-bg-hover" : "border-accent bg-accent font-medium text-white hover:opacity-90"}`}
                       disabled={isBusy}
                       onClick={() => void handleFetchLiepinDetail()}
                       type="button"
@@ -1424,7 +1514,7 @@ export function JobsPage() {
                   <div className="space-y-2 rounded-card border border-border p-3">
                     <button
                       type="button"
-                      className="w-full rounded-card border border-accent px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+                      className="w-full rounded-card border border-border px-3 py-2 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50"
                       disabled={isBusy || selectedLead.jd_status !== "complete_reviewed" || !selectedLead.job_profile_id}
                       onClick={() => void handlePrepareReview()}
                     >
@@ -1453,7 +1543,8 @@ export function JobsPage() {
                   </p>
                 </div>
                 <button
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-card border px-4 py-2 text-sm font-medium disabled:opacity-50 ${selectedLead.jd_status === "complete_reviewed" || selectedLead.platform !== "liepin" ? "border-accent bg-accent text-white" : "border-border text-text-primary hover:bg-bg-hover"}`}
+                  data-convert-primary={selectedLead.jd_status === "complete_reviewed" || selectedLead.platform !== "liepin" ? "true" : "false"}
                   disabled={isBusy}
                   onClick={() => void handleConvertLead(selectedLead.job_lead_id)}
                   type="button"

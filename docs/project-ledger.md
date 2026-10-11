@@ -2,6 +2,23 @@
 
 Last updated: 2026-10-11
 
+## 2026-10-11 GUI 二级及更深层页面优化（UX 第四批）
+
+- 起因：一级页面收口后，用户要求分析二级到四级页面并直接处理。分析用只读桥接逐层展开真实页面并量化：证据详情栏 1714px、画像详情 1134px、投递详情 1620px、职业档案编辑器 2991px（右栏可视 770px）；长说明文案 ≥40 字共 20 条；全站 Tailwind 透明度修饰符对 `var()` 颜色静默失效（策略 / 设置分组导航高亮缺失）。
+- 实施：颜色 token 改为 RGB 通道 + `<alpha-value>`；i18n 新增 `codes.*` 字典（34 个步骤名、浏览器通道、来源、模式、平台）；证据详情栏改只读视图 + 编辑切换，技术信息与导入附件折叠，材料来源去重复卡并加步骤提示，文档预览去 YAML 头；画像详情只读 / 编辑切换，JD 解析成为新建主路径，猎聘搜索折叠，线索主按钮按状态；投递详情步骤名中文化、回执 JSON 折叠、标题改公司·岗位、ID 进技术详情、反馈下拉去 ID、边界说明压短可展开、旧通道会话与 Check Mode 合并为折叠的“高级与演练工具”；每日投递卡按状态重排、授权设置与历史折叠、单一主按钮与“更多操作”、勾选句压短并保留完整条款；职业档案条目折叠为一行摘要、操作栏吸底；自主运行无运行时显示空态；快速运行未运行时隐藏评分条。
+- 先红后绿：新增 `tests/unit/gui/test_evidence_detail_view_mode_ui.py`；`test_evidence_rereview_ui.py` 断言改为“保存按钮可不存在，存在必禁用”，守护的不变量不变。tests/unit/gui 73 项通过，tsc、vite build 通过。
+- 读回：内置浏览器 1440×900 逐层核对证据 / 岗位 / 投递 / 智能运行 / 简历 / 快速运行 / 策略页的深层区块，结果见 DESIGN.md 第四批“验证”；原生窗口未读回。注意浏览器面板在后台时 CSS 过渡会冻结，核对高亮要看 class 而不是 computed style。
+- 设计同步：DESIGN.md 追加“UX 第四批”章节；`.pen` Implementation Constraints 新增约束卡 `wzkfN`（需用户在 VS Code 保存）。代码未提交，待用户确认。
+
+## 2026-10-11 GUI 一级页面布局与引导优化（UX 第三批）
+
+- 起因：用户要求从 App 定位与桌面端特点分析一级页面的一屏显示（固定/滚动划分）、操作引导与首次使用友好度，补充约束“不能元素堆砌、页面繁杂”，随后决定先处理分析出的问题。分析用源码审计加内置浏览器只读桥接真实数据截图（方法沿用本机记忆）；量化结果：简历中心 4748px、岗位中心 3659px、投递记录 3301px，证据/岗位/投递三页首屏均看不到主对象。
+- 实施：全局样式新增 `.page-header`（吸顶实色页头）、`.page-icon-button`、`.stat-strip`、`.fold-section`、`.seg-tabs`；九页页头统一为标题 + 副标题 + ≤2 操作 + 图标刷新；证据/岗位/投递统计卡改一行统计条；证据筛选并入列表卡、材料来源折叠（无证据时展开）；岗位新建画像与 JD 解析合并为状态化折叠区块并在区块内加“创建画像”；简历中心职业档案按确认状态折叠、材料列表限高；快速运行与智能运行的模型摘要一行化、下拉下沉到运行输入；智能运行与投递记录改为页内任务标签（深链进入对应标签，非活动标签保持挂载）；投递表格去掉原始 JSON 副行，SHA256 改 12 位指纹加 tooltip；总览新增状态驱动的“开始前的几件事”清单与动态主按钮；AppShell 加 ⌘1…9 / ⌘R / ⌘S，`html lang` 跟随语言；导航名与页面标题按术语表收平，九页副标题改为用户语言，侧栏底部改“本地服务”。
+- 先红后绿：新增 `tests/unit/gui/test_overview_setup_checklist_ui.py`（缺项列出四步并把主按钮指向第一个缺项、全部就绪隐藏清单、部分就绪标记已完成）；tests/unit/gui 72 项通过，tsc、vite build 通过。页面的刷新事件监听带 `window.addEventListener` 守卫，兼容既有 vm 测试 harness。
+- 读回：内置浏览器 1440×900 九页首屏与滚动后页头吸顶、折叠默认态、`?quick_run_id` / `?run_id` 深链进入对应标签、合成 ⌘R 触发 `pipf:refresh`、⌘3 切到证据页、1280×800 无横向滚动。未做 Tauri 原生读回。
+- 设计同步：`ui/design/DESIGN.md` 追加“UX 第三批”章节；`.pen` 经 Pencil 新增 Layout/PageHeader、StatStrip、SegTabs、FoldSection、Overview/SetupChecklist 组件（`urdhh`、`a38v5l` 两行，Design System 顶边上移至 -1060）、约束卡 `qxXC8`，Screen/Submissions 与 Screen/Agent Run 页头加标签实例、`subStats` 改统计条实例；`.pen` 需用户在 VS Code 保存后才落盘。
+- 范围内未做：二级及更深层页面（证据详情、画像详情、PDF 投递流程卡内部、每日投递卡内部、设置分组）的分析与优化；窗口尺寸记忆、跟随系统外观、全局长任务指示。代码未提交，待用户确认。
+
 ## 2026-10-11 P0-025 验收证据整理并收口：三次真实同步留档挂入矩阵，按用户决定标为 deep_verified
 
 - 汇总 `outputs/acceptance/liepin-feedback-sync-20261011/validation.json`：两次留档运行（首次、第三次）的行数/匹配/状态计数与页面状态计数、第二次运行的台账说明；当前只读读回（overview.get 漏斗 delivered 2 / viewed 8 / rejected 4 / unknown 2 / unsynced 0，submission.list 16 笔带平台进展，16 个 platform_feedback.json 各 3 条历史，22 个回执与日志文件修改时间均早于首次同步、0 个被改动）；只读边界（两段页面脚本无点击/提交/请求，唯一 location.href 为观察回传；Rust 本地命令校验、操作互斥、会话须 authenticated、域名白名单；后端脱敏限长与只追加）；五项 covers 逐条对应证据与限制。

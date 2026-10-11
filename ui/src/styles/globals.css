@@ -38,3 +38,55 @@ body {
   background: var(--text-muted);
   border-radius: 3px;
 }
+
+/* 页头吸顶：主内容区是唯一滚动容器，页头固定在其顶部，内容从页头下方滚过。
+   负外边距抵消 main 的 p-6，使页头铺满主内容区宽度；实色背景避免 WebKit 半透明叠层问题。 */
+@layer components {
+  .page-header {
+    @apply sticky top-0 z-20 -mx-6 -mt-6 mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 border-b border-border bg-bg-primary px-6 pb-4 pt-5;
+  }
+  .page-header h1 {
+    @apply text-xl font-semibold text-text-primary;
+  }
+  .page-header .page-subtitle {
+    @apply mt-1 text-sm text-text-secondary;
+  }
+  .page-header .page-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+  /* 页头里的图标刷新按钮：与主按钮等高但不等权，文字只给读屏器。 */
+  .page-icon-button {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-card border border-border text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  /* 一行式统计条：替代整排统计卡，数字在前、说明在后。 */
+  .stat-strip {
+    @apply flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm text-text-secondary;
+  }
+  .stat-strip strong {
+    @apply mr-1.5 text-lg font-semibold text-text-primary;
+  }
+  /* 折叠区块：默认收起的工具或编辑器，摘要行一行可读。 */
+  .fold-section > summary {
+    @apply flex cursor-pointer select-none flex-wrap items-center justify-between gap-3 px-5 py-4 text-base font-semibold text-text-primary;
+  }
+  .fold-section > summary::-webkit-details-marker {
+    display: none;
+  }
+  .fold-section > summary::after {
+    content: "";
+    @apply ml-auto h-2 w-2 shrink-0 rotate-45 border-b border-r border-text-muted transition-transform;
+  }
+  .fold-section[open] > summary::after {
+    @apply -rotate-[135deg];
+  }
+  /* 分段切换：页内按任务切换的标签条。 */
+  .seg-tabs {
+    @apply inline-flex rounded-card border border-border bg-bg-panel p-1;
+  }
+  .seg-tabs button {
+    @apply rounded-card px-4 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary;
+  }
+  .seg-tabs button[aria-selected="true"] {
+    @apply bg-bg-hover text-accent;
+  }
+}

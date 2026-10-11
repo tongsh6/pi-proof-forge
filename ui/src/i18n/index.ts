@@ -15,4 +15,6 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
+if (typeof document !== "undefined") document.documentElement.lang = DEFAULT_LANGUAGE;
+
 export default i18n;

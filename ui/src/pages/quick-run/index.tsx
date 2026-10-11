@@ -313,60 +313,31 @@ export function QuickRunPage() {
   }, [canStartRun, eligibleEvidenceIds, resumePositioning, selectedProfileId, selectedMaterialId, useLlm]);
 
 
+  // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => { if (runState !== "running") { clearResult(); void load(); } };
+    window.addEventListener("pipf:refresh", onRefresh);
+    return () => window.removeEventListener("pipf:refresh", onRefresh);
+  }, [load, runState, clearResult]);
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t("pages.quickRun.title")}
-          </h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.quickRun.subtitle")}
-          </p>
+          <h1>{t("pages.quickRun.title")}</h1>
+          <p className="page-subtitle">{t("pages.quickRun.subtitle")}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={selectedProfileId}
-            disabled={runState === "running"}
-            onChange={(event) => {
-              setSelectedProfileId(event.target.value);
-              clearResult();
-              setSearchParams({ job_profile_id: event.target.value }, { replace: true });
-            }}
-            className="h-10 min-w-[280px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-            aria-label={t("pages.quickRun.selectProfile")}
-          >
-            {!targetAvailable ? (
-              <option value={selectedProfileId}>{t(selectedProfileId ? "pages.quickRun.targetUnavailable" : "common.empty")}</option>
-            ) : null}
-            {activeJobProfiles.map((profile) => (
-              <option key={profile.job_profile_id} value={profile.job_profile_id}>
-                {profile.title}
-              </option>
-            ))}
-          </select>
-          <select
-            value={resumePositioning}
-            disabled={runState === "running"}
-            onChange={(event) => { setResumePositioning(event.target.value); clearResult(); }}
-            className="h-10 min-w-[220px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-            aria-label={t("pages.quickRun.resumePositioning")}
-          >
-            <option value="technical_depth">
-              {t("pages.quickRun.positioningOptions.technicalDepth")}
-            </option>
-            <option value="delivery_owner">
-              {t("pages.quickRun.positioningOptions.deliveryOwner")}
-            </option>
-          </select>
+        <div className="page-actions">
           <button
             type="button"
+            className="page-icon-button"
             onClick={() => { clearResult(); void load(); }}
             disabled={runState === "running"}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-card border border-border text-text-primary transition-colors hover:bg-bg-hover"
-            aria-label={t("common.retry")}
+            title={t("common.refreshShortcut")}
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">{t("common.refresh")}</span>
           </button>
           <button
             type="button"
@@ -414,24 +385,14 @@ export function QuickRunPage() {
 
       {loadState === "ready" ? (
         <>
-          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-            <h2 className="text-lg font-semibold text-text-primary">
-              {t("pages.quickRun.providerSummary")}
-            </h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {providerSummary.map((item) => (
-                <div
-                  className="rounded-card border border-border bg-bg-primary/50 p-4"
-                  key={item.label}
-                >
-                  <p className="text-xs uppercase text-text-muted">{item.label}</p>
-                  <p className="mt-2 truncate text-sm font-medium text-text-primary">
-                    {item.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
+          <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
+            <span className="text-text-muted">{t("pages.quickRun.providerSummary")}</span>
+            {providerSummary.map((item) => (
+              <span key={item.label}>
+                <span className="text-text-muted">{item.label}</span> {item.value}
+              </span>
+            ))}
+          </p>
 
           <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
             <h2 className="text-lg font-semibold text-text-primary">
@@ -445,7 +406,43 @@ export function QuickRunPage() {
               {t("pages.quickRun.targetUnavailable")}
               <button type="button" className="ml-3 text-accent underline" onClick={() => navigate("/jobs")}>{t("pages.quickRun.openJobs")}</button>
             </p>}
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 flex flex-wrap gap-3">
+                <select
+                  value={selectedProfileId}
+                  disabled={runState === "running"}
+                  onChange={(event) => {
+                    setSelectedProfileId(event.target.value);
+                    clearResult();
+                    setSearchParams({ job_profile_id: event.target.value }, { replace: true });
+                  }}
+                  className="h-10 min-w-[280px] max-w-full rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  aria-label={t("pages.quickRun.selectProfile")}
+                >
+                  {!targetAvailable ? (
+                    <option value={selectedProfileId}>{t(selectedProfileId ? "pages.quickRun.targetUnavailable" : "common.empty")}</option>
+                  ) : null}
+                  {activeJobProfiles.map((profile) => (
+                    <option key={profile.job_profile_id} value={profile.job_profile_id}>
+                      {profile.company ? `${profile.company} · ${profile.title}` : profile.title}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={resumePositioning}
+                  disabled={runState === "running"}
+                  onChange={(event) => { setResumePositioning(event.target.value); clearResult(); }}
+                  className="h-10 min-w-[220px] rounded-card border border-border bg-bg-panel px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  aria-label={t("pages.quickRun.resumePositioning")}
+                >
+                  <option value="technical_depth">
+                    {t("pages.quickRun.positioningOptions.technicalDepth")}
+                  </option>
+                  <option value="delivery_owner">
+                    {t("pages.quickRun.positioningOptions.deliveryOwner")}
+                  </option>
+                </select>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="rounded-card border border-border bg-bg-primary/50 p-4">
                 <p className="text-xs uppercase text-text-muted">
                   {t("pages.quickRun.materialSource")}
@@ -461,14 +458,6 @@ export function QuickRunPage() {
                     onChange={event => { setUseLlm(event.target.checked); clearResult(); }} />
                   {t("pages.quickRun.useLlm")}
                 </label>
-              </div>
-              <div className="rounded-card border border-border bg-bg-primary/50 p-4">
-                <p className="text-xs uppercase text-text-muted">
-                  {t("pages.quickRun.selectedProfile")}
-                </p>
-                <p className="mt-2 truncate text-sm font-medium text-text-primary">
-                  {[selectedProfile?.company, selectedProfile?.title].filter(Boolean).join(" · ") || "--"}
-                </p>
               </div>
               <div className="rounded-card border border-border bg-bg-primary/50 p-4">
                 <p className="text-xs uppercase text-text-muted">
@@ -595,6 +584,7 @@ export function QuickRunPage() {
                   {quickRunResult?.score_total ?? "--"}
                 </p>
               </div>
+              {quickRunResult ? (
               <div className="mt-5 space-y-4">
                 {scoreBars.map((item) => (
                   <div key={item.key}>
@@ -628,6 +618,7 @@ export function QuickRunPage() {
                   </div>
                 ))}
               </div>
+              ) : null}
               {quickRunResult?.score_total == null ? (
                 <p className="mt-5 text-xs text-text-secondary">
                   {t("pages.quickRun.scoreLabels.empty")}

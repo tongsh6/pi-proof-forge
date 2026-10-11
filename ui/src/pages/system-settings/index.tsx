@@ -516,31 +516,41 @@ export function SystemSettingsPage() {
     }
   }, [llmForm]);
 
+  // ⌘R 重新加载（有草稿时先确认丢弃），⌘S 保存模型配置。
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    const onRefresh = () => void handleReload();
+    const onSave = () => { if (activeSection === "llm" && llmSaveState !== "saving") void handleSaveLlmConfig(); };
+    window.addEventListener("pipf:refresh", onRefresh);
+    window.addEventListener("pipf:save", onSave);
+    return () => {
+      window.removeEventListener("pipf:refresh", onRefresh);
+      window.removeEventListener("pipf:save", onSave);
+    };
+  }, [handleReload, handleSaveLlmConfig, activeSection, llmSaveState]);
+
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-4">
+      <header className="page-header">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t("pages.systemSettings.title")}
-          </h1>
-          <p className="mt-2 text-sm text-text-secondary">
-            {t("pages.systemSettings.subtitle")}
-          </p>
+          <h1>{t("pages.systemSettings.title")}</h1>
+          <p className="page-subtitle">{t("pages.systemSettings.subtitle")}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="page-actions">
           <button
-            className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="page-icon-button"
             onClick={() => void handleReload()}
             disabled={liepinAction !== null || loadState === "loading"}
             type="button"
+            title={t("common.refreshShortcut")}
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            {t("common.refresh")}
+            <span className="sr-only">{t("common.refresh")}</span>
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={activeSection !== "llm" || llmSaveState === "saving"}
-            title={activeSection !== "llm" ? t("reasons.systemSettings.channelsNoSave") : undefined}
+            title={activeSection !== "llm" ? t("reasons.systemSettings.channelsNoSave") : t("common.saveShortcut")}
             onClick={() => void handleSaveLlmConfig()}
             type="button"
           >

@@ -21,6 +21,21 @@
   /* Border */
   --border: #334155;
 
+  /* RGB 通道值：供 Tailwind 的透明度修饰符（bg-accent/10、border-error/40）使用。
+     Tailwind 无法给 var() 十六进制颜色加透明度，必须用 rgb(var(--x-rgb) / <alpha-value>) 形式。 */
+  --bg-primary-rgb: 7 16 35;
+  --bg-panel-rgb: 30 41 59;
+  --bg-hover-rgb: 51 65 85;
+  --accent-rgb: 56 189 248;
+  --accent-cyan-rgb: 34 211 238;
+  --success-rgb: 52 211 153;
+  --warning-rgb: 251 191 36;
+  --error-rgb: 248 113 113;
+  --text-primary-rgb: 248 250 252;
+  --text-secondary-rgb: 148 163 184;
+  --text-muted-rgb: 71 85 105;
+  --border-rgb: 51 65 85;
+
   /* Radius */
   --radius-panel: 12px;
   --radius-card: 8px;
