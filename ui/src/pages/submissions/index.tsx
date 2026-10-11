@@ -590,7 +590,7 @@ export function SubmissionsPage() {
                 </div>}
 
               </div>}
-              {nativePdfError && <p role="alert" className="mt-2 text-danger">{nativePdfError}</p>}
+              {nativePdfError && <p role="alert" className="mt-2 text-sm text-error">{nativePdfError}</p>}
             </div>
           </section>
 
@@ -760,9 +760,9 @@ export function SubmissionsPage() {
               <p className="mt-2 whitespace-pre-wrap break-words">{record.user_notes}</p>
               <p className="mt-2 text-text-secondary">{record.selected_actions.map(action => t(`pages.submissions.feedback.actions.${action}`, {defaultValue:action})).join(" · ")}</p>
               {record.next_quick_run_candidate?.job_profile_id && <p className="mt-2 text-xs text-text-secondary">{t("pages.submissions.feedback.targetProfile")}: {record.next_quick_run_candidate.job_profile_id}</p>}
-              {record.next_recommended_step === "quick_run" && <a href="/quick-run" className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openQuickRun")}</a>}
-              {record.next_recommended_step === "evidence" && <a href="/evidence" className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openEvidence")}</a>}
-              {record.next_recommended_step === "jobs" && <a href="/jobs" className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openJobs")}</a>}
+              {record.next_recommended_step === "quick_run" && <button type="button" onClick={() => navigate("/quick-run")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openQuickRun")}</button>}
+              {record.next_recommended_step === "evidence" && <button type="button" onClick={() => navigate("/evidence")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openEvidence")}</button>}
+              {record.next_recommended_step === "jobs" && <button type="button" onClick={() => navigate("/jobs")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openJobs")}</button>}
             </article>)}
             {feedbackState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
           </section>
@@ -879,7 +879,7 @@ export function SubmissionsPage() {
                     <p className="break-all">{t("pages.submissions.evidence.receiptHash")}: {detail.evidence.receipt_sha256 || "--"}</p>
                   </>}
 
-                  {detail.parent_run_id ? <a className="text-accent underline" href={`/agent-run?run_id=${encodeURIComponent(detail.parent_run_id)}`}>{t("pages.submissions.openApproval")}</a> : null}
+                  {detail.parent_run_id ? <button type="button" className="text-accent underline" onClick={() => navigate(`/agent-run?run_id=${encodeURIComponent(detail.parent_run_id ?? "")}`)}>{t("pages.submissions.openApproval")}</button> : null}
                   <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.resume")}</span> {detail.resume_path || "--"}</p>
                   <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.profile")}</span> {detail.profile_path || "--"}</p>
                   <p className="break-all"><span className="text-text-muted">JSON</span> {detail.log_json_path || "--"}</p>
