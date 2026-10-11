@@ -57,6 +57,7 @@ const code = ts.transpileModule(fs.readFileSync('ui/src/pages/system-settings/in
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2021, jsx: ts.JsxEmit.ReactJSX }
 }).outputText;
 vm.runInNewContext(code, { exports, require: name => {
+  if (name === 'react-router-dom') return { useSearchParams: () => [{ get: () => null }] };
   if (name === 'react') return react;
   if (name === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
   if (name === 'react-i18next') return { useTranslation: () => ({ t, i18n: { language: 'zh' } }) };

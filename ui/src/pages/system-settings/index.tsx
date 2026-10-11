@@ -13,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import { confirmAction, notify } from "@/lib/ui";
 import {
@@ -328,7 +329,9 @@ export function SystemSettingsPage() {
   const [settings, setSettings] = useState<SettingsGetResult | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<SectionId>("channels");
+  const [searchParams] = useSearchParams();
+  // 总览“配置模型”等入口可用 ?section=llm 直接打开模型分组。
+  const [activeSection, setActiveSection] = useState<SectionId>(searchParams.get("section") === "llm" ? "llm" : "channels");
   const [llmForm, setLlmForm] = useState<LlmForm>(() => toLlmForm(null));
   const [llmSaveState, setLlmSaveState] = useState<LlmSaveState>("idle");
   const [llmCheckState, setLlmCheckState] = useState<LlmCheckState>("idle");

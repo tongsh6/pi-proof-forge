@@ -40,7 +40,7 @@ type SetupState = Record<SetupKey, boolean>;
 
 /** 开始前清单：按用户旅程排序，每一步对应一个页面入口；页头主按钮指向第一个未完成项。 */
 const SETUP_STEPS: Array<{ key: SetupKey; path: string }> = [
-  { key: "llm", path: "/system-settings" },
+  { key: "llm", path: "/system-settings?section=llm" },
   { key: "resumes", path: "/resumes" },
   { key: "evidence", path: "/evidence" },
   { key: "jobs", path: "/jobs" },
@@ -185,7 +185,8 @@ export function OverviewPage() {
       setSetup(
         settings && readiness && profiles
           ? {
-              llm: Boolean(settings.llm_config?.provider && settings.llm_config?.model),
+              // 后端在未配置时也会给出默认 provider/model，只有密钥（或本地占位）保存过才算配置完成。
+              llm: Boolean(settings.llm_config?.api_key?.configured),
               resumes: readiness.status === "ready",
               evidence: result.metrics.evidence_count > 0,
               jobs: profiles.items.length > 0,

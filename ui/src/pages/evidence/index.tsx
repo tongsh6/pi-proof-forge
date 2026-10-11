@@ -709,6 +709,8 @@ export function EvidencePage() {
               </span>
             </summary>
             <div className="px-5 pb-5">
+            {materialSources.length > 0 ? (
+            <>
             <div className="flex flex-wrap items-center gap-3">
               <select
                 className="min-w-[220px] rounded-card border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
@@ -745,10 +747,23 @@ export function EvidencePage() {
                 onClick={handleManualDraft}>{t("pages.evidence.actions.manualDraft")}</button>
             </div>
             <MaterialDocumentPicker materialId={selectedMaterialId} onSelect={setSelectedDocument} disabled={isBusy}/>
+            </>
+            ) : null}
             {materialSources.length === 0 ? (
-              <p className="mt-4 rounded-card border border-border bg-bg-primary/30 p-4 text-sm text-text-secondary">
-                {t("pages.evidence.materialSources.empty")}
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-border bg-bg-primary/30 p-4 text-sm text-text-secondary">
+                <span>{t("pages.evidence.materialSources.empty")}</span>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                  onClick={() => {
+                    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+                      window.dispatchEvent(new CustomEvent("pipf:navigate", { detail: "/resumes" }));
+                    }
+                  }}
+                >
+                  {t("pages.evidence.materialSources.goUpload")}
+                </button>
+              </div>
             ) : !selectedDocument ? (
               <p className="mt-3 text-xs text-text-muted">{t("pages.evidence.materialSources.stepsHint")}</p>
             ) : null}

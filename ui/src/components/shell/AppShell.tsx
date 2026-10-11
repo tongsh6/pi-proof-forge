@@ -66,8 +66,16 @@ export function AppShell() {
         window.dispatchEvent(new CustomEvent("pipf:save"));
       }
     };
+    const onNavigate = (event: Event) => {
+      const path = (event as CustomEvent<string>).detail;
+      if (typeof path === "string" && path.startsWith("/")) navigate(path);
+    };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("pipf:navigate", onNavigate);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pipf:navigate", onNavigate);
+    };
   }, [navigate]);
 
   return (

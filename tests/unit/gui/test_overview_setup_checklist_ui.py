@@ -1,4 +1,4 @@
-"""总览按前置条件显示“开始前清单”：缺项时列出步骤并把页头主按钮指向第一个缺项；全部就绪时不显示清单，主按钮回到启动智能运行。"""
+"""总览按前置条件显示“开始前清单”（模型是否配置以密钥/本地占位是否保存过为准，后端未配置时也会返回默认 provider/model）：缺项时列出步骤并把页头主按钮指向第一个缺项；全部就绪时不显示清单，主按钮回到启动智能运行。"""
 import subprocess
 from pathlib import Path
 
@@ -13,7 +13,7 @@ const navigations=[];
 let state=__STATE__;
 const api={
   getOverview:async()=>({metrics:{evidence_count:state.evidence,matched_jobs_count:0,resume_count:0,submission_count:0},recent_activities:[],match_trend:[],gaps:[]}),
-  getSettings:async()=>({llm_config:{provider:state.provider,model:state.model,base_url:null,api_key:{configured:true,masked:true,updated_at:''},timeout:30,temperature:0}}),
+  getSettings:async()=>({llm_config:{provider:'openai',model:'gpt-4',base_url:null,api_key:{configured:state.llmConfigured,masked:state.llmConfigured,updated_at:''},timeout:30,temperature:0}}),
   getMaterialReadiness:async()=>({status:state.readiness,missing_items:state.missing}),
   listJobProfiles:async()=>({items:state.profiles}),
 };
@@ -39,7 +39,7 @@ def run(state: str, assertions: str) -> None:
 
 def test_overview_lists_missing_steps_and_points_primary_action_to_first_gap():
     run(
-        "{provider:'',model:'',readiness:'incomplete',missing:['career_profile'],evidence:0,profiles:[]}",
+        "{llmConfigured:false,readiness:'incomplete',missing:['career_profile'],evidence:0,profiles:[]}",
         r'''
   const setup=by('overview-setup');assert.ok(setup,'前置条件缺失时应显示开始前清单');
   const steps=nodes(setup).filter(n=>n.props['data-setup-step']);
@@ -47,7 +47,7 @@ def test_overview_lists_missing_steps_and_points_primary_action_to_first_gap():
   assert.ok(steps.every(n=>n.props['data-setup-done']==='false'),'四步都未完成');
   const primary=by('overview-primary-action');assert.ok(primary,'页头应有主按钮');
   assert.equal(text(primary).trim(),'pages.overview.setup.steps.llm.action','主按钮指向第一个缺项：配置模型');
-  primary.props.onClick();assert.equal(navigations.at(-1),'/system-settings');
+  primary.props.onClick();assert.equal(navigations.at(-1),'/system-settings?section=llm');
   const stepButton=nodes(steps[1]).find(n=>n.type==='button');stepButton.props.onClick();assert.equal(navigations.at(-1),'/resumes','每一步都有直达按钮');
   assert.equal(nodes(tree).find(n=>n.type==='button'&&text(n).trim()==='pages.overview.startAgent'),undefined,'缺项时不显示启动智能运行');
 ''',
@@ -56,7 +56,7 @@ def test_overview_lists_missing_steps_and_points_primary_action_to_first_gap():
 
 def test_overview_hides_checklist_when_everything_is_ready():
     run(
-        "{provider:'lm_studio',model:'qwen',readiness:'ready',missing:[],evidence:3,profiles:[{job_profile_id:'jp1',status:'active'}]}",
+        "{llmConfigured:true,readiness:'ready',missing:[],evidence:3,profiles:[{job_profile_id:'jp1',status:'active'}]}",
         r'''
   assert.equal(by('overview-setup'),undefined,'全部就绪时不显示清单');
   const primary=by('overview-primary-action');assert.equal(text(primary).trim(),'pages.overview.startAgent');
@@ -67,7 +67,7 @@ def test_overview_hides_checklist_when_everything_is_ready():
 
 def test_overview_partial_readiness_marks_done_steps():
     run(
-        "{provider:'lm_studio',model:'qwen',readiness:'ready',missing:[],evidence:0,profiles:[]}",
+        "{llmConfigured:true,readiness:'ready',missing:[],evidence:0,profiles:[]}",
         r'''
   const setup=by('overview-setup');assert.ok(setup);
   const done=Object.fromEntries(nodes(setup).filter(n=>n.props['data-setup-step']).map(n=>[n.props['data-setup-step'],n.props['data-setup-done']]));
