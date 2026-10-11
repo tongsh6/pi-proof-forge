@@ -3,7 +3,7 @@
   const nonce=UPLOAD_NONCE;
   const clean=v=>{try{const u=new URL(v,location.origin);u.search='';u.hash='';return u.href;}catch{return '';}};
   const norm=s=>(s||'').replace(/\s+/g,' ').trim();
-  const STATUS=/(已投递|已查看|面试邀约|不合适|待查看|已读|感兴趣|已回复|已关闭|未通过|已拒绝)/;
+  const STATUS=/(已投递|已查看|面试邀约|不合适|停止招聘|已下线|招聘结束|待查看|已读|感兴趣|已回复|已关闭|未通过|已拒绝)/;
   const jobIds=el=>new Set(Array.from(el.querySelectorAll('a[href*="/job/"]')).map(x=>(clean(x.href).match(/\/job\/(\d+)/)||[])[1]).filter(Boolean));
   const rows=[],seen=new Set();
   for(const a of Array.from(document.querySelectorAll('a[href*="/job/"]'))){

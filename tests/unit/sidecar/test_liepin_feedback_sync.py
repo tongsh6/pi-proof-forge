@@ -122,3 +122,14 @@ def test_status_and_time_in_one_row_line_are_both_recognized(managed):
     assert result['matched'][0]['normalized_status']=='delivered' and result['matched'][0]['status_label']=='已投递 2026-10-09'
     saved=json.loads((log.parent/'platform_feedback.json').read_text(encoding='utf-8'))
     assert saved['latest']['time_label']=='2026-10-09'
+
+
+def test_closed_job_is_its_own_state_not_a_rejection(managed):
+    # 真实页面出现"停止招聘"：岗位关闭不是招聘方拒绝，单独归一化并建议调整岗位。
+    log,_,_=managed
+    result=pf.handle_record_platform_status(meta(observation=observation([{'job_id':'19123','lines':['SOC验证负责人','【','上海-浦东新区','】','50-80k·15薪','停止招聘']}])))
+    assert result['matched'][0]['normalized_status']=='closed'
+    items=handler.handle_feedback_list(meta(source_run_id=log.parent.name))['items']
+    [platform]=[i for i in items if i['source_type']=='platform_delivery_status']
+    assert platform['recommended_next_action']=='update_job_target' and platform['severity_or_priority']=='medium'
+    assert pf.feedback_funnel()['closed']==1

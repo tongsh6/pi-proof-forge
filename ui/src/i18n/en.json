@@ -822,6 +822,7 @@
           "interested": "Interested",
           "interview": "Interview",
           "rejected": "Not a fit",
+          "closed": "Job closed",
           "unknown": "Unknown"
         }
       },

@@ -822,6 +822,7 @@
           "interested": "感兴趣",
           "interview": "面试邀约",
           "rejected": "不合适",
+          "closed": "停止招聘",
           "unknown": "未识别"
         }
       },

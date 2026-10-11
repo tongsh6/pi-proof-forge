@@ -14,16 +14,17 @@ from tools.sidecar.handlers.native_pdf import _sanitize_observation
 
 SCHEMA_VERSION = 1
 DISCOVERY = {"start_url": "https://c.liepin.com/", "link_keywords": ["投递"], "allowed_hosts": ["c.liepin.com", "www.liepin.com"]}
-FUNNEL_STATES = ("delivered", "viewed", "interested", "interview", "rejected", "unknown")
+FUNNEL_STATES = ("delivered", "viewed", "interested", "interview", "rejected", "closed", "unknown")
 # 顺序即优先级：同一标签同时命中多条时取靠前的。
 _STATUS_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("closed", ("停止招聘", "已下线", "招聘结束", "职位已关闭", "已关闭")),
     ("interview", ("面试", "邀约", "约面")),
-    ("rejected", ("不合适", "不匹配", "已拒绝", "未通过", "婉拒", "已关闭")),
+    ("rejected", ("不合适", "不匹配", "已拒绝", "未通过", "婉拒")),
     ("interested", ("感兴趣", "有意向", "合适", "待沟通", "已沟通", "已回复", "沟通中")),
     ("viewed", ("已查看", "已浏览", "已读", "查看过", "被查看")),
     ("delivered", ("已投递", "投递成功", "已申请", "已发送", "待查看", "未查看")),
 )
-_RECOMMENDED_ACTION = {"rejected": "update_job_target", "interview": "acknowledge_and_skip", "interested": "acknowledge_and_skip",
+_RECOMMENDED_ACTION = {"rejected": "update_job_target", "closed": "update_job_target", "interview": "acknowledge_and_skip", "interested": "acknowledge_and_skip",
                        "delivered": "acknowledge_and_skip", "unknown": "acknowledge_and_skip"}
 _STALE_VIEWED_DAYS = 7
 _MAX_ROWS, _MAX_TEXT, _MAX_PAYLOAD = 100, 300, 65536
@@ -221,7 +222,8 @@ def recommended_action(summary: dict[str, str]) -> tuple[str, str]:
         except ValueError:
             stale = False
         return ("add_or_edit_evidence_card", "medium") if stale else ("acknowledge_and_skip", "info")
-    return _RECOMMENDED_ACTION.get(status, "acknowledge_and_skip"), ("high" if status == "rejected" else "info")
+    severity = "high" if status == "rejected" else "medium" if status == "closed" else "info"
+    return _RECOMMENDED_ACTION.get(status, "acknowledge_and_skip"), severity
 
 
 def feedback_funnel() -> dict[str, int]:
