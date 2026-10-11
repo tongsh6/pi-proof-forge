@@ -448,6 +448,8 @@ async fn open_liepin_authorization(window: tauri::WebviewWindow) -> Result<(), S
 
 fn main() {
     tauri::Builder::default()
+        // 窗口状态插件：启动时恢复上次的尺寸与位置，退出时保存；最小尺寸仍由 tauri.conf.json 约束。
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(SidecarManager::default())
         .manage(liepin_webview::NativeLiepinSession::default())
         .setup(|app| {

@@ -75,6 +75,7 @@ Dashboard + Chat 混合模式（方案 B+C）：
 - 右侧详情面板在宽度不足时可切换为覆盖式 drawer，但不得直接消失
 - 页面响应式只在桌面范围内处理，不为 tablet / mobile 提供单独断点与布局版本
 - 当窗口宽度处于 `1280 - 1365` 区间时，统计卡片可从 4 列降为 2 列；双栏布局允许右栏降宽，但页面职责不可折叠丢失
+- 窗口尺寸、位置与最大化状态在退出时保存、下次启动时恢复（`tauri-plugin-window-state`，状态文件在应用数据目录 `.window-state.json`）；最小尺寸仍由 `tauri.conf.json` 约束
 
 ---
 
@@ -1294,3 +1295,9 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 - 测试：新增 `tests/unit/gui/test_task_store.py`；`test_quick_run_inputs_ui.py` 补 `@/state/task-store` mock；tests/unit/gui 74 项通过，tsc、vite build 通过。
 - 读回：内置浏览器以只读桥接（对 `run.quick.start` 延迟 8 秒后拒绝）走通“启动 → 切到总览看到指示 → 点指示回到页面为运行中 → 任务结束后指示消失并弹出失败通知 → 页面回到可运行态”。
 - Pen 节点：Implementation Constraints 新增约束卡 `Background Tasks - UX Batch 5`（`YTTf3`）。
+
+### 2026-10-11 窗口尺寸与位置记忆（UX 第六批）
+
+- 桌面端常规体验补齐：`ui/src-tauri/Cargo.toml` 加入 `tauri-plugin-window-state = "=2.4.1"`（固定版本：2.5.0 要求 tauri ≥2.12，会连带升级锁文件里几十个 crate；2.4.1 要求 ≥2.8.2，与锁定的 tauri 2.10.3 兼容），`main.rs` 在构建器链最前注册插件。无前端改动。
+- 行为：启动时按应用数据目录的 `.window-state.json` 恢复主窗口尺寸、位置与最大化状态；退出时保存。最小尺寸 1280×800 仍由 `tauri.conf.json` 约束。
+- 验证：`tauri build --bundles app` 通过（tauri 仍为 2.10.3，锁文件新增 32 个插件依赖包、6 个移除、12 个过渡升级）；启动打包版 14 秒后经 AppleScript 请求退出，状态文件写出主窗口 2880×1800 物理像素（即 1440×900 逻辑）、坐标 288/112。恢复路径是插件标准行为，未在本会话做可视化核对（无桌面控制权限）。
