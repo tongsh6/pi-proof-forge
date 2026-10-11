@@ -1,4 +1,5 @@
-import { Outlet } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { ToastViewport } from "@/components/feedback/ToastViewport";
@@ -32,11 +33,18 @@ export function AppShell() {
   const state = useSidecarStore((store) => store.state);
   const error = useSidecarStore((store) => store.error);
   const showBanner = state !== "ready";
+  const mainRef = useRef<HTMLElement>(null);
+  const { pathname } = useLocation();
+
+  // 主内容区是唯一滚动容器，切换页面时回到顶部，避免带着上一页的滚动位置进入新页。
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [pathname]);
 
   return (
     <div className="flex h-screen w-screen bg-bg-primary">
       <SideNav />
-      <main className="flex-1 overflow-y-auto p-6">
+      <main ref={mainRef} className="flex-1 overflow-y-auto p-6">
         {showBanner ? (
           <section
             role={state === "disconnected" ? "alert" : "status"}

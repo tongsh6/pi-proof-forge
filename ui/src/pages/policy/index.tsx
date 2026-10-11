@@ -525,7 +525,7 @@ export function PolicyPage() {
                   )}
                 >
                   <select
-                    className="rounded-card border border-border bg-bg-primary/80 px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    className="rounded-card border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
                     value={settings.gate_policy.delivery_mode}
                     onChange={(event) =>
                       setDeliveryMode(event.target.value as "auto" | "manual")
