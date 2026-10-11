@@ -1,11 +1,11 @@
 {
-  "version": "2.8",
+  "version": "2.21",
   "children": [
     {
       "type": "frame",
       "id": "Qju2l",
       "x": -1,
-      "y": -329,
+      "y": -544,
       "name": "Design System",
       "width": 1440,
       "fill": "$bg-primary",
@@ -46,13 +46,11 @@
               "name": "SideNav",
               "reusable": true,
               "width": 264,
-              "height": 716,
               "fill": "$sidebar-bg",
               "cornerRadius": 16,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 20,
               "padding": 20,
@@ -103,7 +101,7 @@
                       "width": 224,
                       "descendants": {
                         "CKh57": {
-                          "iconFontName": "layout-dashboard"
+                          "icon": "layout-dashboard"
                         },
                         "E5YMs": {
                           "content": "Overview / 概览"
@@ -118,7 +116,7 @@
                       "width": 224,
                       "descendants": {
                         "R9bVs": {
-                          "iconFontName": "file-text"
+                          "icon": "file-text"
                         },
                         "Rc9yV": {
                           "content": "Resumes / 简历中心"
@@ -133,7 +131,7 @@
                       "width": 224,
                       "descendants": {
                         "R9bVs": {
-                          "iconFontName": "folder"
+                          "icon": "folder"
                         },
                         "Rc9yV": {
                           "content": "Evidence / 证据卡"
@@ -148,7 +146,7 @@
                       "width": 224,
                       "descendants": {
                         "R9bVs": {
-                          "iconFontName": "briefcase"
+                          "icon": "briefcase"
                         },
                         "Rc9yV": {
                           "content": "Jobs / 岗位中心"
@@ -163,7 +161,7 @@
                       "width": 224,
                       "descendants": {
                         "R9bVs": {
-                          "iconFontName": "zap"
+                          "icon": "zap"
                         },
                         "Rc9yV": {
                           "content": "Quick Run / 快速执行"
@@ -178,7 +176,7 @@
                       "width": 224,
                       "descendants": {
                         "R9bVs": {
-                          "iconFontName": "bot"
+                          "icon": "bot"
                         },
                         "Rc9yV": {
                           "content": "Agent Run / 自主运行"
@@ -193,7 +191,7 @@
                       "width": 224,
                       "descendants": {
                         "R9bVs": {
-                          "iconFontName": "send"
+                          "icon": "send"
                         },
                         "Rc9yV": {
                           "content": "Submissions / 投递记录"
@@ -208,7 +206,7 @@
                       "width": 224,
                       "descendants": {
                         "R9bVs": {
-                          "iconFontName": "shield-check"
+                          "icon": "shield-check"
                         },
                         "Rc9yV": {
                           "content": "Policy / 策略配置"
@@ -223,7 +221,7 @@
                       "width": 224,
                       "descendants": {
                         "R9bVs": {
-                          "iconFontName": "sliders-horizontal"
+                          "icon": "sliders-horizontal"
                         },
                         "Rc9yV": {
                           "content": "System Settings / 系统设置"
@@ -247,6 +245,54 @@
                   ],
                   "children": [
                     {
+                      "type": "frame",
+                      "id": "k1BGB",
+                      "name": "footerStatus",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "bVP88",
+                          "name": "statusLabel",
+                          "fill": "$text-secondary",
+                          "content": "Sidecar / 本地后端",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "gPtgP",
+                          "name": "statusRow",
+                          "width": "fill_container",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "ellipse",
+                              "id": "d1rFH",
+                              "name": "statusDot",
+                              "fill": "$success",
+                              "width": 8,
+                              "height": 8
+                            },
+                            {
+                              "type": "text",
+                              "id": "SAO1p",
+                              "name": "statusValue",
+                              "fill": "$text-primary",
+                              "content": "Ready · v0.1.0",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "LGRAa",
                       "name": "footerLabel",
@@ -261,7 +307,7 @@
                       "id": "wFumy",
                       "name": "footerValue",
                       "fill": "$accent",
-                      "content": "EN / 中",
+                      "content": "English / 中文",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "600"
@@ -279,10 +325,9 @@
               "height": 52,
               "fill": "$sidebar-bg",
               "cornerRadius": 12,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 12,
               "padding": [
                 14,
@@ -290,13 +335,13 @@
               ],
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "R9bVs",
                   "name": "navItemIcon",
                   "width": 18,
                   "height": 18,
-                  "iconFontName": "layout-dashboard",
-                  "iconFontFamily": "lucide",
+                  "icon": "layout-dashboard",
+                  "library": "lucide",
                   "fill": "$text-secondary"
                 },
                 {
@@ -320,10 +365,9 @@
               "height": 52,
               "fill": "$sidebar-active",
               "cornerRadius": 12,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
+              "stroke": "$accent",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 12,
               "padding": [
                 14,
@@ -331,13 +375,13 @@
               ],
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "CKh57",
                   "name": "navActiveIcon",
                   "width": 18,
                   "height": 18,
-                  "iconFontName": "layout-dashboard",
-                  "iconFontFamily": "lucide",
+                  "icon": "layout-dashboard",
+                  "library": "lucide",
                   "fill": "$accent-cyan"
                 },
                 {
@@ -369,10 +413,9 @@
               "height": 32,
               "fill": "$bg-inset",
               "cornerRadius": 999,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$success"
-              },
+              "stroke": "$success",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 8,
@@ -407,10 +450,9 @@
               "height": 32,
               "fill": "$bg-inset",
               "cornerRadius": 999,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$error"
-              },
+              "stroke": "$error",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 8,
@@ -445,10 +487,9 @@
               "height": 32,
               "fill": "$bg-inset",
               "cornerRadius": 999,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
+              "stroke": "$accent",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 8,
@@ -483,10 +524,9 @@
               "height": 32,
               "fill": "$bg-inset",
               "cornerRadius": 999,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$warning"
-              },
+              "stroke": "$warning",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 8,
@@ -522,10 +562,9 @@
               "height": 44,
               "fill": "$accent",
               "cornerRadius": 12,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent-cyan"
-              },
+              "stroke": "$accent-cyan",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 10,
               "padding": [
                 12,
@@ -533,13 +572,13 @@
               ],
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "swaWw",
                   "name": "btnPrimaryIcon",
                   "width": 16,
                   "height": 16,
-                  "iconFontName": "play",
-                  "iconFontFamily": "lucide",
+                  "icon": "play",
+                  "library": "lucide",
                   "fill": "$bg-primary"
                 },
                 {
@@ -563,10 +602,9 @@
               "height": 44,
               "fill": "$bg-panel",
               "cornerRadius": 12,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 10,
               "padding": [
                 12,
@@ -574,13 +612,13 @@
               ],
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "0wv8M",
                   "name": "btnSecondaryIcon",
                   "width": 16,
                   "height": 16,
-                  "iconFontName": "upload",
-                  "iconFontFamily": "lucide",
+                  "icon": "upload",
+                  "library": "lucide",
                   "fill": "$text-secondary"
                 },
                 {
@@ -604,10 +642,9 @@
               "height": 148,
               "fill": "$bg-panel",
               "cornerRadius": 16,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 16,
               "padding": 18,
@@ -629,13 +666,13 @@
                       "cornerRadius": 12,
                       "children": [
                         {
-                          "type": "icon_font",
+                          "type": "icon",
                           "id": "xxKQx",
                           "name": "statGlyph",
                           "width": 18,
                           "height": 18,
-                          "iconFontName": "database",
-                          "iconFontFamily": "lucide",
+                          "icon": "database",
+                          "library": "lucide",
                           "fill": "$accent-cyan"
                         }
                       ]
@@ -682,10 +719,9 @@
               "width": 220,
               "fill": "$bg-panel",
               "cornerRadius": 12,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 8,
               "padding": [
@@ -746,6 +782,208 @@
               ]
             }
           ]
+        },
+        {
+          "type": "frame",
+          "id": "zkCKn",
+          "name": "Feedback Components",
+          "width": "fill_container",
+          "gap": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "fQ00F",
+              "name": "Feedback/Toast",
+              "reusable": true,
+              "width": 360,
+              "fill": "$bg-panel",
+              "cornerRadius": "$radius-sm",
+              "stroke": "$success",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "gap": 12,
+              "padding": [
+                12,
+                16
+              ],
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "UKSTR",
+                  "name": "toastIcon",
+                  "width": 18,
+                  "height": 18,
+                  "icon": "circle-check",
+                  "library": "lucide",
+                  "fill": "$success"
+                },
+                {
+                  "type": "frame",
+                  "id": "sTX27",
+                  "name": "toastBody",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ePu7Y",
+                      "name": "toastTitle",
+                      "fill": "$text-primary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Saved / 已保存",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "TVfU9",
+                      "name": "toastDesc",
+                      "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Evidence card saved. Success/info auto-dismiss in 5s; errors stay until closed. Max 4 stacked, duplicates merged.",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "icon",
+                  "id": "B0PKe1",
+                  "name": "toastClose",
+                  "width": 14,
+                  "height": 14,
+                  "icon": "x",
+                  "library": "lucide",
+                  "fill": "$text-muted"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "FQxJ2",
+              "name": "Feedback/ConfirmDialog",
+              "reusable": true,
+              "width": 448,
+              "fill": "$bg-panel",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "layout": "vertical",
+              "gap": 24,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "C0i4if",
+                  "name": "confirmHeader",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "zLWEO",
+                      "name": "confirmIcon",
+                      "width": 20,
+                      "height": 20,
+                      "icon": "triangle-alert",
+                      "library": "lucide",
+                      "fill": "$error"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Gwd1f",
+                      "name": "confirmText",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "sjmKM",
+                          "name": "confirmTitle",
+                          "fill": "$text-primary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Delete this card? / 删除这张证据卡？",
+                          "fontFamily": "Inter",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "CoHB5",
+                          "name": "confirmDesc",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "This cannot be undone. Esc cancels, focus starts on Cancel, Tab cycles between the two buttons. The danger variant is used for every destructive action.",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "iRgtK",
+                  "name": "confirmActions",
+                  "width": "fill_container",
+                  "gap": 8,
+                  "justifyContent": "end",
+                  "children": [
+                    {
+                      "id": "kgmal",
+                      "type": "ref",
+                      "ref": "tBGQE",
+                      "name": "confirmCancel",
+                      "width": "fit_content",
+                      "descendants": {
+                        "0wv8M": {
+                          "enabled": false
+                        },
+                        "fkAZC": {
+                          "content": "Cancel / 取消"
+                        }
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YBWSR",
+                      "name": "Button/Danger",
+                      "fill": "$error",
+                      "cornerRadius": 12,
+                      "gap": 10,
+                      "padding": [
+                        12,
+                        16
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "kKAhD",
+                          "name": "btnDangerLabel",
+                          "fill": "$bg-primary",
+                          "content": "Delete / 删除",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -759,10 +997,9 @@
       "height": 900,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "LjyKL",
@@ -826,7 +1063,7 @@
                   "name": "ovRun",
                   "descendants": {
                     "swaWw": {
-                      "iconFontName": "bot"
+                      "icon": "bot"
                     },
                     "yG3EI": {
                       "content": "Run Agent / 启动"
@@ -849,7 +1086,7 @@
                   "name": "ovStat1",
                   "descendants": {
                     "xxKQx": {
-                      "iconFontName": "database"
+                      "icon": "database"
                     },
                     "t9jru": {
                       "content": "Evidence / 证据卡"
@@ -869,7 +1106,7 @@
                   "name": "ovStat2",
                   "descendants": {
                     "xxKQx": {
-                      "iconFontName": "briefcase"
+                      "icon": "briefcase"
                     },
                     "t9jru": {
                       "content": "Matched Jobs / 匹配岗位"
@@ -889,7 +1126,7 @@
                   "name": "ovStat3",
                   "descendants": {
                     "xxKQx": {
-                      "iconFontName": "file-text"
+                      "icon": "file-text"
                     },
                     "t9jru": {
                       "content": "Resumes / 简历版本"
@@ -909,7 +1146,7 @@
                   "name": "ovStat4",
                   "descendants": {
                     "xxKQx": {
-                      "iconFontName": "send"
+                      "icon": "send"
                     },
                     "t9jru": {
                       "content": "Submissions / 投递次数"
@@ -940,10 +1177,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 14,
                   "padding": 20,
@@ -1055,10 +1291,9 @@
                       "height": 250,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 14,
                       "padding": 20,
@@ -1182,10 +1417,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 12,
                       "padding": 20,
@@ -1301,10 +1535,9 @@
       "height": 900,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "Du5HH",
@@ -1315,11 +1548,12 @@
           "descendants": {
             "MGZhs": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "MGZhs/CKh57": {
               "fill": "$text-secondary"
@@ -1331,11 +1565,12 @@
             },
             "GjzVH": {
               "fill": "$sidebar-active",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
-              "width": 224
+              "stroke": "$accent",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "GjzVH/R9bVs": {
               "fill": "$accent-cyan"
@@ -1362,20 +1597,20 @@
               "type": "frame",
               "id": "career01",
               "name": "career01-existing-flow-extension",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
               "fill": "$bg-panel",
               "cornerRadius": 12,
+              "layout": "vertical",
+              "padding": 16,
               "children": [
                 {
                   "type": "text",
                   "id": "career01txt",
+                  "fill": "$text-primary",
                   "content": "完整职业档案 / Career profile\n职业摘要 · 工作/合作经历 · 分组能力 · 教育展示选择 · 补充成果\n条目编辑 + 已审核证据关联；保存草稿 → 确认事实，缺项/陈旧版本禁止确认。",
                   "fontFamily": "Inter",
                   "fontSize": 13,
-                  "fill": "$text-primary"
+                  "fontWeight": "normal"
                 }
               ]
             },
@@ -1426,10 +1661,10 @@
                   "width": 211,
                   "height": 44,
                   "x": 601.5,
-                  "y": 5,
+                  "y": 2.5,
                   "descendants": {
                     "0wv8M": {
-                      "iconFontName": "upload"
+                      "icon": "upload"
                     },
                     "fkAZC": {
                       "content": "Upload Resume / 上传简历"
@@ -1450,7 +1685,7 @@
                       "name": "exportA",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "download"
+                          "icon": "download"
                         },
                         "yG3EI": {
                           "content": "Export PDF / 导出 PDF"
@@ -1477,10 +1712,9 @@
                   "height": "fill_container",
                   "fill": "#1E293B",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "#334155"
-                  },
+                  "stroke": "#334155",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 12,
                   "padding": 20,
@@ -1570,7 +1804,7 @@
                       "name": "editA",
                       "descendants": {
                         "0wv8M": {
-                          "iconFontName": "user-round-pen"
+                          "icon": "user-round-pen"
                         },
                         "fkAZC": {
                           "content": "Edit Info / 编辑资料"
@@ -1587,10 +1821,9 @@
                   "height": "fill_container",
                   "fill": "#1E293B",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "#334155"
-                  },
+                  "stroke": "#334155",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 12,
                   "padding": 20,
@@ -1691,10 +1924,9 @@
                   "height": "fill_container",
                   "fill": "#1E293B",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "#334155"
-                  },
+                  "stroke": "#334155",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 16,
                   "padding": 20,
@@ -1835,10 +2067,9 @@
       "height": 900,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "ANtne",
@@ -1849,11 +2080,12 @@
           "descendants": {
             "MGZhs": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "MGZhs/CKh57": {
               "fill": "$text-secondary"
@@ -1865,11 +2097,12 @@
             },
             "jeQ4F": {
               "fill": "$sidebar-active",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
-              "width": 224
+              "stroke": "$accent",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "jeQ4F/R9bVs": {
               "fill": "$accent-cyan"
@@ -1942,7 +2175,7 @@
                       "name": "evNew",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "plus"
+                          "icon": "plus"
                         },
                         "yG3EI": {
                           "content": "New Card / 新增"
@@ -1956,7 +2189,7 @@
                       "name": "evImport",
                       "descendants": {
                         "0wv8M": {
-                          "iconFontName": "upload"
+                          "icon": "upload"
                         },
                         "fkAZC": {
                           "content": "Import / 导入"
@@ -1971,41 +2204,42 @@
               "type": "frame",
               "id": "docPick1",
               "name": "Material Document Picker",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
-              "gap": 8,
               "fill": "$bg-panel",
               "cornerRadius": 12,
+              "layout": "vertical",
+              "gap": 8,
+              "padding": 16,
               "children": [
                 {
                   "type": "text",
                   "id": "docPickTitle",
+                  "fill": "$text-primary",
                   "content": "选择工作文档 · 名称筛选 → 片段选择 → 查看原文",
                   "fontFamily": "Inter",
                   "fontSize": 14,
-                  "fontWeight": "600",
-                  "fill": "$text-primary"
+                  "fontWeight": "600"
                 },
                 {
                   "type": "text",
                   "id": "docPickHelp",
+                  "fill": "$text-secondary",
                   "content": "复用已导入 TXT / Markdown；长文完整分段；选择后提炼，审核后保存。\n来源指纹随卡保留；普通编辑变为待审核，可按原来源重审。\n切卡清空重审草稿，详情加载中禁用保存；可用数按真实候选资格统计。",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 }
               ]
             },
             {
-              "id": "eTxt01",
               "type": "text",
+              "id": "eTxt01",
               "name": "工作材料手动草稿",
+              "fill": "$text-secondary",
               "content": "Markdown / TXT 材料 → 选择原文片段 → 模型提炼或手工草稿 → 原文指纹和结果校验 → 审核后保存",
               "fontFamily": "Inter",
               "fontSize": 13,
-              "fill": "$text-secondary"
+              "fontWeight": "normal"
             },
             {
               "type": "frame",
@@ -2023,10 +2257,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 12,
                   "padding": 18,
@@ -2155,10 +2388,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 14,
                   "padding": 18,
@@ -2353,10 +2585,9 @@
       "height": 1080,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "4dCEj",
@@ -2367,11 +2598,12 @@
           "descendants": {
             "MGZhs": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "MGZhs/CKh57": {
               "fill": "$text-secondary"
@@ -2383,11 +2615,12 @@
             },
             "1dHjr": {
               "fill": "$sidebar-active",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
-              "width": 224
+              "stroke": "$accent",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "1dHjr/R9bVs": {
               "fill": "$accent-cyan"
@@ -2454,7 +2687,7 @@
                   "name": "jobsNew",
                   "descendants": {
                     "swaWw": {
-                      "iconFontName": "plus"
+                      "icon": "plus"
                     },
                     "yG3EI": {
                       "content": "New Profile / 新建"
@@ -2477,10 +2710,9 @@
                   "height": 42,
                   "fill": "$sidebar-active",
                   "cornerRadius": 12,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
+                  "stroke": "$accent",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "children": [
                     {
                       "type": "text",
@@ -2502,10 +2734,9 @@
                   "height": 42,
                   "fill": "$bg-panel",
                   "cornerRadius": 12,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "children": [
                     {
                       "type": "text",
@@ -2590,10 +2821,9 @@
                   "height": 250,
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
+                  "stroke": "$accent",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 14,
                   "padding": 18,
@@ -2618,10 +2848,9 @@
                   "height": 250,
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 14,
                   "padding": 18,
@@ -2646,10 +2875,9 @@
                   "height": 250,
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 14,
                   "padding": 18,
@@ -2676,10 +2904,9 @@
               "height": "fill_container",
               "fill": "$bg-panel",
               "cornerRadius": 16,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 20,
               "padding": 18,
               "children": [
@@ -2736,10 +2963,9 @@
                       "height": 116,
                       "fill": "$bg-inset",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 8,
                       "padding": 12,
@@ -2872,10 +3098,9 @@
                       "height": 138,
                       "fill": "$bg-inset",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 8,
                       "padding": 12,
@@ -3038,20 +3263,20 @@
               "type": "frame",
               "id": "jobsflow08",
               "name": "jobsflow08-existing-flow-extension",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
               "fill": "$bg-panel",
               "cornerRadius": 12,
+              "layout": "vertical",
+              "padding": 16,
               "children": [
                 {
                   "type": "text",
                   "id": "jobsflow08txt",
+                  "fill": "$text-primary",
                   "content": "使用已保存 JD 生成定制简历 / Generate from saved JD\nactive + 完整 JD → Quick Run 精确选中目标；不自动运行。",
                   "fontFamily": "Inter",
                   "fontSize": 13,
-                  "fill": "$text-primary"
+                  "fontWeight": "normal"
                 }
               ]
             }
@@ -3069,10 +3294,9 @@
       "height": 900,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "qstgB",
@@ -3083,11 +3307,12 @@
           "descendants": {
             "MGZhs": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "MGZhs/CKh57": {
               "fill": "$text-secondary"
@@ -3099,11 +3324,12 @@
             },
             "yokdy": {
               "fill": "$sidebar-active",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
-              "width": 224
+              "stroke": "$accent",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "yokdy/R9bVs": {
               "fill": "$accent-cyan"
@@ -3170,7 +3396,7 @@
                   "name": "qrRun",
                   "descendants": {
                     "swaWw": {
-                      "iconFontName": "zap"
+                      "icon": "zap"
                     },
                     "yG3EI": {
                       "content": "Run / 执行"
@@ -3180,13 +3406,14 @@
               ]
             },
             {
-              "id": "qrInp01",
               "type": "text",
+              "id": "qrInp01",
               "name": "显式生成输入",
+              "fill": "$text-secondary",
               "content": "材料来源：请选择本次材料  ▾    □ 使用模型润色（默认模板生成）；未选材料时不可启动。",
               "fontFamily": "Inter",
               "fontSize": 13,
-              "fill": "$text-secondary"
+              "fontWeight": "normal"
             },
             {
               "type": "frame",
@@ -3203,10 +3430,9 @@
                   "height": 72,
                   "fill": "$bg-panel",
                   "cornerRadius": 14,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$success"
-                  },
+                  "stroke": "$success",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "padding": 16,
                   "children": [
                     {
@@ -3229,10 +3455,9 @@
                   "height": 72,
                   "fill": "$bg-panel",
                   "cornerRadius": 14,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$success"
-                  },
+                  "stroke": "$success",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "padding": 16,
                   "children": [
                     {
@@ -3255,10 +3480,9 @@
                   "height": 72,
                   "fill": "$bg-panel",
                   "cornerRadius": 14,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
+                  "stroke": "$accent",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "padding": 16,
                   "children": [
                     {
@@ -3281,10 +3505,9 @@
                   "height": 72,
                   "fill": "$bg-panel",
                   "cornerRadius": 14,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$warning"
-                  },
+                  "stroke": "$warning",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "padding": 16,
                   "children": [
                     {
@@ -3317,10 +3540,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 12,
                   "padding": 18,
@@ -3453,10 +3675,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 10,
                   "padding": 18,
@@ -3608,29 +3829,30 @@
               "type": "text",
               "id": "qrSelectEvidence",
               "name": "Reviewed Evidence Selection",
+              "fill": "$text-secondary",
               "content": "本次选用的已审核证据：逐项勾选，显示数量；不选则禁用启动。\n模型辅助选材（默认规则选材），不改变已核实事实。\n缺职责/时间/场景/行动/技能 → NEEDS_EVIDENCE；PDF 导出成功不覆盖。",
               "fontFamily": "Inter",
               "fontSize": 12,
-              "fill": "$text-secondary"
+              "fontWeight": "normal"
             },
             {
               "type": "frame",
               "id": "quickflow08",
               "name": "quickflow08-existing-flow-extension",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
               "fill": "$bg-panel",
               "cornerRadius": 12,
+              "layout": "vertical",
+              "padding": 16,
               "children": [
                 {
                   "type": "text",
                   "id": "quickflow08txt",
+                  "fill": "$text-primary",
                   "content": "定制简历接续 / Tailored resume flow\n已确认职业档案 + 完整 JD → 原 Quick Run\n内容及追溯有效的结果 → 查看并准备 PDF；切换输入清空旧结果。",
                   "fontFamily": "Inter",
                   "fontSize": 13,
-                  "fill": "$text-primary"
+                  "fontWeight": "normal"
                 }
               ]
             }
@@ -3648,10 +3870,9 @@
       "height": 900,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "sIECv",
@@ -3662,11 +3883,12 @@
           "descendants": {
             "MGZhs": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "MGZhs/CKh57": {
               "fill": "$text-secondary"
@@ -3678,11 +3900,12 @@
             },
             "IK8zd": {
               "fill": "$sidebar-active",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
-              "width": 224
+              "stroke": "$accent",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "IK8zd/R9bVs": {
               "fill": "$accent-cyan"
@@ -3705,45 +3928,6 @@
           "gap": 24,
           "padding": 28,
           "children": [
-            {
-              "type": "frame",
-              "id": "daily18",
-              "name": "Daily Controlled Delivery",
-              "layout": "vertical",
-              "width": "fill_container",
-              "height": "fit_content",
-              "padding": 20,
-              "gap": 10,
-              "fill": "$bg-panel",
-              "cornerRadius": 16,
-              "children": [
-                {
-                  "type": "text",
-                  "id": "day18h",
-                  "content": "每日受控投递 · Asia/Shanghai · 今日确认 0/3 · 占位 0",
-                  "fontFamily": "Inter",
-                  "fontSize": 18,
-                  "fontWeight": "600",
-                  "fill": "$text-primary"
-                },
-                {
-                  "type": "text",
-                  "id": "day18d",
-                  "content": "App 运行时每日一批；关闭或休眠不运行，不补过去日期。\n每日 1–3 次 · 执行 HH:mm（上海） · 到期时间（本机）\n具体岗位 / 可读 PDF 文件名 / SHA256 / 预览；新岗位、新文件、删除另行确认。",
-                  "fontFamily": "Inter",
-                  "fontSize": 13,
-                  "fill": "$text-secondary"
-                },
-                {
-                  "type": "text",
-                  "id": "day18a",
-                  "content": "保存草稿 → 独立确认清单及上传副作用 → 启用/恢复\n暂停 · 撤销 · 执行今日批次 · 结束中断批次（不重发）\n最近日期记录：成功 / 候选不足 / 登录失效 / 附件位满 / 未决占位",
-                  "fontFamily": "Inter",
-                  "fontSize": 13,
-                  "fill": "$text-primary"
-                }
-              ]
-            },
             {
               "type": "frame",
               "id": "GdBiq",
@@ -3788,12 +3972,52 @@
                   "name": "agStop",
                   "descendants": {
                     "0wv8M": {
-                      "iconFontName": "square"
+                      "icon": "square"
                     },
                     "fkAZC": {
                       "content": "Stop / 停止"
                     }
                   }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "daily18",
+              "name": "Daily Controlled Delivery",
+              "width": "fill_container",
+              "fill": "$bg-panel",
+              "cornerRadius": 16,
+              "layout": "vertical",
+              "gap": 10,
+              "padding": 20,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "day18h",
+                  "fill": "$text-primary",
+                  "content": "每日受控投递 · Asia/Shanghai · 今日确认 0/3 · 占位 0",
+                  "fontFamily": "Inter",
+                  "fontSize": 18,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "day18d",
+                  "fill": "$text-secondary",
+                  "content": "App 运行时每日一批；关闭或休眠不运行，不补过去日期。\n每日 1–3 次 · 执行 HH:mm（上海） · 到期时间（本机）\n具体岗位 / 可读 PDF 文件名 / SHA256 / 预览；新岗位、新文件、删除另行确认。",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "day18a",
+                  "fill": "$text-primary",
+                  "content": "保存草稿 → 独立确认清单及上传副作用 → 启用/恢复\n暂停 · 撤销 · 执行今日批次 · 结束中断批次（不重发）\n最近日期记录：成功 / 候选不足 / 登录失效 / 附件位满 / 未决占位",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
                 }
               ]
             },
@@ -3805,10 +4029,9 @@
               "height": 58,
               "fill": "$bg-panel",
               "cornerRadius": 16,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 12,
@@ -3933,10 +4156,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 12,
                   "padding": 18,
@@ -3997,10 +4219,9 @@
                               "name": "approveChip",
                               "fill": "#0B3B2C",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#34D399"
-                              },
+                              "stroke": "#34D399",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4023,10 +4244,9 @@
                               "name": "rejectChip",
                               "fill": "#3A1212",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#F87171"
-                              },
+                              "stroke": "#F87171",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4049,10 +4269,9 @@
                               "name": "skipChip",
                               "fill": "#111827",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#64748B"
-                              },
+                              "stroke": "#64748B",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4109,10 +4328,9 @@
                               "name": "approveChip2",
                               "fill": "#0B3B2C",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#34D399"
-                              },
+                              "stroke": "#34D399",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4135,10 +4353,9 @@
                               "name": "rejectChip2",
                               "fill": "#3A1212",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#F87171"
-                              },
+                              "stroke": "#F87171",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4161,10 +4378,9 @@
                               "name": "skipChip2",
                               "fill": "#111827",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#64748B"
-                              },
+                              "stroke": "#64748B",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4221,10 +4437,9 @@
                               "name": "approveChip3",
                               "fill": "#0B3B2C",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#34D399"
-                              },
+                              "stroke": "#34D399",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4247,10 +4462,9 @@
                               "name": "rejectChip3",
                               "fill": "#3A1212",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#F87171"
-                              },
+                              "stroke": "#F87171",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4273,10 +4487,9 @@
                               "name": "skipChip3",
                               "fill": "#111827",
                               "cornerRadius": 999,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "#64748B"
-                              },
+                              "stroke": "#64748B",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 6,
                                 10
@@ -4329,7 +4542,7 @@
                           "width": 206,
                           "descendants": {
                             "swaWw": {
-                              "iconFontName": "check-check"
+                              "icon": "check-check"
                             },
                             "yG3EI": {
                               "content": "Submit Decisions / 提交决策"
@@ -4348,10 +4561,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 12,
                   "padding": 18,
@@ -4482,20 +4694,20 @@
               "type": "frame",
               "id": "dailyrec08",
               "name": "Daily Recovery - State",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
               "fill": "$bg-panel",
               "cornerRadius": 12,
+              "layout": "vertical",
+              "padding": 16,
               "children": [
                 {
                   "type": "text",
                   "id": "dailyrec08txt",
+                  "fill": "$text-primary",
+                  "content": "批次进度与中断核验 / Batch recovery\n成功 / 未决数量 + 停止原因 + 每项阶段 → 原 PDF 查看与核验\n结束中断批次不重发；成功保留、未开始不改、在途保留未知占位。",
                   "fontFamily": "Inter",
                   "fontSize": 13,
-                  "fill": "$text-primary",
-                  "content": "批次进度与中断核验 / Batch recovery\n成功 / 未决数量 + 停止原因 + 每项阶段 → 原 PDF 查看与核验\n结束中断批次不重发；成功保留、未开始不改、在途保留未知占位。"
+                  "fontWeight": "normal"
                 }
               ]
             }
@@ -4513,10 +4725,9 @@
       "height": 900,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "54Htr",
@@ -4527,11 +4738,12 @@
           "descendants": {
             "MGZhs": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "MGZhs/CKh57": {
               "fill": "$text-secondary"
@@ -4543,11 +4755,12 @@
             },
             "GDAvA": {
               "fill": "$sidebar-active",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
-              "width": 224
+              "stroke": "$accent",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "GDAvA/R9bVs": {
               "fill": "$accent-cyan"
@@ -4574,20 +4787,20 @@
               "type": "frame",
               "id": "content01",
               "name": "content01-existing-flow-extension",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
               "fill": "$bg-panel",
               "cornerRadius": 12,
+              "layout": "vertical",
+              "padding": 16,
               "children": [
                 {
                   "type": "text",
                   "id": "content01txt",
+                  "fill": "$text-primary",
                   "content": "固定 PDF 内容检查 / Content validation\n完整职业档案及项目关联 → 固定快照 → 预览同一 PDF → 原批准上传\n原队列保存批准依据；上传/最终发送复核，旧成功只读保持。",
                   "fontFamily": "Inter",
                   "fontSize": 13,
-                  "fill": "$text-primary"
+                  "fontWeight": "normal"
                 }
               ]
             },
@@ -4635,7 +4848,7 @@
                   "name": "subStat1",
                   "descendants": {
                     "xxKQx": {
-                      "iconFontName": "send"
+                      "icon": "send"
                     },
                     "t9jru": {
                       "content": "Total / 总投递"
@@ -4655,7 +4868,7 @@
                   "name": "subStat2",
                   "descendants": {
                     "xxKQx": {
-                      "iconFontName": "check-circle-2"
+                      "icon": "check-circle-2"
                     },
                     "t9jru": {
                       "content": "Delivered / 成功"
@@ -4675,7 +4888,7 @@
                   "name": "subStat3",
                   "descendants": {
                     "xxKQx": {
-                      "iconFontName": "x-circle"
+                      "icon": "x-circle"
                     },
                     "t9jru": {
                       "content": "Failed / 失败"
@@ -4695,7 +4908,7 @@
                   "name": "subStat4",
                   "descendants": {
                     "xxKQx": {
-                      "iconFontName": "corner-down-left"
+                      "icon": "corner-down-left"
                     },
                     "t9jru": {
                       "content": "Fallback / 降级"
@@ -4711,182 +4924,196 @@
               ]
             },
             {
-              "id": "nLpn01",
               "type": "frame",
+              "id": "nLpn01",
               "name": "Submissions - PDF Application",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
-              "gap": 8,
               "fill": "$bg-panel",
+              "layout": "vertical",
+              "gap": 8,
+              "padding": 16,
               "children": [
                 {
-                  "id": "nLpn02",
                   "type": "text",
+                  "id": "nLpn02",
                   "name": "标题",
+                  "fill": "$text-primary",
                   "content": "PDF Application / PDF 投递",
                   "fontFamily": "Inter",
                   "fontSize": 16,
-                  "fontWeight": "600",
-                  "fill": "$text-primary"
+                  "fontWeight": "600"
                 },
                 {
-                  "id": "nLpn03",
                   "type": "text",
+                  "id": "nLpn03",
                   "name": "操作",
+                  "fill": "$accent",
                   "content": "打开 App 内登录    检查 App 内会话    检查附件要求",
                   "fontFamily": "Inter",
                   "fontSize": 14,
-                  "fill": "$accent"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nLpn04",
                   "type": "text",
+                  "id": "nLpn04",
                   "name": "状态与边界",
+                  "fill": "$text-secondary",
                   "content": "固定 PDF 与岗位，显示姓名-公司简称-岗位简称-YYYYMMDD.序号.PDF 及指纹；简称仍超限时阻止上传。历史快照不改名。会话检查从解析页返回附件页，不提交经历。",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nPdf01",
                   "type": "text",
+                  "id": "nPdf01",
                   "name": "Approval",
+                  "fill": "$text-secondary",
                   "content": "□ 批准此 PDF，并接受自动补全在线简历及随后续投递附带  ·  批准并上传",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nPdf02",
                   "type": "text",
+                  "id": "nPdf02",
                   "name": "Upload states",
+                  "fill": "$text-secondary",
                   "content": "Prepared → Uploading → Attachment pending → Attachment verified；Unknown 不重传",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nPdf03",
                   "type": "text",
+                  "id": "nPdf03",
                   "name": "Delivery controls",
+                  "fill": "$text-secondary",
                   "content": "核验目标 → 开始本次投递 → 检查已有沟通 → 发简历确认并选中批准 fileId → 确认所选 PDF",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nPdf04",
                   "type": "text",
+                  "id": "nPdf04",
                   "name": "Delivery states",
+                  "fill": "$text-secondary",
                   "content": "Communication → Confirmation → Receipt pending → Success；每个写动作只执行一次",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nPdf05",
                   "type": "text",
+                  "id": "nPdf05",
                   "name": "Receipt",
+                  "fill": "$text-secondary",
                   "content": "核验本次回执（不重发）  ·  公司 / 岗位 / 版本 / 审批 / Receipt SHA256",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nPdf06",
                   "type": "text",
+                  "id": "nPdf06",
                   "name": "Guards",
+                  "fill": "$text-secondary",
                   "content": "Busy 禁用操作；错误明确显示；最终发送后绑定冻结，现场附件检查与再次发送禁用；历史回执保持可核验",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nPdf07",
                   "type": "text",
+                  "id": "nPdf07",
                   "name": "Guards",
+                  "fill": "$text-secondary",
                   "content": "Remove attachment / 移除平台附件：成功记录独立确认；原字节/身份/请求前守卫。Unknown 仅可核验原拦截证据与当前原文件，不重删；本地历史保留。",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 }
               ]
             },
             {
-              "id": "nFbk01",
               "type": "frame",
+              "id": "nFbk01",
               "name": "Submissions - Delivery Feedback",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
-              "gap": 8,
               "fill": "$bg-panel",
+              "layout": "vertical",
+              "gap": 8,
+              "padding": 16,
               "children": [
                 {
-                  "id": "nFbk02",
                   "type": "text",
+                  "id": "nFbk02",
                   "name": "状态与边界",
+                  "fill": "$text-secondary",
                   "content": "Feedback / 反馈迭代",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nFbk03",
                   "type": "text",
+                  "id": "nFbk03",
                   "name": "状态与边界",
+                  "fill": "$text-secondary",
                   "content": "Related submission / 关联投递  ·  公司 / 岗位 / 提交编号",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nFbk04",
                   "type": "text",
+                  "id": "nFbk04",
                   "name": "状态与边界",
+                  "fill": "$text-secondary",
                   "content": "只读证据：审批 / 岗位 / 版本 / 简历指纹 / 回执指纹；Verified 或 Incomplete 不改原投递状态",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nFbk05",
                   "type": "text",
+                  "id": "nFbk05",
                   "name": "状态与边界",
+                  "fill": "$text-secondary",
                   "content": "来源：个人复盘 / 手动招聘反馈  ·  下一步动作  ·  必填反馈内容",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nFbk06",
                   "type": "text",
+                  "id": "nFbk06",
                   "name": "状态与边界",
+                  "fill": "$text-secondary",
                   "content": "保存仅记录计划；不自动生成或投递；重新生成显示原岗位画像并进入 Quick Run",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nFbk07",
                   "type": "text",
+                  "id": "nFbk07",
                   "name": "状态与边界",
+                  "fill": "$text-secondary",
                   "content": "历史：时间 / 来源 / 内容 / 动作；切换清空草稿并丢弃旧请求，重开可读回",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 },
                 {
-                  "id": "nFbk08",
                   "type": "text",
+                  "id": "nFbk08",
                   "name": "状态与边界",
+                  "fill": "$text-secondary",
                   "content": "空内容 / Loading / Saving 禁止提交；列表与详情均禁止受控投递重试；Error 保留可恢复状态",
                   "fontFamily": "Inter",
                   "fontSize": 12,
-                  "fill": "$text-secondary"
+                  "fontWeight": "normal"
                 }
               ]
             },
@@ -4906,10 +5133,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 12,
                   "padding": 18,
@@ -4944,10 +5170,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 12,
                   "padding": 18,
@@ -5105,20 +5330,20 @@
               "type": "frame",
               "id": "pdfflow08",
               "name": "pdfflow08-existing-flow-extension",
-              "layout": "vertical",
               "width": "fill_container",
-              "height": "fit_content",
-              "padding": 16,
               "fill": "$bg-panel",
               "cornerRadius": 12,
+              "layout": "vertical",
+              "padding": 16,
               "children": [
                 {
                   "type": "text",
                   "id": "pdfflow08txt",
+                  "fill": "$text-primary",
                   "content": "候选准备接续 / Candidate preparation\n接收生成结果仅预填 → 用户固定并预览 → 原候选清单\n导航不上传、不发送、不勾选候选、不启用授权。\nAgent Run 原生 PDF 只回原审核页；通用审批拒绝混用，缺失轮次显示未记录。",
                   "fontFamily": "Inter",
                   "fontSize": 13,
-                  "fill": "$text-primary"
+                  "fontWeight": "normal"
                 }
               ]
             }
@@ -5136,10 +5361,9 @@
       "height": 900,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "K40G2",
@@ -5150,11 +5374,12 @@
           "descendants": {
             "MGZhs": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "MGZhs/CKh57": {
               "fill": "$text-secondary"
@@ -5166,11 +5391,12 @@
             },
             "Cnx8j": {
               "fill": "$sidebar-active",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
-              "width": 224
+              "stroke": "$accent",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "Cnx8j/R9bVs": {
               "fill": "$accent-cyan"
@@ -5237,7 +5463,7 @@
                   "name": "setSave",
                   "descendants": {
                     "swaWw": {
-                      "iconFontName": "save"
+                      "icon": "save"
                     },
                     "yG3EI": {
                       "content": "Save / 保存"
@@ -5262,10 +5488,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 10,
                   "padding": 18,
@@ -5278,10 +5503,9 @@
                       "height": 42,
                       "fill": "$sidebar-active",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "gap": 10,
                       "padding": [
                         10,
@@ -5336,10 +5560,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 8,
                   "padding": 20,
@@ -5693,10 +5916,9 @@
               "height": 220,
               "fill": "$bg-panel",
               "cornerRadius": 16,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 14,
               "padding": 24,
@@ -5704,13 +5926,13 @@
               "alignItems": "center",
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "lWR5y",
                   "name": "loadingIcon",
                   "width": 28,
                   "height": 28,
-                  "iconFontName": "loader-circle",
-                  "iconFontFamily": "lucide",
+                  "icon": "loader-circle",
+                  "library": "lucide",
                   "fill": "$accent-cyan"
                 },
                 {
@@ -5745,10 +5967,9 @@
               "height": 220,
               "fill": "$bg-panel",
               "cornerRadius": 16,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 14,
               "padding": 24,
@@ -5756,13 +5977,13 @@
               "alignItems": "center",
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "U7oA7",
                   "name": "emptyIcon",
                   "width": 28,
                   "height": 28,
-                  "iconFontName": "inbox",
-                  "iconFontFamily": "lucide",
+                  "icon": "inbox",
+                  "library": "lucide",
                   "fill": "$warning"
                 },
                 {
@@ -5797,10 +6018,9 @@
               "height": 220,
               "fill": "$bg-panel",
               "cornerRadius": 16,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 14,
               "padding": 24,
@@ -5808,13 +6028,13 @@
               "alignItems": "center",
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "cgCYf",
                   "name": "errorIcon",
                   "width": 28,
                   "height": 28,
-                  "iconFontName": "triangle-alert",
-                  "iconFontFamily": "lucide",
+                  "icon": "triangle-alert",
+                  "library": "lucide",
                   "fill": "$error"
                 },
                 {
@@ -5844,10 +6064,9 @@
                   "name": "errorAction",
                   "fill": "$accent-bg",
                   "cornerRadius": 12,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
+                  "stroke": "$accent",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "padding": [
                     10,
                     14
@@ -5876,10 +6095,9 @@
               "height": 220,
               "fill": "$bg-panel",
               "cornerRadius": 16,
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 14,
               "padding": 24,
@@ -5887,13 +6105,13 @@
               "alignItems": "center",
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "Pdqsg",
                   "name": "offlineIcon",
                   "width": 28,
                   "height": 28,
-                  "iconFontName": "wifi-off",
-                  "iconFontFamily": "lucide",
+                  "icon": "wifi-off",
+                  "library": "lucide",
                   "fill": "$warning"
                 },
                 {
@@ -6080,10 +6298,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "JUYyc",
@@ -6094,11 +6311,12 @@
               "descendants": {
                 "MGZhs": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "MGZhs/CKh57": {
                   "fill": "$accent-cyan"
@@ -6165,7 +6383,7 @@
                       "name": "ovLoadAction",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "bot"
+                          "icon": "bot"
                         },
                         "yG3EI": {
                           "content": "Run Agent / 启动"
@@ -6189,10 +6407,9 @@
                       "height": 140,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -6202,10 +6419,9 @@
                       "height": 140,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -6215,10 +6431,9 @@
                       "height": 140,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -6228,10 +6443,9 @@
                       "height": 140,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     }
                   ]
                 },
@@ -6251,10 +6465,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -6273,10 +6486,9 @@
                           "height": 210,
                           "fill": "$bg-panel",
                           "cornerRadius": 16,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          }
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         },
                         {
                           "id": "RJwxw",
@@ -6301,10 +6513,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "IlDYt",
@@ -6315,11 +6526,12 @@
               "descendants": {
                 "jeQ4F": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "jeQ4F/R9bVs": {
                   "fill": "$accent-cyan"
@@ -6392,7 +6604,7 @@
                           "name": "evEmptyNew",
                           "descendants": {
                             "swaWw": {
-                              "iconFontName": "plus"
+                              "icon": "plus"
                             },
                             "yG3EI": {
                               "content": "New Card / 新增"
@@ -6406,7 +6618,7 @@
                           "name": "evEmptyImport",
                           "descendants": {
                             "0wv8M": {
-                              "iconFontName": "upload"
+                              "icon": "upload"
                             },
                             "fkAZC": {
                               "content": "Import / 导入"
@@ -6433,10 +6645,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -6459,10 +6670,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -6495,10 +6705,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "A9xJo",
@@ -6509,11 +6718,12 @@
               "descendants": {
                 "yokdy": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "yokdy/R9bVs": {
                   "fill": "$accent-cyan"
@@ -6580,7 +6790,7 @@
                       "name": "qrErrorAction",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "zap"
+                          "icon": "zap"
                         },
                         "yG3EI": {
                           "content": "Run / 执行"
@@ -6604,10 +6814,9 @@
                       "height": 56,
                       "fill": "$bg-panel",
                       "cornerRadius": 14,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$success"
-                      },
+                      "stroke": "$success",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "gap": 10,
                       "padding": [
                         12,
@@ -6635,10 +6844,9 @@
                       "height": 56,
                       "fill": "$bg-panel",
                       "cornerRadius": 14,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "gap": 10,
                       "padding": [
                         12,
@@ -6666,10 +6874,9 @@
                       "height": 56,
                       "fill": "$bg-panel",
                       "cornerRadius": 14,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "gap": 10,
                       "padding": [
                         12,
@@ -6697,10 +6904,9 @@
                       "height": 56,
                       "fill": "$bg-panel",
                       "cornerRadius": 14,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "gap": 10,
                       "padding": [
                         12,
@@ -6738,10 +6944,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -6764,10 +6969,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 12,
                       "padding": 20,
@@ -6808,10 +7012,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "mgsgC",
@@ -6822,11 +7025,12 @@
               "descendants": {
                 "IK8zd": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "IK8zd/R9bVs": {
                   "fill": "$accent-cyan"
@@ -6893,7 +7097,7 @@
                       "name": "agOfflineStop",
                       "descendants": {
                         "0wv8M": {
-                          "iconFontName": "square"
+                          "icon": "square"
                         },
                         "fkAZC": {
                           "content": "Stop / 停止"
@@ -6956,10 +7160,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -6986,10 +7189,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -7022,10 +7224,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "yNUBI",
@@ -7036,11 +7237,12 @@
               "descendants": {
                 "1dHjr": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "1dHjr/R9bVs": {
                   "fill": "$accent-cyan"
@@ -7107,7 +7309,7 @@
                       "name": "jobsLoadingAction",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "plus"
+                          "icon": "plus"
                         },
                         "yG3EI": {
                           "content": "New Profile / 新建"
@@ -7128,10 +7330,9 @@
                       "name": "jobsTab1",
                       "fill": "$sidebar-active",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         10,
                         14
@@ -7155,10 +7356,9 @@
                       "name": "jobsTab2",
                       "fill": "$bg-panel",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         10,
                         14
@@ -7193,10 +7393,9 @@
                       "height": 220,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -7206,10 +7405,9 @@
                       "height": 220,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -7219,10 +7417,9 @@
                       "height": 220,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     }
                   ]
                 },
@@ -7234,10 +7431,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  }
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner"
                 }
               ]
             }
@@ -7251,10 +7447,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "a4AbX",
@@ -7265,11 +7460,12 @@
               "descendants": {
                 "GjzVH": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "GjzVH/R9bVs": {
                   "fill": "$accent-cyan"
@@ -7336,7 +7532,7 @@
                       "name": "resumesEmptyAction",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "file-down"
+                          "icon": "file-down"
                         },
                         "yG3EI": {
                           "content": "Export PDF"
@@ -7361,10 +7557,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -7392,10 +7587,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -7428,10 +7622,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "Q5tEI",
@@ -7442,11 +7635,12 @@
               "descendants": {
                 "GDAvA": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "GDAvA/R9bVs": {
                   "fill": "$accent-cyan"
@@ -7514,10 +7708,9 @@
                       "height": 120,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -7527,10 +7720,9 @@
                       "height": 120,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -7540,10 +7732,9 @@
                       "height": 120,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -7553,10 +7744,9 @@
                       "height": 120,
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     }
                   ]
                 },
@@ -7576,10 +7766,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -7610,10 +7799,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -7646,10 +7834,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "4fIwq",
@@ -7660,11 +7847,12 @@
               "descendants": {
                 "Cnx8j": {
                   "fill": "$sidebar-bg",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
-                  "width": 224
+                  "stroke": "$border-light",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "Cnx8j/R9bVs": {
                   "fill": "$text-secondary"
@@ -7676,11 +7864,12 @@
                 },
                 "paNy0": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "paNy0/R9bVs": {
                   "fill": "$accent-cyan"
@@ -7747,7 +7936,7 @@
                       "name": "settingsErrorAction",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "save"
+                          "icon": "save"
                         },
                         "yG3EI": {
                           "content": "Save / 保存"
@@ -7772,10 +7961,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 12,
                       "padding": 18,
@@ -7810,10 +7998,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -7853,10 +8040,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "Aooe0",
@@ -7867,11 +8053,12 @@
               "descendants": {
                 "Cnx8j": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "Cnx8j/R9bVs": {
                   "fill": "$accent-cyan"
@@ -7883,11 +8070,12 @@
                 },
                 "paNy0": {
                   "fill": "$sidebar-bg",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
-                  "width": 224
+                  "stroke": "$border-light",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "paNy0/R9bVs": {
                   "fill": "$text-secondary"
@@ -7954,7 +8142,7 @@
                       "name": "settingsErrorAction",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "save"
+                          "icon": "save"
                         },
                         "yG3EI": {
                           "content": "Save / 保存"
@@ -7979,10 +8167,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 12,
                       "padding": 18,
@@ -8017,10 +8204,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 24,
                       "justifyContent": "center",
@@ -8094,10 +8280,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "wJnI6",
@@ -8108,11 +8293,12 @@
               "descendants": {
                 "jeQ4F": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "jeQ4F/R9bVs": {
                   "fill": "$accent-cyan"
@@ -8185,7 +8371,7 @@
                           "name": "evControlsNew",
                           "descendants": {
                             "swaWw": {
-                              "iconFontName": "plus"
+                              "icon": "plus"
                             },
                             "yG3EI": {
                               "content": "New Card / 新增"
@@ -8199,7 +8385,7 @@
                           "name": "evControlsImport",
                           "descendants": {
                             "0wv8M": {
-                              "iconFontName": "upload"
+                              "icon": "upload"
                             },
                             "fkAZC": {
                               "content": "Import / 导入"
@@ -8223,10 +8409,9 @@
                       "name": "evFilter1",
                       "fill": "$bg-panel",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         10,
                         14
@@ -8250,10 +8435,9 @@
                       "name": "evFilter2",
                       "fill": "$bg-panel",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         10,
                         14
@@ -8277,10 +8461,9 @@
                       "name": "evFilter3",
                       "fill": "$bg-panel",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         10,
                         14
@@ -8304,10 +8487,9 @@
                       "name": "evFilter4",
                       "fill": "$bg-panel",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         10,
                         14
@@ -8331,10 +8513,9 @@
                       "name": "evFilter5",
                       "fill": "$bg-panel",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         10,
                         14
@@ -8368,10 +8549,9 @@
                       "name": "evSort",
                       "fill": "$sidebar-active",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         10,
                         14
@@ -8401,10 +8581,9 @@
                           "name": "evPrev",
                           "fill": "$bg-panel",
                           "cornerRadius": 12,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          },
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "padding": [
                             10,
                             14
@@ -8428,10 +8607,9 @@
                           "name": "evNext",
                           "fill": "$accent-bg",
                           "cornerRadius": 12,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$accent"
-                          },
+                          "stroke": "$accent",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "padding": [
                             10,
                             14
@@ -8469,10 +8647,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -8482,10 +8659,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     }
                   ]
                 }
@@ -8501,10 +8677,9 @@
           "height": 900,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "s6NMs",
@@ -8515,11 +8690,12 @@
               "descendants": {
                 "GDAvA": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "GDAvA/R9bVs": {
                   "fill": "$accent-cyan"
@@ -8588,10 +8764,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     }
                   ]
                 },
@@ -8603,10 +8778,9 @@
                   "height": 640,
                   "fill": "$bg-secondary",
                   "cornerRadius": 18,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
+                  "stroke": "$accent",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 14,
                   "padding": 18,
@@ -8639,10 +8813,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 14,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     }
                   ]
                 }
@@ -8658,10 +8831,9 @@
           "height": 840,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "id": "jO99o",
@@ -8673,11 +8845,12 @@
               "descendants": {
                 "MGZhs": {
                   "fill": "$sidebar-active",
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$accent"
-                  },
-                  "width": 224
+                  "stroke": "$accent",
+                  "width": 224,
+                  "strokeWidth": 1,
+                  "strokeLinejoin": "miter",
+                  "strokeLinecap": "butt",
+                  "strokeAlignment": "inner"
                 },
                 "MGZhs/CKh57": {
                   "fill": "$accent-cyan"
@@ -8744,7 +8917,7 @@
                       "name": "ovMinAction",
                       "descendants": {
                         "swaWw": {
-                          "iconFontName": "bot"
+                          "icon": "bot"
                         },
                         "yG3EI": {
                           "content": "Run Agent / 启动"
@@ -8776,10 +8949,9 @@
                           "height": 120,
                           "fill": "$bg-panel",
                           "cornerRadius": 16,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          }
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         },
                         {
                           "type": "frame",
@@ -8789,10 +8961,9 @@
                           "height": 120,
                           "fill": "$bg-panel",
                           "cornerRadius": 16,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          }
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         }
                       ]
                     },
@@ -8811,10 +8982,9 @@
                           "height": 120,
                           "fill": "$bg-panel",
                           "cornerRadius": 16,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          }
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         },
                         {
                           "type": "frame",
@@ -8824,10 +8994,9 @@
                           "height": 120,
                           "fill": "$bg-panel",
                           "cornerRadius": 16,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          }
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         }
                       ]
                     }
@@ -8849,10 +9018,9 @@
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      }
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner"
                     },
                     {
                       "type": "frame",
@@ -8871,10 +9039,9 @@
                           "height": 180,
                           "fill": "$bg-panel",
                           "cornerRadius": 16,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          }
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         },
                         {
                           "type": "frame",
@@ -8884,14 +9051,268 @@
                           "height": 220,
                           "fill": "$bg-panel",
                           "cornerRadius": 16,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          }
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         }
                       ]
                     }
                   ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "kFfw8",
+          "name": "Feedback & Layout - UX Batch 1",
+          "width": 1376,
+          "fill": "$bg-panel",
+          "cornerRadius": 16,
+          "stroke": "$border-light",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "layout": "vertical",
+          "gap": 12,
+          "padding": 24,
+          "children": [
+            {
+              "type": "text",
+              "id": "q82VE",
+              "name": "uxTitle",
+              "fill": "$text-primary",
+              "content": "Feedback & Layout Rules (2026-10-11)",
+              "fontFamily": "Inter",
+              "fontSize": 18,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "y19e3s",
+              "name": "uxSubtitle",
+              "fill": "$text-secondary",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Implemented in ui/src/lib/ui.ts, components/feedback and the page files. Non-structural: 9-page IA and nav order unchanged.",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "Omi4M",
+              "name": "rule1",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "xlNQe",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "01",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "xDLRD",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Refresh keeps content: list pages show a placeholder only on first load; later reloads keep content and editor state, show “Refreshing…” in the header button, and report failures as an error toast while keeping the last data.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "b5cBfu",
+              "name": "rule2",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "cklgf",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "02",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "Z7usY",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Destructive or irreversible actions always go through Feedback/ConfirmDialog: delete card/artifact, clear session, retry submission, delete credential, stop run, approve/reject candidate, revoke/run/close daily batch, archive profile, overwrite JD, clear draft, remove profile entry, reload with unsaved changes.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bjdrY",
+              "name": "rule3",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "foy4I",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "03",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "ieBDU",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Success feedback uses Feedback/Toast (toasts.*). Buttons follow four tiers: primary / secondary / ghost / danger; one enabled primary per row.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "PNqmT",
+              "name": "rule4",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "VxhDV",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "04",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "KacO2",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Disabled primary buttons explain why via title or inline text (Quick Run start lists all blockers; Jobs new profile; System Settings save; daily delivery buttons; career profile confirm).",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "m3K6V",
+              "name": "rule5",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "UG3wd",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "05",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "JszYz",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Sidecar status lives in the SideNav footer when ready; a top banner appears only for starting / degraded / reconnecting / disconnected / stopped.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "mp5RT",
+              "name": "rule6",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "k4LOBC",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "06",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "c55oSx",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Right rail: 420px from 1366px (wide), 360px between 1280 and 1365; sticky with internal scroll on Evidence, Jobs and Agent Run. Evidence table: 40/16/20/8/16 columns, sticky header, min width 640px.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "vwygA",
+              "name": "rule7",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "lZfUE",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "07",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "ms8li",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Quick Run: pipeline runs synchronously in the sidecar; all four stages show “running” during execution, no mid-run cancel. Agent Run: page header first, Daily Controlled Delivery card after it.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
                 }
               ]
             }
@@ -8939,10 +9360,9 @@
           "height": 1040,
           "fill": "$bg-primary",
           "cornerRadius": 24,
-          "stroke": {
-            "thickness": 1,
-            "fill": "$border"
-          },
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
           "children": [
             {
               "type": "frame",
@@ -9006,10 +9426,9 @@
                       "height": 360,
                       "fill": "$bg-panel",
                       "cornerRadius": 18,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 16,
                       "padding": 20,
@@ -9039,10 +9458,9 @@
                               "height": 84,
                               "fill": "$sidebar-active",
                               "cornerRadius": 14,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "$accent"
-                              },
+                              "stroke": "$accent",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "layout": "vertical",
                               "gap": 6,
                               "padding": 14,
@@ -9087,10 +9505,9 @@
                               "height": 84,
                               "fill": "$bg-secondary",
                               "cornerRadius": 14,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "$border-light"
-                              },
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "layout": "vertical",
                               "gap": 6,
                               "padding": 14,
@@ -9135,10 +9552,9 @@
                               "height": 84,
                               "fill": "$bg-secondary",
                               "cornerRadius": 14,
-                              "stroke": {
-                                "thickness": 1,
-                                "fill": "$border-light"
-                              },
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "layout": "vertical",
                               "gap": 6,
                               "padding": 14,
@@ -9174,10 +9590,9 @@
                           "width": "fill_container",
                           "fill": "$bg-inset",
                           "cornerRadius": 14,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          },
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "layout": "vertical",
                           "gap": 8,
                           "padding": 14,
@@ -9211,10 +9626,9 @@
                           "width": "fill_container",
                           "fill": "$bg-inset",
                           "cornerRadius": 14,
-                          "stroke": {
-                            "thickness": 1,
-                            "fill": "$border-light"
-                          },
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "layout": "vertical",
                           "gap": 8,
                           "padding": 14,
@@ -9251,10 +9665,9 @@
                       "height": 300,
                       "fill": "$bg-panel",
                       "cornerRadius": 18,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 14,
                       "padding": 20,
@@ -9350,10 +9763,9 @@
                       "height": 332,
                       "fill": "$bg-panel",
                       "cornerRadius": 18,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 14,
                       "padding": 20,
@@ -9493,10 +9905,9 @@
                       "height": 250,
                       "fill": "$bg-panel",
                       "cornerRadius": 18,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 14,
                       "padding": 20,
@@ -9561,10 +9972,9 @@
                       "height": 196,
                       "fill": "$bg-panel",
                       "cornerRadius": 18,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$border-light"
-                      },
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 12,
                       "padding": 20,
@@ -9629,10 +10039,9 @@
       "height": 1160,
       "fill": "$bg-primary",
       "cornerRadius": 24,
-      "stroke": {
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "children": [
         {
           "id": "dXpF3",
@@ -9643,11 +10052,12 @@
           "descendants": {
             "MGZhs": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "MGZhs/CKh57": {
               "fill": "$text-secondary"
@@ -9659,11 +10069,12 @@
             },
             "Cnx8j": {
               "fill": "$sidebar-bg",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$border-light"
-              },
-              "width": 224
+              "stroke": "$border-light",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "Cnx8j/R9bVs": {
               "fill": "$text-secondary"
@@ -9675,11 +10086,12 @@
             },
             "paNy0": {
               "fill": "$sidebar-active",
-              "stroke": {
-                "thickness": 1,
-                "fill": "$accent"
-              },
-              "width": 224
+              "stroke": "$accent",
+              "width": 224,
+              "strokeWidth": 1,
+              "strokeLinejoin": "miter",
+              "strokeLinecap": "butt",
+              "strokeAlignment": "inner"
             },
             "paNy0/R9bVs": {
               "fill": "$accent-cyan"
@@ -9746,7 +10158,7 @@
                   "name": "setSave",
                   "descendants": {
                     "swaWw": {
-                      "iconFontName": "save"
+                      "icon": "save"
                     },
                     "yG3EI": {
                       "content": "Save / 保存"
@@ -9771,10 +10183,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 10,
                   "padding": 18,
@@ -9787,10 +10198,9 @@
                       "height": 42,
                       "fill": "$sidebar-active",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "gap": 10,
                       "padding": [
                         10,
@@ -9845,10 +10255,9 @@
                   "height": "fill_container",
                   "fill": "$bg-panel",
                   "cornerRadius": 16,
-                  "stroke": {
-                    "thickness": 1,
-                    "fill": "$border-light"
-                  },
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 8,
                   "padding": 20,
@@ -9871,10 +10280,9 @@
                       "height": 288,
                       "fill": "$bg-inset",
                       "cornerRadius": 12,
-                      "stroke": {
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 8,
                       "padding": 12,
@@ -10322,5 +10730,6 @@
       "type": "number",
       "value": 4
     }
-  }
+  },
+  "fileToken": "22cb7cab-3596-4cce-adcb-0b5429679c79"
 }

@@ -2,13 +2,13 @@
 
 Last updated: 2026-10-11
 
-## 2026-10-11 GUI 交互与布局优化第一批：反馈层、二次确认、刷新保活、右栏吸顶（工作区未提交）
+## 2026-10-11 GUI 交互与布局优化第一批：反馈层、二次确认、刷新保活、右栏吸顶
 
 - 起因：用户要求从 UX/UI 角度分析页面交互与布局并直接开工。分析方法：三路源码审计加内置浏览器真实数据截图（本机桌面截图权限不可用，改用隔离目录的只读 RPC 桥接 + 第二个 Vite 实例，不改仓库文件；方法已记入本机记忆）。结论见同日对话：视觉统一但缺统一反馈层、保存后整页回 loading、流程型任务无步骤化、右栏固定宽度挤压主内容、页面按功能堆叠而非主任务优先。
 - 实施（均为非结构性改动）：新增 `ui/src/lib/ui.ts`（zustand 反馈 store：notify/confirmAction/buttonClass）与 `ui/src/components/feedback/{ToastViewport,ConfirmDialog}.tsx`，挂在 AppShell；sidecar ready 时不再占页面顶部，常驻状态移到 SideNav 底部，异常才显示横幅。总览/简历/证据/岗位四页改为首次加载才显示占位，之后重载保留内容（修复简历中心基本资料保存会卸载职业档案编辑器、丢未保存草稿的问题，复现测试 `tests/unit/gui/test_resumes_refresh_keeps_career_editor.py`）。16 类破坏性操作接入确认框；各页保存/生成/转化接成功通知；快速运行去掉永远不可达的取消按钮、执行期间诚实标注四阶段进行中并列出启动阻塞原因；证据表格列宽/固定表头/键盘可达；证据、岗位、智能运行右栏 sticky 并新增 `wide:1366px` 断点降宽；每日受控投递卡移到页头之后并按层级分组按钮、禁用原因 title；策略/设置页重新加载前确认丢弃草稿、删除凭据二次确认；总览统计卡可点击、缺口深链、趋势 key 重复警告修复。
 - 投递页（submissions/index.tsx）由并行会话负责：`text-danger` 修正与 a 标签改路由已由其提交；清除会话/重试的二次确认待本批提交后由其接入 `confirmAction`。
-- 验证：tsc、vite build 通过；tests/unit/gui 68 项通过（含新增 `test_feedback_layer_ui.py` 与简历保活测试，8 个既有 GUI 测试补了 `@/lib/ui` mock）；内置浏览器以 1440×900 读回总览、证据、智能运行、快速运行、岗位、简历、系统设置页面并打开/取消一次删除确认框。未做：Tauri WebKit 原生页面读回、`.pen` 同步（Pencil 未连接，DESIGN.md 已标注待补）。
-- 设计文档：`ui/design/DESIGN.md` 追加“2026-10-11 交互与布局优化（UX 第一批）”章节。本批改动留在工作区，未提交，等用户决定。
+- 验证：tsc、vite build 通过；tests/unit/gui 68 项通过（含新增 `test_feedback_layer_ui.py` 与简历保活测试，8 个既有 GUI 测试补了 `@/lib/ui` mock）；内置浏览器以 1440×900 读回总览、证据、智能运行、快速运行、岗位、简历、系统设置页面并打开/取消一次删除确认框。未做：Tauri WebKit 原生页面读回。`.pen` 在用户连上 Pencil 后已同步：Design System 新增 Feedback/Toast（`fQ00F`）、Feedback/ConfirmDialog（`FQxJ2`，含 Button/Danger `YBWSR`），SideNav 底部新增 sidecar 状态区并改为内容高度，Agent Run 的 `daily18` 移到页头之后，Implementation Constraints 新增约束卡 `kFfw8`；画布布局检查无裁切。
+- 设计文档：`ui/design/DESIGN.md` 追加“2026-10-11 交互与布局优化（UX 第一批）”章节。代码与测试已按用户要求提交为 02565da；`.pen`、DESIGN.md Pen ID 回写与本条更新随后单独提交。
 
 ## 2026-10-11 反馈回流首次真实同步：入口与匹配通过，状态词未进摘要已按真实结构修正
 

@@ -570,7 +570,7 @@ PiProofForge
 
 | 组件 | Pen ID | 用途 |
 |------|--------|------|
-| SideNav | `vfxIc` | 侧边导航栏，含 Logo + 9 个导航项 + 语言切换 |
+| SideNav | `vfxIc` | 侧边导航栏，含 Logo + 9 个导航项 + 底部状态区（sidecar 状态 `k1BGB` + 语言切换），高度按内容自适应 |
 | NavItem | `TISge` | 普通导航项（icon + label） |
 | NavItemActive | `tUedS` | 激活导航项（accent 高亮） |
 | StatusChip/Success | `knPKe` | 成功状态标签 (绿色) |
@@ -581,6 +581,9 @@ PiProofForge
 | ScoreBar | `4deiE` | 评分条 (维度标签 + 进度条 + 分值) |
 | Button/Primary | `xWWct` | 主按钮 (cyan 高亮, icon + label) |
 | Button/Secondary | `tBGQE` | 次按钮 (panel bg + border, icon + label) |
+| Button/Danger | `YBWSR` | 危险按钮 (error 实色)，位于 Feedback/ConfirmDialog 内，用于破坏性操作的确认 |
+| Feedback/Toast | `fQ00F` | 右下角通知；成功/信息 5 秒自动消失，错误需手动关闭，最多 4 条，相同内容去重 |
+| Feedback/ConfirmDialog | `FQxJ2` | 全局确认框；Esc 取消，默认焦点在“取消”，Tab 在两个按钮间循环 |
 
 补充约束：`SideNav` 在设计稿中允许按内容高度展示，不强制撑满 900px 页面全高；实现阶段应保证其与主内容区在视觉上对齐，不因固定高度导致底部语言切换入口不可见。
 
@@ -1191,14 +1194,14 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 
 ### 2026-10-11 交互与布局优化（UX 第一批）
 
-依据同日 UX/UI 分析落地，均为非结构性改动，9 页信息架构与导航顺序不变；`.pen` 因 Pencil 应用未连接本次未同步，待补后该批改动方可按治理规则标为完成。
+依据同日 UX/UI 分析落地，均为非结构性改动，9 页信息架构与导航顺序不变。`.pen` 已同步：Design System 新增 `Feedback Components` 行（`zkCKn`），SideNav 底部新增 sidecar 状态区（`k1BGB`）并改为内容高度，Agent Run 的 `daily18` 移到 `agHeader` 之后，Implementation Constraints 新增约束卡 `Feedback & Layout - UX Batch 1`（`kFfw8`）。
 
 **新增共享组件（代码层：`ui/src/lib/ui.ts`、`ui/src/components/feedback/`）**
 
 | 组件 | Pen ID | 用途 |
 |------|--------|------|
-| ToastViewport | 待补 | 右下角通知栈；成功/信息 5 秒自动消失，错误需手动关闭，最多 4 条，相同内容去重 |
-| ConfirmDialog | 待补 | 全局确认框；Esc 取消，默认焦点在“取消”，Tab 在两个按钮间循环；danger 变体用于破坏性操作 |
+| ToastViewport | `fQ00F`（Feedback/Toast） | 右下角通知栈；成功/信息 5 秒自动消失，错误需手动关闭，最多 4 条，相同内容去重 |
+| ConfirmDialog | `FQxJ2`（Feedback/ConfirmDialog，含 Button/Danger `YBWSR`） | 全局确认框；Esc 取消，默认焦点在“取消”，Tab 在两个按钮间循环；danger 变体用于破坏性操作 |
 
 **交互规则**
 
