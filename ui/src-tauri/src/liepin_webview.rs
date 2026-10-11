@@ -512,11 +512,18 @@ fn pick_records_link(discovery:&Value)->Option<Url>{
 }
 
 fn feedback_payload(observation:&Value)->Value{
-    // 观察信封里只取第一条 OBSERVE 的 JSON 载荷；缺失或解析失败一律视为未找到记录页。
-    let response=&observation["responses"][0];
-    let parsed=response["payload"].as_str().and_then(|raw|serde_json::from_str::<Value>(raw).ok()).unwrap_or(json!({}));
-    json!({"status":parsed["status"].as_str().unwrap_or("records_page_not_found"),"page_url":response["url"].as_str().unwrap_or(""),
-           "discovery":parsed["discovery"].clone(),"rows":parsed["rows"].clone()})
+    // 记录页按块回传多条 OBSERVE 载荷：状态与发现取第一条可解析的，行合并；全部解析失败视为未找到记录页。
+    let mut rows=Vec::new();let mut status=String::from("records_page_not_found");let mut discovery=json!({"links":[]});let mut page_url=String::new();let mut first=true;
+    for response in observation["responses"].as_array().cloned().unwrap_or_default(){
+        let parsed=match response["payload"].as_str().and_then(|raw|serde_json::from_str::<Value>(raw).ok()){Some(value)=>value,None=>continue};
+        if first{
+            first=false;page_url=response["url"].as_str().unwrap_or("").to_string();
+            status=parsed["status"].as_str().unwrap_or("records_page_not_found").to_string();
+            if parsed["discovery"].is_object(){discovery=parsed["discovery"].clone();}
+        }
+        if let Some(items)=parsed["rows"].as_array(){rows.extend(items.iter().cloned());}
+    }
+    json!({"status":status,"page_url":page_url,"discovery":discovery,"rows":rows,"hints":observation["hints"].clone()})
 }
 
 async fn navigate_and_settle(browser:&WebviewWindow,target:Url)->Result<(),String>{
@@ -697,6 +704,12 @@ mod tests {
         assert_eq!(payload["page_url"],"https://c.liepin.com/resume/apply-record");
         assert_eq!(payload["rows"][0]["job_id"],"1");
         assert_eq!(feedback_payload(&json!({"responses":[]}))["status"],"records_page_not_found");
+        let chunked=json!({"hints":["待查看"],"responses":[
+            {"method":"OBSERVE","url":"https://c.liepin.com/job/record/apply","http_status":0,"payload":"{\"status\":\"records\",\"rows\":[{\"job_id\":\"1\"}],\"discovery\":{\"links\":[]}}"},
+            {"method":"OBSERVE","url":"https://c.liepin.com/job/record/apply","http_status":0,"payload":"{\"status\":\"records\",\"rows\":[{\"job_id\":\"2\"}],\"discovery\":{\"links\":[]}}"}]});
+        let merged=feedback_payload(&chunked);
+        assert_eq!(merged["rows"].as_array().unwrap().len(),2);
+        assert_eq!(merged["hints"][0],"待查看");
     }
 
     #[test]

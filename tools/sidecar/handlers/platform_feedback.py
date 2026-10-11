@@ -28,6 +28,9 @@ _RECOMMENDED_ACTION = {"rejected": "update_job_target", "interview": "acknowledg
 _STALE_VIEWED_DAYS = 7
 _MAX_ROWS, _MAX_TEXT, _MAX_PAYLOAD = 100, 300, 65536
 _JOB_ID = re.compile(r"/job/(\d+)")
+# 时间只接受日期样式；"50-70k"、"3-5年" 这类区间不是时间。
+_TIME_RE = re.compile(r"(\d{4}-\d{1,2}-\d{1,2}(?:\s\d{1,2}:\d{2})?|\d{1,2}月\d{1,2}日(?:\s\d{1,2}:\d{2})?|(?<![\d-])\d{1,2}-\d{1,2}(?:\s\d{1,2}:\d{2})?(?![\dkK万元年/-])|\d+\s*(?:天|小时|分钟)前|今天|昨天)")
+_MAX_LINES, _MAX_STATUS_LINE = 16, 12
 
 
 def _now_iso() -> str:
@@ -46,6 +49,26 @@ def _text(value: object, limit: int = _MAX_TEXT) -> str:
 def _job_id_from_url(url: str) -> str:
     match = _JOB_ID.search(url)
     return match.group(1) if match else ""
+
+
+def _clean_time(value: object) -> str:
+    """只接受日期样式；裸的“月-日”还要满足月 1-12、日 1-31，排除“50-70”这类区间。"""
+    for match in _TIME_RE.finditer(str(value or "")):
+        token = match.group(1)
+        month_day = re.match(r"^(\d{1,2})-(\d{1,2})", token)
+        if month_day and not (1 <= int(month_day.group(1)) <= 12 and 1 <= int(month_day.group(2)) <= 31):
+            continue
+        return token
+    return ""
+
+
+def _status_line(lines: list[str]) -> str:
+    """状态徽标都是短行；按优先级在短行里找关键词，长标题行不参与，避免“面试官”之类误判。"""
+    for _status, keywords in _STATUS_RULES:
+        for line in lines:
+            if len(line) <= _MAX_STATUS_LINE and any(keyword in line for keyword in keywords):
+                return line
+    return ""
 
 
 def normalize_status(label: str) -> str:
@@ -105,14 +128,19 @@ def _validated_observation(raw: object) -> dict[str, Any]:
         if not isinstance(row, dict):
             continue
         job_url = _clean_url(row.get("job_url"))
+        lines = [_text(line, 60) for line in (row.get("lines") if isinstance(row.get("lines"), list) else [])[:_MAX_LINES] if isinstance(line, str) and _text(line, 60)]
+        status_label = _text(row.get("status_label"), 60) or _status_line(lines)
+        time_label = _clean_time(row.get("time_label")) or next((_clean_time(line) for line in lines if _clean_time(line)), "")
         rows.append({"job_url": job_url, "job_id": _text(row.get("job_id"), 40) or _job_id_from_url(job_url),
                      "company": _text(row.get("company"), 120), "position": _text(row.get("position"), 120),
-                     "status_label": _text(row.get("status_label"), 60), "time_label": _text(row.get("time_label"), 60),
-                     "excerpt": _text(row.get("excerpt"))})
+                     "status_label": status_label, "time_label": time_label, "lines": lines,
+                     "excerpt": _text(row.get("excerpt")) or " ".join(lines)[:_MAX_TEXT]})
     discovery = observation.get("discovery") if isinstance(observation.get("discovery"), dict) else {}
     links_raw = discovery.get("links") if isinstance(discovery.get("links"), list) else []
     links = [{"label": _text(link.get("label"), 60), "url": _clean_url(link.get("url"))} for link in links_raw[:20] if isinstance(link, dict)]
-    return {"status": status, "page_url": _clean_url(observation.get("page_url")), "rows": rows, "discovery_links": links}
+    hints_raw = observation.get("hints") if isinstance(observation.get("hints"), list) else []
+    page_hints = [_text(hint, 60) for hint in hints_raw[:20] if isinstance(hint, str) and _text(hint, 60)]
+    return {"status": status, "page_url": _clean_url(observation.get("page_url")), "rows": rows, "discovery_links": links, "page_hints": page_hints}
 
 
 def _match_row(row: dict[str, Any], submissions: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
@@ -137,7 +165,7 @@ def _append_feedback(item: dict[str, Any], row: dict[str, Any], basis: str, page
     record = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"schema_version": SCHEMA_VERSION, "submission_id": item["submission_id"], "history": []}
     entry = {"observed_at": observed_at, "page_url": page_url, "status_label": row["status_label"],
              "normalized_status": normalize_status(row["status_label"]), "match_basis": basis,
-             "time_label": row["time_label"], "excerpt": row["excerpt"], "job_id": row["job_id"]}
+             "time_label": row["time_label"], "excerpt": row["excerpt"], "job_id": row["job_id"], "lines": row.get("lines", [])}
     record["history"] = (record.get("history") or [])[-199:] + [entry]
     record["latest"] = entry
     atomic_write_json(path, record)
@@ -165,7 +193,7 @@ def handle_record_platform_status(params: dict[str, Any]) -> dict[str, Any]:
     sync_log = {"schema_version": SCHEMA_VERSION, "synced_at": observed_at, "status": observation["status"], "page_url": observation["page_url"],
                 "rows_total": len(observation["rows"]), "matched": len(matched), "unmatched_rows": unmatched[:20],
                 "updated_submissions": [m["submission_id"] for m in matched], "discovery_links": observation["discovery_links"],
-                "submissions_total": len(submissions), "read_only": True}
+                "submissions_total": len(submissions), "page_hints": observation["page_hints"], "read_only": True}
     atomic_write_json(_submission._SUBMISSIONS_DIR / "liepin" / "platform_feedback_sync.json", sync_log)
     return {"meta": {"correlation_id": params["meta"]["correlation_id"]}, "status": observation["status"], "page_url": observation["page_url"],
             "matched": matched, "unmatched_rows": len(unmatched), "submissions_total": len(submissions), "synced_at": observed_at}

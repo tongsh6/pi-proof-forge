@@ -90,3 +90,25 @@ def test_overview_funnel_counts_latest_status(managed):
     pf.handle_record_platform_status(meta(observation=observation([{'job_id':'19123','company':'合成公司','position':'合成岗位','status_label':'已查看'}])))
     funnel=pf.feedback_funnel();assert funnel['viewed']==1 and funnel['unsynced']==0
     assert handle_overview_get(meta())['metrics']['feedback_funnel']['viewed']==1
+
+
+def test_lines_derive_status_time_and_page_hints(managed):
+    # 真实页面的状态词在卡片行里而不在摘要里；时间与状态都从行文本推导，页面标签词进入同步日志。
+    log,_,_=managed
+    obs=observation([{'job_url':'https://www.liepin.com/job/19123.shtml','position':'合成岗位','lines':['合成岗位 【上海】 35-65k·18薪 3-5年 硕士','合成公司','已查看','10-09 09:00']}])
+    obs['hints']=['全部(17)','待查看','已查看','不合适']
+    result=pf.handle_record_platform_status(meta(observation=obs))
+    assert result['matched'][0]['normalized_status']=='viewed' and result['matched'][0]['status_label']=='已查看'
+    saved=json.loads((log.parent/'platform_feedback.json').read_text(encoding='utf-8'))
+    assert saved['latest']['time_label']=='10-09 09:00' and saved['latest']['lines'][1]=='合成公司'
+    sync=json.loads((log.parent.parent/'platform_feedback_sync.json').read_text(encoding='utf-8'))
+    assert sync['page_hints']==['全部(17)','待查看','已查看','不合适']
+
+
+def test_salary_ranges_are_not_times_and_short_status_lines_win_by_priority(managed):
+    log,_,_=managed
+    obs=observation([{'job_id':'19123','lines':['模拟IC设计工程师 【北京-海淀区】 50-70k·15薪 3-5年 硕士','北京熵旋','已查看','不合适'],'time_label':'50-70'}])
+    result=pf.handle_record_platform_status(meta(observation=obs))
+    assert result['matched'][0]['normalized_status']=='rejected'
+    saved=json.loads((log.parent/'platform_feedback.json').read_text(encoding='utf-8'))
+    assert saved['latest']['time_label']=='' and saved['latest']['status_label']=='不合适'
