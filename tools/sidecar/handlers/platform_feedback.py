@@ -30,7 +30,7 @@ _MAX_ROWS, _MAX_TEXT, _MAX_PAYLOAD = 100, 300, 65536
 _JOB_ID = re.compile(r"/job/(\d+)")
 # 时间只接受日期样式；"50-70k"、"3-5年" 这类区间不是时间。
 _TIME_RE = re.compile(r"(\d{4}-\d{1,2}-\d{1,2}(?:\s\d{1,2}:\d{2})?|\d{1,2}月\d{1,2}日(?:\s\d{1,2}:\d{2})?|(?<![\d-])\d{1,2}-\d{1,2}(?:\s\d{1,2}:\d{2})?(?![\dkK万元年/-])|\d+\s*(?:天|小时|分钟)前|今天|昨天)")
-_MAX_LINES, _MAX_STATUS_LINE = 16, 12
+_MAX_LINES, _MAX_STATUS_LINE = 24, 20
 
 
 def _now_iso() -> str:

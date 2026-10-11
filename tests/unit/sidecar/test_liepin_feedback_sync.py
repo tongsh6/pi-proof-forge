@@ -112,3 +112,13 @@ def test_salary_ranges_are_not_times_and_short_status_lines_win_by_priority(mana
     assert result['matched'][0]['normalized_status']=='rejected'
     saved=json.loads((log.parent/'platform_feedback.json').read_text(encoding='utf-8'))
     assert saved['latest']['time_label']=='' and saved['latest']['status_label']=='不合适'
+
+
+def test_status_and_time_in_one_row_line_are_both_recognized(managed):
+    # 真实记录页的状态与投递时间可能同在行容器的一行里；长标题行仍不参与状态判断。
+    log,_,_=managed
+    obs=observation([{'job_id':'19123','lines':['模拟IC设计工程师（ADC方向）面试经验要求高','【','上海-浦东新区','】','30-50k·18薪','5-10年','硕士','南京美辰微电子有限公司','已投递 2026-10-09']}])
+    result=pf.handle_record_platform_status(meta(observation=obs))
+    assert result['matched'][0]['normalized_status']=='delivered' and result['matched'][0]['status_label']=='已投递 2026-10-09'
+    saved=json.loads((log.parent/'platform_feedback.json').read_text(encoding='utf-8'))
+    assert saved['latest']['time_label']=='2026-10-09'
