@@ -67,7 +67,7 @@ export function DailyDeliveryPanel(){
       <button type="button" data-testid="daily-run" className={primaryAction==='run'?buttonClass.primary:secondary} disabled={busy||a?.state!=='active'||!!running||recoveryBlocked} title={runReason||undefined} onClick={()=>void act(()=>runDailyDelivery(true),{confirmKey:'run',successKey:'triggered'})}>{t('daily.run')}</button>
       <details className="relative">
       <summary className={`${buttonClass.ghost} cursor-pointer list-none`}>{t('common.moreActions')}</summary>
-      <div className="absolute left-0 z-10 mt-1 flex flex-wrap gap-2 rounded-card border border-border bg-bg-panel p-2 shadow-[var(--shadow-card)]">
+      <div className="absolute left-0 z-10 mt-1 flex w-max max-w-[80vw] flex-wrap gap-2 whitespace-nowrap rounded-card border border-border bg-bg-panel p-2 shadow-[var(--shadow-card)]">
       <button type="button" data-testid="daily-pause" className={secondary} disabled={busy||!a||a.state!=='active'} title={!a||a.state!=='active'?reason('notPausable'):undefined} onClick={()=>void act(()=>changeDailyAuthorization(a!.id,'paused'),{successKey:'paused'})}>{t('daily.pause')}</button>
       <button type="button" data-testid="daily-revoke" className={buttonClass.danger} disabled={busy||!a||a.state==='revoked'} title={!a||a.state==='revoked'?reason('alreadyRevoked'):undefined} onClick={()=>void act(()=>changeDailyAuthorization(a!.id,'revoked'),{confirmKey:'revoke',successKey:'revoked'})}>{t('daily.revoke')}</button>
       {running&&<button type="button" data-testid="daily-close-interrupted" className={buttonClass.danger} disabled={busy} onClick={()=>void act(()=>closeInterruptedDaily(running.id),{confirmKey:'closeInterrupted',successKey:'closed'})}>{t('daily.closeInterrupted')}</button>}
