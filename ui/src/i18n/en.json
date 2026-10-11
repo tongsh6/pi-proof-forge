@@ -739,7 +739,8 @@
         "attempted": "attempted",
         "skipped": "skipped",
         "json": "JSON",
-        "steps": "Steps"
+        "steps": "Steps",
+        "collapsedHint": "Rehearsal tool, collapsed by default"
       },
       "feedback": {
         "title": "Feedback Iteration",
@@ -835,7 +836,18 @@
         "invalidLinkedRun": "Invalid generation link. Return from Quick Run with a valid result.",
         "dailyCandidates": "View daily candidates",
         "recoveryOnly": "This batch has stopped. This run is only for verifying saved attachments and receipts. Other unstarted candidates are retained for a later list after unresolved items are handled.",
-        "receiptNotAvailable": "No saved business receipt confirms the result yet. This check did not send again."
+        "receiptNotAvailable": "No saved business receipt confirms the result yet. This check did not send again.",
+        "stepsTitle": "PDF delivery steps",
+        "steps": {
+          "prepare": "Pin PDF",
+          "review": "Preview & approve",
+          "upload": "Upload attachment",
+          "verify": "Verify attachment",
+          "target": "Verify job & start chat",
+          "resume": "Check chat & prepare resume",
+          "send": "Confirm send",
+          "receipt": "Verify receipt"
+        }
       },
       "platformFeedback": {
         "sync": "Sync delivery feedback (read-only)",
@@ -882,7 +894,8 @@
         "website_history": "Historical external observation",
         "resumeHash": "Resume fingerprint",
         "receiptHash": "Receipt fingerprint"
-      }
+      },
+      "technicalDetails": "Technical details (paths and hashes)"
     },
     "policy": {
       "title": "Policy",

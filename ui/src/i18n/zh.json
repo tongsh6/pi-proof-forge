@@ -739,7 +739,8 @@
         "attempted": "已尝试",
         "skipped": "已跳过",
         "json": "JSON",
-        "steps": "步骤"
+        "steps": "步骤",
+        "collapsedHint": "演练工具，默认收起"
       },
       "feedback": {
         "title": "反馈迭代",
@@ -835,7 +836,18 @@
         "invalidLinkedRun": "生成结果链接无效，请从快速运行页面重新进入。",
         "dailyCandidates": "查看每日候选清单",
         "recoveryOnly": "本批次已停止，此运行仅供核验已保存附件与回执，不继续发送。未开始的其他候选仍保留，待未决项处理后按后续清单安排。",
-        "receiptNotAvailable": "尚未保存可确认的业务回执，结果仍未确认；本次核验没有重新发送。"
+        "receiptNotAvailable": "尚未保存可确认的业务回执，结果仍未确认；本次核验没有重新发送。",
+        "stepsTitle": "PDF 投递步骤",
+        "steps": {
+          "prepare": "固定 PDF",
+          "review": "预览并批准",
+          "upload": "上传附件",
+          "verify": "核验附件",
+          "target": "核验岗位并沟通",
+          "resume": "检查沟通并准备简历",
+          "send": "确认发送",
+          "receipt": "核验回执"
+        }
       },
       "platformFeedback": {
         "sync": "同步投递反馈（只读）",
@@ -882,7 +894,8 @@
         "website_history": "历史外部观察",
         "resumeHash": "简历指纹",
         "receiptHash": "回执指纹"
-      }
+      },
+      "technicalDetails": "技术详情（路径与指纹）"
     },
     "policy": {
       "title": "策略配置",

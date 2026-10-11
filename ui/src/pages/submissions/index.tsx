@@ -17,6 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
+import { buttonClass, confirmAction, notify } from "@/lib/ui";
 import {
   checkChannelSession,
   clearChannelSession,
@@ -52,6 +53,34 @@ type LoadState = "loading" | "ready" | "error";
 type RetryStrategy = "same_channel" | "fallback_email";
 
 const defaultSubmissionChannel = "liepin";
+
+/** PDF 投递步骤条：按阶段推导当前步骤；各按钮的启用逻辑不变，只决定哪一步显示为主按钮。 */
+const PDF_STEPS = ["prepare", "review", "upload", "verify", "target", "resume", "send", "receipt"] as const;
+function currentPdfStep(pdf: NativePdfPreparation | null, previewed: boolean, consented: boolean): number {
+  if (!pdf) return 0;
+  switch (pdf.phase as string) {
+    case "prepared":
+    case "not_submitted":
+      return previewed && consented ? 2 : 1;
+    case "in_flight":
+    case "uploaded_unverified":
+    case "unknown":
+      return 3;
+    case "attachment_verified":
+      return 4;
+    case "communication_started":
+      return 5;
+    case "resume_interaction_pending":
+    case "delivery_in_flight":
+      return 6;
+    case "final_send_pending":
+      return 7;
+    case "success":
+      return PDF_STEPS.length;
+    default:
+      return 0;
+  }
+}
 const checkModeConfirmationItems = [
   "check_mode_no_real_submit",
   "selected_submission_channel",
@@ -237,8 +266,13 @@ export function SubmissionsPage() {
     setSelectedScreenshotPath(firstScreenshot?.screenshot_path ?? null);
   }, [screenshotSteps]);
 
+  const hasLoadedRef = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 首次加载显示占位；之后的重载保留各区块与详情，不整页回到 loading。
   const loadData = useCallback(async () => {
-    setLoadState("loading");
+    if (hasLoadedRef.current) setRefreshing(true);
+    else setLoadState("loading");
     setError(null);
     try {
       const result = await listSubmissions();
@@ -247,13 +281,17 @@ export function SubmissionsPage() {
         setSelectedId(null);
         setDetail(null);
       }
+      hasLoadedRef.current = true;
       setLoadState("ready");
     } catch (nextError) {
       const message = getErrorMessage(nextError);
       setError(message);
-      setLoadState("error");
+      if (hasLoadedRef.current) notify("error", t("common.refreshFailed"), message);
+      else setLoadState("error");
+    } finally {
+      setRefreshing(false);
     }
-  }, [selectedId]);
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     void loadData();
@@ -360,12 +398,20 @@ export function SubmissionsPage() {
   }, [selectedChannel, loadChannelSession]);
 
   const handleClearSession = useCallback(async () => {
+    const confirmed = await confirmAction({
+      title: t("confirmations.submissions.clearSession.title"),
+      description: t("confirmations.submissions.clearSession.description"),
+      confirmLabel: t("confirmations.submissions.clearSession.confirm"),
+      tone: "danger",
+    });
+    if (!confirmed) return;
     setSessionAction("clear");
     setError(null);
     try {
       const result = await clearChannelSession(selectedChannel);
       setChannelSession(result);
       setSessionState("ready");
+      notify("success", t("toasts.submissions.sessionCleared"));
     } catch (nextError) {
       setError(getErrorMessage(nextError));
       setSessionState("error");
@@ -435,6 +481,7 @@ export function SubmissionsPage() {
       const list = await listSubmissionFeedback(feedbackRunId);
       if (selectionRef.current && selectionRef.current !== feedbackRunId) return result;
       setFeedbackIteration(result); setFeedbackList(list); setFeedbackNotes(""); setFeedbackState("ready");
+      notify("success", t("toasts.submissions.feedbackSaved"));
       return result;
     } catch (nextError) {
       setError(getErrorMessage(nextError)); setFeedbackState("error"); return null;
@@ -442,10 +489,19 @@ export function SubmissionsPage() {
   }, [feedbackRunId, feedbackList, managedFeedback, feedbackAction, feedbackSource, feedbackNotes]);
 
   const handleRetry = useCallback(async (submissionId: string, strategy: RetryStrategy = "same_channel") => {
+    const confirmKey = strategy === "fallback_email" ? "retryFallback" : "retrySame";
+    const confirmed = await confirmAction({
+      title: t(`confirmations.submissions.${confirmKey}.title`),
+      description: t(`confirmations.submissions.${confirmKey}.description`),
+      confirmLabel: t(`confirmations.submissions.${confirmKey}.confirm`),
+      tone: "danger",
+    });
+    if (!confirmed) return;
     setRetryingId(submissionId);
     try {
       await retrySubmission(submissionId, strategy);
       await loadData();
+      notify("success", t("toasts.submissions.retryQueued"));
       if (selectedId === submissionId) {
         const result = await getSubmissionDetail(submissionId);
         setDetail(result.submission);
@@ -474,6 +530,9 @@ export function SubmissionsPage() {
     }
   }, []);
 
+  const pdfStep = currentPdfStep(nativePdf, previewedPdf === nativePdf?.run_id, acceptPdfEffects);
+  const stepClass = (step: number) => (pdfStep === step ? buttonClass.primary : buttonClass.secondary);
+
   return (
     <div className="space-y-6">
       <header className="flex items-end justify-between gap-4">
@@ -481,9 +540,9 @@ export function SubmissionsPage() {
           <h1 className="text-2xl font-semibold text-text-primary">{t("pages.submissions.title")}</h1>
           <p className="mt-2 text-sm text-text-secondary">{t("pages.submissions.subtitle")}</p>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={retryingId !== null} onClick={() => void loadData()} type="button">
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          {t("pages.submissions.refresh")}
+        <button className={buttonClass.secondary} disabled={retryingId !== null || refreshing} onClick={() => void loadData()} type="button">
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
+          {refreshing ? t("common.refreshing") : t("pages.submissions.refresh")}
         </button>
       </header>
 
@@ -538,43 +597,68 @@ export function SubmissionsPage() {
               {nativeAttachmentView.hints.map((hint, i) => <p key={`hint-${i}`}>{hint}</p>)}
             </div>}
             <div className="mt-4 border-t border-border pt-4 text-sm">
+              <ol className="mb-4 flex flex-wrap items-center gap-2" aria-label={t("pages.submissions.nativePdf.stepsTitle")} data-testid="native-pdf-steps">
+                {PDF_STEPS.map((step, index) => {
+                  const state = index < pdfStep ? "done" : index === pdfStep ? "current" : "pending";
+                  return (
+                    <li
+                      key={step}
+                      aria-current={state === "current" ? "step" : undefined}
+                      className={`inline-flex items-center gap-1.5 rounded-chip border px-2.5 py-1 text-xs ${
+                        state === "done"
+                          ? "border-success/40 bg-success/10 text-success"
+                          : state === "current"
+                            ? "border-accent bg-accent/10 font-medium text-accent"
+                            : "border-border text-text-muted"
+                      }`}
+                    >
+                      <span className="font-mono">{String(index + 1).padStart(2, "0")}</span>
+                      {t(`pages.submissions.nativePdf.steps.${step}`)}
+                    </li>
+                  );
+                })}
+              </ol>
               <label className="block text-text-secondary">{t("pages.submissions.nativePdf.quickRun")}
                 <input aria-label={t("pages.submissions.nativePdf.quickRun")} value={pdfQuickRunId} disabled={nativeSessionBusy}
                   onChange={event=>{setPdfQuickRunId(event.target.value);setNativePdf(null);setAcceptPdfEffects(false);setNativePdfPreview("");setPreviewedPdf("");}}
                   className="ml-3 rounded-card border border-border bg-bg-primary px-3 py-2 text-text-primary" />
               </label>
               <button type="button" disabled={nativeSessionBusy || !pdfQuickRunId.trim()} onClick={()=>void handleNativePdf("prepare")}
-                className="mt-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.prepare")}</button>
+                className={`mt-2 ${stepClass(0)}`}>{t("pages.submissions.nativePdf.prepare")}</button>
               {nativePdf && <div className="mt-3 space-y-2">
                 <p>{nativePdf.company} · {nativePdf.position} · {nativePdf.matching_score ?? "--"}/100</p>
                 {nativePdf.pdf_filename&&<p className="break-all">PDF: {nativePdf.pdf_filename}</p>}
                 <p className="break-all">PDF SHA256: {nativePdf.pdf_sha256}</p>
                 <p role="status">{t(`pages.submissions.nativePdf.phase.${nativePdf.phase}`, {defaultValue:nativePdf.phase})}</p>
                 {nativePdf.recovery_only&&<p role="status" className="text-warning">{t('pages.submissions.nativePdf.recoveryOnly')}</p>}
-                {nativePdf.phase === "prepared" && <button type="button" disabled={nativeSessionBusy} className="mr-2 rounded-card border border-border px-3 py-2"
-                  onClick={() => navigate("/agent-run")}>{t("pages.submissions.nativePdf.dailyCandidates")}</button>}
-                <button type="button" disabled={nativeSessionBusy} onClick={()=>void handleNativePdf('preview')} className="rounded-card border border-border px-3 py-2">{t('pages.submissions.nativePdf.preview')}</button>
+                <div className="flex flex-wrap gap-2">
+                  {nativePdf.phase === "prepared" && <button type="button" disabled={nativeSessionBusy} className={buttonClass.secondary}
+                    onClick={() => navigate("/agent-run")}>{t("pages.submissions.nativePdf.dailyCandidates")}</button>}
+                  <button type="button" disabled={nativeSessionBusy} onClick={()=>void handleNativePdf('preview')} className={stepClass(1)}>{t('pages.submissions.nativePdf.preview')}</button>
+                </div>
                 {nativePdfPreview&&<iframe title={t('pages.submissions.nativePdf.preview')} src={nativePdfPreview} className="h-[650px] w-full rounded-card border border-border bg-white"/>}
                 <label className="flex items-start gap-2 text-text-secondary">
                   <input type="checkbox" aria-label={t("pages.submissions.nativePdf.consent")} checked={acceptPdfEffects} disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !["prepared","not_submitted"].includes(nativePdf.phase)}
                     onChange={event=>setAcceptPdfEffects(event.target.checked)} />{t("pages.submissions.nativePdf.consent")}
                 </label>
+                <div className="flex flex-wrap gap-2">
                 <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
-                  onClick={()=>void handleNativePdf("upload")} className="rounded-card bg-accent px-3 py-2 text-white disabled:opacity-50">{t("pages.submissions.nativePdf.upload")}</button>
+                  onClick={()=>void handleNativePdf("upload")} className={stepClass(2)}>{t("pages.submissions.nativePdf.upload")}</button>
                 <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending"].includes(nativePdf.phase)}
-                  onClick={()=>void handleNativePdf("inspect")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.inspect")}</button>
+                  onClick={()=>void handleNativePdf("inspect")} className={stepClass(3)}>{t("pages.submissions.nativePdf.inspect")}</button>
                 <button type="button" disabled={nativeSessionBusy || nativePdf.phase !== "attachment_verified"}
-                  onClick={()=>void handleNativePdf("target")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.target")}</button>
+                  onClick={()=>void handleNativePdf("target")} className={stepClass(4)}>{t("pages.submissions.nativePdf.target")}</button>
                 <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || nativePdf.phase !== "attachment_verified"}
-                  onClick={()=>void handleNativePdf("communicate")} className="ml-2 rounded-card bg-accent px-3 py-2 text-white disabled:opacity-50">{t("pages.submissions.nativePdf.communicate")}</button>
+                  onClick={()=>void handleNativePdf("communicate")} className={stepClass(4)}>{t("pages.submissions.nativePdf.communicate")}</button>
                 <button type="button" disabled={nativeSessionBusy || !["communication_started","resume_interaction_pending","final_send_pending"].includes(nativePdf.phase)}
-                  onClick={()=>void handleNativePdf("inspectChat")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.inspectChat")}</button>
+                  onClick={()=>void handleNativePdf("inspectChat")} className={stepClass(5)}>{t("pages.submissions.nativePdf.inspectChat")}</button>
                 <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || nativePdf.phase !== "communication_started"}
-                  onClick={()=>void handleNativePdf("prepareResume")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.prepareResume")}</button>
+                  onClick={()=>void handleNativePdf("prepareResume")} className={stepClass(5)}>{t("pages.submissions.nativePdf.prepareResume")}</button>
                 <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || !nativePdf.can_confirm_send}
-                  onClick={()=>void handleNativePdf("send")} className="ml-2 rounded-card bg-accent px-3 py-2 text-white disabled:opacity-50">{t("pages.submissions.nativePdf.send")}</button>
+                  onClick={()=>void handleNativePdf("send")} className={stepClass(6)}>{t("pages.submissions.nativePdf.send")}</button>
                 <button type="button" disabled={nativeSessionBusy || !["final_send_pending","success"].includes(nativePdf.phase)}
-                  onClick={()=>void handleNativePdf("receipt")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.receipt")}</button>
+                  onClick={()=>void handleNativePdf("receipt")} className={stepClass(7)}>{t("pages.submissions.nativePdf.receipt")}</button>
+                </div>
                 {nativePdf.phase === "success" && nativePdf.platform_filename && <div className="mt-3 border-t border-border pt-3">
                   <p className="break-all">{t("pages.submissions.nativePdf.platformFile")}: {nativePdf.platform_filename}</p>
                   <p className="text-xs text-text-secondary">{t("pages.submissions.nativePdf.removeBoundary")}</p>
@@ -583,9 +667,9 @@ export function SubmissionsPage() {
                     checked={acceptAttachmentRemoval} disabled={nativeSessionBusy || nativePdf.platform_attachment_state === "missing_on_platform" || ["in_flight","unknown","removed"].includes(nativePdf.attachment_removal_state || "")}
                     onChange={event=>setAcceptAttachmentRemoval(event.target.checked)} />{t("pages.submissions.nativePdf.removeConsent")}</label>
                   <button type="button" disabled={nativeSessionBusy || !acceptAttachmentRemoval || nativePdf.platform_attachment_state === "missing_on_platform" || ["in_flight","unknown","removed"].includes(nativePdf.attachment_removal_state || "")}
-                    onClick={()=>void handleNativePdf("remove")} className="mt-2 rounded-card border border-error px-3 py-2 text-error disabled:opacity-50">{t("pages.submissions.nativePdf.remove")}</button>
+                    onClick={()=>void handleNativePdf("remove")} className={`mt-2 ${buttonClass.danger}`}>{t("pages.submissions.nativePdf.remove")}</button>
                   {nativePdf.attachment_removal_state === "unknown" && <button type="button" disabled={nativeSessionBusy}
-                    onClick={()=>void handleNativePdf("recheckRemoval")} className="ml-2 rounded-card border border-border px-3 py-2 disabled:opacity-50">{t("pages.submissions.nativePdf.recheckRemoval")}</button>}
+                    onClick={()=>void handleNativePdf("recheckRemoval")} className={`ml-2 ${buttonClass.secondary}`}>{t("pages.submissions.nativePdf.recheckRemoval")}</button>}
                   {nativePdf.attachment_removal_state && <p role="status">{t(`pages.submissions.nativePdf.removal.${nativePdf.attachment_removal_state}`)}</p>}
                 </div>}
 
@@ -594,180 +678,7 @@ export function SubmissionsPage() {
             </div>
           </section>
 
-          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.session.title")}</h2>
-                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.session.manualBoundary")}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select className="h-9 rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} aria-label={t("pages.submissions.session.channel")}>
-                  {(channelSession?.supported_channels ?? [{ channel: defaultSubmissionChannel, label: "Liepin", login_url: "" }]).map((channel) => (
-                    <option key={channel.channel} value={channel.channel}>{channel.label}</option>
-                  ))}
-                </select>
-                <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null} onClick={() => void handleStartSession()} type="button">
-                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                  {sessionAction === "start" ? t("pages.submissions.session.starting") : t("pages.submissions.session.start")}
-                </button>
-                <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null} onClick={() => void handleCheckSession()} type="button">
-                  <RefreshCw className={`h-4 w-4 ${sessionAction === "check" ? "animate-spin" : ""}`} aria-hidden="true" />
-                  {t("pages.submissions.session.check")}
-                </button>
-                <button className="grid h-9 w-9 place-items-center rounded-card border border-border text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null || !channelSession?.session.clear_available} onClick={() => void handleClearSession()} title={t("pages.submissions.session.clear")} type="button" aria-label={t("pages.submissions.session.clear")}>
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.session.statusLabel")}</p>
-                <p className={`mt-1 inline-flex rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(channelSession?.session.login_status ?? "unknown")}`}>
-                  {t(`pages.submissions.session.status.${channelSession?.session.login_status ?? "unknown"}`, { defaultValue: channelSession?.session.login_status ?? "unknown" })}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.session.checkedAt")}</p>
-                <p className="mt-1 truncate text-text-primary">{formatDate(channelSession?.session.checked_at ?? "", i18n.language)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.session.identity")}</p>
-                <p className="mt-1 truncate text-text-primary">{channelSession?.session.account_identity.display_name_or_nickname || channelSession?.session.account_identity.masked_phone_or_email_suffix || t("pages.submissions.session.identityUnknown")}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.session.storage")}</p>
-                <p className="mt-1 truncate text-text-primary">{channelSession?.session.expires_or_unknown ?? "--"}</p>
-              </div>
-            </div>
-            <div className="mt-3 grid gap-2 text-xs text-text-secondary md:grid-cols-2">
-              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.session.path")}</span> {channelSession?.session.session_path || "--"}</p>
-              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.session.log")}</span> {channelSession?.artifact_paths.session_check_log || "--"}</p>
-            </div>
-            {sessionState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
-          </section>
-
-          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.checkMode.title")}</h2>
-                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.checkMode.boundary")}</p>
-              </div>
-              <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={checkModeState === "loading" || channelSession?.session.login_status !== "session_valid" || !checkModeForm.jobLeadId.trim() || !checkModeForm.resumeVersionId.trim() || !checkModeForm.resumePdfPath.trim()} onClick={() => void handleStartCheckMode()} type="button">
-                <Send className="h-4 w-4" aria-hidden="true" />
-                {checkModeState === "loading" ? t("pages.submissions.checkMode.running") : t("pages.submissions.checkMode.start")}
-              </button>
-            </div>
-            <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
-              <label className="space-y-1">
-                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.jobLead")}</span>
-                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.jobLeadId} onChange={(event) => setCheckModeForm((current) => ({ ...current, jobLeadId: event.target.value }))} placeholder={t("pages.submissions.checkMode.jobLeadPlaceholder")} />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.resumeVersion")}</span>
-                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.resumeVersionId} onChange={(event) => setCheckModeForm((current) => ({ ...current, resumeVersionId: event.target.value }))} placeholder={t("pages.submissions.checkMode.resumeVersionPlaceholder")} />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.resume")}</span>
-                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.resumePdfPath} onChange={(event) => setCheckModeForm((current) => ({ ...current, resumePdfPath: event.target.value }))} placeholder={t("pages.submissions.checkMode.resumePathPlaceholder")} />
-              </label>
-            </div>
-            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.status")}</p>
-                <p className={`mt-1 inline-flex rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(checkModeResult?.terminal_status ?? "unknown")}`}>
-                  {checkModeResult?.terminal_status ?? "--"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.jobLead")}</p>
-                <p className="mt-1 truncate text-text-primary">{String((checkModeResult?.original_job_lead.job_lead_id ?? checkModeForm.jobLeadId) || "--")}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.resume")}</p>
-                <p className="mt-1 truncate text-text-primary">{(checkModeResult?.resume_version_id ?? checkModeForm.resumeVersionId) || "--"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.submit")}</p>
-                <p className="mt-1 text-text-primary">{checkModeResult?.final_submit_attempted ? t("pages.submissions.checkMode.attempted") : t("pages.submissions.checkMode.skipped")}</p>
-              </div>
-            </div>
-            <div className="mt-3 grid gap-2 text-xs text-text-secondary md:grid-cols-2">
-              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.checkMode.json")}</span> {checkModeResult?.log_json_path || "--"}</p>
-              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.checkMode.steps")}</span> {checkModeResult?.steps.map((step) => step.name).join(" -> ") || "--"}</p>
-            </div>
-            {checkModeState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
-          </section>
-
-          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.feedback.title")}</h2>
-                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.feedback.boundary")}</p>
-              </div>
-              <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={feedbackState === "loading" || !feedbackRunId || !feedbackList || (managedFeedback && !feedbackNotes.trim())} onClick={() => void handleCreateFeedbackIteration()} type="button">
-                <RotateCcw className={`h-4 w-4 ${feedbackState === "loading" ? "animate-spin" : ""}`} aria-hidden="true" />
-                {feedbackState === "loading" ? t("pages.submissions.feedback.recording") : t("pages.submissions.feedback.create")}
-              </button>
-            </div>
-            <label className="mt-4 block text-sm text-text-secondary">
-              {t("pages.submissions.feedback.submission")}
-              <select aria-label={t("pages.submissions.feedback.submission")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2 text-text-primary"
-                value={selectedId || ""} disabled={feedbackState === "loading"} onChange={event => { if (event.target.value) void handleSelect(event.target.value); }}>
-                <option value="">{t("pages.submissions.feedback.chooseSubmission")}</option>
-                {items.map(item => <option key={item.submission_id} value={item.submission_id}>{item.company || item.submission_id} · {item.position} · {item.submission_id}</option>)}
-              </select>
-            </label>
-            {managedFeedback && <div className="mt-3 space-y-3 text-sm">
-              <p className="break-all text-text-secondary">{t("pages.submissions.checkMode.resumeVersion")}: {feedbackList?.source_binding?.resume_version_id || "--"}</p>
-              <div className="grid gap-3 md:grid-cols-2">
-                <label>{t("pages.submissions.feedback.source")}<select aria-label={t("pages.submissions.feedback.source")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2"
-                  value={feedbackSource} onChange={event => setFeedbackSource(event.target.value as "user_note" | "manual_recruiter")}>
-                  <option value="user_note">{t("pages.submissions.feedback.sources.user_note")}</option><option value="manual_recruiter">{t("pages.submissions.feedback.sources.manual_recruiter")}</option>
-                </select></label>
-                <label>{t("pages.submissions.feedback.action")}<select aria-label={t("pages.submissions.feedback.action")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2"
-                  value={feedbackAction} onChange={event => setFeedbackAction(event.target.value)}>
-                  {(feedbackList?.supported_actions || []).map(action => <option key={action} value={action}>{t(`pages.submissions.feedback.actions.${action}`)}</option>)}
-                </select></label>
-              </div>
-              <label className="block">{t("pages.submissions.feedback.notes")}<textarea aria-label={t("pages.submissions.feedback.notes")} maxLength={4000}
-                className="mt-1 min-h-24 w-full rounded-card border border-border bg-bg-primary p-2" value={feedbackNotes} onChange={event => setFeedbackNotes(event.target.value)} /></label>
-              <p className="text-xs text-text-muted">{t("pages.submissions.feedback.planOnly")}</p>
-            </div>}
-            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.items")}</p>
-                <p className="mt-1 text-text-primary">{feedbackList?.items.length ?? 0}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.action")}</p>
-                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.selected_actions.join(", ") || "--"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.version")}</p>
-                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.new_resume_version_id_or_none || "--"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.next")}</p>
-                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.next_recommended_step || "--"}</p>
-              </div>
-            </div>
-            <div className="mt-3 grid gap-2 text-xs text-text-secondary md:grid-cols-2">
-              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.feedback.record")}</span> {feedbackIteration?.record_path || "--"}</p>
-              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.feedback.snapshot")}</span> {feedbackIteration?.iteration.source_snapshot_path || "--"}</p>
-            </div>
-            {(feedbackList?.iterations || []).map(record => <article key={record.iteration_id} className="mt-3 rounded-card border border-border p-3 text-sm">
-              <p className="text-xs text-text-muted">{formatDate(record.created_at, i18n.language)} · {t(`pages.submissions.feedback.sources.${record.feedback_source || "user_note"}`)}</p>
-              <p className="mt-2 whitespace-pre-wrap break-words">{record.user_notes}</p>
-              <p className="mt-2 text-text-secondary">{record.selected_actions.map(action => t(`pages.submissions.feedback.actions.${action}`, {defaultValue:action})).join(" · ")}</p>
-              {record.next_quick_run_candidate?.job_profile_id && <p className="mt-2 text-xs text-text-secondary">{t("pages.submissions.feedback.targetProfile")}: {record.next_quick_run_candidate.job_profile_id}</p>}
-              {record.next_recommended_step === "quick_run" && <button type="button" onClick={() => navigate("/quick-run")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openQuickRun")}</button>}
-              {record.next_recommended_step === "evidence" && <button type="button" onClick={() => navigate("/evidence")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openEvidence")}</button>}
-              {record.next_recommended_step === "jobs" && <button type="button" onClick={() => navigate("/jobs")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openJobs")}</button>}
-            </article>)}
-            {feedbackState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
-          </section>
-
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(390px,0.64fr)]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_440px]">
           <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.runsTitle")}</h2>
@@ -825,7 +736,7 @@ export function SubmissionsPage() {
             </div>
           </section>
 
-          <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
+          <section className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)] xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto">
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.detailTitle")}</h2>
             </div>
@@ -880,10 +791,15 @@ export function SubmissionsPage() {
                   </>}
 
                   {detail.parent_run_id ? <button type="button" className="text-accent underline" onClick={() => navigate(`/agent-run?run_id=${encodeURIComponent(detail.parent_run_id ?? "")}`)}>{t("pages.submissions.openApproval")}</button> : null}
-                  <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.resume")}</span> {detail.resume_path || "--"}</p>
-                  <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.profile")}</span> {detail.profile_path || "--"}</p>
-                  <p className="break-all"><span className="text-text-muted">JSON</span> {detail.log_json_path || "--"}</p>
-                  <p className="break-all"><span className="text-text-muted">YAML</span> {detail.log_yaml_path || "--"}</p>
+                  <details>
+                    <summary className="cursor-pointer select-none text-text-muted">{t("pages.submissions.technicalDetails")}</summary>
+                    <div className="mt-2 grid gap-2">
+                      <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.resume")}</span> {detail.resume_path || "--"}</p>
+                      <p className="break-all"><span className="text-text-muted">{t("pages.submissions.fields.profile")}</span> {detail.profile_path || "--"}</p>
+                      <p className="break-all"><span className="text-text-muted">JSON</span> {detail.log_json_path || "--"}</p>
+                      <p className="break-all"><span className="text-text-muted">YAML</span> {detail.log_yaml_path || "--"}</p>
+                    </div>
+                  </details>
                 </div>
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold text-text-primary">{t("pages.submissions.timeline")}</h3>
@@ -964,6 +880,190 @@ export function SubmissionsPage() {
             ) : null}
           </section>
           </div>
+
+          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.feedback.title")}</h2>
+                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.feedback.boundary")}</p>
+              </div>
+              <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={feedbackState === "loading" || !feedbackRunId || !feedbackList || (managedFeedback && !feedbackNotes.trim())} onClick={() => void handleCreateFeedbackIteration()} type="button">
+                <RotateCcw className={`h-4 w-4 ${feedbackState === "loading" ? "animate-spin" : ""}`} aria-hidden="true" />
+                {feedbackState === "loading" ? t("pages.submissions.feedback.recording") : t("pages.submissions.feedback.create")}
+              </button>
+            </div>
+            <label className="mt-4 block text-sm text-text-secondary">
+              {t("pages.submissions.feedback.submission")}
+              <select aria-label={t("pages.submissions.feedback.submission")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2 text-text-primary"
+                value={selectedId || ""} disabled={feedbackState === "loading"} onChange={event => { if (event.target.value) void handleSelect(event.target.value); }}>
+                <option value="">{t("pages.submissions.feedback.chooseSubmission")}</option>
+                {items.map(item => <option key={item.submission_id} value={item.submission_id}>{item.company || item.submission_id} · {item.position} · {item.submission_id}</option>)}
+              </select>
+            </label>
+            {managedFeedback && <div className="mt-3 space-y-3 text-sm">
+              <p className="break-all text-text-secondary">{t("pages.submissions.checkMode.resumeVersion")}: {feedbackList?.source_binding?.resume_version_id || "--"}</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label>{t("pages.submissions.feedback.source")}<select aria-label={t("pages.submissions.feedback.source")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2"
+                  value={feedbackSource} onChange={event => setFeedbackSource(event.target.value as "user_note" | "manual_recruiter")}>
+                  <option value="user_note">{t("pages.submissions.feedback.sources.user_note")}</option><option value="manual_recruiter">{t("pages.submissions.feedback.sources.manual_recruiter")}</option>
+                </select></label>
+                <label>{t("pages.submissions.feedback.action")}<select aria-label={t("pages.submissions.feedback.action")} className="mt-1 w-full rounded-card border border-border bg-bg-primary p-2"
+                  value={feedbackAction} onChange={event => setFeedbackAction(event.target.value)}>
+                  {(feedbackList?.supported_actions || []).map(action => <option key={action} value={action}>{t(`pages.submissions.feedback.actions.${action}`)}</option>)}
+                </select></label>
+              </div>
+              <label className="block">{t("pages.submissions.feedback.notes")}<textarea aria-label={t("pages.submissions.feedback.notes")} maxLength={4000}
+                className="mt-1 min-h-24 w-full rounded-card border border-border bg-bg-primary p-2" value={feedbackNotes} onChange={event => setFeedbackNotes(event.target.value)} /></label>
+              <p className="text-xs text-text-muted">{t("pages.submissions.feedback.planOnly")}</p>
+            </div>}
+            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.items")}</p>
+                <p className="mt-1 text-text-primary">{feedbackList?.items.length ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.action")}</p>
+                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.selected_actions.join(", ") || "--"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.version")}</p>
+                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.new_resume_version_id_or_none || "--"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.feedback.next")}</p>
+                <p className="mt-1 truncate text-text-primary">{feedbackIteration?.iteration.next_recommended_step || "--"}</p>
+              </div>
+            </div>
+            <details className="mt-3 text-xs text-text-secondary">
+              <summary className="cursor-pointer select-none text-text-muted">{t("pages.submissions.technicalDetails")}</summary>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <p className="break-all"><span className="text-text-muted">{t("pages.submissions.feedback.record")}</span> {feedbackIteration?.record_path || "--"}</p>
+                <p className="break-all"><span className="text-text-muted">{t("pages.submissions.feedback.snapshot")}</span> {feedbackIteration?.iteration.source_snapshot_path || "--"}</p>
+              </div>
+            </details>
+            {(feedbackList?.iterations || []).map(record => <article key={record.iteration_id} className="mt-3 rounded-card border border-border p-3 text-sm">
+              <p className="text-xs text-text-muted">{formatDate(record.created_at, i18n.language)} · {t(`pages.submissions.feedback.sources.${record.feedback_source || "user_note"}`)}</p>
+              <p className="mt-2 whitespace-pre-wrap break-words">{record.user_notes}</p>
+              <p className="mt-2 text-text-secondary">{record.selected_actions.map(action => t(`pages.submissions.feedback.actions.${action}`, {defaultValue:action})).join(" · ")}</p>
+              {record.next_quick_run_candidate?.job_profile_id && <p className="mt-2 text-xs text-text-secondary">{t("pages.submissions.feedback.targetProfile")}: {record.next_quick_run_candidate.job_profile_id}</p>}
+              {record.next_recommended_step === "quick_run" && <button type="button" onClick={() => navigate("/quick-run")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openQuickRun")}</button>}
+              {record.next_recommended_step === "evidence" && <button type="button" onClick={() => navigate("/evidence")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openEvidence")}</button>}
+              {record.next_recommended_step === "jobs" && <button type="button" onClick={() => navigate("/jobs")} className="mt-2 inline-block text-accent underline">{t("pages.submissions.feedback.openJobs")}</button>}
+            </article>)}
+            {feedbackState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
+          </section>
+
+          <section className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">{t("pages.submissions.session.title")}</h2>
+                <p className="mt-1 text-sm text-text-secondary">{t("pages.submissions.session.manualBoundary")}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select className="h-9 rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} aria-label={t("pages.submissions.session.channel")}>
+                  {(channelSession?.supported_channels ?? [{ channel: defaultSubmissionChannel, label: "Liepin", login_url: "" }]).map((channel) => (
+                    <option key={channel.channel} value={channel.channel}>{channel.label}</option>
+                  ))}
+                </select>
+                <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null} onClick={() => void handleStartSession()} type="button">
+                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                  {sessionAction === "start" ? t("pages.submissions.session.starting") : t("pages.submissions.session.start")}
+                </button>
+                <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null} onClick={() => void handleCheckSession()} type="button">
+                  <RefreshCw className={`h-4 w-4 ${sessionAction === "check" ? "animate-spin" : ""}`} aria-hidden="true" />
+                  {t("pages.submissions.session.check")}
+                </button>
+                <button className="grid h-9 w-9 place-items-center rounded-card border border-border text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={sessionAction !== null || !channelSession?.session.clear_available} onClick={() => void handleClearSession()} title={t("pages.submissions.session.clear")} type="button" aria-label={t("pages.submissions.session.clear")}>
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.session.statusLabel")}</p>
+                <p className={`mt-1 inline-flex rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(channelSession?.session.login_status ?? "unknown")}`}>
+                  {t(`pages.submissions.session.status.${channelSession?.session.login_status ?? "unknown"}`, { defaultValue: channelSession?.session.login_status ?? "unknown" })}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.session.checkedAt")}</p>
+                <p className="mt-1 truncate text-text-primary">{formatDate(channelSession?.session.checked_at ?? "", i18n.language)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.session.identity")}</p>
+                <p className="mt-1 truncate text-text-primary">{channelSession?.session.account_identity.display_name_or_nickname || channelSession?.session.account_identity.masked_phone_or_email_suffix || t("pages.submissions.session.identityUnknown")}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.session.storage")}</p>
+                <p className="mt-1 truncate text-text-primary">{channelSession?.session.expires_or_unknown ?? "--"}</p>
+              </div>
+            </div>
+            <details className="mt-3 text-xs text-text-secondary">
+              <summary className="cursor-pointer select-none text-text-muted">{t("pages.submissions.technicalDetails")}</summary>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <p className="break-all"><span className="text-text-muted">{t("pages.submissions.session.path")}</span> {channelSession?.session.session_path || "--"}</p>
+                <p className="break-all"><span className="text-text-muted">{t("pages.submissions.session.log")}</span> {channelSession?.artifact_paths.session_check_log || "--"}</p>
+              </div>
+            </details>
+            {sessionState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
+          </section>
+
+          <details className="rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
+            <summary className="cursor-pointer select-none px-5 py-4 text-lg font-semibold text-text-primary">
+              {t("pages.submissions.checkMode.title")}
+              <span className="ml-2 text-xs font-normal text-text-muted">{t("pages.submissions.checkMode.collapsedHint")}</span>
+            </summary>
+            <div className="px-5 pb-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm text-text-secondary">{t("pages.submissions.checkMode.boundary")}</p>
+              </div>
+              <button className="inline-flex h-9 items-center gap-2 rounded-card border border-border px-3 text-sm text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={checkModeState === "loading" || channelSession?.session.login_status !== "session_valid" || !checkModeForm.jobLeadId.trim() || !checkModeForm.resumeVersionId.trim() || !checkModeForm.resumePdfPath.trim()} onClick={() => void handleStartCheckMode()} type="button">
+                <Send className="h-4 w-4" aria-hidden="true" />
+                {checkModeState === "loading" ? t("pages.submissions.checkMode.running") : t("pages.submissions.checkMode.start")}
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+              <label className="space-y-1">
+                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.jobLead")}</span>
+                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.jobLeadId} onChange={(event) => setCheckModeForm((current) => ({ ...current, jobLeadId: event.target.value }))} placeholder={t("pages.submissions.checkMode.jobLeadPlaceholder")} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.resumeVersion")}</span>
+                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.resumeVersionId} onChange={(event) => setCheckModeForm((current) => ({ ...current, resumeVersionId: event.target.value }))} placeholder={t("pages.submissions.checkMode.resumeVersionPlaceholder")} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-text-muted">{t("pages.submissions.checkMode.resume")}</span>
+                <input className="h-9 w-full rounded-card border border-border bg-bg-primary px-3 text-sm text-text-primary" value={checkModeForm.resumePdfPath} onChange={(event) => setCheckModeForm((current) => ({ ...current, resumePdfPath: event.target.value }))} placeholder={t("pages.submissions.checkMode.resumePathPlaceholder")} />
+              </label>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.status")}</p>
+                <p className={`mt-1 inline-flex rounded-chip border px-2 py-0.5 text-xs font-medium ${statusClassName(checkModeResult?.terminal_status ?? "unknown")}`}>
+                  {checkModeResult?.terminal_status ?? "--"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.jobLead")}</p>
+                <p className="mt-1 truncate text-text-primary">{String((checkModeResult?.original_job_lead.job_lead_id ?? checkModeForm.jobLeadId) || "--")}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.resume")}</p>
+                <p className="mt-1 truncate text-text-primary">{(checkModeResult?.resume_version_id ?? checkModeForm.resumeVersionId) || "--"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.checkMode.submit")}</p>
+                <p className="mt-1 text-text-primary">{checkModeResult?.final_submit_attempted ? t("pages.submissions.checkMode.attempted") : t("pages.submissions.checkMode.skipped")}</p>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-text-secondary md:grid-cols-2">
+              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.checkMode.json")}</span> {checkModeResult?.log_json_path || "--"}</p>
+              <p className="break-all"><span className="text-text-muted">{t("pages.submissions.checkMode.steps")}</span> {checkModeResult?.steps.map((step) => step.name).join(" -> ") || "--"}</p>
+            </div>
+            {checkModeState === "error" ? <p className="mt-3 text-sm text-error">{error}</p> : null}
+            </div>
+          </details>
         </>
       ) : null}
     </div>

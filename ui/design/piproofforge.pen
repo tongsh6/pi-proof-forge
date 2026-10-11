@@ -4944,6 +4944,320 @@
                   "fontWeight": "600"
                 },
                 {
+                  "type": "frame",
+                  "id": "BRizs",
+                  "name": "pdfSteps",
+                  "width": "fill_container",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "PAcb6",
+                      "name": "pdfStep1",
+                      "fill": "$accent-bg",
+                      "cornerRadius": "$radius-pill",
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        4,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "lYxIA",
+                          "name": "stepNo",
+                          "fill": "$accent",
+                          "content": "01",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ootHq",
+                          "name": "stepLabel",
+                          "fill": "$accent",
+                          "content": "固定 PDF",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "n5q0q",
+                      "name": "pdfStep2",
+                      "fill": "$bg-inset",
+                      "cornerRadius": "$radius-pill",
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        4,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "SnjJn",
+                          "name": "stepNo",
+                          "fill": "$text-muted",
+                          "content": "02",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "a7ChUY",
+                          "name": "stepLabel",
+                          "fill": "$text-secondary",
+                          "content": "预览并批准",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "q4iiOQ",
+                      "name": "pdfStep3",
+                      "fill": "$bg-inset",
+                      "cornerRadius": "$radius-pill",
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        4,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "irKtF",
+                          "name": "stepNo",
+                          "fill": "$text-muted",
+                          "content": "03",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "jBciY",
+                          "name": "stepLabel",
+                          "fill": "$text-secondary",
+                          "content": "上传附件",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "tb96A",
+                      "name": "pdfStep4",
+                      "fill": "$bg-inset",
+                      "cornerRadius": "$radius-pill",
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        4,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "UPpxV",
+                          "name": "stepNo",
+                          "fill": "$text-muted",
+                          "content": "04",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ZMABl",
+                          "name": "stepLabel",
+                          "fill": "$text-secondary",
+                          "content": "核验附件",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ot3Lf",
+                      "name": "pdfStep5",
+                      "fill": "$bg-inset",
+                      "cornerRadius": "$radius-pill",
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        4,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "f3Q3D",
+                          "name": "stepNo",
+                          "fill": "$text-muted",
+                          "content": "05",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "RXqlR",
+                          "name": "stepLabel",
+                          "fill": "$text-secondary",
+                          "content": "核验岗位并沟通",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YgkOb",
+                      "name": "pdfStep6",
+                      "fill": "$bg-inset",
+                      "cornerRadius": "$radius-pill",
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        4,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "S1YJnm",
+                          "name": "stepNo",
+                          "fill": "$text-muted",
+                          "content": "06",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "h6yeWH",
+                          "name": "stepLabel",
+                          "fill": "$text-secondary",
+                          "content": "检查沟通并准备简历",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YYs90",
+                      "name": "pdfStep7",
+                      "fill": "$bg-inset",
+                      "cornerRadius": "$radius-pill",
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        4,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "pY3K7",
+                          "name": "stepNo",
+                          "fill": "$text-muted",
+                          "content": "07",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "HNuIz",
+                          "name": "stepLabel",
+                          "fill": "$text-secondary",
+                          "content": "确认发送",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "K2TcvE",
+                      "name": "pdfStep8",
+                      "fill": "$bg-inset",
+                      "cornerRadius": "$radius-pill",
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        4,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Fg9CL",
+                          "name": "stepNo",
+                          "fill": "$text-muted",
+                          "content": "08",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "oEiGP",
+                          "name": "stepLabel",
+                          "fill": "$text-secondary",
+                          "content": "核验回执",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "type": "text",
                   "id": "nLpn03",
                   "name": "操作",
@@ -5029,88 +5343,6 @@
                   "name": "Guards",
                   "fill": "$text-secondary",
                   "content": "Remove attachment / 移除平台附件：成功记录独立确认；原字节/身份/请求前守卫。Unknown 仅可核验原拦截证据与当前原文件，不重删；本地历史保留。",
-                  "fontFamily": "Inter",
-                  "fontSize": 12,
-                  "fontWeight": "normal"
-                }
-              ]
-            },
-            {
-              "type": "frame",
-              "id": "nFbk01",
-              "name": "Submissions - Delivery Feedback",
-              "width": "fill_container",
-              "fill": "$bg-panel",
-              "layout": "vertical",
-              "gap": 8,
-              "padding": 16,
-              "children": [
-                {
-                  "type": "text",
-                  "id": "nFbk02",
-                  "name": "状态与边界",
-                  "fill": "$text-secondary",
-                  "content": "Feedback / 反馈迭代",
-                  "fontFamily": "Inter",
-                  "fontSize": 12,
-                  "fontWeight": "normal"
-                },
-                {
-                  "type": "text",
-                  "id": "nFbk03",
-                  "name": "状态与边界",
-                  "fill": "$text-secondary",
-                  "content": "Related submission / 关联投递  ·  公司 / 岗位 / 提交编号",
-                  "fontFamily": "Inter",
-                  "fontSize": 12,
-                  "fontWeight": "normal"
-                },
-                {
-                  "type": "text",
-                  "id": "nFbk04",
-                  "name": "状态与边界",
-                  "fill": "$text-secondary",
-                  "content": "只读证据：审批 / 岗位 / 版本 / 简历指纹 / 回执指纹；Verified 或 Incomplete 不改原投递状态",
-                  "fontFamily": "Inter",
-                  "fontSize": 12,
-                  "fontWeight": "normal"
-                },
-                {
-                  "type": "text",
-                  "id": "nFbk05",
-                  "name": "状态与边界",
-                  "fill": "$text-secondary",
-                  "content": "来源：个人复盘 / 手动招聘反馈  ·  下一步动作  ·  必填反馈内容",
-                  "fontFamily": "Inter",
-                  "fontSize": 12,
-                  "fontWeight": "normal"
-                },
-                {
-                  "type": "text",
-                  "id": "nFbk06",
-                  "name": "状态与边界",
-                  "fill": "$text-secondary",
-                  "content": "保存仅记录计划；不自动生成或投递；重新生成显示原岗位画像并进入 Quick Run",
-                  "fontFamily": "Inter",
-                  "fontSize": 12,
-                  "fontWeight": "normal"
-                },
-                {
-                  "type": "text",
-                  "id": "nFbk07",
-                  "name": "状态与边界",
-                  "fill": "$text-secondary",
-                  "content": "历史：时间 / 来源 / 内容 / 动作；切换清空草稿并丢弃旧请求，重开可读回",
-                  "fontFamily": "Inter",
-                  "fontSize": 12,
-                  "fontWeight": "normal"
-                },
-                {
-                  "type": "text",
-                  "id": "nFbk08",
-                  "name": "状态与边界",
-                  "fill": "$text-secondary",
-                  "content": "空内容 / Loading / Saving 禁止提交；列表与详情均禁止受控投递重试；Error 保留可恢复状态",
                   "fontFamily": "Inter",
                   "fontSize": 12,
                   "fontWeight": "normal"
@@ -5323,6 +5555,88 @@
                       ]
                     }
                   ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "nFbk01",
+              "name": "Submissions - Delivery Feedback",
+              "width": "fill_container",
+              "fill": "$bg-panel",
+              "layout": "vertical",
+              "gap": 8,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "nFbk02",
+                  "name": "状态与边界",
+                  "fill": "$text-secondary",
+                  "content": "Feedback / 反馈迭代",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "nFbk03",
+                  "name": "状态与边界",
+                  "fill": "$text-secondary",
+                  "content": "Related submission / 关联投递  ·  公司 / 岗位 / 提交编号",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "nFbk04",
+                  "name": "状态与边界",
+                  "fill": "$text-secondary",
+                  "content": "只读证据：审批 / 岗位 / 版本 / 简历指纹 / 回执指纹；Verified 或 Incomplete 不改原投递状态",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "nFbk05",
+                  "name": "状态与边界",
+                  "fill": "$text-secondary",
+                  "content": "来源：个人复盘 / 手动招聘反馈  ·  下一步动作  ·  必填反馈内容",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "nFbk06",
+                  "name": "状态与边界",
+                  "fill": "$text-secondary",
+                  "content": "保存仅记录计划；不自动生成或投递；重新生成显示原岗位画像并进入 Quick Run",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "nFbk07",
+                  "name": "状态与边界",
+                  "fill": "$text-secondary",
+                  "content": "历史：时间 / 来源 / 内容 / 动作；切换清空草稿并丢弃旧请求，重开可读回",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "nFbk08",
+                  "name": "状态与边界",
+                  "fill": "$text-secondary",
+                  "content": "空内容 / Loading / Saving 禁止提交；列表与详情均禁止受控投递重试；Error 保留可恢复状态",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
                 }
               ]
             },
