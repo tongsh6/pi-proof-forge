@@ -5,7 +5,7 @@
       "type": "frame",
       "id": "Qju2l",
       "x": -1,
-      "y": -544,
+      "y": -1060,
       "name": "Design System",
       "width": 1440,
       "fill": "$bg-primary",
@@ -978,6 +978,680 @@
                           "fontWeight": "700"
                         }
                       ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "urdhh",
+          "name": "Layout Components",
+          "width": "fill_container",
+          "gap": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "pMNx0",
+              "name": "Layout/PageHeader",
+              "reusable": true,
+              "width": 620,
+              "fill": "$bg-primary",
+              "stroke": "$border",
+              "strokeWidth": {
+                "bottom": 1
+              },
+              "padding": [
+                20,
+                24,
+                16,
+                24
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "R1o7s",
+                  "name": "phTitleWrap",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "l7khAE",
+                      "name": "phTitle",
+                      "fill": "$text-primary",
+                      "content": "Page Title / 页面标题",
+                      "fontFamily": "Inter",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "CK0jJ",
+                      "name": "phSubtitle",
+                      "fill": "$text-secondary",
+                      "content": "What you can do here / 这里能做什么",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "WJs7G",
+                  "name": "phActions",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "ZIxep",
+                      "name": "phIconButton",
+                      "width": 36,
+                      "height": 36,
+                      "cornerRadius": 8,
+                      "stroke": "$border",
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "H7olSz",
+                          "name": "phRefreshIcon",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "refresh-cw",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "tcr9h",
+                      "type": "ref",
+                      "ref": "xWWct",
+                      "name": "phPrimary",
+                      "descendants": {
+                        "yG3EI": {
+                          "content": "Primary / 主操作"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "I8lodt",
+              "name": "Layout/StatStrip",
+              "reusable": true,
+              "gap": 24,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "w1zyo",
+                  "name": "stat1",
+                  "gap": 6,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "RB7EU",
+                      "name": "s1v",
+                      "fill": "$text-primary",
+                      "content": "32",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "nGT4n",
+                      "name": "s1l",
+                      "fill": "$text-secondary",
+                      "content": "Evidence / 证据卡",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "imOzZ",
+                  "name": "stat2",
+                  "gap": 6,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "cXcjl",
+                      "name": "s2v",
+                      "fill": "$text-primary",
+                      "content": "8",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "M37kqB",
+                      "name": "s2l",
+                      "fill": "$text-secondary",
+                      "content": "Ready / 可用",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Iw2gH",
+                  "name": "stat3",
+                  "gap": 6,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "N8RB3",
+                      "name": "s3v",
+                      "fill": "$text-primary",
+                      "content": "0",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "k3UbXE",
+                      "name": "s3l",
+                      "fill": "$text-secondary",
+                      "content": "Gaps / 缺口",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "HJond",
+                  "name": "stat4",
+                  "gap": 6,
+                  "alignItems": "end",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "E2oCI",
+                      "name": "s4v",
+                      "fill": "$text-primary",
+                      "content": "3",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 18,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "z7W6u",
+                      "name": "s4l",
+                      "fill": "$text-secondary",
+                      "content": "With artifacts / 含附件",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XOcaK",
+              "name": "Layout/SegTabs",
+              "reusable": true,
+              "fill": "$bg-panel",
+              "cornerRadius": 8,
+              "stroke": "$border",
+              "gap": 2,
+              "padding": 4,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "QM8wB",
+                  "name": "tabActive",
+                  "fill": "$bg-panel-hover",
+                  "cornerRadius": 8,
+                  "padding": [
+                    6,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "NSzgY",
+                      "name": "tabActiveLabel",
+                      "fill": "$accent",
+                      "content": "Deliver a PDF / 投递一份 PDF",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "fODDz",
+                  "name": "tabIdle",
+                  "cornerRadius": 8,
+                  "padding": [
+                    6,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "M5wLr3",
+                      "name": "tabIdleLabel",
+                      "fill": "$text-secondary",
+                      "content": "Records & feedback / 记录与反馈",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "a38v5l",
+          "name": "Guidance Components",
+          "width": "fill_container",
+          "gap": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "ljZwE",
+              "name": "Layout/FoldSection",
+              "reusable": true,
+              "width": 520,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "stroke": "$border",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "EWmQG",
+                  "name": "foldSummary",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "padding": [
+                    16,
+                    20
+                  ],
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Ess9k",
+                      "name": "foldTitleWrap",
+                      "gap": 10,
+                      "alignItems": "end",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "mQOba",
+                          "name": "foldTitle",
+                          "fill": "$text-primary",
+                          "content": "Material sources / 材料来源",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ORN20",
+                          "name": "foldHint",
+                          "fill": "$text-secondary",
+                          "content": "Collapsed by default / 默认收起",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "REuvy",
+                      "name": "foldChevron",
+                      "width": 16,
+                      "height": 16,
+                      "icon": "chevron-down",
+                      "library": "lucide",
+                      "fill": "$text-muted"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "WS4VQ",
+              "name": "Overview/SetupChecklist",
+              "reusable": true,
+              "width": 600,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "stroke": "$accent",
+              "layout": "vertical",
+              "gap": 12,
+              "padding": 20,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "tNjck",
+                  "name": "scTitle",
+                  "fill": "$text-primary",
+                  "content": "Before you start / 开始前的几件事",
+                  "fontFamily": "Inter",
+                  "fontSize": 18,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "wdF9s",
+                  "name": "scSubtitle",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Finish these in order to generate and deliver a resume. / 按顺序完成后即可生成并投递简历。",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "k4PVu7",
+                  "name": "step1",
+                  "opacity": 0.6,
+                  "width": "fill_container",
+                  "cornerRadius": 8,
+                  "stroke": "$border",
+                  "gap": 12,
+                  "padding": [
+                    12,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "d9kq9y",
+                      "name": "step1Done",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "circle-check",
+                      "library": "lucide",
+                      "fill": "$success"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "u2chD",
+                      "name": "step1Text",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "j64hC",
+                          "name": "step1Label",
+                          "fill": "$text-primary",
+                          "content": "Choose a model / 选择一个模型",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Oo6G9",
+                          "name": "step1Hint",
+                          "fill": "$text-secondary",
+                          "content": "Done / 已完成",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "IQ8Jx",
+                  "name": "step2",
+                  "opacity": 0.6,
+                  "width": "fill_container",
+                  "cornerRadius": 8,
+                  "stroke": "$border",
+                  "gap": 12,
+                  "padding": [
+                    12,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "stELO",
+                      "name": "step2Done",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "circle-check",
+                      "library": "lucide",
+                      "fill": "$success"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Hd9CJ",
+                      "name": "step2Text",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "C55C6",
+                          "name": "step2Label",
+                          "fill": "$text-primary",
+                          "content": "Confirm career record, import materials / 确认职业档案并导入材料",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "xogxY",
+                          "name": "step2Hint",
+                          "fill": "$text-secondary",
+                          "content": "Done / 已完成",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "xzDmX",
+                  "name": "step3",
+                  "width": "fill_container",
+                  "cornerRadius": 8,
+                  "stroke": "$border",
+                  "gap": 12,
+                  "padding": [
+                    12,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "W30G7",
+                      "name": "step3No",
+                      "width": 18,
+                      "height": 18,
+                      "cornerRadius": 9,
+                      "stroke": "$text-muted",
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "XcNrc",
+                          "name": "step3Num",
+                          "fill": "$text-muted",
+                          "content": "3",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "PE4S8",
+                      "name": "step3Text",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "b5P5V",
+                          "name": "step3Label",
+                          "fill": "$text-primary",
+                          "content": "Distill evidence from materials / 从材料中提炼证据",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "t22BRH",
+                          "name": "step3Hint",
+                          "fill": "$text-secondary",
+                          "content": "Pending / 待完成",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "msZsD",
+                      "type": "ref",
+                      "ref": "tBGQE",
+                      "name": "step3Action",
+                      "descendants": {
+                        "fkAZC": {
+                          "content": "Open Evidence / 去提炼证据"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Bi7NX",
+                  "name": "step4",
+                  "width": "fill_container",
+                  "cornerRadius": 8,
+                  "stroke": "$border",
+                  "gap": 12,
+                  "padding": [
+                    12,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "vMj0E",
+                      "name": "step4No",
+                      "width": 18,
+                      "height": 18,
+                      "cornerRadius": 9,
+                      "stroke": "$text-muted",
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "LfY0c",
+                          "name": "step4Num",
+                          "fill": "$text-muted",
+                          "content": "4",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "oxFL2",
+                      "name": "step4Text",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "C96paI",
+                          "name": "step4Label",
+                          "fill": "$text-primary",
+                          "content": "Add a target job / 添加一个目标岗位",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Rx8jG",
+                          "name": "step4Hint",
+                          "fill": "$text-secondary",
+                          "content": "Pending / 待完成",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "YEADx",
+                      "type": "ref",
+                      "ref": "tBGQE",
+                      "name": "step4Action",
+                      "descendants": {
+                        "fkAZC": {
+                          "content": "Add job / 添加岗位"
+                        }
+                      }
                     }
                   ]
                 }
@@ -4586,18 +5260,64 @@
                   ]
                 },
                 {
-                  "id": "syX4f",
-                  "type": "ref",
-                  "ref": "tBGQE",
-                  "name": "agStop",
-                  "descendants": {
-                    "0wv8M": {
-                      "icon": "square"
+                  "type": "frame",
+                  "id": "Ejkaa",
+                  "name": "agActions",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "id": "le5jq",
+                      "type": "ref",
+                      "ref": "XOcaK",
+                      "name": "agTabs",
+                      "descendants": {
+                        "NSzgY": {
+                          "content": "Daily delivery / 每日受控投递"
+                        },
+                        "M5wLr3": {
+                          "content": "Agent run / 自主运行（本地演练）"
+                        }
+                      }
                     },
-                    "fkAZC": {
-                      "content": "Stop / 停止"
+                    {
+                      "type": "frame",
+                      "id": "bJeSE",
+                      "name": "agIconButton",
+                      "width": 36,
+                      "height": 36,
+                      "cornerRadius": 8,
+                      "stroke": "$border",
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "RWtPh",
+                          "name": "agRefreshIcon",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "refresh-cw",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "syX4f",
+                      "type": "ref",
+                      "ref": "tBGQE",
+                      "name": "agStop",
+                      "descendants": {
+                        "0wv8M": {
+                          "icon": "square"
+                        },
+                        "fkAZC": {
+                          "content": "Stop / 停止"
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               ]
             },
@@ -5429,119 +6149,110 @@
               "id": "DzCJj",
               "name": "subHeader",
               "width": "fill_container",
-              "layout": "vertical",
               "gap": 6,
+              "justifyContent": "space_between",
+              "alignItems": "end",
               "children": [
                 {
-                  "type": "text",
-                  "id": "K1MmP",
-                  "name": "subTitle",
-                  "fill": "$text-primary",
-                  "content": "Submissions / 投递记录",
-                  "fontFamily": "Inter",
-                  "fontSize": 22,
-                  "fontWeight": "700"
+                  "type": "frame",
+                  "id": "fjD1v",
+                  "name": "subTitleWrap",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "K1MmP",
+                      "name": "subTitle",
+                      "fill": "$text-primary",
+                      "content": "Submissions / 投递记录",
+                      "fontFamily": "Inter",
+                      "fontSize": 22,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "EY5xI",
+                      "name": "subSubtitle",
+                      "fill": "$text-secondary",
+                      "content": "Delivery history, fallback traces and retry actions across all channels.",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
                 },
                 {
-                  "type": "text",
-                  "id": "EY5xI",
-                  "name": "subSubtitle",
-                  "fill": "$text-secondary",
-                  "content": "Delivery history, fallback traces and retry actions across all channels.",
-                  "fontFamily": "Inter",
-                  "fontSize": 13,
-                  "fontWeight": "normal"
+                  "type": "frame",
+                  "id": "R8zQOF",
+                  "name": "subActions",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "id": "EuBYh",
+                      "type": "ref",
+                      "ref": "XOcaK",
+                      "name": "subTabs"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "dqmJL",
+                      "name": "subIconButton",
+                      "width": 36,
+                      "height": 36,
+                      "cornerRadius": 8,
+                      "stroke": "$border",
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "sCWRR",
+                          "name": "subRefreshIcon",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "refresh-cw",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             },
             {
-              "type": "frame",
-              "id": "PyQXe",
+              "id": "ZV1S6",
+              "type": "ref",
+              "ref": "I8lodt",
               "name": "subStats",
-              "width": "fill_container",
-              "gap": 16,
-              "children": [
-                {
-                  "id": "JDAA0",
-                  "type": "ref",
-                  "ref": "YERs6",
-                  "name": "subStat1",
-                  "descendants": {
-                    "xxKQx": {
-                      "icon": "send"
-                    },
-                    "t9jru": {
-                      "content": "Total / 总投递"
-                    },
-                    "DtSBe": {
-                      "content": "23"
-                    },
-                    "6idt2": {
-                      "content": "all channels"
-                    }
-                  }
+              "descendants": {
+                "RB7EU": {
+                  "content": "20"
                 },
-                {
-                  "id": "2ANYO",
-                  "type": "ref",
-                  "ref": "YERs6",
-                  "name": "subStat2",
-                  "descendants": {
-                    "xxKQx": {
-                      "icon": "check-circle-2"
-                    },
-                    "t9jru": {
-                      "content": "Delivered / 成功"
-                    },
-                    "DtSBe": {
-                      "content": "18"
-                    },
-                    "6idt2": {
-                      "content": "primary success"
-                    }
-                  }
+                "nGT4n": {
+                  "content": "Total / 总尝试"
                 },
-                {
-                  "id": "C3iix",
-                  "type": "ref",
-                  "ref": "YERs6",
-                  "name": "subStat3",
-                  "descendants": {
-                    "xxKQx": {
-                      "icon": "x-circle"
-                    },
-                    "t9jru": {
-                      "content": "Failed / 失败"
-                    },
-                    "DtSBe": {
-                      "content": "3"
-                    },
-                    "6idt2": {
-                      "content": "needs retry"
-                    }
-                  }
+                "cXcjl": {
+                  "content": "18"
                 },
-                {
-                  "id": "ZxaZr",
-                  "type": "ref",
-                  "ref": "YERs6",
-                  "name": "subStat4",
-                  "descendants": {
-                    "xxKQx": {
-                      "icon": "corner-down-left"
-                    },
-                    "t9jru": {
-                      "content": "Fallback / 降级"
-                    },
-                    "DtSBe": {
-                      "content": "2"
-                    },
-                    "6idt2": {
-                      "content": "email retry"
-                    }
-                  }
+                "M37kqB": {
+                  "content": "Delivered / 成功记录"
+                },
+                "N8RB3": {
+                  "content": "0"
+                },
+                "k3UbXE": {
+                  "content": "Failed / 失败"
+                },
+                "E2oCI": {
+                  "content": "0"
+                },
+                "z7W6u": {
+                  "content": "Fallback / 降级"
                 }
-              ]
+              }
             },
             {
               "type": "frame",
@@ -10244,6 +10955,771 @@
                   "textGrowth": "fixed-width",
                   "width": "fill_container",
                   "content": "Quick Run: pipeline runs synchronously in the sidecar; all four stages show “running” during execution, no mid-run cancel. Agent Run: page header first, Daily Controlled Delivery card after it.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "qxXC8",
+          "name": "Layout & Guidance - UX Batch 3",
+          "width": 1376,
+          "fill": "$bg-panel",
+          "cornerRadius": 16,
+          "stroke": "$border-light",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "layout": "vertical",
+          "gap": 12,
+          "padding": 24,
+          "children": [
+            {
+              "type": "text",
+              "id": "e6CWyQ",
+              "name": "uxTitle",
+              "fill": "$text-primary",
+              "content": "Layout & Guidance Rules — UX Batch 3 (2026-10-11)",
+              "fontFamily": "Inter",
+              "fontSize": 18,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "nXtO4",
+              "name": "uxSubtitle",
+              "fill": "$text-secondary",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Implemented in ui/src/styles/globals.css (.page-header, .page-icon-button, .stat-strip, .fold-section, .seg-tabs), components/shell/AppShell.tsx and all nine pages/*/index.tsx. Pen components: Layout/PageHeader, Layout/StatStrip, Layout/SegTabs, Layout/FoldSection, Overview/SetupChecklist.",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "M5oG5",
+              "name": "rule1",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "u1a6nE",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "01",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "Te9i3",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Three layers per page: fixed frame = SideNav + sticky PageHeader (title, one-line subtitle, at most 2 actions plus an icon refresh button with sr-only label); work layer = master list/grid + detail rail that stays visible (rail sticks at 6.5rem under the header, Evidence table caps at 100vh-20rem); tool layer (import, parse, editors, rehearsal) collapses into Layout/FoldSection.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "pNtVi",
+              "name": "rule2",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "kVULL",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "02",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "OEGtS",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Stat cards become Layout/StatStrip (one line) on Evidence, Jobs and Submissions so the primary object (list, grid, table) is in the first screen. Quick Run moves the job/positioning selects into Run Input and shows the model summary as one line; Agent Run does the same.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ZkIRt",
+              "name": "rule3",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "REHs6",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "03",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "M0Shvz",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Fold defaults are state-driven: Evidence material sources open only when there are no cards; Jobs 'New job profile' (title row + JD parser) opens when there are no profiles or a parsed draft / bound lead exists, the header button only opens and focuses it; Resumes career editor opens until the record is confirmed, otherwise a one-line summary (confirmed, N jobs, N education, N skill groups).",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "UzwYI",
+              "name": "rule4",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "vUhQx",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "04",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "aW3ZB",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Task tabs (Layout/SegTabs in the header): Submissions = Deliver a PDF | Records & feedback (deep link quick_run_id opens Deliver); Agent Run = Daily delivery | Agent run (deep link run_id opens Agent). The inactive tab stays mounted and hidden so state and drafts survive switching.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "p0UZCj",
+              "name": "rule5",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "H20ee",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "05",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "g0lfAr",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Overview shows Overview/SetupChecklist before the stats while any prerequisite is missing (model, career record + materials, evidence, target job). Each pending step has one button; the header primary button points to the first pending step and only becomes 'Run Agent' when all are done. Readiness reads settings.get, material.readiness, jobs.listProfiles; a failed read hides the list instead of blocking.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "FZFYN",
+              "name": "rule6",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "WmBJd",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "06",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "t5XRbr",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Vocabulary: nav label = page title (Evidence / 证据卡, Jobs / 岗位中心, Submissions / 投递记录); subtitles say what the user can do; raw identifiers (SHA256, run ids, JSON steps) live under Technical details or a tooltip, never as a table sub-row; SideNav footer shows 'Local service · state' and keeps the version in the tooltip.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "deFgP",
+              "name": "rule7",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "T26Vj",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "07",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "LCUQr",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Desktop shortcuts in AppShell: ⌘/Ctrl+1…9 switch pages (skipped while typing), ⌘R refreshes the current page (window event pipf:refresh), ⌘S saves on Policy / System Settings (pipf:save); html lang follows the active language (default zh).",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "wzkfN",
+          "name": "Depth & Vocabulary - UX Batch 4",
+          "width": 1376,
+          "fill": "$bg-panel",
+          "cornerRadius": 16,
+          "stroke": "$border-light",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "layout": "vertical",
+          "gap": 12,
+          "padding": 24,
+          "children": [
+            {
+              "type": "text",
+              "id": "W1si8c",
+              "name": "uxTitle",
+              "fill": "$text-primary",
+              "content": "Depth & Vocabulary Rules — UX Batch 4 (2026-10-11)",
+              "fontFamily": "Inter",
+              "fontSize": 18,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "OrCvU",
+              "name": "uxSubtitle",
+              "fill": "$text-secondary",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Second- to fourth-level blocks: detail rails, editors, flow cards, folds. Implemented in pages/evidence, jobs, submissions, agent-run (+ daily-delivery), resumes (career-profile), quick-run; dictionary in i18n codes.*; alpha-capable colors in tokens.css + tailwind.config.ts.",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "to5lM",
+              "name": "rule1",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "LAea7",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "01",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "T5o5OJ",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Detail rails (Evidence, Jobs profile) open read-only: human title, status chip, grouped text, chips; an Edit button in the rail header switches to the form (Save / Cancel). Drafts, model drafts and re-review enter edit mode automatically; switching cards or a successful save leaves it. Identifiers, source material ids, raw paths and hashes live only under a Technical details fold at the bottom of the rail.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "R2Ri0Q",
+              "name": "rule2",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Q0oMGI",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "02",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "b5Yak",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Code words never reach the user: submission step names, browser channel, source and mode codes map through i18n codes.* (steps, browser, source, mode, platform) with the raw code as tooltip or fallback. JSON receipts are folded ('Platform receipt received, raw text under Technical details'); the failure block shows no JSON for successful runs.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "EGPXz",
+              "name": "rule3",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "TViMl",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "03",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "y1iTC",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Long boundary texts are one line plus a 'Learn more' fold; consent checkboxes keep the short sentence next to the box and the full legal wording under 'Full authorization terms' (daily delivery, native PDF). The checkbox aria-label stays the full wording.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "T12VWI",
+              "name": "rule4",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Fiefq",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "04",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "T52A6",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Daily delivery card order: today status line -> short description -> Authorization settings (folded once active, summary shows max/time) -> candidate list -> consent -> one primary button by state (run when active, save when dirty, otherwise activate); pause / revoke / close-interrupted sit behind 'More actions'; past batches are folded with a count.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "B05mU7",
+              "name": "rule5",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "EFsAG",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "05",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "S7Hfh",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Career editor: each entry is a details with a one-line summary (company · title · period / school · major · degree / category / title) and opens only when empty; the missing-items notice, consent and Save / Confirm bar stick to the bottom of the fold so they are visible while editing 3000px of fields.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "WEGkA",
+              "name": "rule6",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bwXqk",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "06",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "tWgoY",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Evidence material sources keep one path (pick material -> pick fragment -> distill) with a hint line while the button is disabled; duplicate material cards are gone and document previews drop YAML front matter. Jobs 'New job profile' leads with the JD parser; title-only creation is a sub-fold; Liepin search on the Leads tab is folded; lead rail highlights exactly one primary (fetch JD until complete_reviewed, then convert).",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "rBZMY",
+              "name": "rule7",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "g1kRiA",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "07",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "J0CVe",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Advanced or developer tools (legacy channel session, Check Mode rehearsal) sit in one folded 'Advanced & rehearsal tools' block at the end of Submissions records. Agent run without a run shows a single empty panel instead of placeholder state machine / gates / events; Quick Run hides score bars until a result exists. Tailwind colors are defined as rgb(var(--x-rgb) / <alpha-value>) so bg-accent/10 and border-error/40 render; the section nav highlight on Policy / System Settings is no longer inverted.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "YTTf3",
+          "name": "Background Tasks - UX Batch 5",
+          "width": 1376,
+          "fill": "$bg-panel",
+          "cornerRadius": 16,
+          "stroke": "$border-light",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "layout": "vertical",
+          "gap": 12,
+          "padding": 24,
+          "children": [
+            {
+              "type": "text",
+              "id": "tv7cN",
+              "name": "uxTitle",
+              "fill": "$text-primary",
+              "content": "Background Task Rules — UX Batch 5 (2026-10-11)",
+              "fontFamily": "Inter",
+              "fontSize": 18,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "x3I5iA",
+              "name": "uxSubtitle",
+              "fill": "$text-secondary",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Implemented in ui/src/state/task-store.ts, pages/quick-run/index.tsx and components/shell/SideNav.tsx. No new dependency.",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "P8cxnB",
+              "name": "rule1",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "aY5tw",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "01",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "ERgfw",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Long-running work that the sidecar executes synchronously (Quick Run) is registered in a global task store (running / done / error, started and finished time, owning job profile, result) so it outlives the page that started it.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "P8r5T",
+              "name": "rule2",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "pbWu9",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "02",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "wBHv9",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "When a run ends, the result and the success / failure toast always go to the store, whether or not the page is still mounted or the target changed; only the page's own state follows the selection-version guard.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "m2Evr",
+              "name": "rule3",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "gJjM3",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "03",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "okEq0",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Returning to Quick Run while a task runs restores the running state and timer and blocks a second start; a finished task restores its result only when it belongs to the currently selected job profile; a failed task shows its reason.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "JOi4N",
+              "name": "rule4",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "zguzY",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "04",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "S8fLW",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "SideNav footer shows one row per running task (spinner + 'Quick Run · target running'); clicking it opens the task's page. The row disappears when the task ends; completion is announced by the global toast, errors stay until dismissed.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "W7ql37",
+              "name": "rule5",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "TscFv",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "05",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "K0a22G",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Only Quick Run uses the store today. Daily delivery keeps its own 15s polling card; Agent Run polls its run. Add a kind to the store only when a task can outlive its page.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XWdU8",
+              "name": "rule6",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "K9cqsS",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "06",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "g3cOU",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Tests: tests/unit/gui/test_task_store.py; quick-run vm tests mock @/state/task-store with a no-op store.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ee64E",
+              "name": "rule7",
+              "width": "fill_container",
+              "gap": 10,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "F7Ib5",
+                  "name": "ruleBullet",
+                  "fill": "$accent",
+                  "content": "07",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "QUOhw",
+                  "name": "ruleText",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Verified with the read-only bridge delaying run.quick.start by 8s: start → navigate away → indicator visible → return → running → task ends → indicator gone, failure toast shown, page back to runnable.",
                   "fontFamily": "Inter",
                   "fontSize": 13,
                   "fontWeight": "normal"
