@@ -39,7 +39,7 @@ from tools.sidecar.handlers.native_pdf import handle_pdf_target_packet, handle_r
 from tools.sidecar.handlers.native_pdf import handle_begin_pdf_delivery, handle_record_pdf_communication
 from tools.sidecar.handlers.native_pdf import handle_pdf_interaction_packet, handle_record_pdf_interaction
 from tools.sidecar.handlers.native_pdf import handle_verify_pdf_receipt, handle_begin_pdf_removal, handle_finish_pdf_removal, handle_recheck_pdf_removal
-from tools.sidecar.handlers.profile import handle_profile_get, handle_profile_update, handle_profile_review
+from tools.sidecar.handlers.profile import handle_profile_get, handle_profile_update, handle_profile_review, handle_profile_auto_link_evidence
 from tools.sidecar.handlers.resume import (
     handle_resume_export_pdf,
     handle_resume_get_preview,
@@ -117,6 +117,7 @@ def _create_router() -> Router:
     router.register("profile.get", handle_profile_get)
     router.register("profile.update", handle_profile_update)
     router.register("profile.review", handle_profile_review)
+    router.register("profile.autoLinkEvidence", handle_profile_auto_link_evidence)
     router.register("resume.list", handle_resume_list)
     router.register("resume.upload", handle_resume_upload)
     router.register("resume.getPreview", handle_resume_get_preview)

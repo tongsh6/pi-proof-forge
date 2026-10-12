@@ -1389,7 +1389,9 @@
     "confirm": "确认职业档案事实",
     "reload": "放弃未保存修改",
     "expandEntry": "展开编辑",
-    "now": "至今"
+    "now": "至今",
+    "autoLink": "自动关联证据",
+    "autoLinkHint": "按材料来源、同源材料和项目时间，把未关联的可用证据卡挂到唯一一段工作经历；多种信号冲突的不动，仍需手动勾选"
   },
   "confirmations": {
     "evidence": {
@@ -1507,7 +1509,8 @@
       "materialUploaded": "材料已上传",
       "exported": "PDF 已导出",
       "careerSaved": "职业档案草稿已保存",
-      "careerConfirmed": "职业档案已确认"
+      "careerConfirmed": "职业档案已确认",
+      "careerAutoLinked": "已自动关联 {{applied}} 张证据，{{unresolved}} 张无法判定需手动勾选；档案已变化，请检查后重新确认"
     },
     "jobs": {
       "created": "岗位画像已创建",
@@ -1583,7 +1586,8 @@
       "consentDirty": "先保存草稿再确认",
       "consentStale": "档案已被其他操作更新，请重新载入",
       "consentMissing": "补齐缺失项后才能确认",
-      "saveClean": "没有未保存的修改"
+      "saveClean": "没有未保存的修改",
+      "autoLinkDirty": "先保存或放弃当前修改再自动关联"
     }
   },
   "codes": {

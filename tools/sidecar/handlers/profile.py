@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from tools.infra.persistence.yaml_io import parse_simple_yaml
-from tools.infra.career_profile import inspect_career, normalize_career
+from tools.infra.career_profile import inspect_career, normalize_career, suggest_evidence_links, eligible_cards_for_linking
+from tools.sidecar.handlers import materials as materials_handler
 from tools.infra.persistence.review_queue import locked_review_queue
 
 _PROFILE_PATH = Path("personal_profile.yaml")
@@ -112,3 +113,26 @@ def handle_profile_review(params):
         fields['career_review_json']=json.dumps({'revision':current['revision'],'reviewed_at':_utcnow_iso()},ensure_ascii=False)
         fields['updated_at']=_utcnow_iso();_write_profile(fields)
     return handle_profile_get(params)
+
+
+def handle_profile_auto_link_evidence(params):
+    """按材料来源 / 已关联材料 / 项目时间把尚未关联的可用证据卡挂到唯一工作经历；apply 为真时写入并使档案回到待确认。"""
+    apply=params.get('apply') is True
+    evidence_dir=_PROFILE_PATH.parent/'evidence_cards'
+    with locked_review_queue(_PROFILE_PATH):
+        fields=_load_profile();current=inspect_career(fields,evidence_dir)
+        if apply and params.get('expected_revision')!=current['revision']:raise ValueError('profile_changed')
+        labels={str(item.get('material_id','')):str(item.get('label','')) for item in materials_handler.list_material_source_items()}
+        result=suggest_evidence_links(current['career'],eligible_cards_for_linking(evidence_dir),labels)
+        result['applied']=0;result['revision']=current['revision'];result['career_status']=current['career_status']
+        if apply and result['suggestions']:
+            career=current['career']
+            for item in result['suggestions']:
+                for work in career['work']:
+                    if work['id']==item['work_id']:work['evidence_ids']=list(dict.fromkeys([*work.get('evidence_ids',[]),item['evidence_id']]))
+            fields['career_json']=json.dumps(normalize_career(career),ensure_ascii=False,separators=(',',':'))
+            fields['updated_at']=_utcnow_iso();_write_profile(fields)
+            after=inspect_career(fields,evidence_dir)
+            result['applied']=len(result['suggestions']);result['revision']=after['revision'];result['career_status']=after['career_status']
+    return {'meta':params['meta'],**result}
+

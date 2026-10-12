@@ -93,6 +93,14 @@ export interface EvidenceDeleteResult extends EvidenceMutationResult {
   deleted: boolean;
 }
 
+export interface ProfileAutoLinkResult extends RpcResultBase {
+  suggestions: { evidence_id: string; title: string; work_id: string; company: string; basis: string[] }[];
+  unresolved: { evidence_id: string; title: string; reason: string; candidates?: string[] }[];
+  already_linked: number;
+  applied: number;
+  revision: string;
+}
+
 export interface EvidenceReconcileItem {
   evidence_id: string;
   title: string;

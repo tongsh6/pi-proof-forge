@@ -65,6 +65,7 @@ import type {
   SubmitReviewResult,
   UploadFilePayload,
   EvidenceReconcileResult,
+  ProfileAutoLinkResult,
 } from "./types";
 
 const UI_VERSION = "0.1.0";
@@ -722,3 +723,6 @@ export async function listMaterialDocuments(materialId:string,query=''):Promise<
 export async function readMaterialDocument(materialId:string,documentId:string):Promise<MaterialDocument & {meta:{correlation_id:string};text:string}> {return client.call('evidence.readMaterialDocument',{material_id:materialId,document_id:documentId});}
 
 export async function reviewCareerProfile(revision:string):Promise<ProfileGetResult>{return client.call("profile.review",{expected_revision:revision,confirmed:true});}
+export async function autoLinkEvidence(expectedRevision: string, apply = true): Promise<ProfileAutoLinkResult> {
+  return client.call<ProfileAutoLinkResult>("profile.autoLinkEvidence", { expected_revision: expectedRevision, apply });
+}

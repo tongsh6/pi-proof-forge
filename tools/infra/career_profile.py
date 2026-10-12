@@ -19,8 +19,8 @@ def _text(value,limit=4000):
     return value.strip()
 
 
-def _strings(value):
-    if not isinstance(value,list) or len(value)>30:raise ValueError('career_invalid_list')
+def _strings(value,limit=30):
+    if not isinstance(value,list) or len(value)>limit:raise ValueError('career_invalid_list')
     return list(dict.fromkeys(_text(v) for v in value if _text(v)))
 
 
@@ -55,7 +55,7 @@ def normalize_career(value):
                     if item[field] and not re.fullmatch(r'(?:19|20)\d{2}-(?:0[1-9]|1[0-2])',item[field]):raise ValueError('career_invalid_date')
                 if (current and item['end']) or (item['start'] and item['end'] and item['start']>item['end']):raise ValueError('career_date_order')
             if group in {'work','skills'}:
-                refs=_strings(row.get('evidence_ids',[]))
+                refs=_strings(row.get('evidence_ids',[]),limit=200)  # 证据池扩大后一段工作可关联上百张卡
                 if any(not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',ref) for ref in refs):raise ValueError('career_invalid_evidence_id')
                 item['evidence_ids']=refs
             if group=='work':item['contributions']=_strings(row.get('contributions',[]))
@@ -140,3 +140,73 @@ def parse_project_period(value):
         parts=re.findall(r'\d+',text)
         return f'{parts[0]}-{int(parts[1]):02}' if len(parts)==2 else None
     return canonical(match[1]),canonical(match[2])
+
+
+# ---- 证据卡自动关联工作经历（按材料来源、已关联材料、项目时间三类信号；冲突不自动决定） ----
+_GENERIC_COMPANY_TOKENS={'上海','北京','深圳','广州','杭州','南京','成都','武汉','苏州','重庆','天津','西安','中国','有限公司','股份有限公司','股份','公司','集团','科技','信息技术','信息服务','金融','保险','网络','数字','技术','服务','信息'}
+_CITY_PREFIX=re.compile(r'^(上海|北京|深圳|广州|杭州|南京|成都|武汉|苏州|重庆|天津|西安)')
+_COMPANY_SUFFIX=re.compile(r'(股份有限公司|有限责任公司|有限公司|股份|集团|公司|科技|信息技术|金融信息服务|信息服务|金融|保险|网络|数字|技术|服务|信息)$')
+
+
+def company_aliases(company):
+    """公司全称、去掉城市前缀与行业/组织形式后缀的核心名、括号里的简称（如 EC+）；过滞泛词。"""
+    text=(company or '').strip()
+    if not text:return []
+    aliases=[text]
+    brackets=re.findall(r'[（(]([^（）()]+)[）)]',text)
+    core=_CITY_PREFIX.sub('',re.sub(r'[（(][^（）()]*[）)]','',text).strip())
+    previous=None
+    while core and core!=previous:
+        previous=core;core=_COMPANY_SUFFIX.sub('',core).strip()
+    for alias in (core,*brackets):
+        alias=alias.strip()
+        if len(alias)>=2 and alias not in _GENERIC_COMPANY_TOKENS and alias not in aliases:aliases.append(alias)
+    return aliases
+
+
+def _work_contains(work,start):
+    return bool(work.get('start')) and work['start']<=start and (work.get('current') or not work.get('end') or start<=work['end'])
+
+
+def suggest_evidence_links(career,cards,material_labels):
+    """为尚未关联的卡给出唯一工作经历建议；多条信号指向不同工作时不决定，交给用户。"""
+    works=[w for w in career.get('work',[]) if w.get('company')]
+    linked={ref:w['id'] for w in works for ref in w.get('evidence_ids',[])}
+    by_id={card['id']:card for card in cards}
+    material_work={}
+    for work in works:
+        for ref in work.get('evidence_ids',[]):
+            for mid in by_id.get(ref,{}).get('source_material_ids',[]):material_work.setdefault(mid,set()).add(work['id'])
+    aliases={w['id']:company_aliases(w['company']) for w in works}
+    company={w['id']:w['company'] for w in works}
+    suggestions=[];unresolved=[]
+    for card in cards:
+        if card['id'] in linked:continue
+        votes={}
+        for mid in card.get('source_material_ids',[]):
+            for wid in material_work.get(mid,()):votes.setdefault(wid,set()).add('linked_material')
+            label=str(material_labels.get(mid,'')).casefold()
+            for work in works:
+                if label and any(alias.casefold() in label for alias in aliases[work['id']]):votes.setdefault(work['id'],set()).add('material_label')
+        period=parse_project_period(card.get('time_range',''))
+        if period:
+            for work in works:
+                if _work_contains(work,period[0]):votes.setdefault(work['id'],set()).add('time_range')
+        if not votes:unresolved.append({'evidence_id':card['id'],'title':card.get('title',''),'reason':'no_signal'})
+        elif len(votes)==1:
+            wid=next(iter(votes));suggestions.append({'evidence_id':card['id'],'title':card.get('title',''),'work_id':wid,'company':company[wid],'basis':sorted(votes[wid])})
+        else:unresolved.append({'evidence_id':card['id'],'title':card.get('title',''),'reason':'ambiguous','candidates':sorted(votes)})
+    return {'suggestions':suggestions,'unresolved':unresolved,'already_linked':sum(1 for card in cards if card['id'] in linked)}
+
+
+def eligible_cards_for_linking(evidence_dir:Path):
+    cards=[]
+    if not evidence_dir.is_dir():return cards
+    for path in sorted(evidence_dir.glob('*.yaml')):
+        try:doc=parse_simple_yaml(path.read_text(encoding='utf-8'))
+        except (OSError,UnicodeDecodeError,ValueError):continue
+        s=doc['scalars'];l=doc['lists']
+        if not (s.get('status')=='saved_eligible' and s.get('candidate_pool_eligible')=='true' and l.get('results') and l.get('artifacts')):continue
+        cards.append({'id':s.get('id',path.stem),'title':s.get('title',''),'time_range':s.get('time_range',''),'source_material_ids':[str(x) for x in l.get('source_material_ids',[])]})
+    return cards
+

@@ -1389,7 +1389,9 @@
     "confirm": "Confirm career facts",
     "reload": "Discard unsaved changes",
     "expandEntry": "Expand to edit",
-    "now": "present"
+    "now": "present",
+    "autoLink": "Auto-link evidence",
+    "autoLinkHint": "Attach unlinked eligible evidence cards to a single work entry by material source, shared material and project time; conflicting cards are left for manual selection"
   },
   "confirmations": {
     "evidence": {
@@ -1507,7 +1509,8 @@
       "materialUploaded": "Material uploaded",
       "exported": "PDF exported",
       "careerSaved": "Career profile draft saved",
-      "careerConfirmed": "Career profile confirmed"
+      "careerConfirmed": "Career profile confirmed",
+      "careerAutoLinked": "Linked {{applied}} cards automatically, {{unresolved}} undecided need manual selection; the profile changed, review and confirm again"
     },
     "jobs": {
       "created": "Job profile created",
@@ -1583,7 +1586,8 @@
       "consentDirty": "Save the draft before confirming",
       "consentStale": "The profile changed elsewhere; reload it",
       "consentMissing": "Fill the missing items before confirming",
-      "saveClean": "No unsaved changes"
+      "saveClean": "No unsaved changes",
+      "autoLinkDirty": "Save or discard current edits before auto-linking"
     }
   },
   "codes": {

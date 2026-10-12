@@ -2,6 +2,13 @@
 
 Last updated: 2026-10-12
 
+## 2026-10-12 证据卡自动关联工作经历（P0-026 续）
+
+- 决策：用户同意由 App 自动决定投递候选（走既有门禁，不再人工挑选），并批准开工“证据卡自动关联工作经历”。
+- 规范：核心规范“材料对账与批量整理契约”新增自动关联条目。
+- 代码：`tools/infra/career_profile.py` 新增公司别名、三信号关联建议与可用卡读取；`profile.autoLinkEvidence`（预览 / 写入，写入需 `expected_revision`）；职业档案编辑器“自动关联证据”按钮；`evidence_ids` 上限 30 → 200。测试：`tests/unit/infra/test_career_autolink.py`、`tests/unit/sidecar/test_profile_autolink.py`、`tests/unit/gui/test_career_autolink_ui.py`。
+- 数据：对真实档案预览后写入：44 张可用卡全部给出唯一建议（一里智辉 EC+ 32、众安 6、九恒星 6；43 张靠材料标签命中公司别名、1 张靠同源材料继承），0 张无法判定；写入后四段工作分别关联 36 / 7 / 7 / 1 张，档案缺项 0，`career_status.reviewed` 变为 false，待用户在简历中心重新确认后 Quick Run 的职业档案一致性检查才会通过。
+
 ## 2026-10-12 材料对账与批量整理首片（P0-026 续）：把本机工作日志喂给 App
 
 - 决策：用户指出本机已有充分资料，要求 App 具备核对、分析、整合材料的能力，并同意先由助手初步整理喂入 App。
