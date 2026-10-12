@@ -325,6 +325,7 @@ python3 tools/run_agent.py --policy profiles/agent_policy.example.yaml --dry-run
 - 新增只读接口 `evidence.reconcile`（可选 `evidence_ids`）：对每张卡报告 `pool_status`（eligible / incomplete / legacy=无状态旧卡 / 其他状态原值）、`has_source`、`traceable_results`、`untraceable_results`（在所声明来源文档中找不到原文的结果）、`suggested_sources`（无来源或不可追溯时在全部文本材料里逐字找到的材料与文档）、`verbatim_candidates`（来源文本中相似度 ≥ 0.55 的最接近原句，仅供替换参考）、`missing_fields`（time_range / role_scope / results / artifacts）、`date_hints`（缺时间时来源文本出现的年月，最多 8 个）、`possible_duplicates`（标题二元组 Jaccard ≥ 0.5 的其他卡，最多 3 个）；以及汇总计数。接口不修改任何卡。
 - 证据页在材料来源折叠区之后增加“材料对账”折叠区：展开时才调用一次对账，摘要行显示六个计数，清单只列有问题的卡（不可追溯优先），每行给原因串与“查看”进入详情；“重新对账”图标按钮重跑。修正仍走既有详情编辑与保存。
 - 修复被改写结果的推荐流程：按 `verbatim_candidates`（相似度 ≥ 0.7）把结果替换为原句、无原句的结果删除，再以同一来源文档按 `eligible` 重新保存；结果为空的卡保持 `saved_incomplete`。
+- 大证据池下的匹配：模型匹配阶段只接收规则分最高的前 N 张卡（`--llm-max-cards`，默认 12，可用 `PPF_MATCH_LLM_MAX_CARDS` 覆盖；打分公式与规则报告一致：关键词命中×3 + 量化结果×2 + min(3, 附件) + 负责人加分），规则报告与证据暂存仍覆盖全部卡；预筛发生时在阶段输出记录 `llm candidates: N/总数`。依据：51 张卡整池提示词使本地 27B 模型在 600 秒内无法完成匹配。
 
 ## 变更流程
 

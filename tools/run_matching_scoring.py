@@ -262,9 +262,44 @@ def build_rule_report(
     return "\n".join(lines) + "\n"
 
 
+_DEFAULT_LLM_MAX_CARDS = 12
+
+
+def rank_cards_by_rule(job_profile_path: str, evidence_files: list[Path]) -> list[tuple[Path, int]]:
+    """按规则报告同一公式给每张卡打分（关键词命中×3 + 量化结果×2 + min(3, 附件) + 负责人加分），降序返回。"""
+    job_doc = parse_simple_yaml(read_text(job_profile_path))
+    keywords = [str(item) for item in job_doc["lists"].get("keywords", [])]
+    ranked: list[tuple[Path, int]] = []
+    for card_file in evidence_files:
+        doc = parse_simple_yaml(read_text(str(card_file)))
+        text_parts: list[str] = list(doc["scalars"].values())
+        for items in doc["lists"].values():
+            text_parts.extend(items)
+        card_text = "\n".join(text_parts).lower()
+        keyword_hits = sum(1 for kw in keywords if kw.lower() in card_text)
+        numeric = sum(1 for item in doc["lists"].get("results", []) if re.search(r"\d", item))
+        artifacts = len(doc["lists"].get("artifacts", []))
+        role_bonus = 2 if contains_any(doc["scalars"].get("role_scope", ""), ["Owner", "Tech Lead", "负责人"]) else 0
+        ranked.append((card_file, keyword_hits * 3 + numeric * 2 + min(3, artifacts) + role_bonus))
+    ranked.sort(key=lambda item: (-item[1], item[0].stem))
+    return ranked
+
+
+def select_llm_candidate_files(job_profile_path: str, evidence_files: list[Path], limit: int) -> list[Path]:
+    """证据池大于上限时，只把规则分最高的前 N 张交给模型；本地模型吃不下整池提示词（51 张卡 600 秒超时）。"""
+    if limit <= 0 or len(evidence_files) <= limit:
+        return list(evidence_files)
+    return [card_file for card_file, _ in rank_cards_by_rule(job_profile_path, evidence_files)[:limit]]
+
+
 def _legacy_main() -> int:
     parser = argparse.ArgumentParser(description="Run matching & scoring workflow")
     _ = parser.add_argument("--job-profile", required=True, help="Job profile path")
+    _ = parser.add_argument(
+        "--llm-max-cards", type=int,
+        default=int(os.getenv("PPF_MATCH_LLM_MAX_CARDS") or _DEFAULT_LLM_MAX_CARDS),
+        help="交给模型的证据卡上限，超出部分按规则分预筛（规则报告仍用全部卡）",
+    )
     _ = parser.add_argument(
         "--evidence-dir", required=True, help="Evidence cards directory"
     )
@@ -349,7 +384,10 @@ def _legacy_main() -> int:
                 return 1
         else:
             job_profile_text = read_text(job_profile)
-            evidence_text = "\n\n".join([read_text(str(p)) for p in evidence_files])
+            llm_files = select_llm_candidate_files(job_profile, evidence_files, cast(int, args.llm_max_cards))
+            if len(llm_files) < len(evidence_files):
+                print(f"[matching] llm candidates: {len(llm_files)}/{len(evidence_files)} (rule prefilter, --llm-max-cards)")
+            evidence_text = "\n\n".join([read_text(str(p)) for p in llm_files])
             prompt = load_prompt(prompt_path, job_profile_text, evidence_text)
             payload: dict[str, object] = {
                 "model": model,
