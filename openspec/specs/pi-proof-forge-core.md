@@ -316,6 +316,16 @@ python3 tools/run_agent.py --policy profiles/agent_policy.example.yaml --dry-run
 - 猎头岗位（官方 `jobType=1`）的公开详情位于 `https://www.liepin.com/a/<id>.shtml`，与企业岗位 `/job/<id>.shtml` 页面结构一致：完整 JD 读取、来源 URL 身份比对与反馈同步的岗位 ID 提取同样接受该路径，原始岗位 ID 相符、不跟随重定向等既有规则不变。生成 PDF 沟通路线对 `/a/` 岗位仍保持显式阻断，待真实验证后再开放。
 - 完整 JD 判定修订：真实 JD 常用“工作内容 / 我们期待你 / Job Responsibilities”等自定标题，固定中文“职责/要求”标题不再是必要条件。无登录/展开/截断提示且压缩后正文 ≥ 200 字即视为完整；更短的正文仍须同时具备职责与要求两类实质章节。一句话岗位（如“会后端开会，项目0-1”）与纯介绍段落仍不升级为完整 JD。
 
+## 材料对账与批量整理契约（2026-10-12）
+
+背景：用户本机已有充分的工作资料（私有工作日志仓库，按公司/项目/模块组织），而证据池只有 8 张可用卡且 2021–2026 年段最薄；用户要求 App 具备对材料进行核对、分析、整合的能力，并先由助手初步整理后喂入 App。
+
+- 批量导入沿用既有目录型材料：按时期/主题精选文档复制到 `~/backup-manifest/pi-proof-forge/material-bundles-<日期>/<bundle>/`，经 `material.upload`（目录）导入为一份 `# Source:` 分节的文本材料；文件名含密码/密钥/凭据/`local-paths` 字样的文档以及超过 60000 字或少于 40 字的文档不进入材料库。
+- 批量提炼沿用既有链路：对每篇精选文档调用 `evidence.generateDraft(source_document_id)` 生成草稿，再 `evidence.saveDraft(save_mode=eligible)`；结果必须逐字可追溯（既有 `no_fabrication_guard`），不可追溯时降为 `saved_incomplete`，不放宽守卫。助手代为审核时 `review.reviewer` 必须标明批次（如 `experiment_batch_<日期>`），台账记录数量，用户可在证据页复核或删除。
+- 新增只读接口 `evidence.reconcile`（可选 `evidence_ids`）：对每张卡报告 `pool_status`（eligible / incomplete / legacy=无状态旧卡 / 其他状态原值）、`has_source`、`traceable_results`、`untraceable_results`（在所声明来源文档中找不到原文的结果）、`suggested_sources`（无来源或不可追溯时在全部文本材料里逐字找到的材料与文档）、`verbatim_candidates`（来源文本中相似度 ≥ 0.55 的最接近原句，仅供替换参考）、`missing_fields`（time_range / role_scope / results / artifacts）、`date_hints`（缺时间时来源文本出现的年月，最多 8 个）、`possible_duplicates`（标题二元组 Jaccard ≥ 0.5 的其他卡，最多 3 个）；以及汇总计数。接口不修改任何卡。
+- 证据页在材料来源折叠区之后增加“材料对账”折叠区：展开时才调用一次对账，摘要行显示六个计数，清单只列有问题的卡（不可追溯优先），每行给原因串与“查看”进入详情；“重新对账”图标按钮重跑。修正仍走既有详情编辑与保存。
+- 修复被改写结果的推荐流程：按 `verbatim_candidates`（相似度 ≥ 0.7）把结果替换为原句、无原句的结果删除，再以同一来源文档按 `eligible` 重新保存；结果为空的卡保持 `saved_incomplete`。
+
 ## 变更流程
 
 1. 使用 `/opsx:propose` 提交变更提案

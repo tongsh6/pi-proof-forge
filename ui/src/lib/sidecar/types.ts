@@ -93,6 +93,34 @@ export interface EvidenceDeleteResult extends EvidenceMutationResult {
   deleted: boolean;
 }
 
+export interface EvidenceReconcileItem {
+  evidence_id: string;
+  title: string;
+  pool_status: string;
+  has_source: boolean;
+  traceable_results: number;
+  untraceable_results: string[];
+  suggested_sources: { material_id: string; document: string; result: string }[];
+  verbatim_candidates: { result: string; verbatim: string; similarity: number }[];
+  missing_fields: string[];
+  date_hints: string[];
+  possible_duplicates: string[];
+}
+
+export interface EvidenceReconcileResult extends RpcResultBase {
+  summary: {
+    total: number;
+    eligible: number;
+    incomplete: number;
+    legacy: number;
+    untraceable_cards: number;
+    missing_time_range: number;
+    missing_role_scope: number;
+    duplicate_cards: number;
+  };
+  items: EvidenceReconcileItem[];
+}
+
 export interface EvidenceImportResult extends EvidenceMutationResult {
   imported_resources: string[];
 }

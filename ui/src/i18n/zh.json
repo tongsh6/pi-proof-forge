@@ -428,6 +428,32 @@
         "sourcePathRequired": "请填写源文件路径。",
         "selectEvidence": "请先选择一张证据卡。",
         "selectMaterial": "请先选择已上传的 Markdown 材料。"
+      },
+      "reconcile": {
+        "title": "材料对账",
+        "hint": "展开后检查每张卡的结果是否能在材料里逐字找到、缺什么、是否重复",
+        "summaryLine": "可用 {{eligible}} · 待补 {{incomplete}} · 未入池 {{legacy}} · 结果不可追溯 {{untraceable}} · 缺时间 {{missingTime}} · 疑似重复 {{duplicates}}",
+        "scope": "只读检查，不改动任何卡；修正请在右侧详情里编辑后保存。",
+        "run": "重新对账",
+        "view": "查看",
+        "clean": "所有卡的结果都能追溯到材料，字段完整，没有疑似重复。",
+        "more": "还有 {{count}} 张未显示，先处理上面的。",
+        "pool": {
+          "eligible": "可用",
+          "incomplete": "待补",
+          "legacy": "未入池",
+          "draft": "草稿"
+        },
+        "reasons": {
+          "untraceable": "{{count}} 条结果在材料里找不到原文",
+          "noSource": "未关联材料",
+          "missingTime": "缺时间",
+          "missingTimeHint": "缺时间（材料中出现：{{hints}}）",
+          "missingRole": "缺本人角色",
+          "missingResults": "缺结果",
+          "missingArtifacts": "缺附件",
+          "duplicate": "疑似与 {{ids}} 重复"
+        }
       }
     },
     "jobs": {

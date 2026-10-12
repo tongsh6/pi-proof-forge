@@ -24,6 +24,7 @@ import {
   importEvidence,
   listEvidenceMaterialSources,
   listEvidence,
+  reconcileEvidence,
   saveEvidenceDraft,
   updateEvidence,
 } from "@/lib/sidecar/api";
@@ -33,6 +34,8 @@ import type {
   EvidenceDetail,
   EvidenceFilters,
   EvidenceListItem,
+  EvidenceReconcileItem,
+  EvidenceReconcileResult,
   MaterialSourceItem,
 } from "@/lib/sidecar/types";
 
@@ -210,6 +213,45 @@ export function EvidencePage() {
 
   const hasLoadedRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [reconcile, setReconcile] = useState<EvidenceReconcileResult | null>(null);
+  const [reconcileState, setReconcileState] = useState<"idle" | "running" | "error">("idle");
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+  const runReconcile = useCallback(async () => {
+    setReconcileState("running");
+    setReconcileError(null);
+    try {
+      setReconcile(await reconcileEvidence());
+      setReconcileState("idle");
+    } catch (reason) {
+      setReconcileState("error");
+      setReconcileError(getErrorMessage(reason));
+    }
+  }, []);
+  const reconcileProblems = useMemo(() => {
+    const items = reconcile?.items ?? [];
+    const weight = (item: EvidenceReconcileItem) =>
+      (item.untraceable_results.length > 0 ? 4 : 0) + (!item.has_source ? 2 : 0) + item.missing_fields.length + (item.possible_duplicates.length > 0 ? 1 : 0);
+    return items.filter((item) => weight(item) > 0).sort((a, b) => weight(b) - weight(a));
+  }, [reconcile]);
+  const reconcileReasons = useCallback(
+    (item: EvidenceReconcileItem) => {
+      const reasons: string[] = [];
+      if (item.untraceable_results.length > 0) reasons.push(t("pages.evidence.reconcile.reasons.untraceable", { count: item.untraceable_results.length }));
+      if (!item.has_source) reasons.push(t("pages.evidence.reconcile.reasons.noSource"));
+      if (item.missing_fields.includes("time_range"))
+        reasons.push(
+          item.date_hints.length > 0
+            ? t("pages.evidence.reconcile.reasons.missingTimeHint", { hints: item.date_hints.slice(0, 3).join("、") })
+            : t("pages.evidence.reconcile.reasons.missingTime")
+        );
+      if (item.missing_fields.includes("role_scope")) reasons.push(t("pages.evidence.reconcile.reasons.missingRole"));
+      if (item.missing_fields.includes("results")) reasons.push(t("pages.evidence.reconcile.reasons.missingResults"));
+      if (item.missing_fields.includes("artifacts")) reasons.push(t("pages.evidence.reconcile.reasons.missingArtifacts"));
+      if (item.possible_duplicates.length > 0) reasons.push(t("pages.evidence.reconcile.reasons.duplicate", { ids: item.possible_duplicates.join("、") }));
+      return reasons;
+    },
+    [t]
+  );
   // 详情栏默认只读；新建草稿、模型草稿、重审时自动进入编辑态，切换卡片或保存成功后退出。
   const [editMode, setEditMode] = useState(false);
   useEffect(() => {
@@ -767,6 +809,77 @@ export function EvidencePage() {
             ) : !selectedDocument ? (
               <p className="mt-3 text-xs text-text-muted">{t("pages.evidence.materialSources.stepsHint")}</p>
             ) : null}
+            </div>
+          </details>
+
+          <details
+            className="fold-section rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]"
+            data-testid="evidence-reconcile-fold"
+            onToggle={(event) => {
+              if ((event.currentTarget as HTMLDetailsElement).open && !reconcile && reconcileState !== "running") void runReconcile();
+            }}
+          >
+            <summary>
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+                <h2 className="text-base font-semibold text-text-primary">{t("pages.evidence.reconcile.title")}</h2>
+                <span className="text-sm font-normal text-text-secondary">
+                  {reconcile
+                    ? t("pages.evidence.reconcile.summaryLine", {
+                        eligible: reconcile.summary.eligible,
+                        incomplete: reconcile.summary.incomplete,
+                        legacy: reconcile.summary.legacy,
+                        untraceable: reconcile.summary.untraceable_cards,
+                        missingTime: reconcile.summary.missing_time_range,
+                        duplicates: reconcile.summary.duplicate_cards,
+                      })
+                    : t("pages.evidence.reconcile.hint")}
+                </span>
+              </span>
+            </summary>
+            <div className="space-y-3 px-5 pb-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-text-muted">{t("pages.evidence.reconcile.scope")}</p>
+                <button
+                  aria-label={t("pages.evidence.reconcile.run")}
+                  className="page-icon-button"
+                  data-testid="evidence-reconcile-run"
+                  disabled={reconcileState === "running"}
+                  onClick={() => void runReconcile()}
+                  title={t("pages.evidence.reconcile.run")}
+                  type="button"
+                >
+                  <RefreshCw className={reconcileState === "running" ? "animate-spin" : ""} size={15} />
+                </button>
+              </div>
+              {reconcileState === "error" && reconcileError ? <p className="text-sm text-error">{reconcileError}</p> : null}
+              {reconcile && reconcileProblems.length === 0 ? (
+                <p className="text-sm text-text-secondary">{t("pages.evidence.reconcile.clean")}</p>
+              ) : null}
+              {reconcile && reconcileProblems.length > 0 ? (
+                <ul className="divide-y divide-border" data-testid="evidence-reconcile-list">
+                  {reconcileProblems.slice(0, 30).map((item) => (
+                    <li className="flex items-start justify-between gap-3 py-2" key={item.evidence_id}>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-text-primary">
+                          {item.title || item.evidence_id}
+                          <span className="ml-2 text-xs text-text-muted">{t(`pages.evidence.reconcile.pool.${item.pool_status}`, { defaultValue: item.pool_status })}</span>
+                        </p>
+                        <p className="mt-0.5 text-xs text-text-muted">{reconcileReasons(item).join(" · ")}</p>
+                      </div>
+                      <button
+                        className="shrink-0 rounded-card border border-border px-3 py-1 text-xs text-text-primary hover:bg-bg-hover"
+                        onClick={() => void loadDetail(item.evidence_id)}
+                        type="button"
+                      >
+                        {t("pages.evidence.reconcile.view")}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {reconcile && reconcileProblems.length > 30 ? (
+                <p className="text-xs text-text-muted">{t("pages.evidence.reconcile.more", { count: reconcileProblems.length - 30 })}</p>
+              ) : null}
             </div>
           </details>
 

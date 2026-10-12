@@ -64,6 +64,7 @@ import type {
   SubmissionRetryResult,
   SubmitReviewResult,
   UploadFilePayload,
+  EvidenceReconcileResult,
 } from "./types";
 
 const UI_VERSION = "0.1.0";
@@ -488,6 +489,10 @@ export async function getMaterialReadiness(): Promise<MaterialReadinessResult> {
 
 export async function listEvidenceMaterialSources(): Promise<MaterialListResult> {
   return client.call<MaterialListResult>("evidence.listMaterialSources");
+}
+
+export async function reconcileEvidence(evidenceIds?: string[]): Promise<EvidenceReconcileResult> {
+  return client.call<EvidenceReconcileResult>("evidence.reconcile", evidenceIds ? { evidence_ids: evidenceIds } : {});
 }
 
 export async function getProfile(): Promise<ProfileGetResult> {

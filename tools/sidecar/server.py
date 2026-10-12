@@ -30,6 +30,7 @@ from tools.sidecar.handlers.evidence import (
     handle_evidence_import,
     handle_evidence_list,
     handle_evidence_save_draft,
+    handle_evidence_reconcile,
     handle_evidence_update,
 )
 from tools.sidecar.handlers.overview import handle_overview_get
@@ -101,6 +102,7 @@ def _create_router() -> Router:
     router.register("evidence.listMaterialDocuments", handle_list_material_documents)
     router.register("evidence.readMaterialDocument", handle_read_material_document)
     router.register("evidence.saveDraft", handle_evidence_save_draft)
+    router.register("evidence.reconcile", handle_evidence_reconcile)
     router.register("jobs.listLeads", handle_jobs_list_leads)
     router.register("jobs.searchLiepin", handle_jobs_search_liepin)
     router.register("jobs.fetchLiepinDetail", handle_jobs_fetch_liepin_detail)
