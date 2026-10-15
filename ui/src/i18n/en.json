@@ -241,6 +241,26 @@
         "pending": "Career record not confirmed yet",
         "counts": "{{work}} jobs · {{education}} education · {{skills}} skill groups",
         "expand": "Expand to edit"
+      },
+      "preferences": {
+        "title": "Career direction and boundaries",
+        "count": "preferences",
+        "help": "Extract preferences from your material library, review the source quotes, then save. Used for job screening, never added to resumes. Upload a career direction document below first.",
+        "material": "Source material",
+        "document": "Document",
+        "choose": "Select career material",
+        "generate": "Extract preferences",
+        "processing": "Processing…",
+        "source": "Source",
+        "confirm": "I reviewed these preferences and quotes and agree to use them for job assessment.",
+        "save": "Confirm and save",
+        "saved": "Preferences saved",
+        "kind": {
+          "primary": "Primary",
+          "bridge": "Bridge",
+          "explore": "Explore",
+          "avoid": "Avoid"
+        }
       }
     },
     "quickRun": {
@@ -271,7 +291,7 @@
       "inputSummary": "Run Inputs",
       "materialSource": "Material source",
       "chooseMaterial": "Select source material",
-      "useLlm": "Use model-assisted evidence selection (rules by default)",
+      "useLlm": "Semantic matching across all evidence (turn off for rules)",
       "selectedProfile": "Selected profile",
       "traceableEvidence": "Traceable evidence",
       "resumePositioning": "Resume positioning",
@@ -316,7 +336,35 @@
         "E": "Evidence traceability",
         "R": "Relevance"
       },
-      "modelLine": "Model"
+      "modelLine": "Model",
+      "semantic": {
+        "fit": "Semantic job fit",
+        "resume": "Resume requirement coverage",
+        "expression": "Writing quality",
+        "facts": "Fact completeness",
+        "ready": "Complete; review required",
+        "incomplete": "Evidence needed",
+        "basis": "Reviewed {{count}} cards. Model assessment with validated source quotes.",
+        "poolStatus": "Evidence pool assessment",
+        "present": "Present in resume",
+        "absent": "Absent from resume",
+        "status": {
+          "supported": "Supported",
+          "partial": "Partially supported",
+          "insufficient": "Insufficient evidence",
+          "conflict": "Conflicting evidence",
+          "not_present": "Not present in resume"
+        }
+      },
+      "direction": {
+        "aligned": "Aligned with saved career preferences",
+        "needs_review": "Career direction needs clarification",
+        "excluded": "Stopped: career preferences conflict",
+        "preference": "Preference"
+      },
+      "notGenerated": "No resume was generated",
+      "skipped": "Skipped",
+      "chooseAnotherJob": "Choose another job"
     },
     "evidence": {
       "title": "Evidence",
@@ -984,7 +1032,10 @@
           "send": "Confirm send",
           "receipt": "Verify receipt"
         },
-        "consentShort": "I reviewed this PDF and approve uploading it for delivery"
+        "consentShort": "I reviewed this PDF and the quality gaps above, and approve uploading it for delivery",
+        "verificationPending": "Attachment verification is incomplete. The upload record is retained; check the platform attachment and inspect again without uploading again.",
+        "authorizeSingle": "Authorize one application for this job and PDF",
+        "singleAuthorized": "One application authorized for this exact job and PDF."
       },
       "platformFeedback": {
         "sync": "Sync delivery feedback (read-only)",
@@ -1658,5 +1709,39 @@
       "qiancheng": "51job",
       "other": "Other"
     }
+  },
+  "sourceMerge": {
+    "title": "Add evidence from another document",
+    "help": "Select a source for the same project. Adopt exact text: replace period, role or context; append individual actions or results. Review and save the draft afterwards.",
+    "material": "Select supporting material",
+    "field": "Field to supplement",
+    "current": "Current content",
+    "empty": "Not recorded",
+    "quote": "Paste a continuous quote from the selected document",
+    "notFound": "This quote was not found in the selected document. Check the text and source.",
+    "confirm": "I checked the project and personal ownership, preserving the source limits on plans, completion and verification.",
+    "append": "Adopt quote and append",
+    "replace": "Adopt quote and replace field",
+    "bound": "Field sources",
+    "changed": "A source or field citation has changed. This card cannot be used for generation until its sources are reviewed."
+  },
+  "quality": {
+    "title": "Resume quality",
+    "bound": "Quality of this fixed PDF",
+    "current": "Quality of this generated version",
+    "unrecorded": "This historical PDF has no bound quality assessment. Quality is unrecorded; do not rely on its old match score alone.",
+    "fit": "Role fit (model)",
+    "coverage": "Resume coverage",
+    "expression": "Writing rule reference",
+    "facts": "Fact completeness",
+    "complete": "Complete; review required",
+    "incomplete": "Incomplete",
+    "passed": "Automatic quality checks passed; human review required",
+    "failed": "Automatic quality checks not passed; review each gap",
+    "advisory": "Scores are advisory. A source quote alone does not establish full requirements or personal ownership.",
+    "gaps": "Open gaps for this version",
+    "scope": "Scope: {{qualification_count}} qualifications, {{responsibility_count}} responsibilities, {{check_count}} source clauses. Unrecognized responsibilities are not counted as covered.",
+    "inResume": "Resume",
+    "ruleFit": "Rule match reference"
   }
 }

@@ -622,6 +622,8 @@ def _load_eligible_evidence_card(path: Path) -> dict[str, Any]:
         raise ValueError(f"evidence_card_unreadable: {path.stem}") from exc
     if not _is_saved_eligible_evidence(doc):
         raise ValueError(f"evidence_card_not_eligible: {path.stem}")
+    from tools.infra.evidence_sources import validated_source_inputs
+    validated_source_inputs(doc,path.parent.parent/'materials')
     return {
         "evidence_id": doc["scalars"].get("id", path.stem),
         "path": path,
@@ -699,7 +701,7 @@ def _export_resume_pdf(run_id: str, artifacts: dict[str, object]) -> str:
     if not resume_md.exists():
         return ""
     from tools.infra.export.resume_filename import pdf_filename_for_resume
-    pdf_path = _PROJECT_ROOT / "outputs" / "quick_runs" / run_id / "exports" / pdf_filename_for_resume(resume_md, _PROJECT_ROOT / 'outputs')
+    pdf_path = _PROJECT_ROOT / "outputs" / "quick_runs" / run_id / "exports" / pdf_filename_for_resume(resume_md, _PROJECT_ROOT / 'outputs', readable=True)
     trace_path=resume_md.with_suffix('.trace.json')
     source_hash=hashlib.sha256(resume_md.read_bytes()).hexdigest()
     trace_hash=hashlib.sha256(trace_path.read_bytes()).hexdigest() if trace_path.is_file() else ''
@@ -732,12 +734,19 @@ def _quick_run_result_details(
     scorecard_artifact = artifacts.get("scorecard")
     score_total: int | None = None
     score_breakdown: dict[str, dict[str, Any]] = {}
+    career_direction=None
     evidence_card_ids: list[str] = []
     if isinstance(matching_artifact, str) and matching_artifact:
         matching_path = _resolve_project_path(matching_artifact)
         score_total, score_breakdown = _parse_matching_scores(matching_path)
         evidence_card_ids = _parse_matching_evidence_ids(matching_path)
         matching_lists = _parse_matching_lists(matching_path)
+        direction_path=matching_path.with_suffix('.direction.json')
+        if direction_path.is_file():
+            try:
+                from tools.infra.semantic_matching import load_direction_report
+                career_direction=load_direction_report(direction_path)
+            except (ValueError,OSError,KeyError,TypeError):pass
     else:
         matching_lists = {"gaps": [], "gap_tasks": []}
     evidence_traces = (
@@ -782,6 +791,7 @@ def _quick_run_result_details(
     )
     reasons = list(readiness.get("reasons") or ["需人工审核简历事实与岗位适用性"])
     evaluation_score = None
+    semantic_review = None
     evaluation_gaps: list[str] = []
     if resume_a is not None and isinstance(scorecard_artifact, str) and scorecard_artifact:
         try:
@@ -793,6 +803,11 @@ def _quick_run_result_details(
             ):
                 evaluation_score = value
                 evaluation_gaps = [str(task) for task in score.get("gap_tasks", [])]
+                semantic_value = score.get('semantic_review')
+                if isinstance(semantic_value, dict) and semantic_value.get('mode') == 'semantic':
+                    semantic_review = semantic_value
+                    expression = score.get('expression_score')
+                    evaluation_score = expression if type(expression) in (int, float) and 0 <= expression <= 100 else None
         except (OSError, ValueError, TypeError, AttributeError):
             pass
     advisory_messages = {"保持当前证据完整度，按新 JD 微调关键词", "暂无高优先级补证据任务。"}
@@ -805,7 +820,9 @@ def _quick_run_result_details(
     if evaluation_score is None:
         reasons.append("缺少与本版简历匹配的规则评测")
     elif evaluation_score < 78:
-        reasons.append(f"规则评分 {evaluation_score}/100，低于参考线 78")
+        reasons.append(f"{'表达质量' if semantic_review else '规则评分'} {evaluation_score}/100，低于参考线 78")
+    if semantic_review and not semantic_review.get('all_requirements_supported'):
+        reasons.append('岗位要求仍有证据不足、部分支持、冲突或简历未呈现的项目')
     if pending_gaps:
         reasons.append("仍有待处理的证据或岗位匹配缺口")
     if pdf_export_error:
@@ -820,8 +837,12 @@ def _quick_run_result_details(
             resume_traceable and matching_uses_selected_evidence and bool(pdf_artifact)
             and readiness["status"] != "NEEDS_EVIDENCE"
             and evaluation_score is not None and evaluation_score >= 78 and not pending_gaps
+            and (semantic_review is None or semantic_review.get('all_requirements_supported') is True)
         ),
     })
+    if resume_a is None or not resume_a.is_file():
+        readiness.update(status="NOT_GENERATED", content_ready=False, quality_passed=False,
+                         reasons=["本次未生成简历"])
     return {
         "stdout": stdout[-4000:],
         "stderr": stderr[-4000:],
@@ -830,6 +851,8 @@ def _quick_run_result_details(
         "reason": reason if isinstance(reason, str) else "",
         "score_total": score_total,
         "score_breakdown": score_breakdown,
+        "semantic_review": semantic_review,
+        "career_direction":career_direction,
         "gaps": matching_lists.get("gaps", []),
         "gap_tasks": matching_lists.get("gap_tasks", []),
         "resume_positioning": resume_positioning or {},

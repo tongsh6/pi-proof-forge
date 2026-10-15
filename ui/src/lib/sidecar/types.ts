@@ -48,6 +48,9 @@ export interface ArtifactSummary {
 }
 
 export interface EvidenceDetail {
+  field_sources?: EvidenceFieldSource[];
+  source_sha256?: string;
+  source_error?: string;
   source_documents?:{material_id:string;document_id:string;sha256:string;label:string}[];
   evidence_id: string;
   title: string;
@@ -140,6 +143,7 @@ export interface EvidenceDraftArtifact {
 }
 
 export interface EvidenceDraftPayload {
+  field_sources?: EvidenceFieldSource[];
   source_documents?: {material_id:string;document_id:string;sha256:string;label:string}[];
   title: string;
   time_range?: string;
@@ -154,6 +158,14 @@ export interface EvidenceDraftPayload {
   status?: string;
   missing_items?: string[];
   candidate_pool_eligible?: boolean;
+}
+
+export interface EvidenceFieldSource {
+  field: 'time_range' | 'role_scope' | 'context' | 'actions' | 'results';
+  value: string;
+  quote: string;
+  material_id: string;
+  document_id: string;
 }
 
 export interface EvidenceGenerateDraftResult extends RpcResultBase {
@@ -569,6 +581,7 @@ export interface CareerProfile {
 }
 
 export interface ProfilePayload {
+  job_preferences?:JobPreferences;
   career?:CareerProfile;
   revision?:string;
   career_status?:{reviewed:boolean;ready:boolean;reviewed_at:string;missing:{field:string;label:string}[]};
@@ -580,6 +593,19 @@ export interface ProfilePayload {
   completeness: number;
   missing_fields: string[];
   updated_at: string;
+}
+
+export interface JobPreferences {
+  schema_version:1;
+  revision?:string;
+  confirmed_at?:string;
+  source:{material_id:string;document_id:string;sha256:string;filename:string;label:string}|null;
+  items:Array<{kind:'primary'|'bridge'|'explore'|'avoid';text:string;quote:string}>;
+}
+
+export interface CareerDirection {
+  status:'aligned'|'needs_review'|'excluded'; reason:string; jd_quote:string;
+  preference:{kind:string;text:string;quote:string};
 }
 
 export interface ProfileGetResult extends RpcResultBase {
@@ -833,6 +859,13 @@ export interface ReviewCandidateItem {
   job_url?: string;
 }
 
+export type PdfQuality = {
+  matching_mode?:'semantic'|'rule';
+  status:'bound'|'current'|'unrecorded';
+  matching_score?:number|null;resume_score?:number|null;expression_score?:number|null;
+  content_ready?:boolean;quality_passed?:boolean;gap_tasks?:string[];evaluation_version?:string;
+};
+
 export interface GetPendingReviewResult extends RpcResultBase {
   native_pdf_quick_run_id?: string | null;
   candidates: ReviewCandidateItem[];
@@ -886,6 +919,7 @@ export interface QuickRunStartOptions {
 }
 
 export interface QuickRunStartResult extends RpcResultBase {
+  career_direction?:CareerDirection|null;
   run_id: string;
   status: string;
   exit_code?: number | null;
@@ -898,6 +932,21 @@ export interface QuickRunStartResult extends RpcResultBase {
   reason?: string;
   score_total?: number | null;
   score_breakdown?: Record<string, { score: number; reason?: string }>;
+  semantic_review?: {
+    assessment_scope?:{qualification_count:number;responsibility_count:number;check_count:number};
+    mode: "semantic";
+    fit_score: number;
+    resume_score: number;
+    expression_score?: number;
+    reviewed_card_count?: number;
+    all_requirements_supported: boolean;
+    requirements: Array<{
+      requirement_id: string; text: string; status: string; resume_status: string; reason: string;
+      kind?:string;
+      checks?:Array<{requirement_id:string;criterion:string;status:string;resume_status:string;reason:string;cautions?:string[]}>;
+      citations: Array<{ fact_id: string; quote: string; source_id: string; field: string; in_resume: boolean }>;
+    }>;
+  } | null;
   llm_config_summary?: LlmConfigSummary;
   material_source?: MaterialSourceItem | null;
   job_profile?: {
@@ -913,7 +962,7 @@ export interface QuickRunStartResult extends RpcResultBase {
   resume_positioning?: Record<string, string>;
   resume_pdf?: string;
   resume_readiness?: {
-    status: "NEEDS_EVIDENCE" | "NEEDS_REVIEW";
+    status: "NEEDS_EVIDENCE" | "NEEDS_REVIEW" | "NOT_GENERATED";
     deliverable: boolean;
     quality_passed: boolean;
     evaluation_score: number | null;

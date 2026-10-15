@@ -60,6 +60,7 @@ def test_upload_requires_effects_consent_and_reserves_before_releasing_bytes(tmp
     monkeypatch.setattr('tools.infra.liepin_attachment_contract.verify_uploaded_attachment',mismatch)
     observed=flow.handle_record_pdf_inspection({'meta':params['meta'],'run_id':result['run_id'],'observation':finish['observation']})
     assert observed['phase']=='uploaded_unverified'
+    assert observed['verification_error']=='attachment_current_state_mismatch'
     assert 'attachment_binding' not in agent._load_queue(path)
     for state in ['final_send_pending','success']:
         q=agent._load_queue(path);q['pdf_delivery']={'state':state,'final_send_started':True}

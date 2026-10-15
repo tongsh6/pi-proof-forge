@@ -19,6 +19,7 @@ from tools.sidecar.handlers.jobs import (
 )
 from tools.sidecar.router import Router
 from tools.sidecar.handlers import daily_delivery
+from tools.sidecar.handlers import job_preferences
 from tools.sidecar.lifecycle import handle_handshake, handle_ping, handle_shutdown
 from tools.sidecar.handlers.evidence import (
     handle_evidence_create,
@@ -34,7 +35,7 @@ from tools.sidecar.handlers.evidence import (
     handle_evidence_update,
 )
 from tools.sidecar.handlers.overview import handle_overview_get
-from tools.sidecar.handlers.native_pdf import handle_prepare_pdf, handle_begin_upload, handle_finish_upload, handle_inspect_pdf_packet, handle_record_pdf_inspection
+from tools.sidecar.handlers.native_pdf import handle_authorize_single_pdf_delivery, handle_prepare_pdf, handle_begin_upload, handle_finish_upload, handle_inspect_pdf_packet, handle_record_pdf_inspection
 from tools.sidecar.handlers.native_pdf import handle_pdf_target_packet, handle_record_pdf_target
 from tools.sidecar.handlers.native_pdf import handle_begin_pdf_delivery, handle_record_pdf_communication
 from tools.sidecar.handlers.native_pdf import handle_pdf_interaction_packet, handle_record_pdf_interaction
@@ -115,6 +116,8 @@ def _create_router() -> Router:
     router.register("jobs.saveProfileDraft", handle_jobs_save_profile_draft)
     router.register("overview.get", handle_overview_get)
     router.register("profile.get", handle_profile_get)
+    router.register("profile.generateJobPreferences", job_preferences.handle_generate)
+    router.register("profile.saveJobPreferences", job_preferences.handle_save)
     router.register("profile.update", handle_profile_update)
     router.register("profile.review", handle_profile_review)
     router.register("profile.autoLinkEvidence", handle_profile_auto_link_evidence)
@@ -150,6 +153,7 @@ def _create_router() -> Router:
     router.register("run.agent.get", handle_agent_get)
     router.register("run.agent.prepareLiepinDefault", handle_prepare_liepin_default)
     router.register("run.agent.prepareLiepinPdf", handle_prepare_pdf)
+    router.register("run.agent.authorizeSinglePdfDelivery", handle_authorize_single_pdf_delivery)
     router.register("run.agent.beginPdfUpload", handle_begin_upload)
     router.register("run.agent.finishPdfUpload", handle_finish_upload)
     router.register("run.agent.inspectPdfPacket", handle_inspect_pdf_packet)

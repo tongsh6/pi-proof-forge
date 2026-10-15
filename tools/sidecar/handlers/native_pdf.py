@@ -80,17 +80,54 @@ def _validated_generation(quick_run_id):
         evaluation_score=saved.get('resume_readiness',{}).get('evaluation_score'),status='pending',round_index=0)
     from tools.infra.export.resume_filename import pdf_filename_for_resume
     candidate['pdf_filename']=pdf_filename_for_resume(md,agent._PROJECT_ROOT/'outputs')
+    candidate['quality_snapshot']=_quality_snapshot(saved,md.read_bytes(),pdf.read_bytes())
+    candidate['quality_sha256']=_quality_digest(candidate['quality_snapshot'])
     return candidate,md.read_text(),pdf.read_bytes(),saved.get('score_total')
+
+
+def _quality_digest(value):
+    return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+
+def _quality_snapshot(saved,markdown,pdf):
+    try:
+        path=_local_file(saved['artifacts']['scorecard'],'.md').with_suffix('.json')
+        if path.is_symlink() or not path.is_file():raise ValueError('missing scorecard')
+        raw=path.read_bytes();score=json.loads(raw)
+        md_sha=hashlib.sha256(markdown).hexdigest()
+        if score.get('resume_sha256')!=md_sha:raise ValueError('changed resume')
+        semantic=score.get('semantic_review') or {};ready=saved.get('resume_readiness',{})
+        number=lambda v:v if type(v) in (int,float) and 0<=v<=100 else None
+        expression=number(score.get('expression_score'))
+        gaps=list(dict.fromkeys(str(s) for s in score.get('gap_tasks',[])))
+        semantic_pass=semantic.get('all_requirements_supported') is True and expression is not None and expression>=78 if semantic else (number(score.get('total_score')) or 0)>=78
+        passed=bool(ready.get('content_ready') is True and ready.get('quality_passed') is True and semantic_pass
+                    and score.get('traceability',{}).get('status')=='verified' and not gaps)
+        return {'status':'bound','resume_sha256':md_sha,'pdf_sha256':hashlib.sha256(pdf).hexdigest(),
+                'scorecard_sha256':hashlib.sha256(raw).hexdigest(),'evaluation_version':score.get('evaluation_version','legacy'),'matching_mode':'semantic' if semantic else 'rule',
+                'matching_score':number(semantic.get('fit_score',saved.get('score_total'))),
+                'resume_score':number(semantic.get('resume_score')),'expression_score':expression,
+                'content_ready':ready.get('content_ready') is True,'quality_passed':passed,'gap_tasks':gaps}
+    except (KeyError,TypeError,OSError,ValueError) as exc:
+        raise ValueError('quality_scorecard_missing_or_changed') from exc
 
 
 def _public(queue):
     c=queue['candidates'][0]
     sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(queue['run_id'],c)
+    quality=c.get('quality_snapshot')
+    if c.get('quality_sha256') and not isinstance(quality,dict):raise ValueError('quality_snapshot_changed')
+    if quality is not None and (c.get('quality_sha256')!=_quality_digest(quality)
+            or quality.get('pdf_sha256')!=sealed['pdf_sha256'] or quality.get('resume_sha256')!=sealed['markdown_sha256']):
+        raise ValueError('quality_snapshot_changed')
     recovery_only=bool(queue.get('daily_interruption') and queue.get('pdf_delivery',{}).get('state')!='success')
     return {'run_id':queue['run_id'],'company':c['company'],'position':c['position'],
             'job_lead_id':c['job_lead_id'],'matching_score':c.get('matching_score'),
+            'quality':quality if quality is not None else {'status':'unrecorded'},
             'pdf_sha256':sealed['pdf_sha256'],'pdf_path':sealed['resume_path'],'pdf_filename':c.get('pdf_filename',''),
             'account_effects_accepted':bool(queue.get('pdf_upload',{}).get('accepted_account_effects')),
+            'verification_error':queue.get('attachment_binding_error',''),
+            'single_delivery_authorized':bool(queue.get('single_delivery_authorization')),
             'phase':queue.get('pdf_delivery',{}).get('state') or ('attachment_verified' if queue.get('attachment_binding') else queue.get('pdf_upload',{}).get('state','prepared')),
             'can_confirm_send':not recovery_only and _confirmation_matches(queue),'recovery_only':recovery_only,
             'platform_filename':queue.get('attachment_binding',{}).get('filename',''),
@@ -130,6 +167,7 @@ def handle_begin_upload(params):
             raise ValueError('pdf_upload_already_attempted')
         candidate=q['candidates'][0]
         if candidate.get('status') not in ({'approved'} if previous else {'pending'}) or candidate.get('delivery_kind')!='generated_pdf':raise ValueError('pdf_review_required')
+        _public(q)  # 批准和释放文件前必须校验绑定，不能因质量正文被删除而跳过。
         sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,candidate)
         from tools.sidecar.handlers.daily_delivery import check_queue_write
         permit=check_queue_write(q,sealed['pdf_sha256'])
@@ -139,6 +177,9 @@ def handle_begin_upload(params):
         upload_ref=uuid4().hex
         candidate.update(status='approved',decided_by='user',decided_at=agent._utcnow_iso())
         q['content_review']={'confirmed':True,'basis':candidate.get('content_basis'),'reviewed_at':agent._utcnow_iso()}
+        if candidate.get('quality_snapshot'):
+            # 同一批准动作记录用户已看到的固定质量快照，不增加发送授权。
+            q['content_review'].update(quality_sha256=candidate['quality_sha256'],accepted_quality_gaps=candidate['quality_snapshot']['gap_tasks'])
         if previous:q.setdefault('pdf_upload_history',[]).append(previous)
         q['pdf_upload']={'state':'in_flight','upload_ref':upload_ref,'filename':filename,
             'pdf_sha256':sealed['pdf_sha256'],'accepted_account_effects':True,'started_at':agent._utcnow_iso()}
@@ -237,6 +278,36 @@ def handle_record_pdf_target(params):
         q=agent._load_queue(path)
         if not q.get('attachment_binding'):raise ValueError('attachment_verification_required')
         q['pdf_target_view']={'observed_at':agent._utcnow_iso(),'observation':_sanitize_observation(observation)}
+        agent._save_queue(path,q)
+        return {'meta':params['meta'],**_public(q)}
+
+
+def handle_authorize_single_pdf_delivery(params):
+    if params.get('confirmed') is not True:raise ValueError('single_pdf_confirmation_required')
+    run_id=_id(params.get('run_id'));path=agent._get_queue_file(run_id)
+    with locked_review_queue(path):
+        q=agent._load_queue(path)
+        if q.get('daily_cycle') or q.get('pdf_delivery') or len(q.get('candidates',[]))!=1:
+            raise ValueError('single_pdf_scope_invalid')
+        c=q['candidates'][0];sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,c)
+        if (c.get('status')!='approved' or c.get('delivery_kind')!='generated_pdf'
+                or not q.get('content_review',{}).get('confirmed')
+                or not q.get('pdf_upload',{}).get('accepted_account_effects')
+                or q.get('attachment_binding',{}).get('pdf_sha256')!=sealed['pdf_sha256']):
+            raise ValueError('attachment_verification_required')
+        from tools.sidecar.handlers.daily_delivery import check_queue_write
+        check_queue_write(q,sealed['pdf_sha256'])
+        from tools.infra.persistence.delivery_attempt_store import scoped_pdf_authorization_ref
+        request=DeliveryRequest(run_id,c['job_lead_id'],'liepin',sealed['resume_path'],c['job_url'],False,c)
+        job_key=_job_key(request);ref=scoped_pdf_authorization_ref(run_id,job_key,sealed['pdf_sha256'])
+        attempts=DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3')
+        batch=attempts.active_batch();batch_id='single_pdf_'+run_id
+        if not batch:raise ValueError('pdf_batch_authorization_required')
+        if batch.get('authorization_ref')!=ref:
+            attempts.authorize_supplementary_batch(batch_id,batch['batch_id'],1,'generated_pdf',ref)
+        elif batch['batch_id']!=batch_id:raise ValueError('delivery_scope_mismatch')
+        q['single_delivery_authorization']={'batch_id':batch_id,'authorization_ref':ref,
+            'pdf_sha256':sealed['pdf_sha256'],'job_key':job_key,'maximum':1,'confirmed_at':agent._utcnow_iso()}
         agent._save_queue(path,q)
         return {'meta':params['meta'],**_public(q)}
 

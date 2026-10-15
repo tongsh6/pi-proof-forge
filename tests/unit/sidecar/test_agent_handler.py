@@ -566,6 +566,19 @@ def test_failed_matching_step_without_report_reports_reason_instead_of_crashing(
     assert result['resume_readiness']['deliverable'] is False
 
 
+def test_skipped_matching_does_not_claim_a_resume_exists(tmp_path, monkeypatch):
+    from tools.sidecar.handlers import agent
+    summary=tmp_path/'outputs/agent_runs/skipped/summary.json';summary.parent.mkdir(parents=True)
+    summary.write_text(json.dumps({'status':'SKIPPED','reason':'matching_excluded','failed_step':'matching-scoring',
+        'artifacts':{'resume_dir':'outputs/skipped'}}))
+    monkeypatch.setattr(agent,'_PROJECT_ROOT',tmp_path)
+    result=agent._quick_run_result_details('skipped','','')
+    assert result['resume_readiness']['status']=='NOT_GENERATED'
+    assert result['resume_readiness']['content_ready'] is False
+    assert not result['resume_pdf']
+    assert result['resume_readiness']['reasons']==['本次未生成简历']
+
+
 class TestAgentRunStart:
     def test_guided_batch_records_gate_review_queue_and_blocks_delivery(self):
         with TemporaryDirectory() as project_tmp:

@@ -28,7 +28,7 @@ def _digest(content: bytes) -> str:
 
 def _identity(candidate: dict) -> dict:
     fields = {key: candidate.get(key, '') for key in _IDENTITY_FIELDS}
-    for key in ('delivery_kind', 'platform_resume_sha256', 'content_basis', 'career_revision', 'content_schema_version', 'pdf_filename'):
+    for key in ('delivery_kind', 'platform_resume_sha256', 'content_basis', 'career_revision', 'content_schema_version', 'pdf_filename', 'quality_sha256'):
         if key in candidate:
             fields[key] = candidate[key]
     return fields

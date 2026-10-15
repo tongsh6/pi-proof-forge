@@ -45,6 +45,7 @@ import type {
   OverviewGetResult,
   PingResult,
   ProfileGetResult,
+  JobPreferences,
   CareerProfile,
   ProfileUpdateResult,
   QuickRunCancelResult,
@@ -105,7 +106,7 @@ export async function inspectLiepinNativeAttachments(): Promise<NativeLiepinObse
   return invoke("inspect_liepin_native_attachments");
 }
 
-export type NativePdfPreparation = {meta: {correlation_id: string}; run_id: string; company: string; position: string; matching_score?: number; can_confirm_send?: boolean; account_effects_accepted?: boolean; recovery_only?: boolean;
+export type NativePdfPreparation = {quality?:import('./types').PdfQuality;single_delivery_authorized?: boolean; verification_error?: string; meta: {correlation_id: string}; run_id: string; company: string; position: string; matching_score?: number; can_confirm_send?: boolean; account_effects_accepted?: boolean; recovery_only?: boolean;
   job_lead_id: string; pdf_sha256: string; pdf_path: string; pdf_filename?: string; phase: string; platform_filename?: string; attachment_removal_state?: string;
   platform_attachment_state?: string; platform_attachment_checked_at?: string};
 export async function prepareLiepinPdf(quickRunId: string): Promise<NativePdfPreparation> {
@@ -247,9 +248,10 @@ export async function generateEvidenceDraft(
 
 export async function saveEvidenceDraft(payload: {
   evidence_id?:string;
+  expected_sha256?:string;
   draft: EvidenceDraftPayload;
   save_mode: "incomplete" | "eligible";
-  review: { decision: "approved"; reviewed_at?: string };
+  review: { decision: "approved"; reviewed_at?: string; merge_sources?:boolean };
 }): Promise<EvidenceSaveDraftResult> {
   return client.call<EvidenceSaveDraftResult>("evidence.saveDraft", payload);
 }
@@ -500,6 +502,13 @@ export async function getProfile(): Promise<ProfileGetResult> {
   return client.call<ProfileGetResult>("profile.get");
 }
 
+export async function generateJobPreferences(materialId:string,documentId:string):Promise<{draft:JobPreferences}> {
+  return client.call<{meta:{correlation_id:string};draft:JobPreferences}>('profile.generateJobPreferences',{material_id:materialId,document_id:documentId});
+}
+export async function saveJobPreferences(draft:JobPreferences,revision:string):Promise<{preferences:JobPreferences}> {
+  return client.call<{meta:{correlation_id:string};preferences:JobPreferences}>('profile.saveJobPreferences',{draft,expected_revision:revision,confirmed:true});
+}
+
 export async function updateProfile(
   patch: Partial<{
     career: CareerProfile;
@@ -725,4 +734,8 @@ export async function readMaterialDocument(materialId:string,documentId:string):
 export async function reviewCareerProfile(revision:string):Promise<ProfileGetResult>{return client.call("profile.review",{expected_revision:revision,confirmed:true});}
 export async function autoLinkEvidence(expectedRevision: string, apply = true): Promise<ProfileAutoLinkResult> {
   return client.call<ProfileAutoLinkResult>("profile.autoLinkEvidence", { expected_revision: expectedRevision, apply });
+}
+
+export async function authorizeSingleLiepinPdf(runId: string): Promise<NativePdfPreparation> {
+  return client.call<NativePdfPreparation>("run.agent.authorizeSinglePdfDelivery", {run_id:runId,confirmed:true});
 }

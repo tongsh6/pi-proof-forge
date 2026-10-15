@@ -241,6 +241,26 @@
         "pending": "职业档案待确认",
         "counts": "{{work}} 段工作 · {{education}} 段教育 · {{skills}} 组能力",
         "expand": "展开编辑"
+      },
+      "preferences": {
+        "title": "求职方向与边界",
+        "count": "条已提炼偏好",
+        "help": "从材料库提炼求职倾向，核对原文后保存；用于筛岗，不写入候选人简历。请先在下方材料库上传求职方向文档。",
+        "material": "来源材料",
+        "document": "文档片段",
+        "choose": "选择求职方向材料",
+        "generate": "提炼求职偏好",
+        "processing": "处理中…",
+        "source": "原文来源",
+        "confirm": "我已核对这些偏好及原文，同意用于后续岗位评估。",
+        "save": "确认并保存偏好",
+        "saved": "求职偏好已保存",
+        "kind": {
+          "primary": "主投",
+          "bridge": "桥接",
+          "explore": "探索",
+          "avoid": "回避"
+        }
       }
     },
     "quickRun": {
@@ -271,7 +291,7 @@
       "inputSummary": "运行输入",
       "materialSource": "材料来源",
       "chooseMaterial": "请选择本次材料",
-      "useLlm": "使用模型辅助选材（默认规则选材）",
+      "useLlm": "语义匹配全部证据（关闭后使用规则模式）",
       "selectedProfile": "选中岗位画像",
       "traceableEvidence": "可追溯证据",
       "resumePositioning": "简历定位",
@@ -316,7 +336,35 @@
         "E": "证据追溯",
         "R": "相关性"
       },
-      "modelLine": "模型"
+      "modelLine": "模型",
+      "semantic": {
+        "fit": "语义岗位适配",
+        "resume": "简历要求覆盖",
+        "expression": "表达质量",
+        "facts": "事实完整性",
+        "ready": "完整，待审核",
+        "incomplete": "待补证据",
+        "basis": "已评审 {{count}} 张证据；模型判读，原文引用已核验。",
+        "poolStatus": "证据池判断",
+        "present": "已在简历呈现",
+        "absent": "简历未呈现",
+        "status": {
+          "supported": "有证据支持",
+          "partial": "部分支持",
+          "insufficient": "证据不足",
+          "conflict": "存在冲突",
+          "not_present": "简历未呈现"
+        }
+      },
+      "direction": {
+        "aligned": "符合已保存求职方向",
+        "needs_review": "岗位方向需要进一步核实",
+        "excluded": "已停止：岗位明确不符合求职偏好",
+        "preference": "对应偏好"
+      },
+      "notGenerated": "本次未生成简历",
+      "skipped": "已跳过",
+      "chooseAnotherJob": "返回岗位中心选择其他岗位"
     },
     "evidence": {
       "title": "证据卡",
@@ -984,7 +1032,10 @@
           "send": "确认发送",
           "receipt": "核验回执"
         },
-        "consentShort": "我已审核这份 PDF，批准上传并用于投递"
+        "consentShort": "我已审核这份 PDF 及上述质量缺口，批准上传并用于投递",
+        "verificationPending": "本次附件尚未核验通过。上传记录已保留，请核对平台附件状态后重新检查，无需重传。",
+        "authorizeSingle": "登记本岗位一次投递授权（限此 PDF）",
+        "singleAuthorized": "本岗位与此 PDF 的单次授权已登记，最多投递一次。"
       },
       "platformFeedback": {
         "sync": "同步投递反馈（只读）",
@@ -1658,5 +1709,39 @@
       "qiancheng": "前程无忧",
       "other": "其他来源"
     }
+  },
+  "sourceMerge": {
+    "title": "从其他文档补充依据",
+    "help": "选择同一项目的材料，把原文用于下方字段。时间、职责和背景会替换当前值；行动、成果逐条追加。采用后仍需审核保存。",
+    "material": "选择补充材料",
+    "field": "补充到哪个字段",
+    "current": "当前内容",
+    "empty": "尚未填写",
+    "quote": "粘贴所选文档中的连续原文",
+    "notFound": "原文未在当前片段找到，请核对文档和文字。",
+    "confirm": "已核对属于同一项目及本人经历，保留计划、完成和验证范围的原文限定。",
+    "append": "采用原文，追加一条",
+    "replace": "采用原文，替换此字段",
+    "bound": "已绑定的字段依据",
+    "changed": "来源材料已变化或字段依据失效，此卡不能继续用于生成，请重新核对来源。"
+  },
+  "quality": {
+    "title": "简历质量",
+    "bound": "此固定 PDF 的质量评估",
+    "current": "本次生成版本的质量评估",
+    "unrecorded": "此历史 PDF 未保存绑定的质量评估，质量状态未记录；请勿仅凭历史匹配分判断。",
+    "fit": "岗位适配（模型）",
+    "coverage": "正文覆盖",
+    "expression": "表达规则参考",
+    "facts": "事实完整性",
+    "complete": "完整，仍需审核",
+    "incomplete": "未完整",
+    "passed": "自动质量条件通过，仍需人工审核",
+    "failed": "自动质量条件未通过，请逐项核对缺口",
+    "advisory": "分数是辅助判断；原文引用存在不代表全部要求或个人责任已获证明。",
+    "gaps": "本版待处理缺口",
+    "scope": "评估范围：{{qualification_count}}项任职要求、{{responsibility_count}}项工作职责、{{check_count}}个原文子项。未识别的职责不计为已覆盖。",
+    "inResume": "正文",
+    "ruleFit": "规则匹配参考"
   }
 }

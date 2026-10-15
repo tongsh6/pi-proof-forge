@@ -85,3 +85,22 @@ def test_confirmation_rejects_duplicate_target_even_when_one_is_selected():
 def _complete_content_precondition_for_transport_tests(monkeypatch):
     # 本文件只验证既有传输/额度；完整内容真假边界见 test_resume_content_gate。
     monkeypatch.setattr('tools.infra.resume_content.require_queue_content',lambda *a,**kw: {})
+
+
+def test_explicit_single_authorization_preserves_old_quota_and_existing_uploaded_file(tmp_path,monkeypatch):
+    monkeypatch.setattr(agent,'_PROJECT_ROOT',tmp_path);monkeypatch.setattr(agent,'_AGENT_RUN_DIR',tmp_path/'outputs/agent_runs');monkeypatch.setattr(agent,'_REVIEW_QUEUE_DIR',tmp_path/'outputs/review_queue')
+    c={'job_lead_id':'lead','company':'公司','position':'岗位','platform':'liepin','platform_job_id':'123','platform_job_type':'2','job_url':'https://www.liepin.com/job/123.shtml','delivery_kind':'generated_pdf','status':'approved'}
+    snapshots=ReviewSnapshotStore(agent._AGENT_RUN_DIR);c['snapshot']=snapshots.create('run',c,'# 候选人',dry_run=False,pdf_content=b'%PDF-1.7\napproved\n%%EOF')
+    sealed=snapshots.load('run',c)
+    q={'run_id':'run','candidates':[c],'content_review':{'confirmed':True},'pdf_upload':{'state':'uploaded_unverified','accepted_account_effects':True},'attachment_binding':{'pdf_sha256':sealed['pdf_sha256']}}
+    agent._save_queue(agent._get_queue_file('run'),q)
+    attempts=DeliveryAttemptStore(tmp_path/'outputs/submissions/delivery_attempts.sqlite3');attempts.authorize_batch('old',1,[])
+    old=attempts.reserve('old-job','old','old');attempts.finish(old,'success')
+    params={'meta':{},'run_id':'run'}
+    with pytest.raises(ValueError,match='confirmation_required'):flow.handle_authorize_single_pdf_delivery(params)
+    result=flow.handle_authorize_single_pdf_delivery({**params,'confirmed':True})
+    assert result['single_delivery_authorized'] is True
+    assert attempts.active_batch()['authorized_max']==1 and attempts.active_batch()['remaining']==1
+    again=flow.handle_authorize_single_pdf_delivery({**params,'confirmed':True});assert again['run_id']=='run'
+    latest=agent._load_queue(agent._get_queue_file('run'));assert latest['pdf_upload']==q['pdf_upload'] and latest['attachment_binding']==q['attachment_binding']
+    with attempts._connection() as db:assert db.execute("SELECT authorized_max,active FROM delivery_batches WHERE batch_id='old'").fetchone()==(1,0)

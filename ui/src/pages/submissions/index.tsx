@@ -1,3 +1,4 @@
+import { PdfQualitySummary } from '@/components/pdf-quality-summary';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -35,6 +36,7 @@ import {
   syncLiepinFeedback,
   type NativeLiepinObservation,
   prepareLiepinPdf,
+  authorizeSingleLiepinPdf,
   previewDailyPdf,
   uploadLiepinNativePdf,
   inspectUploadedLiepinPdf,
@@ -333,12 +335,13 @@ export function SubmissionsPage() {
     finally {setNativeSessionBusy(false);}
   }, [loadData]);
 
-  const handleNativePdf = useCallback(async (action: "preview" | "prepare" | "upload" | "inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send" | "receipt" | "remove" | "recheckRemoval") => {
+  const handleNativePdf = useCallback(async (action: "authorizeSingle" | "preview" | "prepare" | "upload" | "inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send" | "receipt" | "remove" | "recheckRemoval") => {
     if (nativePdf?.recovery_only && ["upload","communicate","prepareResume","send","remove"].includes(action)) return;
     setNativeSessionBusy(true);setNativePdfError("");
     try {
       if (action === "prepare") {const result=await prepareLiepinPdf(pdfQuickRunId.trim());setNativePdf(result);setAcceptPdfEffects(false);setAcceptAttachmentRemoval(false);setNativePdfPreview("");setPreviewedPdf("");}
       else if(action === "preview" && nativePdf){const result=await previewDailyPdf(nativePdf.run_id);if(result.pdf_sha256!==nativePdf.pdf_sha256)throw new Error('resume_pdf_changed');setNativePdfPreview('data:application/pdf;base64,'+result.pdf_base64);setPreviewedPdf(nativePdf.run_id);}
+      else if (action === "authorizeSingle" && nativePdf) setNativePdf(await authorizeSingleLiepinPdf(nativePdf.run_id));
       else if (action === "inspect" && nativePdf) setNativePdf(await inspectUploadedLiepinPdf(nativePdf.run_id));
       else if (action === "target" && nativePdf) setNativePdf(await inspectLiepinPdfTarget(nativePdf.run_id));
       else if (action === "communicate" && nativePdf) setNativePdf(await startLiepinPdfCommunication(nativePdf.run_id));
@@ -621,10 +624,15 @@ export function SubmissionsPage() {
               <button type="button" disabled={nativeSessionBusy || !pdfQuickRunId.trim()} onClick={()=>void handleNativePdf("prepare")}
                 className={`mt-2 ${stepClass(0)}`}>{t("pages.submissions.nativePdf.prepare")}</button>
               {nativePdf && <div className="mt-3 space-y-2">
-                <p>{nativePdf.company} · {nativePdf.position} · {nativePdf.matching_score ?? "--"}/100</p>
+                <p>{nativePdf.company} · {nativePdf.position}</p>
+                <PdfQualitySummary quality={nativePdf.quality}/>
                 {nativePdf.pdf_filename&&<p className="break-all">PDF: {nativePdf.pdf_filename}</p>}
                 <p className="font-mono text-xs text-text-muted" title={nativePdf.pdf_sha256}>{t("pages.submissions.pdfFingerprint")}: {nativePdf.pdf_sha256?.slice(0, 12)}…</p>
                 <p role="status">{t(`pages.submissions.nativePdf.phase.${nativePdf.phase}`, {defaultValue:nativePdf.phase})}</p>
+                {nativePdf.phase === "attachment_verified" && !nativePdf.single_delivery_authorized && !nativePdf.recovery_only &&
+                  <button type="button" disabled={nativeSessionBusy} className={buttonClass.secondary} onClick={()=>void handleNativePdf("authorizeSingle")}>{t("pages.submissions.nativePdf.authorizeSingle")}</button>}
+                {nativePdf.single_delivery_authorized&&<p>{t("pages.submissions.nativePdf.singleAuthorized")}</p>}
+                {nativePdf.verification_error&&<p role="alert" className="text-warning">{t("pages.submissions.nativePdf.verificationPending")}</p>}
                 {nativePdf.recovery_only&&<p role="status" className="text-warning">{t('pages.submissions.nativePdf.recoveryOnly')}</p>}
                 <div className="flex flex-wrap gap-2">
                   {nativePdf.phase === "prepared" && <button type="button" disabled={nativeSessionBusy} className={buttonClass.secondary}

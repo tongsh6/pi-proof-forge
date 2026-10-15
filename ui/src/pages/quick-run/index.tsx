@@ -1,3 +1,4 @@
+import { PdfQualitySummary } from '@/components/pdf-quality-summary';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -32,7 +33,7 @@ import type {
 
 type LoadState = "loading" | "ready" | "error";
 type RunState = "idle" | "ready_to_run" | "running" | "done" | "error";
-type StageStatus = "waiting" | "running" | "done" | "error";
+type StageStatus = "waiting" | "running" | "done" | "error" | "skipped";
 
 const PIPELINE_STEPS = [
   { key: "extract", labelKey: "pages.quickRun.steps.extract" },
@@ -46,6 +47,7 @@ const SCORE_MAX = 20;
 
 const stageStatusClass: Record<StageStatus, string> = {
   waiting: "border-border bg-bg-primary/60 text-text-secondary",
+  skipped: "border-border bg-bg-primary/60 text-text-secondary",
   running: "border-accent bg-accent/10 text-text-primary",
   done: "border-success/50 bg-success/10 text-text-primary",
   error: "border-error/50 bg-error/10 text-text-primary",
@@ -68,7 +70,11 @@ function getStageStatus(
   if (runState === "running") {
     return "running";
   }
-  if (status === "DONE" || status === "SKIPPED") {
+  if (status === "SKIPPED") {
+    const stoppedIndex = PIPELINE_STEPS.findIndex(step => failedStepAliases[step.key].some(alias => failedStep.includes(alias)));
+    return stoppedIndex >= 0 && stepIndex < stoppedIndex ? "done" : "skipped";
+  }
+  if (status === "DONE") {
     return "done";
   }
   if (runState === "error") {
@@ -84,7 +90,7 @@ function getStageStatus(
 
 function formatTerminalLines(
   result: QuickRunStartResult | null, runError: string | null,
-  labels: { needsReview: string; needsEvidence: string }
+  labels: { needsReview: string; needsEvidence: string; notGenerated: string }
 ) {
   if (!result && !runError) return [];
   const lines: string[] = [];
@@ -98,7 +104,7 @@ function formatTerminalLines(
     if (stderr) lines.push(...stderr.split(/\r?\n/).map((line) => `[stderr] ${line}`));
     if (result.resume_readiness) {
       const readiness = result.resume_readiness;
-      lines.push(readiness.status === "NEEDS_EVIDENCE" ? labels.needsEvidence : labels.needsReview);
+      lines.push(readiness.status === "NOT_GENERATED" ? labels.notGenerated : readiness.status === "NEEDS_EVIDENCE" ? labels.needsEvidence : labels.needsReview);
       lines.push(...readiness.reasons.map((reason) => `- ${reason}`));
     }
   }
@@ -123,7 +129,7 @@ export function QuickRunPage() {
   const [eligibleEvidenceIds, setEligibleEvidenceIds] = useState<string[]>([]);
   const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
-  const [useLlm, setUseLlm] = useState(false);
+  const [useLlm, setUseLlm] = useState(true);
   const [jobProfiles, setJobProfiles] = useState<JobProfileListItem[]>([]);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string>(requestedProfileId ?? "");
@@ -159,7 +165,7 @@ export function QuickRunPage() {
     setError(null);
     try {
       const [evidence, materials, jobs, settings, profile] = await Promise.all([
-        listEvidence(),
+        listEvidence(undefined, { pageSize: 100 }),
         listEvidenceMaterialSources(),
         listJobProfiles(undefined, { pageSize: 100 }),
         getSettings(),
@@ -175,7 +181,15 @@ export function QuickRunPage() {
         profiles.push(...page.items);
         cursor = page.next_cursor;
       }
-      const eligibleEvidence = evidence.items.filter(
+      const evidenceItems = [...evidence.items];
+      let evidenceCursor = evidence.next_cursor;
+      while (evidenceCursor) {
+        const page = await listEvidence(undefined, { cursor: evidenceCursor, pageSize: 100 });
+        if (version !== loadVersion.current) return;
+        evidenceItems.push(...page.items);
+        evidenceCursor = page.next_cursor;
+      }
+      const eligibleEvidence = evidenceItems.filter(
         (item) => item.status === "saved_eligible" && item.candidate_pool_eligible !== false
       );
       const activeProfiles = profiles.filter((item) => item.status === "active" && item.source_jd?.trim());
@@ -292,6 +306,7 @@ export function QuickRunPage() {
   const terminalLines = useMemo(
     () => formatTerminalLines(quickRunResult, runError, {
       needsReview: t("pages.quickRun.needsReview"),
+      notGenerated: t("pages.quickRun.notGenerated"),
       needsEvidence: t("pages.quickRun.needsEvidence"),
     }),
     [quickRunResult, runError, t]
@@ -326,6 +341,7 @@ export function QuickRunPage() {
           resume_positioning: resumePositioning,
           use_llm: useLlm,
           require_llm: useLlm,
+          timeout_seconds: useLlm ? 1800 : 120,
         },
       });
       // 无论页面是否已切走或目标是否已改变，任务结果都记入全局 store 并提示；只有本页状态按版本守卫更新。
@@ -511,7 +527,7 @@ export function QuickRunPage() {
                 </p>
                 <p className="mt-2 truncate text-sm font-medium text-text-primary">
                   {quickRunResult?.traceability?.evidence_card_ids.length
-                    ? quickRunResult.traceability.evidence_card_ids.join(", ")
+                    ? `${quickRunResult.traceability.evidence_card_ids.length} ${t("pages.quickRun.evidenceCards")}`
                     : `${evidenceCount} ${t("pages.quickRun.evidenceCards")}`}
                 </p>
               </div>
@@ -551,7 +567,7 @@ export function QuickRunPage() {
                         {stageStatus === "error" ? (
                           <AlertCircle className="h-5 w-5 text-error" aria-hidden="true" />
                         ) : null}
-                        {stageStatus === "waiting" ? (
+                        {stageStatus === "waiting" || stageStatus === "skipped" ? (
                           <Circle className="h-5 w-5 text-text-muted" aria-hidden="true" />
                         ) : null}
                       </div>
@@ -563,7 +579,7 @@ export function QuickRunPage() {
                           ? t("pages.quickRun.elapsed", { seconds: elapsedSeconds })
                           : stageStatus === "done"
                             ? t("pages.quickRun.result")
-                            : t("pages.quickRun.waiting")}
+                            : t(stageStatus === "skipped" ? "pages.quickRun.skipped" : "pages.quickRun.waiting")}
                       </p>
                     </div>
                     {index < PIPELINE_STEPS.length - 1 ? (
@@ -595,12 +611,18 @@ export function QuickRunPage() {
                 </div>
               </div>
               {quickRunResult && <div className="mt-4 space-y-2 text-sm">
-                <p>{t(quickRunResult.resume_readiness?.content_ready ? "pages.quickRun.reviewNext" : "pages.quickRun.needsEvidence")}</p>
+                {quickRunResult.career_direction&&<div className="rounded-card border border-border p-3" data-testid="career-direction-result">
+                  <p className="font-semibold">{t(`pages.quickRun.direction.${quickRunResult.career_direction.status}`)}</p>
+                  <p>{quickRunResult.career_direction.reason}</p>
+                  <p className="mt-2 text-xs text-text-secondary">{t('pages.quickRun.direction.preference')}：{quickRunResult.career_direction.preference.text}</p>
+                  <blockquote className="mt-2 border-l-2 border-accent pl-2 text-xs">{quickRunResult.career_direction.jd_quote}</blockquote>
+                </div>}
+                <p>{t(quickRunResult.resume_readiness?.status === "NOT_GENERATED" ? "pages.quickRun.notGenerated" : quickRunResult.resume_readiness?.content_ready ? "pages.quickRun.reviewNext" : "pages.quickRun.needsEvidence")}</p>
                 {quickRunResult.status === "DONE" && quickRunResult.resume_readiness?.content_ready === true &&
                   quickRunResult.traceability?.resume_traceable === true && quickRunResult.resume_pdf ?
                   <button type="button" data-testid="quick-run-prepare-pdf" className="rounded-card border border-accent px-3 py-2 text-accent"
                     onClick={() => navigate(`/submissions?quick_run_id=${encodeURIComponent(quickRunResult.run_id)}`)}>{t("pages.quickRun.preparePdf")}</button> :
-                  <button type="button" className="text-accent underline" onClick={() => navigate("/evidence")}>{t("pages.quickRun.openEvidence")}</button>}
+                  <button type="button" className="text-accent underline" onClick={() => navigate(quickRunResult.status === "SKIPPED" ? "/jobs" : "/evidence")}>{t(quickRunResult.status === "SKIPPED" ? "pages.quickRun.chooseAnotherJob" : "pages.quickRun.openEvidence")}</button>}
               </div>}
               <div className="mt-4 h-[360px] overflow-auto rounded-card border border-border bg-bg-primary p-4 font-mono text-xs leading-6 text-text-secondary">
                 {terminalLines.length > 0 ? (
@@ -624,13 +646,43 @@ export function QuickRunPage() {
               </h2>
               <div className="mt-4 rounded-card border border-border bg-bg-primary/60 p-4">
                 <p className="text-xs uppercase text-text-muted">
-                  {t("pages.quickRun.scoreLabels.total")}
+                  {t(quickRunResult?.semantic_review ? "pages.quickRun.semantic.fit" : "pages.quickRun.scoreLabels.total")}
                 </p>
                 <p className="mt-2 text-3xl font-semibold text-text-primary">
                   {quickRunResult?.score_total ?? "--"}
                 </p>
               </div>
-              {quickRunResult ? (
+              {quickRunResult?.semantic_review ? (
+                <div className="mt-5 space-y-4" data-testid="quick-run-semantic-review">
+                  <p className="text-xs text-text-secondary">{t("pages.quickRun.semantic.basis", { count: quickRunResult.semantic_review.reviewed_card_count ?? 0 })}</p>
+                  <PdfQualitySummary quality={{status:'current',matching_score:quickRunResult.semantic_review.fit_score,
+                    resume_score:quickRunResult.semantic_review.resume_score,expression_score:quickRunResult.semantic_review.expression_score,
+                    content_ready:quickRunResult.resume_readiness?.content_ready,quality_passed:quickRunResult.resume_readiness?.quality_passed,
+                    gap_tasks:quickRunResult.resume_readiness?.gap_tasks}}/>
+                  <div className="max-h-[38rem] space-y-2 overflow-auto">
+                    {quickRunResult.semantic_review.assessment_scope&&<p className="text-xs text-text-secondary">{t('quality.scope',{...quickRunResult.semantic_review.assessment_scope})}</p>}
+                    {quickRunResult.semantic_review.requirements.map((row) => (
+                      <details key={row.requirement_id} className="rounded-card border border-border p-3 text-xs">
+                        <summary className="cursor-pointer break-words font-medium text-text-primary">{row.text.slice(0, 80)}{row.text.length > 80 ? "…" : ""}<span className="mt-1 block text-text-secondary">{t(`pages.quickRun.semantic.status.${row.resume_status}`)}</span></summary>
+                        <p className="mt-3 break-words">{row.text}</p>
+                        <p className="mt-2 text-text-secondary">{t("pages.quickRun.semantic.poolStatus")}: {t(`pages.quickRun.semantic.status.${row.status}`)}</p>
+                        <p className="mt-2 break-words text-text-secondary">{row.reason}</p>
+                        {row.checks?.map(check=><div className="mt-3 border-t border-border pt-2" key={check.requirement_id}>
+                          <p className="break-words font-medium">{check.criterion}</p>
+                          <p className="mt-1 text-text-secondary">{t('pages.quickRun.semantic.poolStatus')}: {t(`pages.quickRun.semantic.status.${check.status}`)} · {t('quality.inResume')}: {t(`pages.quickRun.semantic.status.${check.resume_status}`)}</p>
+                          <p className="mt-1 break-words text-text-secondary">{check.reason}</p>
+                        </div>)}
+                        {row.citations.map((citation, index) => (
+                          <blockquote key={`${citation.fact_id}-${index}`} className="mt-3 break-words border-l-2 border-accent pl-2 text-text-secondary">
+                            <p>{citation.quote}</p>
+                            <footer className="mt-1 text-text-muted">{citation.source_id} · {citation.field} · {t(citation.in_resume ? "pages.quickRun.semantic.present" : "pages.quickRun.semantic.absent")}</footer>
+                          </blockquote>
+                        ))}
+                      </details>
+                    ))}
+                  </div>
+                </div>
+              ) : quickRunResult ? (
               <div className="mt-5 space-y-4">
                 {scoreBars.map((item) => (
                   <div key={item.key}>
