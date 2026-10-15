@@ -19,16 +19,19 @@ def _file(root,value):
     return path
 
 
-def content_body_issues(profile,text):
+def content_body_issues(profile,text,*,display_policy='complete_v1'):
     """只检查已确认事实是否覆盖；不推断年限、技术水平或业务成果。"""
     compact=lambda value:re.sub(r'[\s#*|·、（）]','',str(value)).casefold()
     body=compact(text);values=[profile.get(k,'') for k in ('name','phone','email','city','current_position')]
     career=profile['career']
-    for group,keys in {'work':('company','title','start','end','scope'),'skills':('category','description'),'education':('school','major','degree','start','end'),'extras':('title','description')}.items():
+    targeted=display_policy=='targeted_v1'
+    fields=({'work':('company','title','start','end'),'education':('school','major','degree','start','end')} if targeted else
+            {'work':('company','title','start','end','scope'),'skills':('category','description'),'education':('school','major','degree','start','end'),'extras':('title','description')})
+    for group,keys in fields.items():
         if group=='education' and career['education_visibility']=='omit':continue
         for row in career[group]:
             values.extend(row.get(k,'') for k in keys)
-            if group=='work':values.extend(row.get('contributions',[]))
+            if group=='work' and not targeted:values.extend(row.get('contributions',[]))
     return ['批准正文缺少已确认职业档案中的内容'] if any(compact(v) not in body for v in values if v) else []
 
 
@@ -50,14 +53,14 @@ def _inspect(root,run_id):
     if any(trace['inputs'][ref].get('sha256')!=profile['evidence_hashes'].get(ref) for ref in trace['evidence_card_ids']):
         raise ValueError('resume_evidence_changed')
     from tools.run_generation import load_cards
-    cards=load_cards(root/f'outputs/quick_runs/{run_id}/evidence_cards',trace['evidence_card_ids'])
+    cards=load_cards(root/f'outputs/quick_runs/{run_id}/evidence_cards',trace['evidence_card_ids'],root/'materials')
     if career_generation_issues(profile,cards) or any(not c[k] for c in cards for k in ('context','role_scope','time_range','actions','results','artifacts')):
         raise ValueError('resume_content_incomplete')
     readiness=trace.get('readiness',{})
     if readiness.get('content_ready') is not True or any(readiness.get(k) for k in ('missing_profile_fields','missing_target_fields','missing_evidence_fields','missing_career_fields')):raise ValueError('resume_content_incomplete')
     text=md.read_text();sections=['职业概述','核心能力','工作经历','项目经历']
     if profile['career']['education_visibility']=='show':sections.append('教育经历')
-    if any('## '+section not in text for section in sections) or (text is not None and content_body_issues(profile,text)):raise ValueError('resume_content_incomplete')
+    if any('## '+section not in text for section in sections) or content_body_issues(profile,text,display_policy=trace.get('display_policy','complete_v1')):raise ValueError('resume_content_incomplete')
     pdf=_file(root,record.get('resume_pdf',''));pdf_bytes=pdf.read_bytes()
     if len(pdf_bytes)>10_000_000 or not pdf_bytes.startswith(b'%PDF-'):raise ValueError('resume_content_artifact_invalid')
     pdf_sha=hashlib.sha256(pdf_bytes).hexdigest()

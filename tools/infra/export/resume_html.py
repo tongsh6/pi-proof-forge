@@ -147,8 +147,19 @@ def parse_resume_markdown(text: str) -> dict[str, Any]:
 
 def _inline_text(value: str) -> str:
     value = escape(value)
-    value = re.sub(r'`([^`]+)`', r'<code>\1</code>', value)
-    return re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', value)
+    # 原材料片段可能截断加粗标记；只清理格式，不吞掉代码中的 ** 运算符。
+    marker='\x00'
+    while marker in value:marker+='\x00'
+    codes=[]
+    def code(match):
+        token=f'{marker}{len(codes)}{marker}'
+        codes.append((token,'<code>'+match[1]+'</code>'))
+        return token
+    value = re.sub(r'`([^`]+)`', code, value)
+    if value.count('**') % 2:value=value.replace('**','')
+    value = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', value)
+    for token,html in codes:value=value.replace(token,html)
+    return value
 
 
 def _section_body(lines: list[str], *, experience: bool) -> str:

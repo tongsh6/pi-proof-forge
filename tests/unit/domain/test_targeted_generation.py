@@ -203,6 +203,17 @@ def test_high_score_without_real_gaps_is_quality_passed_but_needs_review(monkeyp
     assert result["resume_readiness"]["status"] == "NEEDS_REVIEW"
     assert result["resume_readiness"]["deliverable"] is False
 
+    # 规则分很高也不能覆盖语义判断中的证据不足。
+    score = json.loads(scorecard.with_suffix('.json').read_text())
+    score['expression_score'] = 95
+    score['semantic_review'] = {'mode': 'semantic', 'fit_score': 0, 'resume_score': 0,
+                                'all_requirements_supported': False, 'requirements': []}
+    scorecard.with_suffix('.json').write_text(json.dumps(score))
+    result = agent._quick_run_result_details('target', '', '', selected_evidence_card_ids=['ec-1'])
+    assert result['resume_readiness']['quality_passed'] is False
+    assert result['resume_readiness']['evaluation_score'] == 95
+    assert result['semantic_review']['fit_score'] == 0
+
 
 def test_generation_keeps_context_and_prioritizes_relevant_actions_without_inventing():
     card={'id':'ec-1','title':'交易服务','raw_source':'材料','time_range':'2024-2025','context':'高峰期订单查询慢','role_scope':'模块负责人',
@@ -216,6 +227,18 @@ def test_generation_keeps_context_and_prioritizes_relevant_actions_without_inven
     assert 'C++' not in text
 
 
+def test_generation_prioritizes_semantically_cited_action_over_literal_keyword_order():
+    card={'id':'ec-1','title':'交易服务','raw_source':'材料','time_range':'2024-2025','context':'查询慢','role_scope':'负责人',
+          'actions':['Java接口开发','Java文档整理','Java单元测试','实现幂等去重与故障恢复'],
+          'results':['成功率99%'],'stack':['Java'],'artifacts':['报告']}
+    claims=[]
+    text=run_generation.build_template_resume('A','r',80,'now',[card],job_context={'keywords':['Java']},claims=claims,
+        preferred_facts=[{'source_id':'ec-1','field':'actions','text':'实现幂等去重与故障恢复'}])
+    assert '实现幂等去重与故障恢复' in text
+    assert text.index('实现幂等去重与故障恢复') < text.index('Java接口开发')
+    assert len([c for c in claims if c['field']=='actions']) == 3
+
+
 def test_thin_evidence_generates_explicit_missing_fields(monkeypatch,generation_inputs):
     path=generation_inputs[2]/'ec-1.yaml';s=path.read_text();s=s.replace('role_scope: "模块负责人"','role_scope: ""').replace('time_range: "2024-01 ~ 2024-06"','time_range: ""').replace('  - "Java"\n','')
     path.write_text(s)
@@ -224,3 +247,63 @@ def test_thin_evidence_generates_explicit_missing_fields(monkeypatch,generation_
     assert trace['readiness']['status']=='NEEDS_EVIDENCE'
     assert {'ec-1.role_scope','ec-1.time_range','skills'}<=set(trace['readiness']['missing_evidence_fields'])
     assert trace['readiness']['deliverable'] is False
+
+
+@pytest.mark.parametrize('placeholder', ['[]', '{}', 'null', 'None'])
+def test_empty_role_placeholder_is_not_a_personal_responsibility(monkeypatch, generation_inputs, placeholder):
+    path = generation_inputs[2] / 'ec-1.yaml'
+    path.write_text(path.read_text().replace('role_scope: "模块负责人"', 'role_scope: "' + placeholder + '"'))
+    assert run_generation_cli(monkeypatch, generation_inputs) == 0
+    resume = generation_inputs[-1] / 'resume_mr-target_A.md'
+    trace = json.loads(resume.with_suffix('.trace.json').read_text())
+    assert 'ec-1.role_scope' in trace['readiness']['missing_evidence_fields']
+    assert '角色：' + placeholder not in resume.read_text()
+
+
+def test_generation_and_evaluation_reuse_verified_semantic_selection(monkeypatch, generation_inputs):
+    from tools.infra.semantic_matching import run_semantic_matching, write_semantic_report
+    from tools import run_evaluation
+    profile, job, evidence, report, output = generation_inputs
+    class Client:
+        chat_completions_url = 'http://localhost/v1/chat/completions'
+        def post_json(self, url, payload, **kwargs):
+            data = json.loads(payload['messages'][1]['content'])
+            cite = {'fact_id': 'ec-1:actions:0', 'quote': '使用 Java 重构交易服务'}
+            if data['stage'] == 'recall':
+                response = {'cards': [{'id': 'ec-1', 'score': 90, 'reason': '交易开发实践', 'requirement_ids': ['r1'], 'citations': [cite]}]}
+            else:
+                response = {'assessments': [{'requirement_id': r['id'], 'status': 'supported' if r['text'] == 'Java' else 'insufficient',
+                                            'reason': '按原文核对', 'citations': [cite] if r['text'] == 'Java' else []} for r in data['requirements']]}
+            return {'choices': [{'message': {'content': json.dumps(response)}}]}
+        @staticmethod
+        def extract_content(response): return response['choices'][0]['message']['content']
+    review = run_semantic_matching(job_path=job, evidence_files=list(evidence.glob('*.yaml')), personal_profile=profile,
+                                   client=Client(), model='test', cache_dir=output.parent/'cache')
+    write_semantic_report(report, review)
+    monkeypatch.setattr(run_generation.LLMClient, 'post_json', lambda *args, **kwargs: pytest.fail('不得重复调用模型选材/解释'))
+    assert run_generation_cli(monkeypatch, generation_inputs, '--use-llm', '--require-llm') == 0
+    resume = output/'resume_mr-target_A.md'
+    trace = json.loads(resume.with_suffix('.trace.json').read_text())
+    assert trace['generation_strategy'] == 'semantic_selection_locked_evidence_fields'
+    assert 'semantic_matching' in trace['inputs']
+    monkeypatch.setattr('sys.argv', ['evaluate', '--input', str(resume), '--output', str(output/'score.md'), '--job-profile', str(job), '--use-llm', '--require-llm'])
+    assert run_evaluation._legacy_main() == 0
+    score = json.loads((output/'score.json').read_text())
+    assert score['semantic_review']['mode'] == 'semantic'
+    assert score['semantic_review']['requirements'][0]['resume_status'] == 'supported'
+    assert score['semantic_review']['requirements'][1]['resume_status'] == 'insufficient'
+    assert any('Redis' in task for task in score['gap_tasks'])
+    assert '## 硬性条件待核对' not in (output/'score.md').read_text()
+    assert '## 当前待处理缺口' in (output/'score.md').read_text()
+    alternative = output.parent/'alternative'
+    alternative.mkdir()
+    (alternative/'ec-1.yaml').write_text((evidence/'ec-1.yaml').read_text().replace('请求延迟降低 20%', '请求延迟降低 90%'))
+    assert run_generation_cli(monkeypatch, (profile, job, alternative, report, output/'changed'), '--use-llm', '--require-llm') == 1
+    other_profile = output.parent/'other-profile.yaml'
+    other_profile.write_text(profile.read_text().replace('测试候选人', '另一候选人'))
+    assert run_generation_cli(monkeypatch, (other_profile, job, evidence, report, output/'changed-profile'), '--use-llm', '--require-llm') == 1
+    report.unlink()
+    monkeypatch.setattr(run_generation.LLMClient, 'post_json', lambda *args, **kwargs: {'choices': [{'message': {'content': '旧解释不能替代丢失的语义结果'}}]})
+    monkeypatch.setattr('sys.argv', ['evaluate', '--input', str(resume), '--output', str(output/'invalid.md'), '--job-profile', str(job), '--use-llm', '--require-llm', '--model', 'test', '--api-key', 'local'])
+    assert run_evaluation._legacy_main() == 1
+    assert not (output/'invalid.md').exists()

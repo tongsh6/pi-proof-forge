@@ -177,3 +177,11 @@ def test_resume_preserves_section_order_and_renders_markdown_emphasis():
     assert html.index('真实概述')<html.index('公司A')<html.index('核心技能')<html.index('项目B')<html.index('大学')
     assert '<strong>交易系统</strong>' in html
     assert '##' not in html
+
+
+def test_truncated_emphasis_does_not_leak_markers_or_change_code_facts():
+    html=exporter._markdown_to_html('# 候选人\n## 项目经历\n### 性能治理\n- 成果**：查询 **2–3s → 300–400ms**（本机验证）\n- 保留代码 `value ** 2` 和 **完整强调**')
+    parsed=HtmlContent();parsed.feed(html);body=' '.join(parsed.text)
+    assert '成果：查询 2–3s → 300–400ms（本机验证）' in body
+    assert 'value ** 2' in body
+    assert '<strong>完整强调</strong>' in html

@@ -77,7 +77,8 @@ def extract_top_card_ids(report_text: str) -> list[str]:
     return unique[:3]
 
 
-def load_cards(evidence_dir: Path, card_ids: list[str]) -> list[CardView]:
+def load_cards(evidence_dir: Path, card_ids: list[str], material_dir: Path | None = None) -> list[CardView]:
+    from tools.infra.evidence_sources import validated_source_inputs
     card_map: dict[str, CardView] = {}
     if not card_ids or any(not re.fullmatch(r"[A-Za-z0-9_-]+", card_id) for card_id in card_ids):
         raise ValueError("selected_evidence_missing_or_invalid")
@@ -88,14 +89,18 @@ def load_cards(evidence_dir: Path, card_ids: list[str]) -> list[CardView]:
         doc = parse_simple_yaml(read_text(str(file_path)))
         if not doc["lists"].get("results") or not doc["lists"].get("artifacts") or not doc["scalars"].get("title"):
             raise ValueError("selected_evidence_ineligible")
+        role_scope = doc["scalars"].get("role_scope", "").strip()
+        if role_scope.casefold() in {"[]", "{}", "null", "none"}:
+            role_scope = ""
         card_map[card_id] = {
+            "material_inputs": validated_source_inputs(doc, material_dir if material_dir is not None else evidence_dir.parent/'materials'),
             "id": card_id,
             "source_sha256": hashlib.sha256(file_path.read_bytes()).hexdigest(),
             "title": doc["scalars"].get("title", card_id),
             "raw_source": doc["scalars"].get("raw_source", ""),
             "time_range": doc["scalars"].get("time_range", ""),
             "context": doc["scalars"].get("context", ""),
-            "role_scope": doc["scalars"].get("role_scope", ""),
+            "role_scope": role_scope,
             "actions": doc["lists"].get("actions", []),
             "results": doc["lists"].get("results", []),
             "stack": doc["lists"].get("stack", []),
@@ -134,16 +139,57 @@ def pick_action(card: CardView, version: str) -> str:
     return card["actions"][0]
 
 
+def semantic_preferred_facts(review: dict[str, Any]) -> list[dict[str, Any]]:
+    """保留子项支持及父要求归属，供正文取舍使用，不改变评估结论。"""
+    result = []
+    for parent in review['assessments']:
+        for row in parent.get('checks', [parent]):
+            weight = {'supported': 2, 'partial': 1}.get(row['status'], 0)
+            if weight:
+                result.extend({**review['facts'][c['fact_id']], 'requirement_id': parent['requirement_id'],
+                               'support_weight': weight} for c in row['citations'])
+    return result
+
+
+def prioritize_project_facts(values: list[str], card_id: str, field: str,
+                             preferred_facts: list[dict[str, Any]]) -> list[str]:
+    """在既有稳定顺序上优先增加要求覆盖，同一父项的重复引用只计一次。"""
+    coverage: dict[str, dict[str, int]] = {}
+    for ref in preferred_facts:
+        if ref['source_id'] != card_id or ref['field'] != field:
+            continue
+        weights = coverage.setdefault(ref['text'], {})
+        parent = ref.get('requirement_id', '')
+        weights[parent] = max(weights.get(parent, 0), ref.get('support_weight', 1))
+    remaining = list(dict.fromkeys(values))
+    ranked: list[str] = []
+    covered: dict[str, int] = {}
+    while remaining:
+        def priority(value):
+            weights = coverage.get(value, {})
+            return (sum(max(0, weight - covered.get(parent, 0)) for parent, weight in weights.items()),
+                    sum(weights.values()))
+        value = max(remaining, key=priority)
+        ranked.append(value)
+        remaining.remove(value)
+        for parent, weight in coverage.get(value, {}).items():
+            covered[parent] = max(covered.get(parent, 0), weight)
+    return ranked
+
+
 def build_template_resume(
     version: str, report_id: str, score_total: int, now: str, cards: list[CardView],
     *, personal_profile: dict[str, Any] | None = None,
     job_context: dict[str, Any] | None = None,
     positioning: str = "technical_depth", custom_positioning: str = "",
     claims: list[dict[str, str]] | None = None,
+    preferred_facts: list[dict[str, Any]] | None = None,
 ) -> str:
     profile = personal_profile or {}
     target = job_context or {}
     claims = claims if claims is not None else []
+    targeted=preferred_facts is not None
+    preferred_profile={f['field'] for f in (preferred_facts or []) if f['source_id']=='personal_profile'}
 
     def fact(text: str, kind: str, field: str, evidence_id: str = "") -> str:
         text = " ".join(str(text).split())
@@ -173,32 +219,56 @@ def build_template_resume(
         last='至今' if item.get('current') else personal(item.get('end',''),f"career.{group}.{item['id']}.end")
         return ' ~ '.join(v for v in (first,last) if v)
     summary=career.get('summary','')
-    if summary:
+    if targeted and work and work[0].get('scope'):
+        current=work[0];base=f"career.work.{current['id']}"
+        lines.extend(['','## 职业概述',personal(current['scope'],base+'.scope')])
+        if current.get('contributions'):
+            value=current['contributions'][0]
+            lines.append(personal(value,base+'.contributions'))
+    elif summary:
         lines.extend(['','## 职业概述',personal(summary,'career.summary')])
     elif work and work[0].get('scope'):
         lines.extend(['','## 职业概述',personal(profile.get('current_position',''),'current_position')+'。'+personal(work[0]['scope'],f"career.work.{work[0]['id']}.scope")])
     groups=[item for item in career.get('skills',[]) if item.get('category') and item.get('description')]
+    if targeted:
+        selected_ids={c['id'] for c in cards}
+        groups.sort(key=lambda g:(not any(field.startswith(f"career.skills.{g['id']}.") for field in preferred_profile),not bool(selected_ids.intersection(g.get('evidence_ids',[])))))
+        groups=groups[:3]
     if groups:
         lines.extend(['','## 核心能力'])
         for item in groups:
             lines.append('- '+personal(item['category'],f"career.skills.{item['id']}.category")+'：'+personal(item['description'],f"career.skills.{item['id']}.description"))
-    stacks = unique_stack(cards)
+    stacks = unique_stack(cards,limit=sum(len(c['stack']) for c in cards)) if targeted else unique_stack(cards)
     keywords = [str(term).casefold() for term in target.get("keywords", [])]
     stacks.sort(key=lambda value: value.casefold() not in keywords)
-    if stacks and not groups:
+    if targeted:
+        cited_stack={f['text'] for f in preferred_facts if f['field']=='stack' and f['source_id'] in {c['id'] for c in cards}}
+        stacks.sort(key=lambda value:value not in cited_stack)
+        stacks=stacks[:max(8,len(cited_stack))]
+    if stacks and (targeted or not groups):
         lines.extend(["", "## 核心技能", "、".join(stacks)])
         for skill in stacks:
-            source = next(card for card in cards if skill in card["stack"])
-            fact(skill, "evidence", "stack", source["id"])
+            sources=[card for card in cards if skill in card['stack']]
+            for source in (sources if targeted else sources[:1]):fact(skill, "evidence", "stack", source["id"])
     visible_work=[item for item in work if item.get('company') and item.get('title')]
+    work_start=len(lines)
     if visible_work:
         lines.extend(['','## 工作经历'])
         for item in visible_work:
             base=f"career.work.{item['id']}"
+            if targeted:
+                lines.append('### '+personal(item['company'],base+'.company')+' · '+personal(item['title'],base+'.title')+'（'+career_period(item,'work')+'）')
+                for contribution in item.get('contributions',[]):
+                    if any(f['source_id']=='personal_profile' and f['field']==base+'.contributions' and f['text']==contribution for f in (preferred_facts or [])) and not any(c['text']==contribution for c in claims):
+                        lines.append('- '+personal(contribution,base+'.contributions'))
+                continue
             lines.append('### '+personal(item['company'],base+'.company')+'（'+career_period(item,'work')+'）')
             lines.append('角色：'+' · '.join(v for v in (personal(item.get('department',''),base+'.department'),personal(item['title'],base+'.title')) if v))
             if item.get('scope'):lines.append('场景：'+personal(item['scope'],base+'.scope'))
             for contribution in item.get('contributions',[]):lines.append('- '+personal(contribution,base+'.contributions'))
+    deferred_work=lines[work_start:] if targeted else []
+    if targeted:del lines[work_start:]
+    project_start=len(lines)
     lines.extend(["", "## 项目经历"])
     for card in cards:
         title = fact(card["title"], "evidence", "title", card["id"])
@@ -214,26 +284,43 @@ def build_template_resume(
         actions = list(dict.fromkeys(card["actions"]))
         preferred = pick_action(card, action_version)
         actions.sort(key=lambda value: (-sum(term in value.casefold() for term in keywords if term), value != preferred))
+        if targeted:
+            actions = prioritize_project_facts(actions, card['id'], 'actions', preferred_facts)
         actions = actions[:3]
-        for field, values in (("actions", actions), ("results", card["results"][:2])):
+        results = list(card['results'])
+        if targeted:
+            results = prioritize_project_facts(results, card['id'], 'results', preferred_facts)
+        for field, values in (("actions", actions), ("results", results[:2])):
             for value in values:
                 if value:
-                    lines.append("- " + fact(value, "evidence", field, card["id"]))
+                    rendered = fact(value, "evidence", field, card["id"])
+                    if targeted and field == 'results' and rendered in ' '.join(card['context'].split()):
+                        continue
+                    lines.append("- " + rendered)
         lines.append("")
+    lines.extend(deferred_work)
     education=[item for item in career.get('education',[]) if item.get('school') and item.get('degree')]
     if career.get('education_visibility')=='show' and education:
         lines.extend(['','## 教育经历'])
         for item in education:
             base=f"career.education.{item['id']}"
+            if targeted:
+                lines.append(' · '.join(personal(item[key],base+'.'+key) for key in ('school','major','degree') if item.get(key))+'（'+career_period(item,'education')+'）')
+                continue
             lines.append('### '+personal(item['school'],base+'.school')+'（'+career_period(item,'education')+'）')
             lines.append(' · '.join(v for v in (personal(item.get('major',''),base+'.major'),personal(item['degree'],base+'.degree')) if v))
     extras=[item for item in career.get('extras',[]) if item.get('title') and item.get('description')]
+    if targeted:extras=[item for item in extras if any(field.startswith(f"career.extras.{item['id']}.") for field in preferred_profile)][:2]
+    extras_start=len(lines)
     if extras:
         lines.extend(['','## 补充成果'])
         for item in extras:
             base=f"career.extras.{item['id']}"
             lines.append('- '+personal(item['title'],base+'.title')+'：'+personal(item['description'],base+'.description'))
             if item.get('url'):lines.append(personal(item['url'],base+'.url'))
+    if targeted and extras:
+        extras_lines=lines[extras_start:];del lines[extras_start:]
+        lines[project_start:project_start]=extras_lines
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -244,17 +331,10 @@ def load_generation_context(profile_path: Path, job_path: Path | None) -> tuple[
     doc = parse_simple_yaml(job_path.read_text(encoding="utf-8")) if job_path and job_path.is_file() else {"scalars": {}, "lists": {}}
     target: dict[str, Any] = {**doc["scalars"], **doc["lists"]}
     target["target_role"] = target.get("target_role") or target.get("title", "")
-    source = str(target.get("source_jd", ""))
-    target["jd_text"] = ""
-    if source and not source.startswith(("http://", "https://")):
-        if source.endswith((".md", ".txt")) and "\n" not in source:
-            candidates = ([job_path.parent / source, job_path.parent.parent / source] if job_path else []) + [Path(source)]
-            jd_path = next((path for path in candidates if path.is_file()), None)
-            if jd_path:
-                target["jd_text"] = jd_path.read_text(encoding="utf-8")
-                target["jd_source_path"] = str(jd_path.resolve())
-        else:
-            target["jd_text"] = source
+    from tools.infra.job_context import load_jd_source
+    target["jd_text"], jd_path = load_jd_source(str(target.get("source_jd", "")), job_path)
+    if jd_path:
+        target["jd_source_path"] = str(jd_path.resolve())
     return profile, target
 
 
@@ -319,17 +399,27 @@ def _legacy_main() -> int:
         report_text = read_text(report_path)
         score_total = extract_score_total(report_text)
         evidence_dir = Path(evidence_dir_arg)
-        cards = load_cards(evidence_dir, extract_top_card_ids(report_text))
         profile_path = Path(args.personal_profile)
+        cards = load_cards(evidence_dir, extract_top_card_ids(report_text), profile_path.parent/'materials')
+        from tools.infra.semantic_matching import load_semantic_report
+        semantic = load_semantic_report(Path(report_path))
         job_path = Path(args.job_profile) if args.job_profile else None
+        if semantic and (not job_path or hashlib.sha256(job_path.read_bytes()).hexdigest() != semantic['inputs']['job_profile']['sha256']):
+            raise ValueError('semantic_target_changed')
+        if semantic:
+            if any(card['source_sha256'] != semantic['inputs'][card['id']]['sha256'] for card in cards):
+                raise ValueError('semantic_evidence_changed')
+            expected_profile = semantic['inputs'].get('personal_profile')
+            if expected_profile and (not profile_path.is_file() or hashlib.sha256(profile_path.read_bytes()).hexdigest() != expected_profile['sha256']):
+                raise ValueError('semantic_personal_profile_changed')
         profile, target = load_generation_context(profile_path, job_path)
         missing_profile = [key for key in ("name", "phone", "email", "city", "current_position") if not profile.get(key, "").strip()]
         missing_target = [key for key in ("target_role", "company", "jd_text") if not target.get(key)]
         artifacts: list[tuple[Path, str, dict[str, Any]]] = []
         for version in ["A", "B"]:
             selected_cards = cards
-            strategy = "locked_evidence_fields"
-            if use_llm:
+            strategy = "semantic_selection_locked_evidence_fields" if semantic else "locked_evidence_fields"
+            if use_llm and not semantic:
                 try:
                     if not model or not api_key:
                         raise ValueError("llm_configuration_missing")
@@ -374,13 +464,17 @@ def _legacy_main() -> int:
                 personal_profile=profile, job_context=target,
                 positioning=args.resume_positioning, custom_positioning=args.custom_positioning,
                 claims=claims,
+                preferred_facts=semantic_preferred_facts(semantic) if semantic else None,
             )
             paths = {"personal_profile": profile_path, "matching_report": Path(report_path)}
+            if semantic:
+                paths['semantic_matching'] = Path(report_path).with_suffix('.semantic.json')
             if job_path:
                 paths["job_profile"] = job_path
             if target.get("jd_source_path"):
                 paths["job_description"] = Path(target["jd_source_path"])
             paths.update({card["id"]: evidence_dir / f"{card['id']}.yaml" for card in selected_cards})
+            for card in selected_cards:paths.update(card.get('material_inputs',{}))
             missing_evidence = [f"{card['id']}.{field}" for card in selected_cards
                                 for field in ("context", "role_scope", "time_range", "actions") if not card[field]]
             if not unique_stack(selected_cards):
@@ -394,6 +488,7 @@ def _legacy_main() -> int:
             trace = {
                 "schema_version": 1, "version": version,
                 "content_schema_version": 1, "career_revision": profile.get("revision",""),
+                "display_policy": "targeted_v1" if semantic else "complete_v1",
                 "generation_strategy": strategy,
                 "resume_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
                 "evidence_card_ids": [card["id"] for card in selected_cards],
