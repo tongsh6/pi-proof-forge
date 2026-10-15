@@ -5,7 +5,7 @@ import {listMaterialDocuments,readMaterialDocument,type MaterialDocument,type Ma
 
 /** 预览只显示正文：去掉 Markdown 文件头部的 YAML front matter。 */
 const stripFrontMatter=(text:string)=>text.replace(/^\s*---[\s\S]*?\n---\s*/,'');
-export function MaterialDocumentPicker({materialId,onSelect,disabled}:{materialId:string;onSelect:(value:MaterialDocumentRef|null)=>void;disabled:boolean}){
+export function MaterialDocumentPicker({materialId,onSelect,disabled,onRead}:{materialId:string;onSelect:(value:MaterialDocumentRef|null)=>void;disabled:boolean;onRead?:(text:string)=>void}){
   const {t}=useTranslation();const [query,setQuery]=useState(''),[items,setItems]=useState<MaterialDocument[]>([]),[selected,setSelected]=useState('');
   const [preview,setPreview]=useState(''),[count,setCount]=useState({matched:0,total:0}),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const revision=useRef(0);
@@ -14,7 +14,7 @@ export function MaterialDocumentPicker({materialId,onSelect,disabled}:{materialI
     catch(e){if(rev===revision.current)setError(getErrorMessage(e));}finally{if(rev===revision.current)setBusy(false);}};
   useEffect(()=>{setQuery('');setItems([]);onSelect(null);if(materialId)void search('');return()=>{revision.current++;};},[materialId]);
   const select=async(id:string)=>{const rev=++revision.current;onSelect(null);setSelected(id);setPreview('');setError('');if(!id)return;setBusy(true);
-    try{const r=await readMaterialDocument(materialId,id);if(rev===revision.current){setPreview(stripFrontMatter(r.text));onSelect({material_id:materialId,document_id:r.document_id,sha256:r.sha256,label:r.label});}}
+    try{const r=await readMaterialDocument(materialId,id);if(rev===revision.current){setPreview(stripFrontMatter(r.text));onRead?.(r.text);onSelect({material_id:materialId,document_id:r.document_id,sha256:r.sha256,label:r.label});}}
     catch(e){if(rev===revision.current)setError(getErrorMessage(e));}finally{if(rev===revision.current)setBusy(false);}};
   return <div className="mt-4 space-y-3 rounded-card border border-border bg-bg-primary/40 p-4">
     <p className="text-sm font-medium">{t('materialDocument.title')}</p><p className="text-xs text-text-secondary">{t('materialDocument.help')}</p>

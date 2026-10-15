@@ -1,4 +1,5 @@
 import { MaterialDocumentPicker } from "./material-document-picker";
+import { EvidenceSourceMerge } from "./source-merge-panel";
 import type { MaterialDocumentRef } from "@/lib/sidecar/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -451,8 +452,9 @@ export function EvidencePage() {
         const result = await saveEvidenceDraft({
           draft: draftFromForm(generatedDraft),
           evidence_id: reviewTargetId,
+          expected_sha256: reviewTargetId ? detail?.source_sha256 : undefined,
           save_mode: saveMode,
-          review: { decision: "approved", reviewed_at: new Date().toISOString() },
+          review: { decision: "approved", reviewed_at: new Date().toISOString(), merge_sources: Boolean(generatedDraft.field_sources?.length) },
         });
         setGeneratedDraft(null);setReviewTargetId(undefined);
         await loadEvidence(result.evidence_id);
@@ -463,7 +465,7 @@ export function EvidencePage() {
         setDetailError(getErrorMessage(nextError));
       }
     },
-    [draftFromForm, generatedDraft, loadEvidence, reviewTargetId, detailState]
+    [draftFromForm, generatedDraft, loadEvidence, reviewTargetId, detailState, detail]
   );
 
   const handleSave = useCallback(async () => {
@@ -1109,7 +1111,8 @@ export function EvidencePage() {
 
               {detailState === "ready" && (detail || isDraft) ? (
                 <div className="space-y-4 pt-4">
-                  {!generatedDraft && !!detail?.source_material_ids?.length && <button type="button" disabled={isBusy} className="rounded-card border border-accent px-3 py-2 text-sm text-accent" onClick={()=>{setReviewTargetId(detail.evidence_id);setGeneratedDraft({title:form.title,context:form.context,time_range:form.time_range,role_scope:form.role_scope,actions:form.actions,results:form.results,stack:parseCommaList(form.stackText),tags:parseCommaList(form.tagsText),source_material_ids:detail.source_material_ids!,source_documents:detail.source_documents||[],artifacts:detail.source_material_ids!.map(id=>({type:'text_document',ref:id,label:id})),status:'draft_ready_for_review',candidate_pool_eligible:false});}}>{t('materialDocument.reReview')}</button>}
+                  {!!detail?.source_error&&<p role="alert" className="text-sm text-warning">{t('sourceMerge.changed')}</p>}
+                  {!generatedDraft && !!detail?.source_material_ids?.length && <button type="button" disabled={isBusy} className="rounded-card border border-accent px-3 py-2 text-sm text-accent" onClick={()=>{setReviewTargetId(detail.evidence_id);setGeneratedDraft({title:form.title,context:form.context,time_range:form.time_range,role_scope:form.role_scope,actions:form.actions,results:form.results,stack:parseCommaList(form.stackText),tags:parseCommaList(form.tagsText),source_material_ids:detail.source_material_ids!,source_documents:detail.source_documents||[],field_sources:detail.field_sources||[],artifacts:detail.source_material_ids!.map(id=>({type:'text_document',ref:id,label:id})),status:'draft_ready_for_review',candidate_pool_eligible:false});}}>{t('materialDocument.reReview')}</button>}
                   {generatedDraft ? (
                     <section className="rounded-card border border-success/40 bg-success/10 p-3">
                       <div className="flex items-start justify-between gap-3">
@@ -1161,6 +1164,8 @@ export function EvidencePage() {
                     </section>
                   ) : null}
 
+                  {generatedDraft&&reviewTargetId&&<EvidenceSourceMerge key={reviewTargetId} draft={draftFromForm(generatedDraft)} materials={materialSources} disabled={isBusy} onChange={draft=>{setGeneratedDraft(draft);updateFormFromDraft(draft);}}/>}
+                  {!editing&&!!detail?.field_sources?.length&&<details className="rounded-card border border-border p-3"><summary className="cursor-pointer text-sm text-accent">{t('sourceMerge.bound')}</summary>{detail.field_sources.map((s,i)=><p key={i} className="mt-2 whitespace-pre-wrap break-words text-xs text-text-secondary">{s.value}<br/>{detail.source_documents?.find(d=>d.document_id===s.document_id&&d.material_id===s.material_id)?.label}</p>)}</details>}
                   {!editing ? (
                     <div className="space-y-4" data-testid="evidence-detail-view">
                       <div>

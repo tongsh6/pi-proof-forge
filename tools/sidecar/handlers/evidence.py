@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import mimetypes
 import re
 import shutil
@@ -11,6 +12,8 @@ from uuid import uuid4
 
 from tools.infra.llm.client import LLMClient
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.infra.evidence_sources import (SOURCE_FIELDS, field_values, read_source_documents,
+    validate_field_sources, source_fingerprints, validated_source_inputs)
 from tools.sidecar.handlers import materials as materials_handler
 from tools.sidecar.handlers import settings as settings_handler
 
@@ -50,6 +53,10 @@ _MANAGED_EVIDENCE_KEYS = {
     "candidate_pool_eligible",
     "missing_items",
     "source_documents_json",
+    "field_sources_json",
+    "source_material_fingerprints_json",
+    "reviewed_facts_json",
+    "source_whole_material_ids_json",
 }
 _DRAFT_REQUIRED_FIELDS = {
     "source_material_ids",
@@ -251,6 +258,8 @@ def _write_evidence_file(
         _write_list(lines, "source_material_ids", fields.get("source_material_ids", []))
     if fields.get("source_documents_json"):
         lines.append(f'source_documents_json: {_quote(fields["source_documents_json"])}')
+    for key in ('field_sources_json', 'source_material_fingerprints_json', 'reviewed_facts_json', 'source_whole_material_ids_json'):
+        if fields.get(key):lines.append(f'{key}: {_quote(fields[key])}')
     if "review_decision" in fields:
         lines.append(f"review_decision: {_quote(str(fields.get('review_decision', '')))}")
     if "reviewed_at" in fields:
@@ -334,12 +343,18 @@ def _load_evidence_cards() -> list[dict[str, Any]]:
                 "role_scope": s.get("role_scope", ""),
                 "score": score,
                 "status": s.get("status", "ready"),
-                "candidate_pool_eligible": s.get("status")=="saved_eligible" and s.get("candidate_pool_eligible")=="true" and bool(doc["lists"].get("results")) and bool(doc["lists"].get("artifacts")),
+                "candidate_pool_eligible": s.get("status")=="saved_eligible" and s.get("candidate_pool_eligible")=="true" and bool(doc["lists"].get("results")) and bool(doc["lists"].get("artifacts")) and not _source_error(doc),
                 "updated_at": s.get("updated_at", ""),
                 "tags": doc["lists"].get("tags", []),
             }
         )
     return cards
+
+
+def _source_error(doc):
+    try:validated_source_inputs(doc, materials_handler._MATERIALS_DIR)
+    except ValueError as exc:return str(exc)
+    return ''
 
 
 def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
@@ -370,9 +385,12 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
         "raw_source": s.get("raw_source", ""),
         "source_material_ids": l.get("source_material_ids", []),
         "source_documents": json.loads(s.get("source_documents_json") or "[]"),
+        "field_sources": json.loads(s.get("field_sources_json") or "[]"),
+        "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "source_error": _source_error(doc),
         "review_decision": s.get("review_decision", ""),
         "reviewed_at": s.get("reviewed_at", ""),
-        "candidate_pool_eligible": s.get("candidate_pool_eligible", "false") == "true",
+        "candidate_pool_eligible": s.get("candidate_pool_eligible", "false") == "true" and not _source_error(doc),
         "missing_items": l.get("missing_items", []),
     }
 
@@ -702,9 +720,20 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         "tags": _validate_string_list("tags", draft.get("tags", [])),
         "source_material_ids": source_material_ids,
     }
+    evidence_id = str(params.get('evidence_id') or f'ec_{uuid4().hex[:8]}')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',evidence_id):raise ValueError('invalid_evidence_id')
+    existing_doc=None;preserved=[];whole_material_ids=[]
+    if params.get('evidence_id'):
+        existing_path=_find_evidence_path(evidence_id)
+        if existing_path is None:raise ValueError('evidence_review_target_missing')
+        original=existing_path.read_text(encoding='utf-8');existing_doc=parse_simple_yaml(original)
+        old_refs=json.loads(existing_doc['scalars'].get('source_documents_json') or '[]')
+        whole_material_ids=json.loads(existing_doc['scalars'].get('source_whole_material_ids_json') or '[]')
+        whole_material_ids=list(dict.fromkeys([*whole_material_ids,*(mid for mid in existing_doc['lists'].get('source_material_ids',[]) if mid not in {r['material_id'] for r in old_refs})]))
     source_documents=draft.get('source_documents',[])
-    if not isinstance(source_documents,list) or len(source_documents)>1:raise ValueError('material_document_reference_invalid')
-    source_text=_draft_source_text(selected_records,source_documents[0] if source_documents else None)
+    documents,source_text=read_source_documents(selected_records,source_documents,whole_material_ids)
+    field_sources=draft.get('field_sources',[])
+    verified_fields=validate_field_sources(normalized_draft,field_sources,documents)
     missing_items = _missing_items_for_draft(normalized_draft)
     save_mode = str(params.get("save_mode") or "incomplete")
     if save_mode not in {"incomplete", "eligible"}:
@@ -715,16 +744,27 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         for result in _split_multiline_text(normalized_draft["results"]):
             if result.casefold() not in source_text.casefold():raise ValueError('no_fabrication_guard: result is not traceable to selected document')
 
-    evidence_id = str(params.get("evidence_id") or f"ec_{uuid4().hex[:8]}")
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}",evidence_id):raise ValueError("invalid_evidence_id")
-    existing_doc=None;preserved=[]
-    if params.get('evidence_id'):
-        existing_path=_find_evidence_path(evidence_id)
-        if existing_path is None:raise ValueError('evidence_review_target_missing')
-        original=existing_path.read_text(encoding='utf-8');existing_doc=parse_simple_yaml(original)
-        if (existing_doc['lists'].get('source_material_ids',[])!=source_material_ids
-            or json.loads(existing_doc['scalars'].get('source_documents_json') or '[]')!=source_documents):
-            raise ValueError('evidence_review_source_mismatch')
+    if existing_doc is not None:
+        s=existing_doc['scalars']; old_refs=json.loads(s.get('source_documents_json') or '[]')
+        changed_sources=(existing_doc['lists'].get('source_material_ids',[])!=source_material_ids or old_refs!=source_documents)
+        if review.get('merge_sources') is True or s.get('reviewed_facts_json') or s.get('source_material_fingerprints_json') or params.get('expected_sha256'):
+            if params.get('expected_sha256')!=hashlib.sha256(existing_path.read_bytes()).hexdigest():
+                raise ValueError('evidence_review_changed')
+        if changed_sources:
+            if (review.get('merge_sources') is not True
+                or not set(existing_doc['lists'].get('source_material_ids',[])).issubset(source_material_ids)
+                or any(ref not in source_documents for ref in old_refs)):
+                raise ValueError('evidence_review_source_mismatch')
+        if review.get('merge_sources') is True or s.get('reviewed_facts_json') or s.get('source_material_fingerprints_json'):
+            previous=json.loads(s['reviewed_facts_json']) if s.get('reviewed_facts_json') else {**s,**existing_doc['lists']}
+            for field in SOURCE_FIELDS:
+                for value in field_values(normalized_draft,field):
+                    if value not in field_values(previous,field) and (field,value) not in verified_fields:
+                        raise ValueError('field_source_required_for_changed_fact')
+            for binding in json.loads(s.get('field_sources_json') or '[]'):
+                if binding['value'] in field_values(normalized_draft,binding['field']) and (binding['field'],binding['value']) not in verified_fields:
+                    raise ValueError('field_source_cannot_be_removed')
+            if changed_sources and not field_sources:raise ValueError('field_source_required_for_merge')
         preserved=_preserved_blocks(original)
     now = _utcnow_iso()
     fields = {
@@ -748,6 +788,10 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         "candidate_pool_eligible": save_mode == "eligible",
         "missing_items": missing_items,
         "source_documents_json": json.dumps(source_documents,ensure_ascii=False) if source_documents else "",
+        "field_sources_json": json.dumps(field_sources,ensure_ascii=False) if field_sources else "",
+        "source_material_fingerprints_json": json.dumps(source_fingerprints(selected_records),ensure_ascii=False) if field_sources or (existing_doc and existing_doc['scalars'].get('source_material_fingerprints_json')) else "",
+        "reviewed_facts_json": json.dumps({key:normalized_draft[key] for key in SOURCE_FIELDS},ensure_ascii=False) if field_sources or (existing_doc and existing_doc['scalars'].get('reviewed_facts_json')) else '',
+        "source_whole_material_ids_json": json.dumps(whole_material_ids,ensure_ascii=False) if whole_material_ids else '',
     }
     _write_evidence_file(_EVIDENCE_DIR / f"{evidence_id}.yaml", fields, preserved_blocks=preserved)
     return {
@@ -946,7 +990,7 @@ def handle_evidence_update(params: dict[str, Any]) -> dict[str, Any]:
         "tags": _validate_string_list("tags", patch.get("tags", l.get("tags", []))),
     }
     # 来源与审核记录不能在普通字段编辑时静默丢失；事实变化必须重新审核。
-    for key in ('raw_source','review_decision','reviewed_at','source_documents_json'):
+    for key in ('raw_source','review_decision','reviewed_at','source_documents_json','field_sources_json','source_material_fingerprints_json','reviewed_facts_json','source_whole_material_ids_json'):
         if key in s:fields[key]=s[key]
     for key in ('source_material_ids','missing_items'):
         if key in l:fields[key]=l[key]
@@ -954,11 +998,14 @@ def handle_evidence_update(params: dict[str, Any]) -> dict[str, Any]:
         fields['candidate_pool_eligible']=s['candidate_pool_eligible']=='true'
     changed=any(fields.get(key)!=(l.get(key,[]) if isinstance(fields.get(key),list) else s.get(key,'')) for key in patch)
     if changed and (s.get('review_decision')=='approved' or s.get('status')=='saved_eligible'):
+        if not fields.get('reviewed_facts_json'):
+            previous={**s,**l}
+            fields['reviewed_facts_json']=json.dumps({key:previous.get(key,[]) if key in {'actions','results'} else previous.get(key,'') for key in SOURCE_FIELDS},ensure_ascii=False)
         fields.update(status='needs_review',review_decision='pending',candidate_pool_eligible=False)
     if s.get('source_documents_json'):
         references=json.loads(s['source_documents_json'])
         records=_selected_text_materials(l.get('source_material_ids',[]))
-        source=_draft_source_text(records,references[0] if references else None)
+        _,source=read_source_documents(records,references,json.loads(s.get('source_whole_material_ids_json') or '[]'))
         if any(result.casefold() not in source.casefold() for result in fields['results']):
             raise ValueError('no_fabrication_guard: result is not traceable to selected document')
     _write_evidence_file(path, fields, preserved_blocks=preserved_blocks)
@@ -1134,7 +1181,8 @@ def _reconcile_source_text(scalars: dict[str, str], lists: dict[str, list[str]],
                 wanted_docs.add(str(ref["document_id"]))
     except (ValueError, TypeError):
         wanted_docs = set()
-    chosen = [doc for doc in documents if doc["material_id"] in material_ids and (not wanted_docs or doc["document_id"] in wanted_docs)]
+    whole_ids=json.loads(scalars.get('source_whole_material_ids_json') or '[]')
+    chosen = [doc for doc in documents if doc["material_id"] in material_ids and (not wanted_docs or doc["document_id"] in wanted_docs or doc['material_id'] in whole_ids)]
     if wanted_docs and not chosen:
         chosen = [doc for doc in documents if doc["material_id"] in material_ids]
     return "\n".join(doc["text_cf"] for doc in chosen), bool(chosen)

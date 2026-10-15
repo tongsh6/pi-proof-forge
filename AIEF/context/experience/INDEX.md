@@ -20,6 +20,7 @@
 - 经验记录必须包含可复现验证步骤。
 
 ## 已沉淀经验
+- context/experience/lessons/2026-10-13-evidence-source-merge.md
 - context/experience/lessons/2026-02-28-aief-l3-upgrade.md
 - context/experience/lessons/2026-02-28-pipeline-e2e.md
 - context/experience/lessons/2026-03-02-aief-l1-retrofit.md
