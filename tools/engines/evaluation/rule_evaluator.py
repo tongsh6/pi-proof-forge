@@ -3,15 +3,14 @@ from __future__ import annotations
 import re
 
 from tools.domain.models import JobProfile, ResumeOutput, Scorecard
+from .keyword_coverage import keyword_coverage
 
 
 class RuleEvaluationEngine:
     def evaluate(self, resume: ResumeOutput, profile: JobProfile) -> Scorecard:
         content = resume.content
-        keyword_hits = sum(
-            1 for kw in profile.keywords if kw.casefold() in content.casefold()
-        )
-        coverage = keyword_hits / max(len(profile.keywords), 1)
+        coverage = keyword_coverage(content, profile.keywords)["ratio"]
+        coverage = 0.5 if coverage is None else coverage
 
         quantified_bullets = len(re.findall(r"\d", content))
         total_lines = max(
