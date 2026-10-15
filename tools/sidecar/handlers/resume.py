@@ -271,7 +271,7 @@ def _resolve_pdf_export_destination(destination_text: str, source: Path, *, gene
         )
     if generated:
         from tools.infra.export.resume_filename import pdf_filename_for_resume
-        return destination / pdf_filename_for_resume(source, _OUTPUTS_DIR)
+        return destination / pdf_filename_for_resume(source, _OUTPUTS_DIR, readable=True)
     return destination / f"{source.stem}.pdf"
 
 

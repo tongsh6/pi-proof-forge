@@ -33,11 +33,11 @@ def _prefix(value: str, budget: int) -> str:
     return value.encode('utf-16-le')[:budget*2].decode('utf-16-le', errors='ignore')
 
 
-def _filename(parts: list[str], day: str, number: int) -> str:
+def _filename(parts: list[str], day: str, number: int, *, readable: bool = False) -> str:
     name, company, role = parts
     suffix = f'-{day}.{number}.PDF'
     full = f'{name}-{company}-{role}{suffix}'
-    if _units(full)<=24 or company=='未指定公司' or role=='未指定岗位':
+    if readable or _units(full)<=24 or company=='未指定公司' or role=='未指定岗位':
         return full
     short_company = re.sub(r'^(?:上海|北京|广州|深圳|杭州|南京|苏州|成都|武汉|天津|重庆|厦门)市?', '', company)
     short_company = re.sub(r'(?:股份有限公司|有限责任公司|有限公司|公司)$', '', short_company) or company
@@ -54,7 +54,7 @@ def _filename(parts: list[str], day: str, number: int) -> str:
     return f'{name}-{_prefix(short_company,company_budget)}-{_prefix(short_role,role_budget)}{suffix}'
 
 
-def pdf_filename_for_resume(source: Path, outputs: Path) -> str:
+def pdf_filename_for_resume(source: Path, outputs: Path, *, readable: bool = False) -> str:
     source = Path(source)
     content = source.read_bytes()
     text = content.decode('utf-8')
@@ -77,6 +77,8 @@ def pdf_filename_for_resume(source: Path, outputs: Path) -> str:
     parts = [_component(v if isinstance(v, str) else '', fallback) for v, fallback in
              [(name, '未填写姓名'), (company, '未指定公司'), (role, '未指定岗位')]]
     key = hashlib.sha256(str(source.resolve()).encode() + b'\0' + content + b'\0' + trace_bytes).hexdigest()
+    if readable:
+        key += ':readable-v1'
     registry = Path(outputs) / '.resume_pdf_names.json'
     with locked_review_queue(registry):
         names = json.loads(registry.read_text()) if registry.exists() else {}
@@ -87,9 +89,9 @@ def pdf_filename_for_resume(source: Path, outputs: Path) -> str:
         if key not in names:
             day, number = _today(), 1
             used = {unicodedata.normalize('NFC',value).casefold() for value in names.values()}
-            while unicodedata.normalize('NFC',_filename(parts,day,number)).casefold() in used:
+            while unicodedata.normalize('NFC',_filename(parts,day,number,readable=readable)).casefold() in used:
                 number += 1
-            names[key] = _filename(parts,day,number)
+            names[key] = _filename(parts,day,number,readable=readable)
             atomic_write_json(registry, names)
         return names[key]
 
