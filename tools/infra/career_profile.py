@@ -72,7 +72,8 @@ def career_from_scalars(fields):
 
 
 def inspect_career(fields, evidence_dir:Path):
-    career=career_from_scalars(fields);missing=[];hashes={}
+    from tools.infra.evidence_sources import validated_source_inputs
+    career=career_from_scalars(fields);missing=[];hashes={};source_hashes={}
     def gap(field,label):missing.append({'field':field,'label':label})
     for field in BASIC_FIELDS:
         if not fields.get(field,'').strip():gap(field,{'name':'姓名','phone':'手机号','email':'邮箱','city':'城市','current_position':'当前职位'}[field]+'未填写')
@@ -93,8 +94,15 @@ def inspect_career(fields, evidence_dir:Path):
                 if path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(evidence_dir.resolve()):
                     raw=path.read_bytes();hashes[ref]=hashlib.sha256(raw).hexdigest();doc=parse_simple_yaml(raw.decode());s=doc['scalars'];l=doc['lists']
                     valid=s.get('status')=='saved_eligible' and s.get('candidate_pool_eligible')=='true' and bool(l.get('results')) and bool(l.get('artifacts'))
+                    if s.get('source_material_fingerprints_json'):
+                        try:
+                            paths=validated_source_inputs(doc,evidence_dir.parent/'materials')
+                            source_hashes[ref]={key:hashlib.sha256(path.read_bytes()).hexdigest() for key,path in paths.items()}
+                        except ValueError:
+                            valid=False;source_hashes[ref]='invalid'
                 if not valid:gap('evidence.'+ref,'关联证据不可用或尚未审核：'+ref)
     body={'basic':{k:fields.get(k,'') for k in BASIC_FIELDS},'career':career,'evidence_hashes':hashes}
+    if source_hashes:body['source_hashes']=source_hashes
     revision=hashlib.sha256(json.dumps(body,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     try:review=json.loads(fields.get('career_review_json') or '{}')
     except ValueError:review={}
@@ -121,25 +129,29 @@ def career_generation_issues(profile, cards):
         else:
             item=linked[0];period=parse_project_period(card.get('time_range',''))
             if period is None:
-                reasons.append(card['title']+'：项目时间需填写明确的开始和结束年月（或至今）')
+                reasons.append(card['title']+'：项目时间需填写开始和结束年份或年月（或至今），不能使用单次事件日期')
                 continue
-            start,end=period
-            if (start<(item.get('start') or '') or (end and end<start)
-                    or (item.get('end') and (not end or start>item['end'] or end>item['end']))
-                    or (not end and not item.get('current'))):
-                reasons.append(card['title']+'：项目时间与所关联任职时间不一致')
+            if not _work_contains(item,period):
+                reasons.append(card['title']+'：项目时间与所关联任职时间不一致或年份边界待核实')
     return reasons
 
 
 def parse_project_period(value):
-    """只接受完整年月区间，不将验收日期或文中的零散月份当成项目任期。"""
-    month=r'(?:19|20)\d{2}(?:[-./](?:0?[1-9]|1[0-2])|年(?:0?[1-9]|1[0-2])月)'
+    """保留年份/年月精度；单次验收日期不充当项目任期。"""
+    month=r'(?:19|20)\d{2}(?:[-./](?:0?[1-9]|1[0-2])|年(?:0?[1-9]|1[0-2])月|年)?'
     match=re.fullmatch(rf'\s*({month})\s*(?:~|～|至|到|—|–|-)\s*({month}|至今|现在|present)\s*',value,re.I)
     if not match:return None
     def canonical(text):
         parts=re.findall(r'\d+',text)
-        return f'{parts[0]}-{int(parts[1]):02}' if len(parts)==2 else None
-    return canonical(match[1]),canonical(match[2])
+        return f'{parts[0]}-{int(parts[1]):02}' if len(parts)==2 else parts[0] if parts else None
+    start,end=canonical(match[1]),canonical(match[2])
+    if end and project_date_bounds(end)[1]<project_date_bounds(start)[0]:return None
+    return start,end
+
+
+def project_date_bounds(value):
+    """仅用于保守比较，不写回或展示推定月份。"""
+    return (value+'-01',value+'-12') if len(value)==4 else (value,value)
 
 
 # ---- 证据卡自动关联工作经历（按材料来源、已关联材料、项目时间三类信号；冲突不自动决定） ----
@@ -164,8 +176,13 @@ def company_aliases(company):
     return aliases
 
 
-def _work_contains(work,start):
-    return bool(work.get('start')) and work['start']<=start and (work.get('current') or not work.get('end') or start<=work['end'])
+def _work_contains(work,period):
+    start,end=period
+    start_min,_=project_date_bounds(start)
+    _,end_max=project_date_bounds(end) if end else ('','')
+    return (bool(work.get('start')) and work['start']<=start_min
+            and (not work.get('end') or bool(end) and end_max<=work['end'])
+            and (bool(end) or bool(work.get('current'))))
 
 
 def suggest_evidence_links(career,cards,material_labels):
@@ -191,7 +208,7 @@ def suggest_evidence_links(career,cards,material_labels):
         period=parse_project_period(card.get('time_range',''))
         if period:
             for work in works:
-                if _work_contains(work,period[0]):votes.setdefault(work['id'],set()).add('time_range')
+                if _work_contains(work,period):votes.setdefault(work['id'],set()).add('time_range')
         if not votes:unresolved.append({'evidence_id':card['id'],'title':card.get('title',''),'reason':'no_signal'})
         elif len(votes)==1:
             wid=next(iter(votes));suggestions.append({'evidence_id':card['id'],'title':card.get('title',''),'work_id':wid,'company':company[wid],'basis':sorted(votes[wid])})
@@ -200,6 +217,7 @@ def suggest_evidence_links(career,cards,material_labels):
 
 
 def eligible_cards_for_linking(evidence_dir:Path):
+    from tools.infra.evidence_sources import validated_source_inputs
     cards=[]
     if not evidence_dir.is_dir():return cards
     for path in sorted(evidence_dir.glob('*.yaml')):
@@ -207,6 +225,8 @@ def eligible_cards_for_linking(evidence_dir:Path):
         except (OSError,UnicodeDecodeError,ValueError):continue
         s=doc['scalars'];l=doc['lists']
         if not (s.get('status')=='saved_eligible' and s.get('candidate_pool_eligible')=='true' and l.get('results') and l.get('artifacts')):continue
+        try:validated_source_inputs(doc,evidence_dir.parent/'materials')
+        except ValueError:continue
         cards.append({'id':s.get('id',path.stem),'title':s.get('title',''),'time_range':s.get('time_range',''),'source_material_ids':[str(x) for x in l.get('source_material_ids',[])]})
     return cards
 
