@@ -14,7 +14,7 @@
   const hints=text.split('\n').map(s=>s.trim()).filter(s=>s.includes(payload.filename)||/上传成功|上传失败|上传完成|上传中|解析中|解析完成/.test(s)).slice(0,15).map(s=>s.slice(0,180));
   const links=Array.from(document.querySelectorAll('a')).filter(e=>e.textContent.includes(payload.filename)).slice(0,5)
     .map(e=>({label:e.textContent.trim().slice(0,180),url:cleanUrl(e.href)}));
-  const cards=Array.from(document.querySelectorAll('.attachment-view-box .resume-card-container'));
+  const cards=Array.from(document.querySelectorAll('.attachment-view-box .resume-card-container, [class*="attachmentView--"] [class*="attachmentCard--"]'));
   const attachments=[];
   for(const card of cards.filter(e=>e.textContent.includes(stem))) {
     const key=Object.keys(card).find(k=>/^__react(?:Fiber|InternalInstance)\$/.test(k));

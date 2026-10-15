@@ -104,3 +104,20 @@ def test_supplementary_authorization_cannot_reclassify_unused_or_unknown_old_slo
     attempt=store.reserve('job','run','resume');store.finish(attempt,'unknown')
     with pytest.raises(ValueError):store.authorize_supplementary_batch('new','old',1,'generated_pdf','grant')
     assert store.active_batch()['batch_id']=='old'
+
+
+def test_single_pdf_grant_is_bound_to_run_job_and_pdf_and_cannot_be_replenished(tmp_path):
+    from tools.infra.persistence.delivery_attempt_store import DeliveryAttemptStore, scoped_pdf_authorization_ref
+    store=DeliveryAttemptStore(tmp_path/'attempts.sqlite3');store.authorize_batch('old',1,[])
+    old=store.reserve('old-job','old-run','old-pdf');store.finish(old,'success')
+    ref=scoped_pdf_authorization_ref('approved-run','approved-job','approved-sha')
+    store.authorize_supplementary_batch('single','old',1,'generated_pdf',ref)
+    for job,run,sha in [('other-job','approved-run','approved-sha'),('approved-job','other-run','approved-sha'),('approved-job','approved-run','other-sha')]:
+        with pytest.raises(ValueError,match='delivery_scope_mismatch'):store.reserve(job,run,sha,delivery_kind='generated_pdf')
+    assert store.active_batch()['remaining']==1
+    attempt=store.reserve('approved-job','approved-run','approved-sha',delivery_kind='generated_pdf')
+    store.finish(attempt,'success')
+    store.authorize_supplementary_batch('single','old',1,'generated_pdf',ref)
+    assert store.active_batch()['remaining']==0
+    assert store.reserve('approved-job','approved-run','approved-sha',delivery_kind='generated_pdf') is None
+    with pytest.raises(ValueError,match='authorization_already_used'):store.authorize_supplementary_batch('reset','single',1,'generated_pdf',ref)

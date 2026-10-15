@@ -46,3 +46,28 @@ def test_multiple_attachments_bind_only_the_uploaded_target(monkeypatch,count):
     assert result['attachment_id']=='new-id' and result['attachment_count']==count
     listed['data']['list'].append(dict(record));upload['observation']['responses'][2]['payload']=json.dumps(listed)
     with pytest.raises(ValueError,match='attachment_target_not_unique'):contract.verify_uploaded_attachment(upload,obs,digest,len(pdf))
+
+
+@pytest.mark.parametrize('fault',[None,'digest','size','download_denied','duplicate','save_failed','wrong_origin','list_failed'])
+def test_current_card_exact_download_recovers_new_page_without_legacy_list_reply(fault):
+    from tools.infra import liepin_attachment_contract as contract
+    pdf=b'%PDF-current-page';digest=hashlib.sha256(pdf).hexdigest();path='/recruit-auth/resume/attachment-res/c/new.PDF'
+    record={'fileName':'candidate','originalExtension':'pdf','fileSize':len(pdf),'fileId':path,'auditStatus':0,
+            'encryAttachmentId':'current-id','download':{'http_status':200,'byte_length':len(pdf),'sha256':digest}}
+    upload={'state':'uploaded_unverified','filename':'candidate.PDF','pdf_sha256':digest,'observation':{'responses':[
+        {'url':'https://tdoss.liepin.com/o/recruit-auth/auth-upload','http_status':200,'payload':json.dumps({'flag':1,'data':{'filePath':path,'fileLength':len(pdf)}})},
+        {'url':'https://api-c.liepin.com/api/com.liepin.cresume.attachment.save-attachment-resume','http_status':200,'payload':'{"flag":1}'}]}}
+    if fault=='digest':record['download']['sha256']='0'*64
+    if fault=='size':record['download']['byte_length']+=1
+    if fault=='download_denied':record['download']['http_status']=403
+    if fault=='save_failed':upload['observation']['responses'][1]['payload']='{"flag":0}'
+    if fault=='list_failed':upload['observation']['responses'].append({'url':'https://api-c.liepin.com/api/com.liepin.cresume.attachment.list-attachment-resume','http_status':500,'payload':'{}'})
+    observed={'attachment_count':2,'attachments':[record]*(2 if fault=='duplicate' else 1)}
+    observation={'responses':[{'method':'OBSERVE','url':'https://wrong.example/' if fault=='wrong_origin' else 'https://c.liepin.com/resume/edit','payload':json.dumps(observed)}]}
+    if fault:
+        with pytest.raises(ValueError):contract.verify_uploaded_attachment(upload,observation,digest,len(pdf))
+    else:
+        binding=contract.verify_uploaded_attachment(upload,observation,digest,len(pdf))
+        assert binding['attachment_id']=='current-id'
+        assert binding['download_sha256']==digest
+        assert binding['attachment_count']==2

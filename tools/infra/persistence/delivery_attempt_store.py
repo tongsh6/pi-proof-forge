@@ -3,10 +3,16 @@ from __future__ import annotations
 
 import sqlite3
 import json
+import hashlib
 import re
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
+
+
+def scoped_pdf_authorization_ref(run_id, job_key, pdf_sha256):
+    body=json.dumps([run_id,job_key,pdf_sha256],ensure_ascii=False,separators=(',',':'))
+    return 'pdfscope_'+hashlib.sha256(body.encode()).hexdigest()
 
 
 class DeliveryAttemptStore:
@@ -65,6 +71,8 @@ class DeliveryAttemptStore:
             batch = self._active_batch(connection)
             if batch and batch['allowed_delivery_kind'] and batch['allowed_delivery_kind'] != delivery_kind:
                 raise ValueError('delivery_batch_route_not_authorized')
+            if batch and str(batch.get('authorization_ref') or '').startswith('pdfscope_') and batch['authorization_ref']!=scoped_pdf_authorization_ref(run_id,job_key,pdf_sha256):
+                raise ValueError('delivery_scope_mismatch')
             if batch and batch['unresolved']:
                 raise ValueError('delivery_batch_unresolved')
             if batch and batch['remaining'] <= 0:
@@ -77,18 +85,18 @@ class DeliveryAttemptStore:
 
     @staticmethod
     def _active_batch(connection) -> dict | None:
-        batches = connection.execute('SELECT batch_id,authorized_max,allowed_delivery_kind FROM delivery_batches WHERE active=1').fetchall()
+        batches = connection.execute('SELECT batch_id,authorized_max,allowed_delivery_kind,authorization_ref FROM delivery_batches WHERE active=1').fetchall()
         if not batches:
             return None
         if len(batches) != 1:
             raise ValueError('delivery_state_unavailable')
-        batch_id, maximum, allowed_kind = batches[0]
+        batch_id, maximum, allowed_kind, authorization_ref = batches[0]
         states = dict(connection.execute('SELECT state,COUNT(*) FROM attempts WHERE batch_id=? GROUP BY state', (batch_id,)))
         consumed = sum(states.values())
         return {'batch_id':batch_id, 'authorized_max':maximum, 'consumed':consumed,
                 'remaining':max(0,maximum-consumed), 'confirmed':states.get('success',0),
                 'unresolved':states.get('unknown',0), 'in_flight':states.get('in_flight',0),
-                'allowed_delivery_kind':allowed_kind}
+                'allowed_delivery_kind':allowed_kind,'authorization_ref':authorization_ref}
 
     def active_batch(self) -> dict | None:
         if not self.path.exists():

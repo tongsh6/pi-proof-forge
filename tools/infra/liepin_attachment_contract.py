@@ -59,15 +59,31 @@ def verify_uploaded_attachment(upload,observation,expected_sha256,expected_size)
     if upload.get('state')!='uploaded_unverified' or upload.get('pdf_sha256')!=expected_sha256:
         raise ValueError('attachment_upload_ack_missing')
     replies={}
-    for response in upload.get('observation',{}).get('responses',[]):
+    upload_responses=upload.get('observation',{}).get('responses',[])
+    for response in upload_responses:
         if response.get('http_status')==200:
             try:replies[response['url']]=json.loads(response['payload'])
             except (ValueError,KeyError):pass
     saved=replies.get('https://api-c.liepin.com/api/com.liepin.cresume.attachment.save-attachment-resume',{})
     sent=replies.get('https://tdoss.liepin.com/o/recruit-auth/auth-upload',{})
-    listed=replies.get('https://api-c.liepin.com/api/com.liepin.cresume.attachment.list-attachment-resume',{})
-    if any(r.get('flag')!=1 for r in [sent,saved,listed]):raise ValueError('attachment_upload_ack_missing')
-    records=listed.get('data',{}).get('list',[])
+    list_url='https://api-c.liepin.com/api/com.liepin.cresume.attachment.list-attachment-resume'
+    has_list_reply=any(r.get('url')==list_url for r in upload_responses)
+    listed=replies.get(list_url,{})
+    if any(r.get('flag')!=1 for r in [sent,saved]) or (has_list_reply and listed.get('flag')!=1):
+        raise ValueError('attachment_upload_ack_missing')
+    observed=[];counts=[];observation_urls=[]
+    for response in observation.get('responses',[]):
+        if response.get('method')=='OBSERVE':
+            data=json.loads(response['payload'])
+            if type(data.get('attachment_count')) is int and 1<=data['attachment_count']<=50:
+                observed+=data.get('attachments',[]);counts.append(data['attachment_count']);observation_urls.append(response.get('url'))
+    if has_list_reply:
+        records=listed.get('data',{}).get('list',[])
+    else:
+        # 新版列表合并到简历详情；只在当前卡片加平台原文件精确摘要足够时继续。
+        if len(counts)!=1 or observation_urls!=['https://c.liepin.com/resume/edit'] or len(observed)!=1:
+            raise ValueError('attachment_current_state_mismatch')
+        records=observed
     if not isinstance(records,list) or not 1<=len(records)<=50:raise ValueError('attachment_target_not_unique')
     matches=[r for r in records if isinstance(r,dict) and r.get('fileId')==sent.get('data',{}).get('filePath')]
     if len(matches)!=1:raise ValueError('attachment_target_not_unique')
@@ -76,15 +92,11 @@ def verify_uploaded_attachment(upload,observation,expected_sha256,expected_size)
         or record.get('fileId')!=sent.get('data',{}).get('filePath') or record.get('fileSize')!=expected_size
         or sent.get('data',{}).get('fileLength')!=expected_size or not record.get('encryAttachmentId')
         or record.get('auditStatus')==2):raise ValueError('attachment_identity_mismatch')
-    observed=[]
-    for response in observation.get('responses',[]):
-        if response.get('method')=='OBSERVE':
-            data=json.loads(response['payload'])
-            if type(data.get('attachment_count')) is int and 1<=data['attachment_count']<=50:
-                observed+=data.get('attachments',[])
     if len(observed)!=1 or any(observed[0].get(k)!=record.get(k) for k in ['fileId','encryAttachmentId','fileName','fileSize','originalExtension']):
         raise ValueError('attachment_current_state_mismatch')
     browser_download=observed[0].get('download')
+    if not has_list_reply and (not isinstance(browser_download,dict) or browser_download.get('http_status')!=200):
+        raise ValueError('attachment_content_unverified')
     downloaded_sha256=''
     if browser_download is not None:
         if browser_download.get('http_status')==200:
@@ -98,6 +110,7 @@ def verify_uploaded_attachment(upload,observation,expected_sha256,expected_size)
         downloaded_sha256=hashlib.sha256(content).hexdigest()
     return {'pdf_sha256':expected_sha256,'file_size':expected_size,'filename':upload['filename'],
             'file_id':record['fileId'],'attachment_id':record['encryAttachmentId'],
-            'download_sha256':downloaded_sha256,'attachment_count':len(records),
+            'download_sha256':downloaded_sha256,'attachment_count':len(records) if has_list_reply else counts[0],
+            'identity_basis':'legacy_list_and_current_card' if has_list_reply else 'current_card_with_exact_download',
             'binding_kind':'upload_response_current_card_download_exact_bytes' if downloaded_sha256 else 'exact_upload_bytes_acknowledged_and_current_attachment_id',
             'download_http_status':browser_download.get('http_status') if browser_download else 200}

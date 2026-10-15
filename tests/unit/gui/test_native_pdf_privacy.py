@@ -10,7 +10,7 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 let fetched='';const record={fileName:'cv',originalExtension:'pdf',fileId:'/recruit-auth/resume/attachment-res/c/test.pdf',accessPath:'/recruit-auth/resume/attachment-res/c/test.pdf?tk=sensitive-query#fragment',fileSize:5};
 const card={textContent:'cv.pdf','__reactFiber$test':{memoizedProps:{attachmentResume:record},return:null}};
 const link={textContent:'cv.pdf',href:'https://tdoss.liepin.com/o/test.pdf?tk=sensitive-query#fragment'};
-const document={body:{innerText:'cv.pdf'},scripts:[],querySelectorAll:s=>s==='.attachment-view-box .resume-card-container'?[card]:s==='a'?[link]:[]};
+const document={body:{innerText:'cv.pdf'},scripts:[],querySelectorAll:s=>s.includes('.attachment-view-box .resume-card-container')?[card]:s==='a'?[link]:[]};
 const location={href:'https://c.liepin.com/resume/edit',origin:'https://c.liepin.com'};
 const script=fs.readFileSync('ui/src-tauri/src/liepin_native_pdf_inspect.js','utf8').replace('UPLOAD_PAYLOAD','{"filename":"cv.pdf"}').replace('UPLOAD_NONCE','"test"');
 (async()=>{await vm.runInNewContext(script,{document,location,URL,Uint8Array,encodeURIComponent,performance:{getEntriesByType:()=>[]},fetch:async url=>{fetched=url;return{status:200,arrayBuffer:async()=>new Uint8Array([37,80,68,70,45]).buffer}},crypto:{subtle:{digest:async()=>new Uint8Array(32).buffer}}});
