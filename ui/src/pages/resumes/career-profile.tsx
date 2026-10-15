@@ -22,11 +22,12 @@ export function CareerProfileEditor({profile,onSaved}:{profile:ProfilePayload|nu
   const [draft,setDraft]=useState<CareerProfile>(profile?.career||empty),[revision,setRevision]=useState(profile?.revision||'');
   const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[consent,setConsent]=useState(false),[error,setError]=useState('');
   const [evidence,setEvidence]=useState<EvidenceListItem[]>([]);
-  useEffect(()=>{if(!dirty){setDraft(profile?.career||empty);setRevision(profile?.revision||'');setConsent(false);}},[profile?.revision,dirty]);
+  const [newEntryIds,setNewEntryIds]=useState<string[]>([]);
+  useEffect(()=>{if(!dirty){setDraft(profile?.career||empty);setRevision(profile?.revision||'');setConsent(false);setNewEntryIds([]);}},[profile?.revision,dirty]);
   useEffect(()=>{let alive=true;void listEvidence({query:'',status:'saved_eligible',role:null,tags:[],date_range:null}).then(r=>{if(alive)setEvidence(r.items.filter(e=>e.candidate_pool_eligible!==false&&e.status==='saved_eligible'));}).catch(e=>{if(alive)setError(getErrorMessage(e));});return()=>{alive=false;};},[]);
   const change=(value:CareerProfile)=>{setDraft(value);setDirty(true);setConsent(false);};
   const rowChange=(group:Group,id:string,patch:Partial<CareerEntry>)=>change({...draft,[group]:draft[group].map(row=>row.id===id?{...row,...patch}:row)});
-  const add=(group:Group)=>{const item:CareerEntry={id:group+'_'+crypto.randomUUID()};definitions[group].forEach(field=>{item[field]=field==='contributions'?[]:'';});if(group==='work'||group==='education')item.current=false;if(group==='work'||group==='skills')item.evidence_ids=[];change({...draft,[group]:[...draft[group],item]});};
+  const add=(group:Group)=>{const item:CareerEntry={id:group+'_'+crypto.randomUUID()};definitions[group].forEach(field=>{item[field]=field==='contributions'?[]:'';});if(group==='work'||group==='education')item.current=false;if(group==='work'||group==='skills')item.evidence_ids=[];setNewEntryIds(ids=>[...ids,item.id]);change({...draft,[group]:[...draft[group],item]});};
   const act=async(fn:()=>Promise<unknown>,successKey:string)=>{setBusy(true);setError('');try{await fn();setDirty(false);setConsent(false);await onSaved();notify('success',t(successKey));}catch(e){setError(getErrorMessage(e));}finally{setBusy(false);}};
   const autoLink=async()=>{setBusy(true);setError('');try{const r=await autoLinkEvidence(revision);setDirty(false);setConsent(false);await onSaved();notify(r.applied?'success':'info',t('toasts.resumes.careerAutoLinked',{applied:r.applied,unresolved:r.unresolved.length}));}catch(e){setError(getErrorMessage(e));}finally{setBusy(false);}};
   const removeEntry=async(group:Group,id:string)=>{if(!(await confirmAction({title:t('confirmations.career.removeEntry.title'),description:t('confirmations.career.removeEntry.description'),confirmLabel:t('confirmations.career.removeEntry.confirm'),tone:'danger'})))return;change({...draft,[group]:draft[group].filter(item=>item.id!==id)});};
@@ -42,7 +43,7 @@ export function CareerProfileEditor({profile,onSaved}:{profile:ProfilePayload|nu
     {(['work','skills','education','extras'] as Group[]).map(group=><details key={group} open={group==='work'} className="rounded-card border border-border p-3">
       <summary className="cursor-pointer font-medium">{t('career.groups.'+group)} ({draft[group].length})</summary>
       {group==='education'&&<label className="mt-3 flex gap-2 text-sm"><input type="checkbox" checked={draft.education_visibility==='show'} disabled={busy} onChange={e=>change({...draft,education_visibility:e.target.checked?'show':'omit'})}/>{t('career.showEducation')}</label>}
-      <div className="mt-3 space-y-3">{draft[group].map((row,index)=>{const summary=entrySummary(group,row,t('career.now'));return <details key={row.id} open={!summary} className="rounded-card border border-border bg-bg-primary/30">
+      <div className="mt-3 space-y-3">{draft[group].map((row,index)=>{const summary=entrySummary(group,row,t('career.now'));return <details key={row.id} open={newEntryIds.includes(row.id)||!summary} className="rounded-card border border-border bg-bg-primary/30">
         <summary className="flex cursor-pointer select-none flex-wrap items-baseline gap-x-3 px-4 py-3 text-sm"><span className="font-medium">{t('career.groups.'+group)} {index+1}</span><span className="min-w-0 truncate text-text-secondary">{summary||t('common.notFilled')}</span><span className="ml-auto text-xs text-text-muted">{t('career.expandEntry')}</span></summary>
         <fieldset className="space-y-3 px-4 pb-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{definitions[group].map(field=>{
