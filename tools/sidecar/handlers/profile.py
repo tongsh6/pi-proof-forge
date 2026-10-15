@@ -40,14 +40,14 @@ def _load_profile() -> dict[str, str]:
 
 
 def _write_profile(fields: dict[str, str]) -> None:
-    owned=set(_PROFILE_FIELDS)|{'updated_at','career_json','career_review_json'}
+    owned=set(_PROFILE_FIELDS)|{'updated_at','career_json','career_review_json','job_preferences_json'}
     original=_PROFILE_PATH.read_text(encoding='utf-8') if _PROFILE_PATH.is_file() else ''
     blocks=re.split(r'(?m)(?=^[A-Za-z_][A-Za-z0-9_-]*\s*:)',original)
     kept=[]
     for block in blocks:
         match=re.match(r'^([A-Za-z_][A-Za-z0-9_-]*)\s*:',block)
         if not match or match.group(1) not in owned:kept.append(block)
-    lines=[f'{key}: '+json.dumps(str(fields.get(key,'')),ensure_ascii=False) for key in (*_PROFILE_FIELDS,'updated_at','career_json','career_review_json') if key in fields or key in _PROFILE_FIELDS]
+    lines=[f'{key}: '+json.dumps(str(fields.get(key,'')),ensure_ascii=False) for key in (*_PROFILE_FIELDS,'updated_at','career_json','career_review_json','job_preferences_json') if key in fields or key in _PROFILE_FIELDS]
     _PROFILE_PATH.parent.mkdir(parents=True,exist_ok=True)
     fd,name=tempfile.mkstemp(prefix='.profile-',dir=_PROFILE_PATH.parent)
     temporary=Path(name)
@@ -59,6 +59,7 @@ def _write_profile(fields: dict[str, str]) -> None:
 
 
 def _profile_payload(fields: dict[str, str]) -> dict[str, Any]:
+    from tools.infra.job_preferences import preferences_from_fields
     missing_fields = [
         field for field in _PROFILE_FIELDS if not fields.get(field, "").strip()
     ]
@@ -66,6 +67,7 @@ def _profile_payload(fields: dict[str, str]) -> dict[str, Any]:
         ((len(_PROFILE_FIELDS) - len(missing_fields)) / len(_PROFILE_FIELDS)) * 100
     )
     return {
+        'job_preferences':preferences_from_fields(fields),
         "name": fields.get("name", ""),
         "phone": fields.get("phone", ""),
         "email": fields.get("email", ""),

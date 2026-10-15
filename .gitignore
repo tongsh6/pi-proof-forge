@@ -56,3 +56,7 @@ policy.local.yaml
 debug_dom*.html
 debug_dom*.png
 policy_validation.yaml
+# 本机语义缓存与原文引用产物
+matching_reports/.semantic-cache/
+matching_reports/*.semantic.json
+matching_reports/*.direction.json

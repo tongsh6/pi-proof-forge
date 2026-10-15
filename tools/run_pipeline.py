@@ -430,12 +430,16 @@ def _legacy_main() -> int:
         str(evidence_dir),
         "--output",
         str(matching_output),
+        "--personal-profile",
+        args.personal_profile,
     ]
     if use_llm:
         match_cmd.append("--use-llm")
     if require_llm:
         match_cmd.append("--require-llm")
     code = run_step(match_cmd, "matching-scoring", run_store=run_store, run_id=run_id)
+    if code == 2:
+        return _finish_pipeline_run(run_store,run_id,'SKIPPED',2,artifacts,reason='matching_excluded',failed_step='matching-scoring')
     if code != 0:
         return _finish_pipeline_run(
             run_store,

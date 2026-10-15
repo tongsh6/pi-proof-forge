@@ -1,4 +1,5 @@
 import { CareerProfileEditor } from "./career-profile";
+import { JobPreferencesEditor } from "./job-preferences";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -447,6 +448,8 @@ export function ResumesPage() {
           </div>
         </details>
       ) : null}
+
+      {profile ? <JobPreferencesEditor profile={profile} materials={materials} onSaved={loadData} /> : null}
 
       {loadState === "ready" ? (
         <div className="grid gap-5 xl:grid-cols-[320px_320px_minmax(0,1fr)]">

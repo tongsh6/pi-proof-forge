@@ -262,7 +262,7 @@ def build_rule_report(
     return "\n".join(lines) + "\n"
 
 
-_DEFAULT_LLM_MAX_CARDS = 12
+_DEFAULT_LLM_MAX_CARDS = 8
 
 
 def rank_cards_by_rule(job_profile_path: str, evidence_files: list[Path]) -> list[tuple[Path, int]]:
@@ -298,8 +298,9 @@ def _legacy_main() -> int:
     _ = parser.add_argument(
         "--llm-max-cards", type=int,
         default=int(os.getenv("PPF_MATCH_LLM_MAX_CARDS") or _DEFAULT_LLM_MAX_CARDS),
-        help="交给模型的证据卡上限，超出部分按规则分预筛（规则报告仍用全部卡）",
+        help="每批语义评审的卡数上限；全部证据均会分批评审",
     )
+    _ = parser.add_argument("--personal-profile", default="personal_profile.yaml", help="已确认职业档案")
     _ = parser.add_argument(
         "--evidence-dir", required=True, help="Evidence cards directory"
     )
@@ -383,32 +384,33 @@ def _legacy_main() -> int:
                 print("LLM mode required but model/api_key is missing")
                 return 1
         else:
-            job_profile_text = read_text(job_profile)
-            llm_files = select_llm_candidate_files(job_profile, evidence_files, cast(int, args.llm_max_cards))
-            if len(llm_files) < len(evidence_files):
-                print(f"[matching] llm candidates: {len(llm_files)}/{len(evidence_files)} (rule prefilter, --llm-max-cards)")
-            evidence_text = "\n\n".join([read_text(str(p)) for p in llm_files])
-            prompt = load_prompt(prompt_path, job_profile_text, evidence_text)
-            payload: dict[str, object] = {
-                "model": model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "你是匹配评分引擎，必须按提示词格式输出 YAML，不得编造事实。",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0,
-            }
-            client = LLMClient(base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env())
-            response = client.post_json(client.chat_completions_url, payload)
-            content = client.extract_content(response)
-            if content:
-                _ = output_file.write_text(content, encoding="utf-8")
+            from tools.infra.semantic_matching import run_semantic_matching, write_semantic_report
+            from tools.infra.job_preferences import CareerDirectionExcluded
+            try:
+                client = LLMClient(base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env(), provider=os.getenv('LLM_PROVIDER', ''))
+                result = run_semantic_matching(job_path=Path(job_profile), evidence_files=evidence_files,
+                                              personal_profile=Path(args.personal_profile), client=client, model=model,
+                                              cache_dir=output_file.parent / '.semantic-cache', batch_size=max(1, args.llm_max_cards))
+                write_semantic_report(output_file, result)
+                if result.get('direction_review'):
+                    import json
+                    output_file.with_suffix('.direction.json').write_text(json.dumps(result['direction_review'],ensure_ascii=False,indent=2))
+                print(f"[matching] semantic: {len(result['reviewed_card_ids'])}/{len(evidence_files)} cards; {result['statistics']}")
                 return 0
-            if require_llm:
-                print("LLM mode required but received empty response")
-                return 1
+            except CareerDirectionExcluded as exc:
+                import json
+                output_file.with_suffix('.direction.json').write_text(json.dumps(exc.review,ensure_ascii=False,indent=2))
+                print('[matching] 岗位不符合已保存求职偏好：' + exc.review['reason'])
+                return 2
+            except (ValueError, OSError, RuntimeError, TypeError, KeyError) as exc:
+                messages = {'career_direction_jd_body_missing': '请先补齐并审核完整 JD，再评估求职方向',
+                            'job_preferences_source_changed': '求职偏好的来源材料已变化，请到简历中心重新提炼并确认'}
+                code = str(exc)
+                detail = messages.get(code, code if code.startswith(('semantic_', 'career_direction_', 'job_preferences_')) else type(exc).__name__)
+                print(f"[matching] 语义评审失败：{detail}")
+                if require_llm:
+                    return 1
+                print('[matching] 已显式回退规则模式；本次没有有效语义结果。')
 
     rule_report = build_rule_report(job_profile, evidence_files, output_path)
     _ = output_file.write_text(rule_report, encoding="utf-8")
