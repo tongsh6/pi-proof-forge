@@ -1,10 +1,18 @@
 # PiProofForge Sidecar RPC Contract
 
+2026-10-13 评估v3：Quick Run 的 `semantic_review` 增加 `assessment_scope:{qualification_count,responsibility_count,check_count}`，逐项 requirements 增加 `kind` 和 `checks:[{requirement_id,criterion,status,resume_status,reason,cautions?}]`。匹配产物保留子项判断并在复用时校验汇总一致性。`NativePdfPreparation.quality` 为 `unrecorded` 或绑定版本的 `{status:bound,matching_mode,matching_score,resume_score,expression_score,content_ready,quality_passed,gap_tasks,evaluation_version,...hashes}`；新候选质量摘要进入批准manifest，篡改摘要/内容或换PDF均拒绝。旧记录不回填虚构分数。原上传批准另记录 quality_sha256 与 accepted_quality_gaps，不增加新的平台权限。
+
+2026-10-13 `evidence.saveDraft` 增量：同项目补证沿重审保存，增加 `expected_sha256` 和 `review.merge_sources`。开启补证时 source_material_ids/source_documents 只能追加、不能移除原来源，精确文档最多8个；`draft.field_sources` 为 `{field,value,quote,material_id,document_id}[]`，支持 time_range/role_scope/context/actions/results，逐项核对正文、原文及指纹。新事实必须绑定引用；普通编辑后的重审与最后批准的事实快照比较，不能把待审核编辑当成旧事实。陈旧卡版本报 `evidence_review_changed`，错误引用报 `field_source_*`，来源不允许的替换报 `evidence_review_source_mismatch`。`evidence.get` 返回 field_sources/source_sha256/source_error；来源失效时 candidate_pool_eligible=false。补证卡的材料指纹进入职业档案修订、语义输入与生成 trace，旧卡无此元数据时保持兼容。
+
 > 状态：active
 > 用途：冻结 Tauri host / React frontend / Python sidecar 之间的字段级 JSON-RPC contract，避免 UI 与 sidecar 并行开发时发生漂移。
 > 裁决关系：若本文件与 `ui/design/DESIGN.md` 的 JSON-RPC 摘要冲突，以本文件为准；若与更高层产品约束冲突，以 `ui/design/DESIGN.md` 与 `AIEF/context/tech/GUI_ARCHITECTURE.md` 回收修正。
 
 ## 1. 总则
+
+2026-10-12 求职偏好：`profile.get.profile.job_preferences` 返回 schema_version、items、source、revision、confirmed_at。`profile.generateJobPreferences(material_id, document_id)` 只生成 draft；items 为 kind(primary/bridge/explore/avoid)、text、quote。`profile.saveJobPreferences(draft, expected_revision, confirmed:true)` 校验来源与引用后保存；独立 revision 防止覆盖，职业档案 review 保留。Quick Run 新增可选 `career_direction`：status(aligned/needs_review/excluded)、reason、jd_quote、preference；excluded 时 run 为 SKIPPED，不进入生成与发送；无简历文件时 `resume_readiness.status=NOT_GENERATED`、`content_ready=false`，不能显示已生成。
+
+2026-10-12 `run.quick.start` 增量：UI 默认 `options.use_llm=true` / `require_llm=true` / `timeout_seconds=1800`，关闭语义模式时明确传 false/false/120。结果可选 `semantic_review`（旧规则结果为 null/缺失）：`mode: semantic`、`fit_score`、`resume_score`、`expression_score`、`reviewed_card_count`、`all_requirements_supported`、`requirements[]`。每项含 `requirement_id/text/status/resume_status/reason/citations[]`；引用含 `fact_id/quote/source_id/field/in_resume`。证据池状态为 supported/partial/insufficient/conflict，简历状态另允许 not_present。语义结果下 `resume_readiness.evaluation_score` 使用非关键词表达分；有任何要求未支持或未呈现时质量不通过，`deliverable=false` 和现有审批边界保持。
 
 - 传输模型固定为 `JSON-RPC 2.0 over stdio`
 - request / response 使用 `id` 做单次配对
@@ -1617,8 +1625,12 @@ Internal API for run_agent to populate review queue.
 
 ### JD 提取可靠性（2026-10-08）
 
-PDF 名称增量（2026-10-08）：生成简历向目录导出和 Quick Run 自动导出统一返回 `姓名-公司简称-岗位简称-YYYYMMDD.序号.PDF` 的实际路径。原文件锁保护 outputs 内的轻量命名记录；同版本稳定、同日简称冲突递增。原 PDF 准备 RPC 与 DailyCandidate 可选返回 `pdf_filename`，新候选将其绑定原快照，旧快照无此字段保持兼容。公司/岗位采用可读简称以适配 24 字符上限；仍超限在原 beginPdfUpload 或启用每日授权前返回 `daily_pdf_filename_too_long`，不改变批准状态或写入上传占位。`.PDF` 与 `.pdf` 仅扩展名兼容，主体名称、字节和平台身份仍严格检查。
+PDF 名称增量（2026-10-14 修正）：生成简历向目录导出和 Quick Run 自动导出返回 `姓名-公司全称-岗位全称-YYYYMMDD.序号.PDF` 的本地路径；仅按文件系统安全限制处理，不套用平台24字符限制。来源匿名描述原样保留，不猜雇主实名。本地名与平台附件名在原文件锁保护的命名记录中分别保持同版本稳定、名称冲突递增；旧记录不迁移。原 PDF 准备 RPC 与 DailyCandidate 的 `pdf_filename` 继续为上传短名，绑定原快照；旧快照无此字段保持兼容。平台短名采用原公司/岗位简称规则适配24字符上限，仍超限在 beginPdfUpload 或启用每日授权前返回 `daily_pdf_filename_too_long`，不改变批准状态或写入上传占位。`.PDF` 与 `.pdf` 仅扩展名兼容，主体名称、字节和平台身份仍严格检查。
 
 原生附件检查继续返回原 attachment_view；在官方简历编辑页上，仅关闭已核实的唯一经历同步提示 Close 控件后读取附件入口。延迟回调重验页面边界，不在解析表单页操作或确认同步，不新增 RPC。
 
 公开 JobPosting 的“职位描述”可作为已核实职责章节别名，其他身份与正文校验不变。原 jobs.generateProfileDraft 使用有界 schema（字符串和数组上限），本机 LM Studio 请求 max_tokens=1800；预算截断拒绝成稿，字段超限即使供应方忽略 schema 也拒绝。原 JD 与 source_url 由 App 保存，绑定官方线索时 target_role/company 取原线索。手工保存入口和既有审核要求不变。
+
+2026-10-12 原生PDF准备/核验返回可选 `verification_error`；非空时界面显示未核验提示。无旧附件列表回执的新页面，必须当前附件与上传回执一致且实际下载字节SHA256/大小精确匹配，不能按上传成功直接发送。
+
+2026-10-12 `run.agent.authorizeSinglePdfDelivery(run_id, confirmed:true)` 只为已批准且已核验附件的单个候选登记1次独立补充授权，返回 `single_delivery_authorized`；范围由服务端快照与岗位键绑定，旧批次已耗尽且无未决方可登记，重放不增加额度，其他岗位/运行/PDF不得消费。

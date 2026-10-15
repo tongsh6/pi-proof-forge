@@ -3346,6 +3346,41 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "frame",
+              "id": "careerPrefs12",
+              "name": "Career Preferences - Existing Flow Extension",
+              "width": "fill_container",
+              "layout": "vertical",
+              "padding": 20,
+              "gap": 12,
+              "fill": "$bg-panel",
+              "cornerRadius": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "prefsTitle12",
+                  "name": "Preferences Heading",
+                  "content": "求职方向与边界 / Career Preferences",
+                  "fill": "$text-primary",
+                  "fontFamily": "Inter",
+                  "fontSize": 18,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "prefsBody12",
+                  "name": "Preferences Workflow",
+                  "content": "默认折叠：已保存偏好条数。\n来源材料 ▾ → 文档片段 ▾ → 提炼求职偏好\n主投 / 桥接 / 探索 / 回避：可编辑摘要 + 只读原文引用\n□ 核对原文并确认 → 保存；未确认不生效。\n仅用于筛岗，不写入候选人简历；不改变职业事实确认。",
+                  "fill": "$text-secondary",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container"
+                }
+              ]
             }
           ]
         }
@@ -4704,7 +4739,7 @@
               "id": "qrInp01",
               "name": "显式生成输入",
               "fill": "$text-secondary",
-              "content": "材料来源：请选择本次材料  ▾    □ 使用模型润色（默认模板生成）；未选材料时不可启动。",
+              "content": "材料来源：请选择本次材料  ▾    ☑ 语义匹配全部证据；关闭后使用规则模式。",
               "fontFamily": "Inter",
               "fontSize": 13,
               "fontWeight": "normal"
@@ -4978,140 +5013,98 @@
                   "children": [
                     {
                       "type": "text",
-                      "id": "nLGb1",
-                      "name": "qrScoreHead",
+                      "id": "semHead12",
+                      "name": "Semantic Assessment",
                       "fill": "$text-primary",
-                      "content": "Scores / 评分",
+                      "content": "语义岗位适配 / Semantic Job Fit",
                       "fontFamily": "Inter",
-                      "fontSize": 14,
-                      "fontWeight": "600"
+                      "fontSize": 16,
+                      "fontWeight": "normal",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container"
                     },
                     {
-                      "id": "R0gct",
-                      "type": "ref",
-                      "ref": "4deiE",
-                      "name": "qrScore1",
-                      "descendants": {
-                        "ufLXl": {
-                          "content": "K"
-                        },
-                        "o3ExD": {
-                          "content": "86"
-                        },
-                        "j1dif": {
-                          "width": 164
-                        }
-                      }
+                      "type": "text",
+                      "id": "semFit12",
+                      "name": "Fit Example",
+                      "fill": "$text-primary",
+                      "content": "75 / 100（示意数据）",
+                      "fontFamily": "Inter",
+                      "fontSize": 24,
+                      "fontWeight": "normal",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container"
                     },
                     {
-                      "id": "t8iD3",
-                      "type": "ref",
-                      "ref": "4deiE",
-                      "name": "qrScore2",
-                      "descendants": {
-                        "ufLXl": {
-                          "content": "D"
-                        },
-                        "o3ExD": {
-                          "content": "91"
-                        },
-                        "j1dif": {
-                          "width": 176
-                        }
-                      }
+                      "type": "text",
+                      "id": "semBasis12",
+                      "name": "Source Review",
+                      "fill": "$text-secondary",
+                      "content": "已评审 51 张证据；模型判读，原文引用已核验。",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container"
                     },
                     {
-                      "id": "csr3f",
-                      "type": "ref",
-                      "ref": "4deiE",
-                      "name": "qrScore3",
-                      "descendants": {
-                        "ufLXl": {
-                          "content": "S"
-                        },
-                        "o3ExD": {
-                          "content": "83"
-                        },
-                        "j1dif": {
-                          "width": 158
-                        }
-                      }
-                    },
-                    {
-                      "id": "vgz5m",
-                      "type": "ref",
-                      "ref": "4deiE",
-                      "name": "qrScore4",
-                      "descendants": {
-                        "ufLXl": {
-                          "content": "Q"
-                        },
-                        "o3ExD": {
-                          "content": "78"
-                        },
-                        "j1dif": {
-                          "width": 148
-                        }
-                      }
-                    },
-                    {
-                      "id": "ofhen",
-                      "type": "ref",
-                      "ref": "4deiE",
-                      "name": "qrScore5",
-                      "descendants": {
-                        "ufLXl": {
-                          "content": "E"
-                        },
-                        "o3ExD": {
-                          "content": "88"
-                        },
-                        "j1dif": {
-                          "width": 168
-                        }
-                      }
-                    },
-                    {
-                      "id": "i7DuJ",
-                      "type": "ref",
-                      "ref": "4deiE",
-                      "name": "qrScore6",
-                      "descendants": {
-                        "ufLXl": {
-                          "content": "R"
-                        },
-                        "o3ExD": {
-                          "content": "82"
-                        },
-                        "j1dif": {
-                          "width": 156
-                        }
-                      }
+                      "type": "text",
+                      "id": "semScores12",
+                      "name": "Separate Quality Metrics",
+                      "fill": "$text-secondary",
+                      "content": "简历要求覆盖    50 / 100\n表达质量         88 / 100\n事实完整性       待补证据",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container"
                     },
                     {
                       "type": "frame",
-                      "id": "4auHI",
-                      "name": "qrScoreTotal",
+                      "id": "semReq12",
+                      "name": "Requirement Disclosure",
+                      "layout": "vertical",
                       "width": "fill_container",
-                      "height": 58,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "padding": [
-                        10,
-                        12
-                      ],
-                      "justifyContent": "space_between",
-                      "alignItems": "center",
+                      "gap": 10,
+                      "padding": 12,
+                      "fill": "$bg-primary",
+                      "cornerRadius": 8,
                       "children": [
                         {
                           "type": "text",
-                          "id": "OeLL6",
-                          "name": "qrScoreTotalText",
+                          "id": "semReqTitle12",
+                          "name": "Requirement Summary",
                           "fill": "$text-primary",
-                          "content": "Total Score\n85",
-                          "fontFamily": "JetBrains Mono",
+                          "content": "▸ 分布式系统可靠性\n简历未呈现",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container"
+                        },
+                        {
+                          "type": "text",
+                          "id": "semReqReason12",
+                          "name": "Expanded Requirement Example",
+                          "fill": "$text-secondary",
+                          "content": "展开后：证据池判断、完整要求、理由与来源原文。\n例如：存在多实例恢复实践，尚缺完整生产运维证据。",
+                          "fontFamily": "Inter",
                           "fontSize": 12,
-                          "fontWeight": "700"
+                          "fontWeight": "normal",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container"
+                        },
+                        {
+                          "type": "text",
+                          "id": "semQuote12",
+                          "name": "Evidence Quote Example",
+                          "fill": "$text-secondary",
+                          "content": "“实现多实例任务抢占与故障恢复”\n证据编号 · actions · 简历未呈现",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "normal",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container"
                         }
                       ]
                     }
@@ -5124,7 +5117,7 @@
               "id": "qrSelectEvidence",
               "name": "Reviewed Evidence Selection",
               "fill": "$text-secondary",
-              "content": "本次选用的已审核证据：逐项勾选，显示数量；不选则禁用启动。\n模型辅助选材（默认规则选材），不改变已核实事实。\n缺职责/时间/场景/行动/技能 → NEEDS_EVIDENCE；PDF 导出成功不覆盖。",
+              "content": "本次选用的已审核证据：逐项勾选，显示数量；不选则禁用启动。\n默认语义匹配全部证据，原文引用经程序核验；失败不静默替换为规则成功。\n缺职责/时间/场景/行动/技能 → NEEDS_EVIDENCE；PDF 导出成功不覆盖。\n已保存求职偏好会先评估完整JD，明确不符则停止；结果区展示对应偏好和JD原文。",
               "fontFamily": "Inter",
               "fontSize": 12,
               "fontWeight": "normal"
@@ -6603,7 +6596,7 @@
                   "id": "nLpn04",
                   "name": "状态与边界",
                   "fill": "$text-secondary",
-                  "content": "固定 PDF 与岗位，显示姓名-公司简称-岗位简称-YYYYMMDD.序号.PDF 及指纹；简称仍超限时阻止上传。历史快照不改名。会话检查从解析页返回附件页，不提交经历。",
+                  "content": "固定 PDF 与岗位，显示姓名-公司简称-岗位简称-YYYYMMDD.序号.PDF 及指纹；简称仍超限时阻止上传。历史快照不改名。会话检查从解析页返回附件页，不提交经历。 附件核验失败在本区明示，沿原上传记录重新检查，不重传。",
                   "fontFamily": "Inter",
                   "fontSize": 12,
                   "fontWeight": "normal"
@@ -6633,7 +6626,7 @@
                   "id": "nPdf03",
                   "name": "Delivery controls",
                   "fill": "$text-secondary",
-                  "content": "核验目标 → 开始本次投递 → 检查已有沟通 → 发简历确认并选中批准 fileId → 确认所选 PDF",
+                  "content": "附件核验通过 → 登记本岗位一次投递授权（限当前PDF；不重置旧批次） → 核验目标 → 开始本次投递 → 检查沟通 → 发简历确认并选中批准 fileId → 确认所选 PDF",
                   "fontFamily": "Inter",
                   "fontSize": 12,
                   "fontWeight": "normal"

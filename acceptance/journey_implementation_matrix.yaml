@@ -847,12 +847,26 @@ steps:
     - daily_authorized_delivery
     - liepin_feedback_sync
     acceptance:
-      script: 外部真实 Tauri 页面自动化：small_company_high_match_delivery（待实现）
+      script: 外部真实 Tauri 页面自动化：small_company_high_match_delivery（首笔高匹配实投与状态回流已验，待面试反馈）
       depth: deep_required
       evidence:
       - tests/unit/sidecar/test_liepin_readonly_handlers.py
       - tests/unit/infra/test_liepin_job_detail.py
       - tests/unit/infra/test_job_lead_binding_url.py
+      - tests/unit/matching/test_semantic_review.py
+      - outputs/acceptance/p0-026-semantic-20261012/validation.json
+      - outputs/acceptance/p0-026-semantic-20261012/native-page-observations.json
+      - tests/unit/sidecar/test_job_preferences.py
+      - tests/unit/gui/test_job_preferences_ui.py
+      - outputs/acceptance/p0-026-job-preferences-20261012/native-page-observations.json
+      - outputs/acceptance/p0-026-fact-enrichment-20261012/native-page-observations.json
+      - tests/unit/matching/test_requirement_clauses.py
+      - tests/unit/sidecar/test_native_pdf_quality.py
+      - tests/unit/gui/test_pdf_quality_summary.py
+      - outputs/acceptance/p0-026-assessment-20261013/validation.json
+      - tests/unit/domain/test_resume_projection.py
+      - outputs/acceptance/p0-026-fact-priority-20261014/validation.json
+      - outputs/acceptance/p0-026-gap-review-20261014/validation.json
       covers:
       - official_company_facts_persisted_and_size_filter_in_app
       - headhunter_detail_and_freeform_complete_jd_read_with_identity_rules
