@@ -800,3 +800,7 @@ class RunState:
 - Job Profile Schema：`AIEF/context/tech/SCHEMA_JOB_PROFILE.md`
 - 生成规范：`AIEF/context/tech/GENERATION.md`
 - 评估规范：`AIEF/context/tech/EVALUATION.md`
+
+## 引用式材料契约（2026-10-17）
+
+材料可在不复制原件的前提下引用允许来源根内的外部文件/目录：来源根由本机设置管理（路径必须为已存在目录），扫描/创建/校验共用同一安全规则（根内约束、拒绝符号链接穿越、只收 txt/md、跳过隐藏路径、敏感名与空文件）。引用以「冻结清单 + 逐文件 sha256」为事实基线：内容变更或文件删除时，读取、证据/档案校验与索引校验均报 `material_source_changed` 并阻断；刷新需用户确认后重建清单（已绑定证据卡自然进入「来源已变更，需重审」）；新增文件不静默进入，刷新后纳入。合成夹具与敏感文件过滤规则不变；快照材料与旧指纹完全兼容。

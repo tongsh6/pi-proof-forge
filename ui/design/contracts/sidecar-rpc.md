@@ -1634,3 +1634,15 @@ PDF 名称增量（2026-10-14 修正）：生成简历向目录导出和 Quick R
 2026-10-12 原生PDF准备/核验返回可选 `verification_error`；非空时界面显示未核验提示。无旧附件列表回执的新页面，必须当前附件与上传回执一致且实际下载字节SHA256/大小精确匹配，不能按上传成功直接发送。
 
 2026-10-12 `run.agent.authorizeSinglePdfDelivery(run_id, confirmed:true)` 只为已批准且已核验附件的单个候选登记1次独立补充授权，返回 `single_delivery_authorized`；范围由服务端快照与岗位键绑定，旧批次已耗尽且无未决方可登记，重放不增加额度，其他岗位/运行/PDF不得消费。
+
+### 引用式材料（2026-10-17）
+
+材料可"引用"允许来源根内的外部文件/目录，不复制原件；清单冻结（逐文件 sha256），内容变更/删除使读取与校验统一报 `material_source_changed`，需刷新或重审；新增文件需刷新才纳入。
+
+- `material.reference.scan(root_id, relpath)`：扫描预览（file_count/total_bytes/sample_files≤20/skipped/existing_materials）。来源根未配置报 `material_source_root_required`；无可用文件报 `material_source_empty`。安全规则：目标必须位于允许根内、拒绝符号链接穿越、只收 .md/.txt、跳过隐藏路径与敏感名（secret/token/密码等）及空文件。
+- `material.reference.create(root_id, relpath, label)`：创建引用材料（meta 含 source_mode/source_root/source_relpath/manifest_sha256/file_count；清单与合并缓存存 `materials/.referenced/`）。
+- `material.reference.status(material_id)`：重扫源 → `ok|changed`（changed/missing/added 摘要）。
+- `material.reference.refresh(material_id, confirmed:true)`：重建清单与缓存；已绑定卡片因指纹失配进入"来源已变更，需重审"。
+- `material.reference.remove(material_id, confirmed:true)`：仅删除本机 meta/清单/缓存，不触碰来源目录。
+- `settings.get` 新增 `material_source_roots`；`settings.update` 新增 `section=material_source_roots`（payload 为 `[{id?,label,path}]`，路径必须为已存在目录，服务端按解析路径去重）。
+- 材料列表项新增 `source_mode/source_root/source_relpath/manifest_sha256/file_count`；证据草稿、生成与职业档案校验在读取引用材料前重验清单与源文件哈希。
