@@ -82,7 +82,16 @@ def make_root(tmp_path: Path) -> Path:
         encoding="utf-8")
     jobs = tmp_path / "job_profiles"
     jobs.mkdir()
-    (jobs / "jp_abc12345.yaml").write_text('target_role: "AI 工程师"\ncompany: "某公司"\nstatus: "active"\n', encoding="utf-8")
+    (jobs / "jp_abc12345.yaml").write_text(
+        'target_role: "AI 工程师"\ncompany: "某公司"\nstatus: "active"\n'
+        'job_lead_id: "jl_liepin_aaa111"\n', encoding="utf-8")
+    leads = tmp_path / "job_leads"
+    leads.mkdir()
+    (leads / "jl_liepin_aaa111.yaml").write_text(
+        'id: "jl_liepin_aaa111"\ncompany: "米高蒲志"\nposition: "Sr Full Stack"\n'
+        'status: "new"\njob_profile_id: "jp_abc12345"\nsalary: "45-83k·15薪"\n'
+        'location: "广州"\ncompany_size: "5000-10000人"\nindustry: "人力资源服务"\n', encoding="utf-8")
+    (leads / "jl-2026-001.yaml").write_text('company: "示例公司"\nposition: "示例岗位"\n', encoding="utf-8")
     return tmp_path
 
 
@@ -179,3 +188,15 @@ def test_verify_cli(root: Path, capsys):
     (root / "materials" / "mat_aaaa1111.txt").write_text(BUNDLE + "# Source: 02-CustomerA/新档.md\n新增。\n", encoding="utf-8")
     assert kb.main(["verify", "--root", str(root)]) == 2
     assert "mat_aaaa1111" in capsys.readouterr().out
+
+
+def test_leads_command_and_grep_scope(root: Path, capsys):
+    assert kb.main(["leads", "--status", "new", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "jl_liepin_aaa111" in out and "米高蒲志" in out and "Sr Full Stack" in out
+    assert kb.main(["leads", "--has-profile", "--root", str(root)]) == 0
+    assert "jl_liepin_aaa111" in capsys.readouterr().out
+    assert kb.main(["leads", "--root", str(root)]) == 0
+    assert "jl-2026-001" not in capsys.readouterr().out
+    assert kb.main(["grep", "米高蒲志", "--scope", "leads", "--root", str(root)]) == 0
+    assert "lead:jl_liepin_aaa111" in capsys.readouterr().out

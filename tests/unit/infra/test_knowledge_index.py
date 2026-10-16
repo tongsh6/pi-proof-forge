@@ -123,11 +123,30 @@ def make_root(tmp_path: Path) -> Path:
         'company: "某公司"\n'
         'source_jd: "做一个 AI 系统"\n'
         'status: "active"\n'
+        'job_lead_id: "jl_liepin_aaa111"\n'
         'created_at: "2026-10-01T00:00:00Z"\n'
         'updated_at: "2026-10-01T00:00:00Z"\n'
         'source_jd_sha256: "deadbeef"\n',
         encoding="utf-8")
     (jobs / "jp-2026-001.yaml").write_text('target_role: "示例岗位"\ncompany: "示例公司"\n', encoding="utf-8")
+
+    leads = tmp_path / "job_leads"
+    leads.mkdir()
+    (leads / "jl_liepin_aaa111.yaml").write_text(
+        'id: "jl_liepin_aaa111"\n'
+        'company: "米高蒲志"\n'
+        'position: "Sr Full Stack"\n'
+        'source: "liepin_official"\n'
+        'status: "new"\n'
+        'favorited: "false"\n'
+        'job_profile_id: "jp_abc12345"\n'
+        'salary: "45-83k·15薪"\n'
+        'location: "广州"\n'
+        'company_size: "5000-10000人"\n'
+        'industry: "人力资源服务"\n'
+        'created_at: "2026-10-14T00:00:00Z"\n',
+        encoding="utf-8")
+    (leads / "jl-2026-001.yaml").write_text('company: "示例公司"\nposition: "示例岗位"\n', encoding="utf-8")
     return tmp_path
 
 
@@ -231,6 +250,8 @@ def test_render_index_md_sections(root: Path):
     assert "mat_aaaa1111" in md
     assert "3 档" in md or "：3" in md
     assert "mat_quick_run_verify" in md
+    assert "岗位线索" in md
+    assert "索引缺口" in md
     assert "缺" in md
     assert "kb read" in md
 
@@ -249,3 +270,32 @@ def test_verify_clean_then_stale(root: Path):
 
 def test_build_is_deterministic(root: Path):
     assert _build(root) == _build(root)
+
+
+def test_leads_entity_and_demo(root: Path):
+    index = _build(root)
+    lead = index["leads"]["jl_liepin_aaa111"]
+    assert lead["position"] == "Sr Full Stack"
+    assert lead["company"] == "米高蒲志"
+    assert lead["status"] == "new"
+    assert lead["demo"] is False
+    assert lead["job_profile_id"] == "jp_abc12345"
+    assert lead["company_size"] == "5000-10000人"
+    assert lead["salary"] == "45-83k·15薪"
+    assert index["leads"]["jl-2026-001"]["demo"] is True
+    assert index["assets"]["leads"] == {"real": 1, "samples": 1}
+
+
+def test_lead_job_relation_single_edge(root: Path):
+    index = _build(root)
+    edges = [r for r in index["relations"] if r["type"] == "promoted_to"]
+    assert edges == [{"from": "lead:jl_liepin_aaa111", "type": "promoted_to", "to": "job:jp_abc12345"}]
+
+
+def test_skipped_records_missing_material_target(tmp_path: Path):
+    root = make_root(tmp_path)
+    (root / "materials" / "mat_deadbeef.meta.yaml").write_text(
+        'material_id: "mat_deadbeef"\nfilename: "mat_missing.md"\n', encoding="utf-8")
+    index = _build(root)
+    assert any(s["kind"] == "material" and s["file"] == "mat_deadbeef.meta.yaml"
+               and s["error"] == "filename_missing" for s in index["skipped"])

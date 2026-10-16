@@ -49,7 +49,7 @@ def _cmd_build(args) -> int:
     cards = sum(assets["cards"].values())
     jobs = assets["job_profiles"]["real"] + assets["job_profiles"]["samples"]
     print(f"built ok: materials={assets['materials']} documents={assets['documents']} "
-          f"cards={cards} jobs={jobs} -> {out}")
+          f"cards={cards} jobs={jobs} leads={assets['leads']['real'] + assets['leads']['samples']} -> {out}")
     return 0
 
 
@@ -168,6 +168,13 @@ def _cmd_grep(args) -> int:
             if needle.casefold() in haystack.casefold():
                 results.append({"scope": "jobs", "ref": f"job:{job_id}", "target_role": job["target_role"],
                                 "company": job["company"], "status": job["status"]})
+    if scope in {"leads", "all"} and len(results) < args.limit:
+        for lead_id in sorted(index["leads"]):
+            lead = index["leads"][lead_id]
+            haystack = " ".join([lead["company"], lead["position"], lead["salary"], lead["location"], lead["industry"]])
+            if needle.casefold() in haystack.casefold():
+                results.append({"scope": "leads", "ref": f"lead:{lead_id}", "position": lead["position"],
+                                "company": lead["company"], "status": lead["status"]})
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=1))
         return 0
@@ -182,8 +189,10 @@ def _cmd_grep(args) -> int:
                 print(f"    ▸ {row['snippet']}")
         elif row["scope"] == "cards":
             print(f"{row['ref']}  {row['title']}  {row['status']}")
-        else:
+        elif row["scope"] == "jobs":
             print(f"{row['ref']}  {row['target_role']}  {row['company']}  {row['status']}")
+        else:
+            print(f"{row['ref']}  {row['position']}  {row['company']}  {row['status']}")
     return 0
 
 
@@ -284,6 +293,36 @@ def _cmd_cards(args) -> int:
     return 0
 
 
+def _cmd_leads(args) -> int:
+    index = _load_index(args.root)
+    if index is None:
+        return 1
+    selected: dict[str, dict] = {}
+    for lead_id in sorted(index["leads"]):
+        lead = index["leads"][lead_id]
+        if lead["demo"] and not args.include_demo:
+            continue
+        if args.status and lead["status"] != args.status:
+            continue
+        if args.has_profile and not lead["job_profile_id"]:
+            continue
+        if args.size and args.size not in lead["company_size"]:
+            continue
+        selected[lead_id] = lead
+        if len(selected) >= args.limit:
+            break
+    if args.json:
+        print(json.dumps(selected, ensure_ascii=False, indent=1))
+        return 0
+    if not selected:
+        print("no_matches")
+        return 0
+    for lead_id, lead in selected.items():
+        print(f"{lead_id}  {lead['position']}  {lead['company']}  [{lead['status'] or 'demo'}]  "
+              f"{lead['salary'] or '-'}  {lead['location'] or '-'}  {lead['company_size'] or '-'}")
+    return 0
+
+
 def _cmd_person_docs(args) -> int:
     index = _load_index(args.root)
     if index is None:
@@ -354,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     grep = sub.add_parser("grep", help="字面检索（docs/cards/jobs）")
     add_root(grep)
     grep.add_argument("pattern")
-    grep.add_argument("--scope", choices=["docs", "cards", "jobs", "all"], default="docs")
+    grep.add_argument("--scope", choices=["docs", "cards", "jobs", "leads", "all"], default="docs")
     grep.add_argument("--material", default="")
     grep.add_argument("--limit", type=int, default=50)
     grep.set_defaults(func=_cmd_grep)
@@ -378,6 +417,15 @@ def main(argv: list[str] | None = None) -> int:
     cards.add_argument("--status", default="")
     cards.add_argument("--include-demo", action="store_true")
     cards.set_defaults(func=_cmd_cards)
+
+    leads = sub.add_parser("leads", help="查询岗位线索（默认排除示例）")
+    add_root(leads)
+    leads.add_argument("--status", default="")
+    leads.add_argument("--has-profile", action="store_true")
+    leads.add_argument("--size", default="", help="公司规模包含片段")
+    leads.add_argument("--include-demo", action="store_true")
+    leads.add_argument("--limit", type=int, default=200)
+    leads.set_defaults(func=_cmd_leads)
 
     person = sub.add_parser("person-docs", help="列出人写文档白名单（角色句可信来源）")
     add_root(person)

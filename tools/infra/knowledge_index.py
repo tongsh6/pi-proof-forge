@@ -107,7 +107,7 @@ def _is_person_doc(material_id: str, label: str) -> bool:
     return False
 
 
-def _build_materials(root: Path) -> tuple[dict[str, dict[str, Any]], dict[tuple[str, str], list[str] | None]]:
+def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[str, dict[str, Any]], dict[tuple[str, str], list[str] | None]]:
     materials: dict[str, dict[str, Any]] = {}
     windows: dict[tuple[str, str], list[str] | None] = {}
     meta_dir = root / "materials"
@@ -116,16 +116,19 @@ def _build_materials(root: Path) -> tuple[dict[str, dict[str, Any]], dict[tuple[
     for meta_path in sorted(meta_dir.glob("*.meta.yaml")):
         try:
             meta = parse_simple_yaml(meta_path.read_text(encoding="utf-8"))["scalars"]
-        except (OSError, UnicodeDecodeError, ValueError):
+        except (OSError, UnicodeDecodeError, ValueError, KeyError):
+            skipped.append({"kind": "material", "file": meta_path.name, "error": "unreadable"})
             continue
         material_id = str(meta.get("material_id") or meta_path.stem.replace(".meta", ""))
         filename = str(meta.get("filename") or "")
         path = meta_dir / filename
-        if not path.is_file():
+        if not filename or not path.is_file():
+            skipped.append({"kind": "material", "file": meta_path.name, "error": "filename_missing"})
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
+            skipped.append({"kind": "material", "file": meta_path.name, "error": "unreadable"})
             continue
         entries: list[dict[str, Any]] = []
         for doc in split_material_documents(text, filename):
@@ -203,7 +206,7 @@ def _build_profile(root: Path) -> tuple[dict[str, Any], dict[str, str]]:
 
 
 def _build_cards(root: Path, windows: dict[tuple[str, str], list[str] | None],
-                 employer_by_card: dict[str, str]) -> dict[str, dict[str, Any]]:
+                 employer_by_card: dict[str, str], skipped: list[dict[str, str]]) -> dict[str, dict[str, Any]]:
     cards: dict[str, dict[str, Any]] = {}
     cards_dir = root / "evidence_cards"
     if not cards_dir.is_dir():
@@ -211,7 +214,8 @@ def _build_cards(root: Path, windows: dict[tuple[str, str], list[str] | None],
     for path in sorted(cards_dir.glob("*.yaml")):
         try:
             doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError):
+        except (OSError, UnicodeDecodeError, ValueError, KeyError) as exc:
+            skipped.append({"kind": "card", "file": path.name, "error": type(exc).__name__})
             continue
         scalars, lists = doc["scalars"], doc["lists"]
         card_id = str(scalars.get("id") or path.stem)
@@ -248,7 +252,7 @@ def _build_cards(root: Path, windows: dict[tuple[str, str], list[str] | None],
     return cards
 
 
-def _build_jobs(root: Path) -> dict[str, dict[str, Any]]:
+def _build_jobs(root: Path, skipped: list[dict[str, str]]) -> dict[str, dict[str, Any]]:
     jobs: dict[str, dict[str, Any]] = {}
     jobs_dir = root / "job_profiles"
     if not jobs_dir.is_dir():
@@ -256,7 +260,8 @@ def _build_jobs(root: Path) -> dict[str, dict[str, Any]]:
     for path in sorted(jobs_dir.glob("jp*.yaml")):
         try:
             scalars = parse_simple_yaml(path.read_text(encoding="utf-8"))["scalars"]
-        except (OSError, UnicodeDecodeError, ValueError):
+        except (OSError, UnicodeDecodeError, ValueError, KeyError) as exc:
+            skipped.append({"kind": "job", "file": path.name, "error": type(exc).__name__})
             continue
         status = str(scalars.get("status") or "")
         jobs[path.stem] = {
@@ -267,6 +272,7 @@ def _build_jobs(root: Path) -> dict[str, dict[str, Any]]:
             "company": str(scalars.get("company") or ""),
             "status": status,
             "demo": not status,
+            "lead_id": str(scalars.get("job_lead_id") or ""),
             "platform": str(scalars.get("platform") or ""),
             "created_at": str(scalars.get("created_at") or ""),
             "updated_at": str(scalars.get("updated_at") or ""),
@@ -276,7 +282,44 @@ def _build_jobs(root: Path) -> dict[str, dict[str, Any]]:
     return jobs
 
 
-def _build_relations(cards: dict[str, dict[str, Any]], profile: dict[str, Any]) -> list[dict[str, str]]:
+def _build_leads(root: Path, skipped: list[dict[str, str]]) -> dict[str, dict[str, Any]]:
+    leads: dict[str, dict[str, Any]] = {}
+    leads_dir = root / "job_leads"
+    if not leads_dir.is_dir():
+        return leads
+    for path in sorted(leads_dir.glob("jl*.yaml")):
+        try:
+            scalars = parse_simple_yaml(path.read_text(encoding="utf-8"))["scalars"]
+        except (OSError, UnicodeDecodeError, ValueError, KeyError) as exc:
+            skipped.append({"kind": "lead", "file": path.name, "error": type(exc).__name__})
+            continue
+        status = str(scalars.get("status") or "")
+        leads[path.stem] = {
+            "file": path.name,
+            "sha256": _file_sha(path),
+            "lead_id": path.stem,
+            "company": str(scalars.get("company") or ""),
+            "position": str(scalars.get("position") or ""),
+            "status": status,
+            "demo": not status,
+            "favorited": scalars.get("favorited") == "true",
+            "job_profile_id": str(scalars.get("job_profile_id") or ""),
+            "platform": str(scalars.get("platform") or ""),
+            "salary": str(scalars.get("salary") or ""),
+            "location": str(scalars.get("location") or ""),
+            "company_size": str(scalars.get("company_size") or ""),
+            "industry": str(scalars.get("industry") or ""),
+            "work_years": str(scalars.get("work_years") or ""),
+            "education": str(scalars.get("education") or ""),
+            "jd_status": str(scalars.get("jd_status") or ""),
+            "created_at": str(scalars.get("created_at") or ""),
+            "updated_at": str(scalars.get("updated_at") or ""),
+        }
+    return leads
+
+
+def _build_relations(cards: dict[str, dict[str, Any]], profile: dict[str, Any],
+                     jobs: dict[str, dict[str, Any]], leads: dict[str, dict[str, Any]]) -> list[dict[str, str]]:
     relations: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
 
@@ -296,15 +339,21 @@ def _build_relations(cards: dict[str, dict[str, Any]], profile: dict[str, Any]) 
     source = (profile.get("job_preferences") or {}).get("source") or {}
     if source.get("material_id") and source.get("document_id"):
         add("profile:job_preferences", "sourced_from", f"doc:{source['material_id']}:{source['document_id']}")
+    promoted = {(lead_id, lead["job_profile_id"]) for lead_id, lead in leads.items() if lead["job_profile_id"]}
+    promoted |= {(job["lead_id"], job_id) for job_id, job in jobs.items() if job["lead_id"]}
+    for lead_id, job_id in sorted(promoted):
+        add(f"lead:{lead_id}", "promoted_to", f"job:{job_id}")
     return relations
 
 
 def build_index(root: Path, now: str | None = None) -> dict[str, Any]:
     root = Path(root)
-    materials, windows = _build_materials(root)
+    skipped: list[dict[str, str]] = []
+    materials, windows = _build_materials(root, skipped)
     profile, employer_by_card = _build_profile(root)
-    cards = _build_cards(root, windows, employer_by_card)
-    jobs = _build_jobs(root)
+    cards = _build_cards(root, windows, employer_by_card, skipped)
+    jobs = _build_jobs(root, skipped)
+    leads = _build_leads(root, skipped)
     status_counts: dict[str, int] = {}
     for card in cards.values():
         key = card["status"] or "demo"
@@ -323,15 +372,19 @@ def build_index(root: Path, now: str | None = None) -> dict[str, Any]:
             "cards": {**status_counts, "demo": sum(1 for c in cards.values() if c["demo"])},
             "job_profiles": {"real": sum(1 for j in jobs.values() if not j["demo"]),
                              "samples": sum(1 for j in jobs.values() if j["demo"])},
+            "leads": {"real": sum(1 for x in leads.values() if not x["demo"]),
+                      "samples": sum(1 for x in leads.values() if x["demo"])},
             "profile": {"revision": profile.get("revision", "")},
         },
         "materials": materials,
         "cards": cards,
         "jobs": jobs,
+        "leads": leads,
         "profile": profile,
-        "relations": _build_relations(cards, profile),
+        "relations": _build_relations(cards, profile, jobs, leads),
         "person_docs": person_docs,
         "nonfact_materials": nonfact,
+        "skipped": skipped,
     }
 
 
@@ -366,6 +419,7 @@ def render_index_md(index: dict[str, Any]) -> str:
         f"| 材料 | {assets['materials']} 份 → **{assets['documents']} 档** | 逐档含 document_id/sha256 与日期线索 |",
         f"| 证据卡 | {sum(assets['cards'].values())} 张 | " + " / ".join(f"{k} {v}" for k, v in sorted(assets['cards'].items() if isinstance(assets['cards'], dict) else [])) + " |",
         f"| 岗位画像 | {assets['job_profiles']['real'] + assets['job_profiles']['samples']} 份 | {assets['job_profiles']['real']} 真实 + {assets['job_profiles']['samples']} 示例 |",
+        f"| 岗位线索 | {assets['leads']['real'] + assets['leads']['samples']} 条 | {assets['leads']['real']} 真实 + {assets['leads']['samples']} 示例 |",
         f"| 职业档案 | 1 份 | revision {(assets['profile']['revision'] or '（未确认）')[:16]} |",
         "",
         "## 材料树",
@@ -380,7 +434,18 @@ def render_index_md(index: dict[str, Any]) -> str:
             lines.append(f"- {item['material_id']}：{item['reason']}")
     else:
         lines.append("- 无")
-    lines += ["", "## 待办信号（自动统计）",
+    lines += ["", "## 索引缺口"]
+    if index.get("skipped"):
+        for item in index["skipped"]:
+            lines.append(f"- {item['kind']}：{item['file']}（{item['error']}）")
+    else:
+        lines.append("- 无（全量资产已纳入）")
+    lines += ["", "## 范围说明",
+              "- 纳入：材料 / 证据卡 / 职业档案 / 岗位画像 / 岗位线索",
+              "- 排除：匹配报告与运行产物（matching_reports/、outputs/，属运行输出）、上传简历记录（uploaded_resumes/，平台产物）、"
+              "profiles/candidate_profile.yaml（模板占位）、release-notes/ 与 scripts/（仓库工程）；"
+              "ui/src-tauri/resources/evidence_cards|job_profiles 为本地镜像副本，不重复索引",
+              "", "## 待办信号（自动统计）",
               f"- 真实卡 {len(real)} 张，其中 **{len(missing_any)} 张缺时间或职责**（"
               + " / ".join(f"{k} {v}" for k, v in sorted(by_employer.items(), key=lambda kv: -kv[1])) + "）",
               f"- 其中 {len(with_hints)} 张引用文档含日期线索；人写文档白名单 {len(index['person_docs'])} 份（角色句可信来源）",
@@ -406,6 +471,8 @@ def verify_index(root: Path, index: dict[str, Any]) -> list[dict[str, str]]:
         check("card", card_id, root / "evidence_cards" / card["file"], card["sha256"])
     for job_id, job in index.get("jobs", {}).items():
         check("job", job_id, root / "job_profiles" / job["file"], job["sha256"])
+    for lead_id, lead in index.get("leads", {}).items():
+        check("lead", lead_id, root / "job_leads" / lead["file"], lead["sha256"])
     profile = index.get("profile") or {}
     if profile.get("file"):
         check("profile", "personal_profile", root / profile["file"], profile["file_sha256"])
