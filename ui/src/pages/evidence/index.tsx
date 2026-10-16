@@ -997,9 +997,9 @@ export function EvidencePage() {
                       {referenceScan.sample_files.length > 0 ? (
                         <p className="break-words text-text-muted">{referenceScan.sample_files.slice(0, 5).join("、")}</p>
                       ) : null}
-                      {referenceScan.skipped.length > 0 ? (
+                      {referenceScan.skipped_count > 0 ? (
                         <p className="text-text-muted">
-                          {t("pages.evidence.materialSources.referenceSkipped", { count: referenceScan.skipped.length })}
+                          {t("pages.evidence.materialSources.referenceSkipped", { count: referenceScan.skipped_count })}
                         </p>
                       ) : null}
                       {referenceScan.existing_materials.length > 0 ? (

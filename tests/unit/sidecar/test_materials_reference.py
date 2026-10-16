@@ -190,6 +190,10 @@ def test_missing_source_and_corrupt_manifest_normalize_to_changed(env):
     assert "material_source_changed" in str(excinfo.value)
     status = materials.handle_material_reference_status({"meta": {"correlation_id": "t"}, "material_id": material_id})
     assert status["status"] == "changed"
+    with pytest.raises(ValueError) as excinfo:
+        materials.handle_material_reference_refresh(
+            {"meta": {"correlation_id": "t"}, "material_id": material_id, "confirmed": True})
+    assert "material_source_changed" in str(excinfo.value)
     manifest_path.write_text("{}", encoding="utf-8")
     import shutil as _shutil
     _shutil.rmtree(vault / "proj")
@@ -198,6 +202,10 @@ def test_missing_source_and_corrupt_manifest_normalize_to_changed(env):
     assert "material_source_changed" in str(excinfo.value)
     status = materials.handle_material_reference_status({"meta": {"correlation_id": "t"}, "material_id": material_id})
     assert status["status"] == "changed"
+    with pytest.raises(ValueError) as excinfo:
+        materials.handle_material_reference_refresh(
+            {"meta": {"correlation_id": "t"}, "material_id": material_id, "confirmed": True})
+    assert "material_source_changed" in str(excinfo.value)
 
 
 def test_roots_removal_blocks_validation_and_kb(env):

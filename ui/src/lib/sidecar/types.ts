@@ -581,6 +581,7 @@ export interface MaterialReferenceScanResult extends RpcResultBase {
   total_bytes: number;
   sample_files: string[];
   skipped: Array<{ relpath: string; reason: string }>;
+  skipped_count: number;
   existing_materials: string[];
 }
 

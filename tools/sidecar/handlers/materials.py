@@ -445,8 +445,14 @@ def handle_material_reference_refresh(params: dict[str, Any]) -> dict[str, Any]:
     material_id = item["material_id"]
     manifest = _load_reference_manifest(material_id)
     target = _reference_target_from_item(item)
-    diff = rm.verify_manifest(target, manifest)
-    new_manifest = rm.build_manifest(target)
+    try:
+        diff = rm.verify_manifest(target, manifest)
+    except (OSError, ValueError):
+        diff = {"status": "changed", "changed": [], "missing": [], "added": []}
+    try:
+        new_manifest = rm.build_manifest(target)
+    except (OSError, ValueError):
+        raise ValueError("material_source_changed") from None
     if not new_manifest["files"]:
         raise ValueError("material_source_empty")
     root = {"id": manifest.get("root_id", ""), "path": str(item.get("source_root") or "")}

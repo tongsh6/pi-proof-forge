@@ -24,7 +24,7 @@ const material=(id,label,extra)=>Object.assign({material_id:id,resource_id:'res_
 const api={listEvidence:async()=>({items:[]}),
  listEvidenceMaterialSources:async()=>{loads+=1;return{items:[material('m1','本地材料'),material('r1','引用·始祖鸟',{extension:'.txt',source_mode:'referenced',file_count:'5076',source_root:'/vault',source_relpath:'00-EC+'})]}},
  getSettings:async()=>({material_source_roots:[{id:'msr_1',label:'仓',path:'/vault'}]}),
- scanMaterialReference:async(root,rel)=>{scanCalls.push([root,rel]);return{root_id:root,relpath:rel,file_count:12,total_bytes:3456,sample_files:['a.md'],skipped:[],existing_materials:[]}},
+ scanMaterialReference:async(root,rel)=>{scanCalls.push([root,rel]);return{root_id:root,relpath:rel,file_count:12,total_bytes:3456,sample_files:['a.md'],skipped:[],skipped_count:0,existing_materials:[]}},
  createMaterialReference:async(root,rel,label)=>{createCalls.push([root,rel,label]);return material('r2','引用·测试',{source_mode:'referenced'})},
  checkMaterialReference:async id=>{checkCalls.push([id]);return{material_id:id,status:'changed',changed:['a.md'],missing:[],added:['b.md'],manifest_sha256:'x',checked_at:''}},
  refreshMaterialReference:async()=>({manifest_sha256:'y',file_count:12}),removeMaterialReference:async()=>({removed:true})};
