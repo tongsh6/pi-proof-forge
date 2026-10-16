@@ -7,6 +7,7 @@ Last updated: 2026-10-17
 - 目标与边界：为全部本机知识资产建立确定性导航索引（材料 16 份/1121 档、证据卡 85、岗位画像 27、职业档案 1），供 AI 用「目录树 + 字面检索 + 回读原文」查询，不引入向量/嵌入。索引只做导航：派生值（日期窗口/类型/线索）不是事实；引用必须回读原文并以 material_id/document_id/sha256 三元组锚定。
 - 复用与实现：材料拆档复用 `split_material_documents`（稳定 document_id/sha256），卡片/档案/画像复用既有 YAML 解析，不新建数据存储；`tools/infra/knowledge_index.py`（构建/校验/渲染）+ `tools/kb.py`（build/tree/find/grep/read/refs/cards/person-docs/verify/index，全部支持 --json）已就绪。人写文档白名单 9 份（角色句可信来源）与合成夹具警示（mat_quick_run_verify 不得作事实来源）内置；产物 `knowledge-index/`（index.json + INDEX.md）本地产物、不入库。TDD 先失败后通过，新增 20 项测试。
 - 真实数据验收：构建 **0.11 秒**，16 材料/1121 档/85 卡/27 画像；`kb verify` 通过；抽查 `kb refs ec_418bec8b` 正确显示九恒星引用链（mat_c70e7e91:dc974723…）与 2017-02 线索；缺时间/职责的真实卡 **55 张**（其中 21 张含日期线索）。完整回归 **1316 通过、1 跳过、18 subtests**。
+- 查漏补缺（同日复核）：发现并补齐 **岗位线索 job_leads/ 624 条**（621 真实 + 3 示例；22 条已转画像，线索-画像双向链接核对一致）为新实体，含薪资/地点/公司规模/行业/状态，新增 `lead --promoted_to--> job` 关系与 `kb leads` 命令（--status/--has-profile/--size），grep 增加 leads 范围；构建器新增**索引缺口记录**（材料 meta 指向缺失文件等不再静默跳过，写入 INDEX.md「索引缺口」板块）；新增「范围说明」板块明确纳入/排除（排除 matching_reports/outputs 运行产物、uploaded_resumes 平台产物、profiles 模板、release-notes/scripts 仓库工程、resources 镜像副本，不重复索引）。回归 **1320 通过、1 跳过、18 subtests**。
 - 审计修正（支撑后续补全）：材料线索比初判更丰富（雇主责任险 2018-11~12、读写分离现状 2026-02、Feature 收尾 2026-08 等）；模块文档中的"负责/主导"为系统职责噪声，已由人写文档白名单隔离；EC+ 品牌级周期（如始祖鸟 2019 起）按已确认时间线钳制为本人自 2021.03 参与，仅作参考，不自动填值。
 - 下一步：证据卡补全工作台（三级候选：逐字区间/日期线索/无线索）复用本索引的文档选择、日期线索与引用校验；知识索引 Phase 2（侧车 RPC）按需启动。设计文档 `AIEF/docs/plans/2026-10-17-knowledge-index.md`。P0-026 保持唯一 `next`，本轮无平台写入。
 
