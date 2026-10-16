@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  FolderOpen,
   KeyRound,
   Link2,
   RefreshCw,
@@ -23,6 +24,7 @@ import {
   openLiepinAuthorization,
   updateLiepinCredential,
   updateLlmConfig,
+  updateMaterialSourceRoots,
 } from "@/lib/sidecar/api";
 import type {
   ChannelConfig,
@@ -33,7 +35,7 @@ import type {
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
-type SectionId = "channels" | "llm";
+type SectionId = "channels" | "materialSources" | "llm";
 type LlmSaveState = "idle" | "saving" | "saved";
 type LlmCheckState = "idle" | "checking" | "checked";
 
@@ -327,6 +329,10 @@ function ChannelCard({
 export function SystemSettingsPage() {
   const { t } = useTranslation();
   const [settings, setSettings] = useState<SettingsGetResult | null>(null);
+  const [newRootPath, setNewRootPath] = useState("");
+  const [newRootLabel, setNewRootLabel] = useState("");
+  const [rootsBusy, setRootsBusy] = useState(false);
+  const [rootsError, setRootsError] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
@@ -365,6 +371,48 @@ export function SystemSettingsPage() {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  const handleAddRoot = useCallback(async () => {
+    if (!settings || !newRootPath.trim()) return;
+    setRootsBusy(true);
+    setRootsError("");
+    try {
+      await updateMaterialSourceRoots([
+        ...(settings.material_source_roots ?? []),
+        { id: "", label: newRootLabel.trim(), path: newRootPath.trim() },
+      ]);
+      setNewRootPath("");
+      setNewRootLabel("");
+      await loadSettings();
+      notify("success", t("toasts.settings.materialRootSaved"));
+    } catch (reason) {
+      setRootsError(getErrorMessage(reason));
+    } finally {
+      setRootsBusy(false);
+    }
+  }, [settings, newRootPath, newRootLabel, loadSettings, t]);
+
+  const handleRemoveRoot = useCallback(async (rootId: string) => {
+    if (!settings) return;
+    const approved = await confirmAction({
+      title: t("pages.systemSettings.materialSources.remove"),
+      description: t("pages.systemSettings.materialSources.removeConfirm"),
+      confirmLabel: t("common.confirm"),
+      tone: "danger",
+    });
+    if (!approved) return;
+    setRootsBusy(true);
+    setRootsError("");
+    try {
+      await updateMaterialSourceRoots((settings.material_source_roots ?? []).filter((root) => root.id !== rootId));
+      await loadSettings();
+      notify("success", t("toasts.settings.materialRootRemoved"));
+    } catch (reason) {
+      setRootsError(getErrorMessage(reason));
+    } finally {
+      setRootsBusy(false);
+    }
+  }, [settings, loadSettings, t]);
 
   const fallbackOrder = useMemo(() => {
     if (!settings || settings.channels.length === 0) {
@@ -582,8 +630,8 @@ export function SystemSettingsPage() {
         <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
           <aside className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]">
             <nav className="space-y-2" aria-label={t("pages.systemSettings.title")}>
-              {(["channels", "llm"] as SectionId[]).map((section) => {
-                const Icon = section === "channels" ? Wifi : Settings2;
+              {(["channels", "materialSources", "llm"] as SectionId[]).map((section) => {
+                const Icon = section === "channels" ? Wifi : section === "materialSources" ? FolderOpen : Settings2;
                 const isActive = section === activeSection;
                 return (
                   <button
@@ -759,6 +807,71 @@ export function SystemSettingsPage() {
                       {t("pages.systemSettings.channels.credentialStoreStatus")}
                     </p>
                   </div>
+                </div>
+              </div>
+            ) : activeSection === "materialSources" ? (
+              <div className="space-y-5" data-testid="settings-material-sources">
+                <div className="border-b border-border pb-4">
+                  <h2 className="text-lg font-semibold text-text-primary">
+                    {t("pages.systemSettings.materialSources.title")}
+                  </h2>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {t("pages.systemSettings.materialSources.subtitle")}
+                  </p>
+                </div>
+                {(settings.material_source_roots ?? []).length === 0 ? (
+                  <p className="text-sm text-text-secondary">{t("pages.systemSettings.materialSources.empty")}</p>
+                ) : (
+                  <ul className="divide-y divide-border" data-testid="material-root-list">
+                    {(settings.material_source_roots ?? []).map((root) => (
+                      <li className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm" key={root.id}>
+                        <span className="min-w-0">
+                          <span className="text-text-primary">{root.label}</span>
+                          <span className="ml-2 break-all text-xs text-text-muted">{root.path}</span>
+                        </span>
+                        <button
+                          className="text-error underline disabled:opacity-50"
+                          disabled={rootsBusy}
+                          onClick={() => void handleRemoveRoot(root.id)}
+                          type="button"
+                        >
+                          {t("pages.systemSettings.materialSources.remove")}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="space-y-3 rounded-card border border-border p-4">
+                  <label className="block text-sm text-text-primary">
+                    {t("pages.systemSettings.materialSources.path")}
+                    <input
+                      className="mt-2 w-full rounded-card border border-border bg-bg-hover px-3 py-2 outline-none focus:border-accent"
+                      data-testid="material-root-path"
+                      disabled={rootsBusy}
+                      onChange={(event) => setNewRootPath(event.target.value)}
+                      placeholder="/Users/…/worklog-private"
+                      value={newRootPath}
+                    />
+                  </label>
+                  <label className="block text-sm text-text-primary">
+                    {t("pages.systemSettings.materialSources.label")}
+                    <input
+                      className="mt-2 w-full rounded-card border border-border bg-bg-hover px-3 py-2 outline-none focus:border-accent"
+                      disabled={rootsBusy}
+                      onChange={(event) => setNewRootLabel(event.target.value)}
+                      value={newRootLabel}
+                    />
+                  </label>
+                  {rootsError ? <p className="text-sm text-error" role="alert">{rootsError}</p> : null}
+                  <button
+                    className="rounded-card border border-accent px-3 py-2 text-sm text-accent disabled:opacity-50"
+                    data-testid="material-root-add"
+                    disabled={rootsBusy || !newRootPath.trim()}
+                    onClick={() => void handleAddRoot()}
+                    type="button"
+                  >
+                    {t("pages.systemSettings.materialSources.add")}
+                  </button>
                 </div>
               </div>
             ) : (

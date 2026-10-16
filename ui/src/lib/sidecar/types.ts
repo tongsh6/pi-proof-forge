@@ -425,6 +425,7 @@ export interface SettingsGetResult extends RpcResultBase {
   gate_policy: GatePolicy;
   exclusion_list: string[];
   excluded_legal_entities: string[];
+  material_source_roots: MaterialSourceRoot[];
   channels: ChannelConfig[];
   liepin_api: LiepinAuthState;
   llm_config: LlmConfig;
@@ -434,6 +435,7 @@ export type SettingsUpdateSection =
   | "gate_policy"
   | "exclusion_list"
   | "excluded_legal_entities"
+  | "material_source_roots"
   | "llm_config";
 
 export interface SettingsUpdateResult extends RpcResultBase {
@@ -559,6 +561,37 @@ export interface MaterialSourceItem {
   uploaded_at: string;
   preview: string;
   size_bytes: number;
+  source_mode?: string;
+  source_root?: string;
+  source_relpath?: string;
+  manifest_sha256?: string;
+  file_count?: string;
+}
+
+export interface MaterialSourceRoot {
+  id: string;
+  label: string;
+  path: string;
+}
+
+export interface MaterialReferenceScanResult extends RpcResultBase {
+  root_id: string;
+  relpath: string;
+  file_count: number;
+  total_bytes: number;
+  sample_files: string[];
+  skipped: Array<{ relpath: string; reason: string }>;
+  existing_materials: string[];
+}
+
+export interface MaterialReferenceStatusResult extends RpcResultBase {
+  material_id: string;
+  status: "ok" | "changed" | string;
+  changed: string[];
+  missing: string[];
+  added: string[];
+  manifest_sha256: string;
+  checked_at: string;
 }
 
 export interface MaterialUploadResult extends RpcResultBase, MaterialSourceItem {}

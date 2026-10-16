@@ -19,14 +19,20 @@ import { getErrorMessage } from "@/lib/errors";
 import { confirmAction, notify } from "@/lib/ui";
 import {
   createEvidence,
+  createMaterialReference,
+  checkMaterialReference,
   deleteEvidence,
   generateEvidenceDraft,
   getEvidence,
+  getSettings,
   importEvidence,
   listEvidenceMaterialSources,
   listEvidence,
   reconcileEvidence,
+  refreshMaterialReference,
+  removeMaterialReference,
   saveEvidenceDraft,
+  scanMaterialReference,
   updateEvidence,
 } from "@/lib/sidecar/api";
 import type {
@@ -37,7 +43,9 @@ import type {
   EvidenceListItem,
   EvidenceReconcileItem,
   EvidenceReconcileResult,
+  MaterialReferenceScanResult,
   MaterialSourceItem,
+  MaterialSourceRoot,
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
@@ -125,6 +133,15 @@ export function EvidencePage() {
   const initialStatus = searchParams.get("status") ?? "";
   const [items, setItems] = useState<EvidenceListItem[]>([]);
   const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
+  const [materialRoots, setMaterialRoots] = useState<MaterialSourceRoot[]>([]);
+  const [referenceOpen, setReferenceOpen] = useState(false);
+  const [referenceRootId, setReferenceRootId] = useState("");
+  const [referenceRelpath, setReferenceRelpath] = useState("");
+  const [referenceLabel, setReferenceLabel] = useState("");
+  const [referenceScan, setReferenceScan] = useState<MaterialReferenceScanResult | null>(null);
+  const [referenceBusy, setReferenceBusy] = useState(false);
+  const [referenceError, setReferenceError] = useState("");
+  const [referenceStatus, setReferenceStatus] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EvidenceDetail | null>(null);
   const [form, setForm] = useState<EvidenceForm>(() => toForm(null));
@@ -228,6 +245,55 @@ export function EvidencePage() {
       setReconcileError(getErrorMessage(reason));
     }
   }, []);
+
+  const referencedSources = useMemo(
+    () => materialSources.filter((source) => source.source_mode === "referenced"),
+    [materialSources],
+  );
+
+  const openReferencePanel = useCallback(async () => {
+    setReferenceOpen(true);
+    setReferenceError("");
+    if (materialRoots.length > 0) return;
+    try {
+      const settings = await getSettings();
+      const roots = settings.material_source_roots ?? [];
+      setMaterialRoots(roots);
+      setReferenceRootId((current) => current || roots[0]?.id || "");
+    } catch (reason) {
+      setReferenceError(getErrorMessage(reason));
+    }
+  }, [materialRoots.length]);
+
+  const handleReferenceScan = useCallback(async () => {
+    setReferenceBusy(true);
+    setReferenceError("");
+    setReferenceScan(null);
+    try {
+      setReferenceScan(await scanMaterialReference(referenceRootId, referenceRelpath.trim()));
+    } catch (reason) {
+      setReferenceError(getErrorMessage(reason));
+    } finally {
+      setReferenceBusy(false);
+    }
+  }, [referenceRootId, referenceRelpath]);
+
+  const handleReferenceCheck = useCallback(async (materialId: string) => {
+    try {
+      const result = await checkMaterialReference(materialId);
+      setReferenceStatus((current) => ({
+        ...current,
+        [materialId]: result.status === "ok"
+          ? t("pages.evidence.materialSources.referenceStatusOk")
+          : t("pages.evidence.materialSources.referenceStatusChanged", {
+              changed: result.changed.length, missing: result.missing.length, added: result.added.length,
+            }),
+      }));
+    } catch (reason) {
+      notify("error", getErrorMessage(reason));
+    }
+  }, [t]);
+
   const reconcileProblems = useMemo(() => {
     const items = reconcile?.items ?? [];
     const weight = (item: EvidenceReconcileItem) =>
@@ -331,6 +397,57 @@ export function EvidencePage() {
   useEffect(() => {
     void loadEvidence();
   }, [loadEvidence]);
+
+  const handleReferenceCreate = useCallback(async () => {
+    if (!referenceScan || !referenceLabel.trim()) return;
+    setReferenceBusy(true);
+    setReferenceError("");
+    try {
+      await createMaterialReference(referenceRootId, referenceRelpath.trim(), referenceLabel.trim());
+      setReferenceScan(null);
+      setReferenceRelpath("");
+      setReferenceLabel("");
+      await loadEvidence(selectedIdRef.current);
+      notify("success", t("toasts.evidence.materialReferenced"));
+    } catch (reason) {
+      setReferenceError(getErrorMessage(reason));
+    } finally {
+      setReferenceBusy(false);
+    }
+  }, [referenceRootId, referenceRelpath, referenceLabel, referenceScan, loadEvidence, t]);
+
+  const handleReferenceRefresh = useCallback(async (materialId: string) => {
+    const approved = await confirmAction({
+      title: t("pages.evidence.materialSources.referenceRefresh"),
+      description: t("pages.evidence.materialSources.referenceRefreshConfirm"),
+      confirmLabel: t("common.confirm"),
+    });
+    if (!approved) return;
+    try {
+      await refreshMaterialReference(materialId);
+      await loadEvidence(selectedIdRef.current);
+      notify("success", t("toasts.evidence.materialRefreshed"));
+    } catch (reason) {
+      notify("error", getErrorMessage(reason));
+    }
+  }, [t, loadEvidence]);
+
+  const handleReferenceRemove = useCallback(async (materialId: string) => {
+    const approved = await confirmAction({
+      title: t("pages.evidence.materialSources.referenceRemove"),
+      description: t("pages.evidence.materialSources.referenceRemoveConfirm"),
+      confirmLabel: t("common.confirm"),
+      tone: "danger",
+    });
+    if (!approved) return;
+    try {
+      await removeMaterialReference(materialId);
+      await loadEvidence(selectedIdRef.current);
+      notify("success", t("toasts.evidence.materialReferenceRemoved"));
+    } catch (reason) {
+      notify("error", getErrorMessage(reason));
+    }
+  }, [t, loadEvidence]);
 
   const applyFilters = useCallback(() => {
     setEvidenceFilters({
@@ -772,6 +889,9 @@ export function EvidencePage() {
                     value={source.material_id}
                   >
                     {source.label || source.filename}
+                    {source.source_mode === "referenced"
+                      ? ` · ${t("pages.evidence.materialSources.referenceBadgeShort")}`
+                      : ""}
                   </option>
                 ))}
               </select>
@@ -811,6 +931,126 @@ export function EvidencePage() {
             ) : !selectedDocument ? (
               <p className="mt-3 text-xs text-text-muted">{t("pages.evidence.materialSources.stepsHint")}</p>
             ) : null}
+            <div className="mt-4 border-t border-border pt-3" data-testid="material-reference-section">
+              <button
+                className="text-sm text-accent underline"
+                data-testid="material-reference-open"
+                onClick={() => void openReferencePanel()}
+                type="button"
+              >
+                {t("pages.evidence.materialSources.referenceOpen")}
+              </button>
+              {referenceOpen ? (
+                <div className="mt-3 space-y-3 rounded-card border border-border bg-bg-primary/30 p-3">
+                  <select
+                    aria-label={t("pages.evidence.materialSources.referenceRoot")}
+                    className="w-full rounded-card border border-border bg-bg-primary px-3 py-2 text-sm"
+                    data-testid="material-reference-root"
+                    disabled={referenceBusy}
+                    onChange={(event) => { setReferenceRootId(event.target.value); setReferenceScan(null); }}
+                    value={referenceRootId}
+                  >
+                    {materialRoots.map((root) => (
+                      <option key={root.id} value={root.id}>{root.label}（{root.path}）</option>
+                    ))}
+                  </select>
+                  {materialRoots.length === 0 ? (
+                    <p className="text-xs text-text-muted">{t("pages.evidence.materialSources.referenceNoRoots")}</p>
+                  ) : null}
+                  <input
+                    aria-label={t("pages.evidence.materialSources.referenceRelpath")}
+                    className="w-full rounded-card border border-border bg-bg-primary px-3 py-2 text-sm"
+                    data-testid="material-reference-relpath"
+                    disabled={referenceBusy}
+                    onChange={(event) => { setReferenceRelpath(event.target.value); setReferenceScan(null); }}
+                    placeholder={t("pages.evidence.materialSources.referenceRelpath")}
+                    value={referenceRelpath}
+                  />
+                  <button
+                    className="rounded-card border border-accent px-3 py-2 text-sm text-accent disabled:opacity-40"
+                    data-testid="material-reference-scan"
+                    disabled={referenceBusy || !referenceRootId || !referenceRelpath.trim()}
+                    onClick={() => void handleReferenceScan()}
+                    type="button"
+                  >
+                    {referenceBusy && !referenceScan
+                      ? t("pages.evidence.materialSources.referenceScanning")
+                      : t("pages.evidence.materialSources.referenceScan")}
+                  </button>
+                  {referenceError ? <p className="text-sm text-error" role="alert">{referenceError}</p> : null}
+                  {referenceScan ? (
+                    <div className="space-y-2 text-xs text-text-secondary" data-testid="material-reference-preview">
+                      <p>
+                        {t("pages.evidence.materialSources.referencePreview", {
+                          count: referenceScan.file_count, bytes: formatBytes(referenceScan.total_bytes),
+                        })}
+                      </p>
+                      {referenceScan.sample_files.length > 0 ? (
+                        <p className="break-words text-text-muted">{referenceScan.sample_files.slice(0, 5).join("、")}</p>
+                      ) : null}
+                      {referenceScan.skipped.length > 0 ? (
+                        <p className="text-text-muted">
+                          {t("pages.evidence.materialSources.referenceSkipped", { count: referenceScan.skipped.length })}
+                        </p>
+                      ) : null}
+                      {referenceScan.existing_materials.length > 0 ? (
+                        <p className="text-warning">{t("pages.evidence.materialSources.referenceExisting")}</p>
+                      ) : null}
+                      <input
+                        aria-label={t("pages.evidence.materialSources.referenceLabel")}
+                        className="w-full rounded-card border border-border bg-bg-primary px-3 py-2 text-sm"
+                        data-testid="material-reference-label"
+                        disabled={referenceBusy}
+                        onChange={(event) => setReferenceLabel(event.target.value)}
+                        placeholder={t("pages.evidence.materialSources.referenceLabel")}
+                        value={referenceLabel}
+                      />
+                      <button
+                        className="rounded-card border border-accent bg-accent/10 px-3 py-2 text-sm text-accent disabled:opacity-40"
+                        data-testid="material-reference-create"
+                        disabled={referenceBusy || !referenceLabel.trim()}
+                        onClick={() => void handleReferenceCreate()}
+                        type="button"
+                      >
+                        {referenceBusy
+                          ? t("pages.evidence.materialSources.referenceCreating")
+                          : t("pages.evidence.materialSources.referenceCreate")}
+                      </button>
+                    </div>
+                  ) : null}
+                  {referencedSources.length > 0 ? (
+                    <ul className="divide-y divide-border border-t border-border pt-1" data-testid="material-reference-list">
+                      {referencedSources.map((source) => (
+                        <li className="py-2 text-xs" key={source.material_id}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="min-w-0 truncate text-text-primary">
+                              {source.label}
+                              <span className="ml-2 text-text-muted">
+                                {t("pages.evidence.materialSources.referenceBadge", { count: source.file_count || "?" })}
+                              </span>
+                            </span>
+                            <span className="flex gap-2">
+                              <button className="text-accent underline" data-testid="material-reference-check" type="button" onClick={() => void handleReferenceCheck(source.material_id)}>
+                                {t("pages.evidence.materialSources.referenceCheck")}
+                              </button>
+                              <button className="text-accent underline" data-testid="material-reference-refresh" type="button" onClick={() => void handleReferenceRefresh(source.material_id)}>
+                                {t("pages.evidence.materialSources.referenceRefresh")}
+                              </button>
+                              <button className="text-error underline" data-testid="material-reference-remove" type="button" onClick={() => void handleReferenceRemove(source.material_id)}>
+                                {t("pages.evidence.materialSources.referenceRemove")}
+                              </button>
+                            </span>
+                          </div>
+                          {referenceStatus[source.material_id] ? (
+                            <p className="mt-1 text-text-muted">{referenceStatus[source.material_id]}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             </div>
           </details>
 

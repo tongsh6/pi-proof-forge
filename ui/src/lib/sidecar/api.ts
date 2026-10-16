@@ -48,6 +48,10 @@ import type {
   JobPreferences,
   CareerProfile,
   ProfileUpdateResult,
+  MaterialSourceRoot,
+  MaterialReferenceScanResult,
+  MaterialReferenceStatusResult,
+  SettingsUpdateResult,
   QuickRunCancelResult,
   QuickRunStartOptions,
   QuickRunStartResult,
@@ -738,4 +742,23 @@ export async function autoLinkEvidence(expectedRevision: string, apply = true): 
 
 export async function authorizeSingleLiepinPdf(runId: string): Promise<NativePdfPreparation> {
   return client.call<NativePdfPreparation>("run.agent.authorizeSinglePdfDelivery", {run_id:runId,confirmed:true});
+}
+
+export async function scanMaterialReference(rootId: string, relpath: string): Promise<MaterialReferenceScanResult> {
+  return client.call<MaterialReferenceScanResult>("material.reference.scan", {root_id: rootId, relpath});
+}
+export async function createMaterialReference(rootId: string, relpath: string, label: string): Promise<MaterialSourceItem> {
+  return client.call<MaterialSourceItem>("material.reference.create", {root_id: rootId, relpath, label});
+}
+export async function checkMaterialReference(materialId: string): Promise<MaterialReferenceStatusResult> {
+  return client.call<MaterialReferenceStatusResult>("material.reference.status", {material_id: materialId});
+}
+export async function refreshMaterialReference(materialId: string): Promise<{ manifest_sha256: string; file_count: number }> {
+  return client.call<{ manifest_sha256: string; file_count: number }>("material.reference.refresh", {material_id: materialId, confirmed: true});
+}
+export async function removeMaterialReference(materialId: string): Promise<{ removed: boolean }> {
+  return client.call<{ removed: boolean }>("material.reference.remove", {material_id: materialId, confirmed: true});
+}
+export async function updateMaterialSourceRoots(roots: MaterialSourceRoot[]): Promise<SettingsUpdateResult> {
+  return client.call<SettingsUpdateResult>("settings.update", {section: "material_source_roots", payload: roots});
 }

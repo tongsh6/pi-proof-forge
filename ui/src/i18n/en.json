@@ -460,7 +460,28 @@
         "select": "Select material",
         "summaryHint": "Pick a material and distill it into evidence cards",
         "stepsHint": "Pick a material, then a fragment, then distill.",
-        "goUpload": "Upload materials in Resumes"
+        "goUpload": "Upload materials in Resumes",
+        "referenceOpen": "Reference external directory (no copy)",
+        "referenceRoot": "Source root",
+        "referenceRelpath": "Relative path (file or folder)",
+        "referenceScan": "Scan preview",
+        "referenceScanning": "Scanning…",
+        "referenceLabel": "Material name",
+        "referenceCreate": "Create reference",
+        "referenceCreating": "Creating…",
+        "referencePreview": "Will reference {count} files ({bytes})",
+        "referenceSkipped": "{count} files will be skipped (sensitive/empty/hidden)",
+        "referenceExisting": "This path already has a referenced material; remove it first or choose another path",
+        "referenceBadge": "{count} files referenced",
+        "referenceBadgeShort": "referenced",
+        "referenceCheck": "Check status",
+        "referenceRefresh": "Refresh reference",
+        "referenceRemove": "Remove reference",
+        "referenceRefreshConfirm": "Rebuild the manifest with current content as the new baseline; bound evidence cards will require re-review.",
+        "referenceRemoveConfirm": "Only local index and cache are deleted; nothing in the source directory is touched.",
+        "referenceStatusOk": "Source matches manifest",
+        "referenceStatusChanged": "Source changed: {changed} modified · {missing} missing · {added} added. Refresh or re-review.",
+        "referenceNoRoots": "No source root configured yet; add one in Settings → Material sources"
       },
       "review": {
         "title": "Review required before save",
@@ -1182,7 +1203,8 @@
       "secretMissing": "Not configured",
       "nav": {
         "channels": "Channels",
-        "llm": "LLM Config"
+        "llm": "LLM Config",
+        "materialSources": "Material sources"
       },
       "exclusionList": {
         "title": "Company exclusion list",
@@ -1299,6 +1321,16 @@
           "CREDENTIAL_STORAGE_ERROR": "The local credential file operation failed. Check the storage path and file permissions, then retry.",
           "INTERNAL_ERROR": "The request did not complete. Retry manually later."
         }
+      },
+      "materialSources": {
+        "title": "Material sources",
+        "subtitle": "External directories allowed for referencing (no copy; content changes are detected and blocked)",
+        "empty": "No source root yet",
+        "path": "Directory path",
+        "label": "Label (optional)",
+        "add": "Add source root",
+        "remove": "Remove",
+        "removeConfirm": "After removal, existing referenced materials will fail verification until the root is restored."
       }
     }
   },
@@ -1552,7 +1584,10 @@
       "imported": "Artifact imported",
       "artifactRemoved": "Artifact removed",
       "draftGenerated": "Draft generated; review and save it",
-      "draftSaved": "Draft saved"
+      "draftSaved": "Draft saved",
+      "materialReferenced": "Reference created",
+      "materialRefreshed": "Reference refreshed",
+      "materialReferenceRemoved": "Reference removed"
     },
     "resumes": {
       "profileSaved": "Basic info saved",
@@ -1601,6 +1636,10 @@
       "credentialSaved": "Liepin credential saved locally",
       "credentialCleared": "Liepin credential deleted",
       "connectionOk": "Connection test passed"
+    },
+    "settings": {
+      "materialRootSaved": "Source root saved",
+      "materialRootRemoved": "Source root removed"
     }
   },
   "reasons": {

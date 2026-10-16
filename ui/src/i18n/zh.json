@@ -460,7 +460,28 @@
         "select": "选择材料",
         "summaryHint": "选择一份材料，提炼成证据卡",
         "stepsHint": "先选择一份材料，再选择其中一个片段，然后提炼。",
-        "goUpload": "去简历中心上传材料"
+        "goUpload": "去简历中心上传材料",
+        "referenceOpen": "引用外部目录（不复制原件）",
+        "referenceRoot": "来源根",
+        "referenceRelpath": "相对路径（文件或目录）",
+        "referenceScan": "扫描预览",
+        "referenceScanning": "扫描中…",
+        "referenceLabel": "材料名称",
+        "referenceCreate": "创建引用",
+        "referenceCreating": "创建中…",
+        "referencePreview": "将引用 {count} 个文件（{bytes}）",
+        "referenceSkipped": "将跳过 {count} 个文件（敏感/空/隐藏等）",
+        "referenceExisting": "该路径已有引用材料，请先解除或改用其他路径",
+        "referenceBadge": "引用 {count} 档",
+        "referenceBadgeShort": "引用",
+        "referenceCheck": "状态检查",
+        "referenceRefresh": "刷新引用",
+        "referenceRemove": "解除引用",
+        "referenceRefreshConfirm": "重建清单并以最新内容为新基线；已绑定该来源的证据卡将进入“来源已变更，需重审”。",
+        "referenceRemoveConfirm": "仅删除本机索引与缓存，不删除来源目录里的任何文件。",
+        "referenceStatusOk": "来源与清单一致",
+        "referenceStatusChanged": "来源已变更：改 {changed} · 缺 {missing} · 新增 {added}，请刷新或重审",
+        "referenceNoRoots": "尚未配置材料来源根，请到 系统设置 → 材料来源 添加"
       },
       "review": {
         "title": "保存前需要审核",
@@ -1182,7 +1203,8 @@
       "secretMissing": "未配置",
       "nav": {
         "channels": "通道",
-        "llm": "模型"
+        "llm": "模型",
+        "materialSources": "材料来源"
       },
       "exclusionList": {
         "title": "企业例外清单",
@@ -1299,6 +1321,16 @@
           "CREDENTIAL_STORAGE_ERROR": "本机凭据文件操作失败，请检查保存路径与文件权限后重试。",
           "INTERNAL_ERROR": "请求未完成，请稍后手动重试。"
         }
+      },
+      "materialSources": {
+        "title": "材料来源",
+        "subtitle": "允许被引用的外部目录（引用不复制原件；内容变更会被校验发现并阻断）",
+        "empty": "尚未添加来源根",
+        "path": "目录路径",
+        "label": "名称（可留空）",
+        "add": "添加来源根",
+        "remove": "移除",
+        "removeConfirm": "移除后，已有引用材料将因失去来源而校验失败并被阻断。"
       }
     }
   },
@@ -1552,7 +1584,10 @@
       "imported": "附件已导入",
       "artifactRemoved": "附件已移除",
       "draftGenerated": "草稿已生成，请审核后保存",
-      "draftSaved": "草稿已保存"
+      "draftSaved": "草稿已保存",
+      "materialReferenced": "引用材料已创建",
+      "materialRefreshed": "引用已刷新",
+      "materialReferenceRemoved": "引用已解除"
     },
     "resumes": {
       "profileSaved": "基本资料已保存",
@@ -1601,6 +1636,10 @@
       "credentialSaved": "猎聘凭据已保存到本机",
       "credentialCleared": "猎聘凭据已删除",
       "connectionOk": "连接测试通过"
+    },
+    "settings": {
+      "materialRootSaved": "材料来源根已保存",
+      "materialRootRemoved": "材料来源根已移除"
     }
   },
   "reasons": {
