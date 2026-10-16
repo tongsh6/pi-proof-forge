@@ -60,3 +60,5 @@ policy_validation.yaml
 matching_reports/.semantic-cache/
 matching_reports/*.semantic.json
 matching_reports/*.direction.json
+# 知识索引（本地生成，含私有资产摘要，不入库）
+knowledge-index/
