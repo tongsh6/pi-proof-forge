@@ -252,6 +252,7 @@ def test_render_index_md_sections(root: Path):
     assert "mat_quick_run_verify" in md
     assert "岗位线索" in md
     assert "索引缺口" in md
+    assert "worklog-private" in md
     assert "缺" in md
     assert "kb read" in md
 

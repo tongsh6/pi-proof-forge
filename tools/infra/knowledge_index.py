@@ -442,6 +442,7 @@ def render_index_md(index: dict[str, Any]) -> str:
         lines.append("- 无（全量资产已纳入）")
     lines += ["", "## 范围说明",
               "- 纳入：材料 / 证据卡 / 职业档案 / 岗位画像 / 岗位线索",
+              "- 上游：私有工作仓 worklog-private/ 为材料来源；未导入部分（如始祖鸟 features 归档、学习资料）按需分批",
               "- 排除：匹配报告与运行产物（matching_reports/、outputs/，属运行输出）、上传简历记录（uploaded_resumes/，平台产物）、"
               "profiles/candidate_profile.yaml（模板占位）、release-notes/ 与 scripts/（仓库工程）；"
               "ui/src-tauri/resources/evidence_cards|job_profiles 为本地镜像副本，不重复索引",
