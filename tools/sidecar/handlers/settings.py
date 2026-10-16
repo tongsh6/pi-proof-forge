@@ -13,9 +13,11 @@ from tools.policy.exclusions import (
     load_delivery_settings,
     load_exclusion_list,
     load_legal_entity_exclusion_list,
+    load_material_source_roots,
     save_delivery_settings,
     save_exclusion_list,
     save_legal_entity_exclusion_list,
+    save_material_source_roots,
 )
 
 _SUPPORTED_GATE_POLICY_UPDATE_FIELDS = {"delivery_mode", "batch_review"}
@@ -55,6 +57,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
         },
         "exclusion_list": exclusion_list,
         "excluded_legal_entities": legal_entity_exclusion_list,
+        "material_source_roots": load_material_source_roots(),
         "channels": [
             {
                 "id": "liepin",
@@ -210,6 +213,16 @@ def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
             unsupported = ", ".join(sorted(unsupported_fields))
             raise ValueError(f"unsupported llm_config fields: {unsupported}")
         _ = _save_llm_config(payload)
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "section": section,
+            "saved": True,
+        }
+
+    if section == "material_source_roots":
+        if not isinstance(payload, list):
+            raise ValueError("material_source_roots payload must be a list")
+        _ = save_material_source_roots(payload)
         return {
             "meta": {"correlation_id": correlation_id},
             "section": section,

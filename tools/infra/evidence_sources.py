@@ -55,7 +55,17 @@ def validate_field_sources(fields, bindings, documents):
 
 
 def source_fingerprints(records):
-    return {r['material_id']: {'filename': r['path'].name, 'sha256': hashlib.sha256(r['path'].read_bytes()).hexdigest()} for r in records}
+    out = {}
+    for r in records:
+        filename = str(r.get("filename") or r["path"].name)
+        entry = {"filename": filename, "sha256": hashlib.sha256(r["path"].read_bytes()).hexdigest()}
+        if r.get("source_mode") == "referenced":
+            entry.update({"mode": "referenced",
+                          "manifest_sha256": str(r.get("manifest_sha256") or ""),
+                          "source_root": str(r.get("source_root") or ""),
+                          "source_relpath": str(r.get("source_relpath") or "")})
+        out[r["material_id"]] = entry
+    return out
 
 
 def validated_source_inputs(doc, material_dir: Path):
@@ -72,11 +82,24 @@ def validated_source_inputs(doc, material_dir: Path):
             raise ValueError('material_source_changed')
         records = []
         for mid, data in fingerprints.items():
-            filename = data['filename']; path = material_dir / filename
-            if (Path(filename).name != filename or path.is_symlink() or not path.is_file()
+            filename = str(data.get('filename') or ''); raw_path = Path(filename)
+            path = material_dir / filename
+            if (not filename or raw_path.is_absolute() or path.is_symlink() or not path.is_file()
                     or not path.resolve().is_relative_to(material_dir.resolve())
-                    or hashlib.sha256(path.read_bytes()).hexdigest() != data['sha256']):
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != data.get('sha256')):
                 raise ValueError('material_source_changed')
+            if data.get('mode') == 'referenced':
+                # 引用材料：先重验清单与源文件哈希，再核对缓存字节
+                manifest_path = material_dir / '.referenced' / f'{mid}.manifest.json'
+                if not manifest_path.is_file():
+                    raise ValueError('material_source_changed')
+                manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+                if manifest.get('manifest_sha256') != data.get('manifest_sha256'):
+                    raise ValueError('material_source_changed')
+                from tools.infra import referenced_materials as rm
+                target = Path(str(data.get('source_root') or '')) / str(data.get('source_relpath') or '')
+                if rm.verify_manifest(target, manifest).get('status') != 'ok':
+                    raise ValueError('material_source_changed')
             records.append({'material_id': mid, 'path': path})
         documents, _ = read_source_documents(records, refs)
         validate_field_sources({**s, **doc['lists']}, bindings, documents)

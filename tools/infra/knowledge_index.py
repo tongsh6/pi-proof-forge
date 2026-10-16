@@ -16,6 +16,7 @@ from typing import Any
 from tools.infra.material_documents import split_material_documents
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.infra.career_profile import parse_project_period
+from tools.infra import referenced_materials as rm
 
 BUILDER_VERSION = "kb-index-v1"
 
@@ -130,8 +131,28 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
         except (OSError, UnicodeDecodeError):
             skipped.append({"kind": "material", "file": meta_path.name, "error": "unreadable"})
             continue
+        source_mode = str(meta.get("source_mode") or "")
+        reference_status = ""
+        if source_mode == "referenced":
+            manifest_path = meta_dir / ".referenced" / f"{material_id}.manifest.json"
+            manifest: dict[str, Any] = {}
+            if manifest_path.is_file():
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                except ValueError:
+                    manifest = {}
+            target = Path(str(meta.get("source_root") or "")) / str(meta.get("source_relpath") or "")
+            try:
+                reference_status = rm.verify_manifest(target, manifest).get("status", "changed")
+            except (OSError, ValueError):
+                reference_status = "changed"
+            if not text and reference_status == "ok" and manifest.get("files"):
+                try:
+                    text = rm.merge_text(target, manifest["files"])
+                except OSError:
+                    text = ""
         entries: list[dict[str, Any]] = []
-        for doc in split_material_documents(text, filename):
+        for doc in split_material_documents(text, Path(filename).name):
             dates = extract_dates(doc["text"])
             windows[(material_id, doc["document_id"])] = dates["window"]
             entries.append({
@@ -153,6 +174,11 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
             "sha256": _file_sha(path),
             "bytes": path.stat().st_size,
             "document_count": len(entries),
+            "source_mode": source_mode,
+            "reference_status": reference_status,
+            "source_root": str(meta.get("source_root") or ""),
+            "source_relpath": str(meta.get("source_relpath") or ""),
+            "file_count": str(meta.get("file_count") or ""),
             "frontmatter_dated": sum(1 for e in entries if e["dates"]["frontmatter"]),
             "date_hint_docs": sum(1 for e in entries if e["dates"]["window"]),
             "documents": entries,
@@ -369,6 +395,7 @@ def build_index(root: Path, now: str | None = None) -> dict[str, Any]:
         "assets": {
             "materials": len(materials),
             "documents": sum(m["document_count"] for m in materials.values()),
+            "referenced_materials": sum(1 for m in materials.values() if m.get("source_mode") == "referenced"),
             "cards": {**status_counts, "demo": sum(1 for c in cards.values() if c["demo"])},
             "job_profiles": {"real": sum(1 for j in jobs.values() if not j["demo"]),
                              "samples": sum(1 for j in jobs.values() if j["demo"])},
@@ -427,7 +454,8 @@ def render_index_md(index: dict[str, Any]) -> str:
         "|---|---|---|",
     ]
     for material in sorted(index["materials"].values(), key=lambda m: (-m["document_count"], m["material_id"])):
-        lines.append(f"| {material['material_id']} {material['label']} | {material['document_count']} 档 | {_top_dirs(material)} |")
+        marker = "（引用）" if material.get("source_mode") == "referenced" else ""
+        lines.append(f"| {material['material_id']} {material['label']}{marker} | {material['document_count']} 档 | {_top_dirs(material)} |")
     lines += ["", "## 非事实材料警示"]
     if index["nonfact_materials"]:
         for item in index["nonfact_materials"]:
@@ -442,7 +470,7 @@ def render_index_md(index: dict[str, Any]) -> str:
         lines.append("- 无（全量资产已纳入）")
     lines += ["", "## 范围说明",
               "- 纳入：材料 / 证据卡 / 职业档案 / 岗位画像 / 岗位线索",
-              "- 上游：私有工作仓 worklog-private/ 为材料来源；未导入部分（如始祖鸟 features 归档、学习资料）按需分批",
+              "- 上游：私有工作仓 worklog-private/ 为材料来源；引用式材料（source_mode=referenced）不复制纳入，其余未纳入部分按需分批",
               "- 排除：匹配报告与运行产物（matching_reports/、outputs/，属运行输出）、上传简历记录（uploaded_resumes/，平台产物）、"
               "profiles/candidate_profile.yaml（模板占位）、release-notes/ 与 scripts/（仓库工程）；"
               "ui/src-tauri/resources/evidence_cards|job_profiles 为本地镜像副本，不重复索引",
@@ -468,6 +496,19 @@ def verify_index(root: Path, index: dict[str, Any]) -> list[dict[str, str]]:
 
     for material_id, material in index.get("materials", {}).items():
         check("material", material_id, root / "materials" / material["filename"], material["sha256"])
+        if material.get("source_mode") == "referenced":
+            manifest_path = root / "materials" / ".referenced" / f"{material_id}.manifest.json"
+            source_ok = manifest_path.is_file()
+            if source_ok:
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    target = Path(str(material.get("source_root") or "")) / str(material.get("source_relpath") or "")
+                    source_ok = rm.verify_manifest(target, manifest).get("status") == "ok"
+                except (OSError, ValueError):
+                    source_ok = False
+            if not source_ok:
+                stale.append({"kind": "material", "ref": material_id,
+                              "path": f"{material.get('source_root', '')}/{material.get('source_relpath', '')}"})
     for card_id, card in index.get("cards", {}).items():
         check("card", card_id, root / "evidence_cards" / card["file"], card["sha256"])
     for job_id, job in index.get("jobs", {}).items():

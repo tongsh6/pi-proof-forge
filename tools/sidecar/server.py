@@ -83,6 +83,11 @@ from tools.sidecar.handlers.materials import (
     handle_evidence_list_material_sources,
     handle_material_list,
     handle_material_readiness,
+    handle_material_reference_create,
+    handle_material_reference_refresh,
+    handle_material_reference_remove,
+    handle_material_reference_scan,
+    handle_material_reference_status,
     handle_material_upload,
 )
 
@@ -128,6 +133,11 @@ def _create_router() -> Router:
     router.register("material.upload", handle_material_upload)
     router.register("material.list", handle_material_list)
     router.register("material.readiness", handle_material_readiness)
+    router.register("material.reference.scan", handle_material_reference_scan)
+    router.register("material.reference.create", handle_material_reference_create)
+    router.register("material.reference.status", handle_material_reference_status)
+    router.register("material.reference.refresh", handle_material_reference_refresh)
+    router.register("material.reference.remove", handle_material_reference_remove)
     router.register("submission.detail", handle_submission_detail)
     router.register("submission.list", handle_submission_list)
     router.register("submission.retry", handle_submission_retry)

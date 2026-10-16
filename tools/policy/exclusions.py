@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml, unquote
 
@@ -152,6 +154,65 @@ def save_delivery_settings(
     scalars["batch_review"] = (
         "true" if normalized_mode == "manual" and batch_review else "false"
     )
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(dump_yaml(scalars, lists), encoding="utf-8")
+    return policy_path
+
+
+def load_material_source_roots(path: Path | None = None) -> list[dict[str, str]]:
+    """允许被引用的外部来源根；缺失或损坏时返回空列表（引用能力关闭）。"""
+    policy_path = _resolve_policy_path(path)
+    if policy_path is None or not policy_path.exists():
+        return []
+    try:
+        raw = parse_simple_yaml(policy_path.read_text(encoding="utf-8")).get("scalars", {}).get(
+            "material_source_roots_json", "")
+        items = json.loads(raw) if raw else []
+    except ValueError:
+        return []
+    if not isinstance(items, list):
+        return []
+    roots: list[dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        path_value = str(item.get("path") or "").strip()
+        if not path_value:
+            continue
+        roots.append({"id": str(item.get("id") or ""), "label": str(item.get("label") or ""), "path": path_value})
+    return roots
+
+
+def save_material_source_roots(roots: list[dict[str, str]], path: Path | None = None) -> Path | None:
+    """保存允许根：必须是已存在目录；按解析后路径去重；自动生成 id 与默认 label。"""
+    normalized: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in roots or []:
+        if not isinstance(item, dict):
+            raise ValueError("material_source_root_invalid")
+        path_value = str(item.get("path") or "").strip()
+        resolved = Path(path_value).resolve() if path_value else None
+        if resolved is None or not resolved.is_dir():
+            raise ValueError("material_source_root_invalid")
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append({
+            "id": str(item.get("id") or "").strip() or f"msr_{uuid4().hex[:8]}",
+            "label": str(item.get("label") or "").strip() or resolved.name,
+            "path": key,
+        })
+    policy_path = _resolve_policy_path(path)
+    if policy_path is None:
+        return None
+    scalars: dict[str, str] = {}
+    lists: dict[str, list[str]] = {}
+    if policy_path.exists():
+        doc = parse_simple_yaml(policy_path.read_text(encoding="utf-8"))
+        scalars = doc.get("scalars", {})
+        lists = doc.get("lists", {})
+    scalars["material_source_roots_json"] = json.dumps(normalized, ensure_ascii=False)
     policy_path.parent.mkdir(parents=True, exist_ok=True)
     policy_path.write_text(dump_yaml(scalars, lists), encoding="utf-8")
     return policy_path

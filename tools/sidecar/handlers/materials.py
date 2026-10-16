@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -113,6 +114,11 @@ def _material_item_from_meta(meta_path: Path) -> dict[str, Any]:
         "uploaded_at": values.get("uploaded_at", ""),
         "preview": values.get("preview", ""),
         "size_bytes": size_bytes,
+        "source_mode": values.get("source_mode", ""),
+        "source_root": values.get("source_root", ""),
+        "source_relpath": values.get("source_relpath", ""),
+        "manifest_sha256": values.get("manifest_sha256", ""),
+        "file_count": values.get("file_count", ""),
     }
 
 
@@ -252,3 +258,205 @@ def _has_uploaded_resume() -> bool:
     if not _UPLOADED_RESUMES_DIR.exists():
         return False
     return any(_UPLOADED_RESUMES_DIR.glob("*.meta.yaml"))
+
+
+# ---- 引用式材料（外部来源引用，非复制快照）----
+# 契约见 AIEF/docs/plans/2026-10-17-referenced-materials.md：
+# 清单冻结（逐文件 sha256）；内容变更/删除 → material_source_changed 阻断；新增文件需刷新纳入。
+
+
+def _referenced_dir() -> Path:
+    return _MATERIALS_DIR / ".referenced"
+
+
+def _allowed_roots() -> list[dict[str, Any]]:
+    from tools.policy.exclusions import load_material_source_roots
+    return load_material_source_roots()
+
+
+def _resolve_reference_target(root_id: str, relpath: str) -> tuple[Path, dict[str, Any]]:
+    from tools.infra import referenced_materials as rm
+    roots = _allowed_roots()
+    root = next((item for item in roots if str(item.get("id")) == root_id), None)
+    if root is None:
+        raise ValueError("material_source_root_required")
+    target = (Path(str(root["path"])) / str(relpath or "")).resolve()
+    return rm.resolve_under_roots(target, roots), root
+
+
+def _material_item_by_id(material_id: str) -> dict[str, Any]:
+    for item in list_material_source_items():
+        if item.get("material_id") == material_id:
+            return item
+    raise KeyError(f"NOT_FOUND: material {material_id}")
+
+
+def _load_reference_manifest(material_id: str) -> dict[str, Any]:
+    path = _referenced_dir() / f"{material_id}.manifest.json"
+    if not path.is_file():
+        raise ValueError("material_source_changed")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _reference_target_from_item(item: dict[str, Any]) -> Path:
+    from tools.infra import referenced_materials as rm
+    target = Path(str(item.get("source_root") or "")) / str(item.get("source_relpath") or "")
+    try:
+        return rm.resolve_under_roots(target, _allowed_roots())
+    except ValueError as exc:
+        raise ValueError("material_source_changed") from exc
+
+
+def _write_reference_manifest(material_id: str, root: dict[str, Any], relpath: str, manifest: dict[str, Any]) -> None:
+    payload = {"root_id": str(root.get("id")), "source_root": str(root.get("path")), "source_relpath": relpath,
+               "files": manifest["files"], "skipped": manifest["skipped"],
+               "manifest_sha256": manifest["manifest_sha256"], "built_at": manifest.get("built_at", "")}
+    directory = _referenced_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{material_id}.manifest.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def ensure_referenced_text(item: dict[str, Any]) -> Path:
+    """引用材料读取前校验（manifest + 源文件哈希）；不符 → material_source_changed。"""
+    from tools.infra import referenced_materials as rm
+    manifest = _load_reference_manifest(str(item.get("material_id")))
+    target = _reference_target_from_item(item)
+    status = rm.verify_manifest(target, manifest)
+    if status.get("status") != "ok":
+        raise ValueError("material_source_changed")
+    cache = _MATERIALS_DIR / str(item.get("filename") or "")
+    if not cache.is_file():
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(rm.merge_text(target, manifest["files"]), encoding="utf-8")
+    return cache
+
+
+def handle_material_reference_scan(params: dict[str, Any]) -> dict[str, Any]:
+    from tools.infra import referenced_materials as rm
+    correlation_id = params["meta"]["correlation_id"]
+    relpath = str(params.get("relpath") or "")
+    target, root = _resolve_reference_target(str(params.get("root_id") or ""), relpath)
+    scanned = rm.scan_files(target)
+    if not scanned["files"]:
+        raise ValueError("material_source_empty")
+    existing = [item["material_id"] for item in list_material_source_items()
+                if item.get("source_mode") == "referenced"
+                and item.get("source_root") == str(root["path"]) and item.get("source_relpath") == relpath]
+    return {"meta": {"correlation_id": correlation_id}, "root_id": root["id"], "relpath": relpath,
+            "file_count": len(scanned["files"]), "total_bytes": scanned["total_bytes"],
+            "sample_files": [f["relpath"] for f in scanned["files"][:20]],
+            "skipped": scanned["skipped"][:50], "existing_materials": existing}
+
+
+def handle_material_reference_create(params: dict[str, Any]) -> dict[str, Any]:
+    from tools.infra import referenced_materials as rm
+    correlation_id = params["meta"]["correlation_id"]
+    label = str(params.get("label") or "").strip()
+    if not label:
+        raise ValueError("label is required")
+    if len(label) > 100:
+        raise ValueError("label must not exceed 100 characters")
+    relpath = str(params.get("relpath") or "")
+    target, root = _resolve_reference_target(str(params.get("root_id") or ""), relpath)
+    manifest = rm.build_manifest(target)
+    if not manifest["files"]:
+        raise ValueError("material_source_empty")
+    material_id = f"mat_{uuid4().hex[:8]}"
+    resource_id = f"res_{uuid4().hex[:8]}"
+    _write_reference_manifest(material_id, root, relpath, manifest)
+    text = rm.merge_text(target, manifest["files"])
+    cache_name = f"{material_id}-{manifest['manifest_sha256'][:12]}.txt"
+    (_referenced_dir() / cache_name).write_text(text, encoding="utf-8")
+    uploaded_at = _utcnow_iso()
+    preview = _normalize_preview(text)
+    filename = f".referenced/{cache_name}"
+    _write_material_meta(_MATERIALS_DIR / f"{material_id}.meta.yaml", {
+        "material_id": material_id, "resource_id": resource_id, "label": label,
+        "kind": "raw_work_material_directory" if target.is_dir() else "raw_work_material",
+        "filename": filename, "extension": ".txt", "uploaded_at": uploaded_at, "preview": preview,
+        "source_mode": "referenced", "source_root": str(root["path"]), "source_relpath": relpath,
+        "manifest_sha256": manifest["manifest_sha256"], "file_count": str(len(manifest["files"])),
+    })
+    return {"meta": {"correlation_id": correlation_id}, "material_id": material_id, "resource_id": resource_id,
+            "label": label, "filename": filename, "extension": ".txt", "uploaded_at": uploaded_at,
+            "preview": preview, "source_mode": "referenced", "manifest_sha256": manifest["manifest_sha256"],
+            "file_count": len(manifest["files"])}
+
+
+def handle_material_reference_status(params: dict[str, Any]) -> dict[str, Any]:
+    from tools.infra import referenced_materials as rm
+    correlation_id = params["meta"]["correlation_id"]
+    item = _material_item_by_id(str(params.get("material_id") or ""))
+    if item.get("source_mode") != "referenced":
+        raise ValueError("material_not_referenced")
+    manifest = _load_reference_manifest(item["material_id"])
+    target = Path(str(item.get("source_root") or "")) / str(item.get("source_relpath") or "")
+    blocked = {"status": "changed", "changed": [], "added": [],
+               "missing": sorted(f["relpath"] for f in manifest.get("files", []))}
+    if not target.exists():
+        status = blocked
+    else:
+        try:
+            rm.resolve_under_roots(target, _allowed_roots())
+        except ValueError:
+            status = blocked
+        else:
+            status = rm.verify_manifest(target, manifest)
+    return {"meta": {"correlation_id": correlation_id}, "material_id": item["material_id"],
+            "status": status["status"], "changed": status["changed"], "missing": status["missing"],
+            "added": status["added"], "manifest_sha256": manifest.get("manifest_sha256", ""),
+            "checked_at": _utcnow_iso()}
+
+
+def handle_material_reference_refresh(params: dict[str, Any]) -> dict[str, Any]:
+    from tools.infra import referenced_materials as rm
+    correlation_id = params["meta"]["correlation_id"]
+    if params.get("confirmed") is not True:
+        raise ValueError("material_reference_confirmation_required")
+    item = _material_item_by_id(str(params.get("material_id") or ""))
+    if item.get("source_mode") != "referenced":
+        raise ValueError("material_not_referenced")
+    material_id = item["material_id"]
+    manifest = _load_reference_manifest(material_id)
+    target = _reference_target_from_item(item)
+    diff = rm.verify_manifest(target, manifest)
+    new_manifest = rm.build_manifest(target)
+    if not new_manifest["files"]:
+        raise ValueError("material_source_empty")
+    root = {"id": manifest.get("root_id", ""), "path": str(item.get("source_root") or "")}
+    relpath = str(item.get("source_relpath") or "")
+    _write_reference_manifest(material_id, root, relpath, new_manifest)
+    text = rm.merge_text(target, new_manifest["files"])
+    cache_name = f"{material_id}-{new_manifest['manifest_sha256'][:12]}.txt"
+    (_referenced_dir() / cache_name).write_text(text, encoding="utf-8")
+    for stale in _referenced_dir().glob(f"{material_id}-*.txt"):
+        if stale.name != cache_name:
+            stale.unlink()
+    meta_path = _MATERIALS_DIR / f"{material_id}.meta.yaml"
+    _write_material_meta(meta_path, {
+        **_load_meta(meta_path),
+        "filename": f".referenced/{cache_name}",
+        "manifest_sha256": new_manifest["manifest_sha256"],
+        "file_count": str(len(new_manifest["files"])),
+        "preview": _normalize_preview(text),
+    })
+    return {"meta": {"correlation_id": correlation_id}, "material_id": material_id,
+            "manifest_sha256": new_manifest["manifest_sha256"],
+            "previous_manifest_sha256": manifest.get("manifest_sha256", ""),
+            "file_count": len(new_manifest["files"]), "diff": diff}
+
+
+def handle_material_reference_remove(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    if params.get("confirmed") is not True:
+        raise ValueError("material_reference_confirmation_required")
+    item = _material_item_by_id(str(params.get("material_id") or ""))
+    if item.get("source_mode") != "referenced":
+        raise ValueError("material_not_referenced")
+    material_id = item["material_id"]
+    (_MATERIALS_DIR / f"{material_id}.meta.yaml").unlink(missing_ok=True)
+    (_referenced_dir() / f"{material_id}.manifest.json").unlink(missing_ok=True)
+    for cache in _referenced_dir().glob(f"{material_id}-*.txt"):
+        cache.unlink()
+    return {"meta": {"correlation_id": correlation_id}, "material_id": material_id, "removed": True}

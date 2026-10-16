@@ -398,7 +398,11 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
 def _material_record_by_id(material_id: str) -> dict[str, Any]:
     for item in materials_handler.list_material_source_items():
         if item.get("material_id") == material_id:
-            file_path = materials_handler._MATERIALS_DIR / str(item.get("filename", ""))
+            if item.get("source_mode") == "referenced":
+                # 引用材料：读取前校验清单与源文件哈希；不符 → material_source_changed
+                file_path = materials_handler.ensure_referenced_text(item)
+            else:
+                file_path = materials_handler._MATERIALS_DIR / str(item.get("filename", ""))
             record = dict(item)
             record["path"] = file_path
             return record
