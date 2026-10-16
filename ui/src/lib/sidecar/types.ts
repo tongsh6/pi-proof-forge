@@ -594,6 +594,17 @@ export interface MaterialReferenceStatusResult extends RpcResultBase {
   checked_at: string;
 }
 
+export interface MaterialReferenceRefreshResult extends RpcResultBase {
+  manifest_sha256: string;
+  file_count: number;
+}
+
+export interface MaterialReferenceRemoveResult extends RpcResultBase {
+  removed: boolean;
+}
+
+export interface MaterialReferenceCreateResult extends RpcResultBase, MaterialSourceItem {}
+
 export interface MaterialUploadResult extends RpcResultBase, MaterialSourceItem {}
 
 export interface MaterialListResult extends RpcResultBase {

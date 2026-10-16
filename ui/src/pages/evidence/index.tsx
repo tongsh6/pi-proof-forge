@@ -254,16 +254,15 @@ export function EvidencePage() {
   const openReferencePanel = useCallback(async () => {
     setReferenceOpen(true);
     setReferenceError("");
-    if (materialRoots.length > 0) return;
     try {
       const settings = await getSettings();
       const roots = settings.material_source_roots ?? [];
       setMaterialRoots(roots);
-      setReferenceRootId((current) => current || roots[0]?.id || "");
+      setReferenceRootId((current) => (roots.some((root) => root.id === current) ? current : (roots[0]?.id ?? "")));
     } catch (reason) {
       setReferenceError(getErrorMessage(reason));
     }
-  }, [materialRoots.length]);
+  }, []);
 
   const handleReferenceScan = useCallback(async () => {
     setReferenceBusy(true);
@@ -425,6 +424,11 @@ export function EvidencePage() {
     if (!approved) return;
     try {
       await refreshMaterialReference(materialId);
+      setReferenceStatus((current) => {
+        const next = { ...current };
+        delete next[materialId];
+        return next;
+      });
       await loadEvidence(selectedIdRef.current);
       notify("success", t("toasts.evidence.materialRefreshed"));
     } catch (reason) {
@@ -442,6 +446,11 @@ export function EvidencePage() {
     if (!approved) return;
     try {
       await removeMaterialReference(materialId);
+      setReferenceStatus((current) => {
+        const next = { ...current };
+        delete next[materialId];
+        return next;
+      });
       await loadEvidence(selectedIdRef.current);
       notify("success", t("toasts.evidence.materialReferenceRemoved"));
     } catch (reason) {
@@ -890,7 +899,7 @@ export function EvidencePage() {
                   >
                     {source.label || source.filename}
                     {source.source_mode === "referenced"
-                      ? ` · ${t("pages.evidence.materialSources.referenceBadgeShort")}`
+                      ? ` · ${t("pages.evidence.materialSources.referenceBadge", { count: Number(source.file_count) || 0 })}`
                       : ""}
                   </option>
                 ))}
@@ -1026,7 +1035,7 @@ export function EvidencePage() {
                             <span className="min-w-0 truncate text-text-primary">
                               {source.label}
                               <span className="ml-2 text-text-muted">
-                                {t("pages.evidence.materialSources.referenceBadge", { count: source.file_count || "?" })}
+                                {t("pages.evidence.materialSources.referenceBadge", { count: Number(source.file_count) || 0 })}
                               </span>
                             </span>
                             <span className="flex gap-2">

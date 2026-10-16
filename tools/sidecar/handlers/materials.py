@@ -295,7 +295,18 @@ def _load_reference_manifest(material_id: str) -> dict[str, Any]:
     path = _referenced_dir() / f"{material_id}.manifest.json"
     if not path.is_file():
         raise ValueError("material_source_changed")
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("material_source_changed") from None
+
+
+def _normalize_reference_target(root_path: str, relpath: str) -> Path:
+    return (Path(str(root_path)) / str(relpath or "")).resolve()
+
+
+def _reference_items() -> list[dict[str, Any]]:
+    return [item for item in list_material_source_items() if item.get("source_mode") == "referenced"]
 
 
 def _reference_target_from_item(item: dict[str, Any]) -> Path:
@@ -318,11 +329,16 @@ def _write_reference_manifest(material_id: str, root: dict[str, Any], relpath: s
 
 
 def ensure_referenced_text(item: dict[str, Any]) -> Path:
-    """引用材料读取前校验（manifest + 源文件哈希）；不符 → material_source_changed。"""
+    """引用材料读取前校验（meta/清单一致 + 源文件哈希）；不符 → material_source_changed。"""
     from tools.infra import referenced_materials as rm
     manifest = _load_reference_manifest(str(item.get("material_id")))
+    if str(item.get("manifest_sha256") or "") != str(manifest.get("manifest_sha256") or ""):
+        raise ValueError("material_source_changed")
     target = _reference_target_from_item(item)
-    status = rm.verify_manifest(target, manifest)
+    try:
+        status = rm.verify_manifest(target, manifest)
+    except (OSError, ValueError):
+        raise ValueError("material_source_changed") from None
     if status.get("status") != "ok":
         raise ValueError("material_source_changed")
     cache = _MATERIALS_DIR / str(item.get("filename") or "")
@@ -340,13 +356,13 @@ def handle_material_reference_scan(params: dict[str, Any]) -> dict[str, Any]:
     scanned = rm.scan_files(target)
     if not scanned["files"]:
         raise ValueError("material_source_empty")
-    existing = [item["material_id"] for item in list_material_source_items()
-                if item.get("source_mode") == "referenced"
-                and item.get("source_root") == str(root["path"]) and item.get("source_relpath") == relpath]
+    existing = [item["material_id"] for item in _reference_items()
+                if _normalize_reference_target(item.get("source_root", ""), item.get("source_relpath", "")) == target]
     return {"meta": {"correlation_id": correlation_id}, "root_id": root["id"], "relpath": relpath,
             "file_count": len(scanned["files"]), "total_bytes": scanned["total_bytes"],
             "sample_files": [f["relpath"] for f in scanned["files"][:20]],
-            "skipped": scanned["skipped"][:50], "existing_materials": existing}
+            "skipped": scanned["skipped"][:50], "skipped_count": len(scanned["skipped"]),
+            "existing_materials": existing}
 
 
 def handle_material_reference_create(params: dict[str, Any]) -> dict[str, Any]:
@@ -359,6 +375,10 @@ def handle_material_reference_create(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("label must not exceed 100 characters")
     relpath = str(params.get("relpath") or "")
     target, root = _resolve_reference_target(str(params.get("root_id") or ""), relpath)
+    duplicates = [item["material_id"] for item in _reference_items()
+                  if _normalize_reference_target(item.get("source_root", ""), item.get("source_relpath", "")) == target]
+    if duplicates:
+        raise ValueError(f"material_reference_duplicate:{duplicates[0]}")
     manifest = rm.build_manifest(target)
     if not manifest["files"]:
         raise ValueError("material_source_empty")
@@ -390,7 +410,13 @@ def handle_material_reference_status(params: dict[str, Any]) -> dict[str, Any]:
     item = _material_item_by_id(str(params.get("material_id") or ""))
     if item.get("source_mode") != "referenced":
         raise ValueError("material_not_referenced")
-    manifest = _load_reference_manifest(item["material_id"])
+    checked_at = _utcnow_iso()
+    try:
+        manifest = _load_reference_manifest(item["material_id"])
+    except ValueError:
+        return {"meta": {"correlation_id": correlation_id}, "material_id": item["material_id"],
+                "status": "changed", "changed": [], "missing": [], "added": [],
+                "manifest_sha256": str(item.get("manifest_sha256") or ""), "checked_at": checked_at}
     target = Path(str(item.get("source_root") or "")) / str(item.get("source_relpath") or "")
     blocked = {"status": "changed", "changed": [], "added": [],
                "missing": sorted(f["relpath"] for f in manifest.get("files", []))}
@@ -399,14 +425,13 @@ def handle_material_reference_status(params: dict[str, Any]) -> dict[str, Any]:
     else:
         try:
             rm.resolve_under_roots(target, _allowed_roots())
-        except ValueError:
-            status = blocked
-        else:
             status = rm.verify_manifest(target, manifest)
+        except (OSError, ValueError):
+            status = blocked
     return {"meta": {"correlation_id": correlation_id}, "material_id": item["material_id"],
             "status": status["status"], "changed": status["changed"], "missing": status["missing"],
             "added": status["added"], "manifest_sha256": manifest.get("manifest_sha256", ""),
-            "checked_at": _utcnow_iso()}
+            "checked_at": checked_at}
 
 
 def handle_material_reference_refresh(params: dict[str, Any]) -> dict[str, Any]:

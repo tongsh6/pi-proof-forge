@@ -9,12 +9,18 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SENSITIVE_RE = re.compile(r"(secret|token|密码|passwd|credential|私钥)", re.I)
+SENSITIVE_RE = re.compile(r"(secret|token|password|passwd|密码|密钥|凭证|credential|private[_-]?key)", re.I)
 ALLOWED_SUFFIXES = {".md", ".txt"}
+
+
+def is_sensitive_name(name: str) -> bool:
+    normalized = unicodedata.normalize("NFKC", str(name))
+    return bool(SENSITIVE_RE.search(normalized))
 
 
 def _file_sha(path: Path) -> str:
@@ -27,7 +33,7 @@ def _skip_reason(path: Path, base: Path) -> str | None:
         return "hidden_path"
     if path.suffix.lower() not in ALLOWED_SUFFIXES:
         return "unsupported_suffix"
-    if SENSITIVE_RE.search(path.name):
+    if is_sensitive_name(path.name):
         return "sensitive_name"
     if path.stat().st_size == 0:
         return "empty"

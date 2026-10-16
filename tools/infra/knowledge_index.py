@@ -136,16 +136,22 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
         if source_mode == "referenced":
             manifest_path = meta_dir / ".referenced" / f"{material_id}.manifest.json"
             manifest: dict[str, Any] = {}
-            if manifest_path.is_file():
+            manifest_ok = manifest_path.is_file()
+            if manifest_ok:
                 try:
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 except ValueError:
-                    manifest = {}
+                    manifest_ok = False
             target = Path(str(meta.get("source_root") or "")) / str(meta.get("source_relpath") or "")
-            try:
-                reference_status = rm.verify_manifest(target, manifest).get("status", "changed")
-            except (OSError, ValueError):
+            if not manifest_ok:
                 reference_status = "changed"
+            else:
+                try:
+                    from tools.policy.exclusions import load_material_source_roots
+                    rm.resolve_under_roots(target, load_material_source_roots())
+                    reference_status = rm.verify_manifest(target, manifest).get("status", "changed")
+                except (OSError, ValueError):
+                    reference_status = "changed"
             if not text and reference_status == "ok" and manifest.get("files"):
                 try:
                     text = rm.merge_text(target, manifest["files"])
@@ -503,6 +509,8 @@ def verify_index(root: Path, index: dict[str, Any]) -> list[dict[str, str]]:
                 try:
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                     target = Path(str(material.get("source_root") or "")) / str(material.get("source_relpath") or "")
+                    from tools.policy.exclusions import load_material_source_roots
+                    rm.resolve_under_roots(target, load_material_source_roots())
                     source_ok = rm.verify_manifest(target, manifest).get("status") == "ok"
                 except (OSError, ValueError):
                     source_ok = False

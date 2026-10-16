@@ -3,6 +3,7 @@ import json
 from tools.infra.job_preferences import preferences_from_fields,validate_items
 from tools.infra.llm.client import LLMClient
 from tools.infra.persistence.review_queue import locked_review_queue
+from tools.sidecar.handlers import materials as materials_handler
 from tools.sidecar.handlers import profile,settings as settings_handler
 from tools.sidecar.handlers.evidence import _selected_text_materials,_documents
 
@@ -17,7 +18,8 @@ def _source(material_id,document_id=None):
         docs=[d for d in docs if d['document_id']==document_id]
     if len(docs)!=1:raise ValueError('job_preferences_select_one_document')
     doc=docs[0]
-    return {'material_id':material_id,'filename':record['path'].name,'label':record.get('label',''),
+    relative=record['path'].relative_to(materials_handler._MATERIALS_DIR).as_posix()
+    return {'material_id':material_id,'filename':relative,'label':record.get('label',''),
             'document_id':doc['document_id'],'sha256':doc['sha256']},doc['text']
 
 

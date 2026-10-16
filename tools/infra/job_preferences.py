@@ -33,11 +33,33 @@ def load_preferences(profile_path):
     if profile_path is None or not profile_path.is_file():return None
     value=preferences_from_fields(parse_simple_yaml(profile_path.read_text())['scalars'])
     if not value['items']:return None
-    source=value['source'];filename=source.get('filename','')
-    if not filename or Path(filename).name!=filename:raise ValueError('job_preferences_source_changed')
-    path=profile_path.parent/'materials'/filename
-    if not path.is_file() or path.is_symlink():raise ValueError('job_preferences_source_changed')
-    documents=split_material_documents(path.read_text(),filename)
+    source=value['source'];filename=str(source.get('filename',''))
+    if not filename or Path(filename).is_absolute():raise ValueError('job_preferences_source_changed')
+    materials_dir=profile_path.parent/'materials'
+    path=materials_dir/filename
+    if (not path.is_file() or path.is_symlink()
+            or not path.resolve().is_relative_to(materials_dir.resolve())):
+        raise ValueError('job_preferences_source_changed')
+    meta_path=materials_dir/f"{source.get('material_id','')}.meta.yaml"
+    if meta_path.is_file():
+        meta=parse_simple_yaml(meta_path.read_text())['scalars']
+        if meta.get('source_mode')=='referenced':
+            from tools.infra import referenced_materials as rm
+            from tools.policy.exclusions import load_material_source_roots
+            manifest_path=materials_dir/'.referenced'/f"{source['material_id']}.manifest.json"
+            if not manifest_path.is_file():raise ValueError('job_preferences_source_changed')
+            try:manifest=json.loads(manifest_path.read_text())
+            except ValueError:raise ValueError('job_preferences_source_changed') from None
+            if manifest.get('manifest_sha256')!=meta.get('manifest_sha256'):
+                raise ValueError('job_preferences_source_changed')
+            target=Path(str(meta.get('source_root') or ''))/str(meta.get('source_relpath') or '')
+            try:
+                rm.resolve_under_roots(target, load_material_source_roots())
+                verified=rm.verify_manifest(target, manifest).get('status')=='ok'
+            except ValueError:
+                verified=False
+            if not verified:raise ValueError('job_preferences_source_changed')
+    documents=split_material_documents(path.read_text(),Path(filename).name)
     doc=next((d for d in documents if d['document_id']==source['document_id'] and d['sha256']==source['sha256']),None)
     if doc is None:raise ValueError('job_preferences_source_changed')
     validate_items(value['items'],doc['text'])

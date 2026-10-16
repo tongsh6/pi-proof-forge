@@ -184,22 +184,29 @@ def load_material_source_roots(path: Path | None = None) -> list[dict[str, str]]
 
 
 def save_material_source_roots(roots: list[dict[str, str]], path: Path | None = None) -> Path | None:
-    """保存允许根：必须是已存在目录；按解析后路径去重；自动生成 id 与默认 label。"""
+    """保存允许根：必须是已存在目录；拒绝危险根（/、仓库根、材料库）；按解析路径去重；
+    id 冲突时重新生成；自动生成 id 与默认 label。"""
+    protected = {Path("/"), Path.cwd().resolve(), (Path.cwd() / "materials").resolve()}
     normalized: list[dict[str, str]] = []
-    seen: set[str] = set()
+    seen_paths: set[str] = set()
+    seen_ids: set[str] = set()
     for item in roots or []:
         if not isinstance(item, dict):
             raise ValueError("material_source_root_invalid")
         path_value = str(item.get("path") or "").strip()
         resolved = Path(path_value).resolve() if path_value else None
-        if resolved is None or not resolved.is_dir():
+        if resolved is None or not resolved.is_dir() or resolved in protected:
             raise ValueError("material_source_root_invalid")
         key = str(resolved)
-        if key in seen:
+        if key in seen_paths:
             continue
-        seen.add(key)
+        seen_paths.add(key)
+        root_id = str(item.get("id") or "").strip() or f"msr_{uuid4().hex[:8]}"
+        if root_id in seen_ids:
+            root_id = f"msr_{uuid4().hex[:8]}"
+        seen_ids.add(root_id)
         normalized.append({
-            "id": str(item.get("id") or "").strip() or f"msr_{uuid4().hex[:8]}",
+            "id": root_id,
             "label": str(item.get("label") or "").strip() or resolved.name,
             "path": key,
         })

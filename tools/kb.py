@@ -142,7 +142,7 @@ def _cmd_grep(args) -> int:
             path = Path(args.root) / "materials" / material["filename"]
             if not path.is_file():
                 continue
-            docs = split_material_documents(path.read_text(encoding="utf-8"), material["filename"])
+            docs = split_material_documents(path.read_text(encoding="utf-8"), Path(material["filename"]).name)
             for doc in docs:
                 if needle.casefold() in doc["text"].casefold():
                     created = next((d["dates"]["frontmatter"]["created"] for d in material["documents"]
@@ -208,7 +208,7 @@ def _cmd_read(args) -> int:
     if not path.is_file():
         print(f"stale_document: {args.material}/{args.document_id} material file missing")
         return 2
-    docs = split_material_documents(path.read_text(encoding="utf-8"), material["filename"])
+    docs = split_material_documents(path.read_text(encoding="utf-8"), Path(material["filename"]).name)
     doc = next((d for d in docs if d["document_id"] == args.document_id), None)
     if doc is None:
         print(f"stale_document: {args.material}/{args.document_id} not found in current material; "

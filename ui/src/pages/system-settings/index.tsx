@@ -337,7 +337,12 @@ export function SystemSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   // 总览“配置模型”等入口可用 ?section=llm 直接打开模型分组。
-  const [activeSection, setActiveSection] = useState<SectionId>(searchParams.get("section") === "llm" ? "llm" : "channels");
+  const [activeSection, setActiveSection] = useState<SectionId>(
+    searchParams.get("section") === "llm"
+      ? "llm"
+      : searchParams.get("section") === "materialSources"
+        ? "materialSources"
+        : "channels");
   const [llmForm, setLlmForm] = useState<LlmForm>(() => toLlmForm(null));
   const [llmSaveState, setLlmSaveState] = useState<LlmSaveState>("idle");
   const [llmCheckState, setLlmCheckState] = useState<LlmCheckState>("idle");

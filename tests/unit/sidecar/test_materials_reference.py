@@ -166,3 +166,147 @@ def test_kb_index_reports_reference_status_and_verify(env):
     assert index2["materials"][material_id]["reference_status"] == "changed"
     stale = ki.verify_index(tmp, index2)
     assert any(item["kind"] == "material" and item["ref"] == material_id for item in stale)
+
+
+def test_create_rejects_duplicate_target_and_normalizes_scan_compare(env):
+    _, _, _ = env
+    first = _create(root_id="msr_test", relpath="proj", label="引用·A")
+    with pytest.raises(ValueError) as excinfo:
+        _create(root_id="msr_test", relpath="proj", label="引用·B")
+    assert "duplicate" in str(excinfo.value)
+    preview = _scan(root_id="msr_test", relpath="proj/")
+    assert preview["existing_materials"] == [first["material_id"]]
+
+
+def test_missing_source_and_corrupt_manifest_normalize_to_changed(env):
+    from tools.sidecar.handlers import evidence
+    _, vault, materials_dir = env
+    created = _create(root_id="msr_test", relpath="proj", label="引用·归一")
+    material_id = created["material_id"]
+    manifest_path = materials_dir / ".referenced" / f"{material_id}.manifest.json"
+    manifest_path.write_text("{ not json", encoding="utf-8")
+    with pytest.raises(ValueError) as excinfo:
+        evidence._selected_text_materials([material_id])
+    assert "material_source_changed" in str(excinfo.value)
+    status = materials.handle_material_reference_status({"meta": {"correlation_id": "t"}, "material_id": material_id})
+    assert status["status"] == "changed"
+    manifest_path.write_text("{}", encoding="utf-8")
+    import shutil as _shutil
+    _shutil.rmtree(vault / "proj")
+    with pytest.raises(ValueError) as excinfo:
+        evidence._selected_text_materials([material_id])
+    assert "material_source_changed" in str(excinfo.value)
+    status = materials.handle_material_reference_status({"meta": {"correlation_id": "t"}, "material_id": material_id})
+    assert status["status"] == "changed"
+
+
+def test_roots_removal_blocks_validation_and_kb(env):
+    from tools.infra.evidence_sources import source_fingerprints, validated_source_inputs
+    from tools.sidecar.handlers import evidence
+    from tools.infra import knowledge_index as ki
+    tmp, _, materials_dir = env
+    created = _create(root_id="msr_test", relpath="proj", label="引用·撤根")
+    material_id = created["material_id"]
+    records = evidence._selected_text_materials([material_id])
+    fingerprints = source_fingerprints(records)
+    doc = {"scalars": {"source_material_fingerprints_json": json.dumps(fingerprints)},
+           "lists": {"source_material_ids": [material_id]}}
+    _ = validated_source_inputs(doc, materials_dir)
+    exclusions.save_material_source_roots([])
+    with pytest.raises(ValueError) as excinfo:
+        validated_source_inputs(doc, materials_dir)
+    assert "material_source_changed" in str(excinfo.value)
+    index = ki.build_index(tmp)
+    assert index["materials"][material_id]["reference_status"] == "changed"
+
+
+def test_kb_single_file_reference_read_roundtrip(env):
+    from tools import kb
+    tmp, vault, _ = env
+    (vault / "single.md").write_text("# 单档\n\n单档正文。\n", encoding="utf-8")
+    created = _create(root_id="msr_test", relpath="single.md", label="引用·单档")
+    assert kb.main(["build", "--root", str(tmp)]) == 0
+    index = json.loads((tmp / "knowledge-index" / "index.json").read_text(encoding="utf-8"))
+    doc_id = index["materials"][created["material_id"]]["documents"][0]["document_id"]
+    assert kb.main(["read", created["material_id"], doc_id, "--root", str(tmp)]) == 0
+
+
+def test_scan_returns_total_skipped_count(env):
+    _, vault, _ = env
+    for index in range(60):
+        (vault / "proj" / f"secret-{index:02d}.md").write_text("x", encoding="utf-8")
+    preview = _scan(root_id="msr_test", relpath="proj")
+    assert preview["skipped_count"] == 61
+    assert len(preview["skipped"]) == 50
+
+
+def test_sensitive_name_variants_are_skipped(env):
+    _, vault, _ = env
+    for name in ("password.md", "密钥.md", "ＴＯＫＥＮ.md", "credentials.txt"):
+        (vault / "proj" / name).write_text("敏感", encoding="utf-8")
+    from tools.infra import referenced_materials as rm
+    scanned = rm.scan_files(vault / "proj")
+    skipped = {item["relpath"] for item in scanned["skipped"] if item["reason"] == "sensitive_name"}
+    assert {"password.md", "密钥.md", "ＴＯＫＥＮ.md", "credentials.txt"} <= skipped
+
+
+def test_allowlist_rejects_dangerous_roots_and_dedupes_ids(env):
+    _, vault, _ = env
+    from pathlib import Path as _Path
+    with pytest.raises(ValueError):
+        exclusions.save_material_source_roots([{"path": "/"}])
+    with pytest.raises(ValueError):
+        exclusions.save_material_source_roots([{"path": str(_Path.cwd())}])
+    with pytest.raises(ValueError):
+        exclusions.save_material_source_roots([{"path": str(_Path.cwd() / "materials")}])
+    exclusions.save_material_source_roots([
+        {"id": "msr_same", "label": "a", "path": str(vault)},
+        {"id": "msr_same", "label": "b", "path": str(vault / "proj")},
+    ])
+    roots = exclusions.load_material_source_roots()
+    assert len({r["id"] for r in roots}) == 2
+
+
+def test_ensure_detects_meta_manifest_mismatch(env):
+    from tools.sidecar.handlers import evidence
+    _, _, materials_dir = env
+    created = _create(root_id="msr_test", relpath="proj", label="引用·元数据")
+    meta_path = materials_dir / f"{created['material_id']}.meta.yaml"
+    text = meta_path.read_text(encoding="utf-8").replace(created["manifest_sha256"], "0" * 64)
+    meta_path.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError) as excinfo:
+        evidence._selected_text_materials([created["material_id"]])
+    assert "material_source_changed" in str(excinfo.value)
+
+
+def test_kb_corrupt_manifest_marks_changed(env):
+    from tools.infra import knowledge_index as ki
+    tmp, _, materials_dir = env
+    created = _create(root_id="msr_test", relpath="proj", label="引用·损坏清单")
+    (materials_dir / ".referenced" / f"{created['material_id']}.manifest.json").write_text("{ nope", encoding="utf-8")
+    index = ki.build_index(tmp)
+    assert index["materials"][created["material_id"]]["reference_status"] == "changed"
+
+
+def test_job_preferences_roundtrip_from_referenced_material(env):
+    from tools.sidecar.handlers import job_preferences as jp_handler
+    from tools.infra.job_preferences import load_preferences
+    from tools.infra.material_documents import split_material_documents
+    tmp, vault, materials_dir = env
+    created = _create(root_id="msr_test", relpath="proj", label="引用·偏好")
+    cache = (materials_dir / created["filename"]).read_text(encoding="utf-8")
+    docs = split_material_documents(cache, Path(created["filename"]).name)
+    doc = next(d for d in docs if d["label"] == "a.md")
+    source, text = jp_handler._source(created["material_id"], doc["document_id"])
+    assert source["filename"].startswith(".referenced/")
+    quote = next(line for line in ("甲内容。", "乙内容。") if line in text)
+    payload = {"schema_version": 1, "source": source,
+               "items": [{"kind": "primary", "text": "产品平台方向", "quote": quote}],
+               "confirmed_at": "2026-10-17T00:00:00Z"}
+    profile_path = tmp / "personal_profile.yaml"
+    profile_path.write_text(f'job_preferences_json: {json.dumps(json.dumps(payload, ensure_ascii=False))}\n', encoding="utf-8")
+    value = load_preferences(profile_path)
+    assert value["items"][0]["text"] == "产品平台方向"
+    (vault / "proj" / "a.md").write_text("# 甲改\n\n甲内容改了。\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_preferences(profile_path)

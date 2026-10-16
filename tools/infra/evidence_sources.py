@@ -89,7 +89,7 @@ def validated_source_inputs(doc, material_dir: Path):
                     or hashlib.sha256(path.read_bytes()).hexdigest() != data.get('sha256')):
                 raise ValueError('material_source_changed')
             if data.get('mode') == 'referenced':
-                # 引用材料：先重验清单与源文件哈希，再核对缓存字节
+                # 引用材料：先验允许根，再重验清单与源文件哈希，最后核对缓存字节
                 manifest_path = material_dir / '.referenced' / f'{mid}.manifest.json'
                 if not manifest_path.is_file():
                     raise ValueError('material_source_changed')
@@ -97,7 +97,12 @@ def validated_source_inputs(doc, material_dir: Path):
                 if manifest.get('manifest_sha256') != data.get('manifest_sha256'):
                     raise ValueError('material_source_changed')
                 from tools.infra import referenced_materials as rm
+                from tools.policy.exclusions import load_material_source_roots
                 target = Path(str(data.get('source_root') or '')) / str(data.get('source_relpath') or '')
+                try:
+                    rm.resolve_under_roots(target, load_material_source_roots())
+                except ValueError as exc:
+                    raise ValueError('material_source_changed') from exc
                 if rm.verify_manifest(target, manifest).get('status') != 'ok':
                     raise ValueError('material_source_changed')
             records.append({'material_id': mid, 'path': path})

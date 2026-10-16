@@ -371,6 +371,7 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
     artifacts = [
         _artifact_summary(evidence_id, token) for token in l.get("artifacts", [])
     ]
+    source_error = _source_error(doc)
     return {
         "evidence_id": s.get("id", path.stem),
         "title": s.get("title", ""),
@@ -387,10 +388,10 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
         "source_documents": json.loads(s.get("source_documents_json") or "[]"),
         "field_sources": json.loads(s.get("field_sources_json") or "[]"),
         "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "source_error": _source_error(doc),
+        "source_error": source_error,
         "review_decision": s.get("review_decision", ""),
         "reviewed_at": s.get("reviewed_at", ""),
-        "candidate_pool_eligible": s.get("candidate_pool_eligible", "false") == "true" and not _source_error(doc),
+        "candidate_pool_eligible": s.get("candidate_pool_eligible", "false") == "true" and not source_error,
         "missing_items": l.get("missing_items", []),
     }
 
