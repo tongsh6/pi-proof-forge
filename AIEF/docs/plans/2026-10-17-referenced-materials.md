@@ -2,7 +2,7 @@
 
 > 设计日期：2026-10-17 ｜ 状态：已确认 ｜ 性质：App 一级能力（材料引用）首个切片
 
-**目标**：让 App 可以"引用"允许来源根内的外部文件/目录作为材料——不复制原件、内容变更可被发现并阻断，证据/生成/档案/索引全链路可用。首个真实用例：`worklog-private/00-EC+/10-projects/亚玛芬/始祖鸟`（约 5,076 个未入库文件）。
+**目标**：让 App 可以"引用"允许来源根内的外部文件/目录作为材料——不复制原件、内容变更可被发现并阻断，证据/生成/档案/索引全链路可用。首个真实用例：`worklog-private/00-EC+/10-projects/亚玛芬/始祖鸟`（实测 6,058 个可引用文件；初建 6,060，扩展敏感名规则后刷新为 6,058）。
 
 **为什么不用复制/链接**：快照复制会产生不跟随源的副本；符号/硬链接被证据契约明确拒绝（静默可变）。引用式材料以"冻结清单 + 逐文件 sha256 + 读取前校验"实现单源真相与变更可发现。
 
@@ -38,11 +38,11 @@ file_count: "N"
 
 | RPC | 行为 |
 |---|---|
-| `materials.reference.scan` | `{root_id, relpath}` → 预览：file_count/total_bytes/sample_files(≤20)/skipped/重叠提示 |
-| `materials.reference.create` | `{root_id, relpath, label}` → 建 manifest+缓存+meta；返回材料项 |
-| `materials.reference.status` | `{material_id}` → 重扫源 → `ok` 或 `changed`（changed/added/removed 摘要） |
-| `materials.reference.refresh` | `{material_id, confirmed:true}` → 重建 manifest+缓存（新清单）；已绑定卡片随指纹失配进入"来源已变更，需重审" |
-| `materials.reference.remove` | `{material_id, confirmed:true}` → 删 meta+manifest+缓存（不动源） |
+| `material.reference.scan` | `{root_id, relpath}` → 预览：file_count/total_bytes/sample_files(≤20)/skipped/重叠提示 |
+| `material.reference.create` | `{root_id, relpath, label}` → 建 manifest+缓存+meta；返回材料项 |
+| `material.reference.status` | `{material_id}` → 重扫源 → `ok` 或 `changed`（changed/added/removed 摘要） |
+| `material.reference.refresh` | `{material_id, confirmed:true}` → 重建 manifest+缓存（新清单）；已绑定卡片随指纹失配进入"来源已变更，需重审" |
+| `material.reference.remove` | `{material_id, confirmed:true}` → 删 meta+manifest+缓存（不动源） |
 
 - `settings.get` 返回 `material_source_roots`；`settings.update` 接受该字段（校验路径存在/去重/非材料库自身）
 - `materials.list` 项增加 `source_mode`、`reference`（root/relpath/file_count）
@@ -86,7 +86,7 @@ file_count: "N"
 
 ## 八、验收口径
 
-- 始祖鸟树（5,076 文件）经 App UI 创建为引用材料；kb documents 1610 → ~6,800
+- 始祖鸟树（6,058 文件）经同 UI 代码路径创建为引用材料；kb documents 1610 → 6,595
 - 证据流：可选该材料生成草稿并保存（指纹含 manifest 校验）
 - 改源文件 → 全链路阻断并提示刷新；刷新后确认语义正确（旧绑定重审）
 - 回归全绿；无平台写入；快照材料与旧指纹完全兼容

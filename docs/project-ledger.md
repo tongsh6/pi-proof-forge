@@ -6,7 +6,8 @@ Last updated: 2026-10-17
 
 - 能力：材料可引用允许来源根内的外部文件/目录，不复制原件；清单冻结（逐文件 sha256），内容变更/删除在读取、证据/档案校验、索引校验三处统一报 `material_source_changed` 并阻断；刷新（用户确认）后以最新内容为新基线，已绑定卡片自然进入"来源已变更，需重审"；新增文件不静默纳入。来源根由系统设置管理（路径必须为已存在目录，本机 policy 持久化）。
 - 实现：`tools/infra/referenced_materials.py`（扫描/清单/校验/合并，含根内约束、符号链接拒绝、敏感名与空文件过滤）；`material.reference.scan/create/status/refresh/remove` 五个 RPC；`settings.get/update` 增加 `material_source_roots`；证据链在 `validated_source_inputs` 与 `_selected_text_materials` 收口校验；kb 构建/校验纳入引用材料（标记 `reference_status` 与「引用」）；UI：证据页「引用外部目录」（扫描预览→命名创建）与已引用列表（状态/刷新/解除），系统设置「材料来源」分类。
-- 真实验收：始祖鸟工程档案（6,060 文件 / 29.2MB，跳过敏感/隐藏 50 项）经 handler 同 UI 路径创建为引用材料 `mat_0eb6c626`（扫描 4.2s、建档 0.7s、缓存 31MB、清单 1.77MB）；kb 重建 **1.0s → materials 23 / documents 6,597**（+4,987 档），`kb verify` 通过；真实读取校验 0.42s，指纹 mode=referenced。快照材料与旧指纹零回归（完整回归 **1336 通过、1 跳过、18 subtests**）。
+- 真实验收：始祖鸟工程档案经同 UI 代码路径创建为引用材料 `mat_0eb6c626`（扫描 6,060 文件 / 29.2MB、4.2s；建档 0.7s；缓存 31MB、清单 1.77MB；跳过 3,920 项=隐藏 2,812/非 md-txt 1,098/符号链接 5/空 2/敏感名 3）。审查后按扩展敏感名规则刷新为 6,058 文件、清单 `5390a47a…`；kb 重建 → materials 23 / documents **6,595**，`kb verify` 通过；真实读取校验 0.42s，指纹 mode=referenced。快照材料与旧指纹零回归。
+- 独立审查与修复（同日）：审查子代理（含边界探针）发现并修复——TS 编译门禁曾失败（重复导入/缺失类型，已补 `tsc --noEmit` 提交门禁测试）；单档引用 kb 回读档号不一致；求职偏好从引用材料保存后无法回读；来源缺失/损坏清单错误码归一（统一 `material_source_changed`）；同路径重复引用拦截；撤根后指纹与 kb 校验阻断；扫描跳过数全量计数（更正此前 50 的截断误报）；坏清单 kb 误报 ok；`ensure` 校验 meta 与清单一致；敏感名规则扩展（password/密钥/凭证/全角 NFKC）；白名单拒绝 `/`、仓库根、材料库并去重 id。读取路径 memo 与 reconciler 校验列为后续项。回归 **1347 通过、1 跳过、18 subtests**（新增编译门禁与 10 项边界测试）。
 - 边界：来源目录一分未动；缓存为派生文件（可重建）；与既有始祖鸟快照材料（998 文件子集）存在内容重叠，属预期（历史快照 vs 实时引用）；UI 真机冒烟由用户在 App 内确认。`.pen` 同步待办：pencil 工具要求先在 pen.dev 打开 `ui/design/piproofforge.pen` 后方可读写，DESIGN.md 已同步，`.pen` 待文件打开后补。
 
 ## 2026-10-17 材料库查漏补缺：导入 worklog-private 未索引资料（P0-026 续）
