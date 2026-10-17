@@ -351,6 +351,32 @@ def _cmd_verify(args) -> int:
     return 0 if not stale else 2
 
 
+def _cmd_coverage(args) -> int:
+    index = _load_index(args.root)
+    if index is None:
+        return 1
+    coverage = index.get("source_coverage")
+    if coverage is None:
+        print("coverage_not_built: run `kb build` first")
+        return 2
+    rows = [item for item in coverage["items"]
+            if (not args.status or item["status"] == args.status)
+            and (not args.root_id or item["root_id"] == args.root_id)
+            and item["path"].startswith(args.path)]
+    shown = rows[:max(0, args.limit)]
+    result = {"roots": coverage["roots"], "counts": coverage["counts"], "errors": coverage["errors"],
+              "excluded_counts": coverage["excluded_counts"], "matched": len(rows), "shown": len(shown), "items": shown}
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=1))
+    else:
+        print(f"来源覆盖：匹配 {len(rows)} / 展示 {len(shown)}；仅目录项不含正文，不作为事实。")
+        for item in shown:
+            print(f"{item['root_id']}/{item['path']}  {item['status']}  {item['availability']}")
+        for error in coverage["errors"]:
+            print(f"扫描未完成：{error['root_id']}/{error['path']} ({error['reason']})")
+    return 0 if not coverage["errors"] else 2
+
+
 def _cmd_index(args) -> int:
     path = Path(args.root) / INDEX_DIR / "INDEX.md"
     if not path.is_file():
@@ -434,6 +460,14 @@ def main(argv: list[str] | None = None) -> int:
     verify = sub.add_parser("verify", help="重哈希校验索引是否失效")
     add_root(verify)
     verify.set_defaults(func=_cmd_verify)
+
+    coverage = sub.add_parser("coverage", help="来源目录、正文覆盖与附件可用性（只读导航）")
+    add_root(coverage)
+    coverage.add_argument("--root-id", default="")
+    coverage.add_argument("--path", default="", help="来源根内相对路径前缀")
+    coverage.add_argument("--status", default="", choices=["", "indexed", "unindexed", "stale", "filtered", "metadata_only", "unavailable"])
+    coverage.add_argument("--limit", type=int, default=200)
+    coverage.set_defaults(func=_cmd_coverage)
 
     index = sub.add_parser("index", help="打印 INDEX.md")
     add_root(index)

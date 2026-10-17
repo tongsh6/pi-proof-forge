@@ -7,13 +7,22 @@ from pathlib import PurePosixPath
 MAX_DOCUMENT_CHARS=24000
 
 
+def material_document_skip_reason(source: str) -> str:
+    """拆档与知识导航共用过滤口径，不改变已有文档身份。"""
+    path = PurePosixPath(source)
+    if path.name.lower() in {'agents.md', 'claude.md', 'index.md', 'local-paths.md'}:
+        return 'navigation_or_agent'
+    if any(p.lower() in {'templates', 'rules', '.git'} for p in path.parts):
+        return 'template_or_rules'
+    return ''
+
+
 def split_material_documents(text: str, filename: str) -> list[dict]:
     markers=list(re.finditer(r'^# Source: ([^\n]+)\n',text,re.MULTILINE))
     sources=[(m.group(1).strip(),text[m.end():markers[i+1].start() if i+1<len(markers) else len(text)]) for i,m in enumerate(markers)] if markers else [(filename,text)]
     docs=[]
     for source,body in sources:
-        path=PurePosixPath(source)
-        if path.name.lower() in {'agents.md','claude.md','index.md','local-paths.md'} or any(p.lower() in {'templates','rules','.git'} for p in path.parts):continue
+        if material_document_skip_reason(source):continue
         body=body.strip()
         parts=[];rest=body
         while rest:

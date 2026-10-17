@@ -1,5 +1,20 @@
 # 工具说明
 
+## 知识索引与来源覆盖
+
+`kb` 复用材料库和已配置来源根，提供确定性目录、字面检索及原文回读。正文引用使用 material_id/document_id/sha256；附件目录、日期线索和设计计划不能直接当作个人实绩。
+
+```bash
+python3 tools/kb.py build
+python3 tools/kb.py verify --json
+python3 tools/kb.py coverage --status unindexed
+python3 tools/kb.py coverage --status metadata_only --path '00-EC+/' --json
+python3 tools/kb.py find --title-token 'DAG' --json
+python3 tools/kb.py read <material_id> <document_id>
+```
+
+`coverage` 区分正文已收录、未纳入、来源不一致、规则过滤和仅目录；附件会标记本地实体或 Git LFS 指针。不会自动下载、转换或纳入正文。`verify` 发现来源目录/已登记资产变化后要求重建导航，冻结材料的刷新仍沿用原有确认流程。详见 `AIEF/docs/plans/2026-10-17-knowledge-index.md`。
+
 ## 证据提炼 CLI
 
 从原始语料提炼 evidence card（基于规则的最小实现）。

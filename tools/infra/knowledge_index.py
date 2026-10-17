@@ -17,6 +17,7 @@ from tools.infra.material_documents import split_material_documents
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.infra.career_profile import parse_project_period
 from tools.infra import referenced_materials as rm
+from tools.infra.knowledge_coverage import build_source_coverage
 
 BUILDER_VERSION = "kb-index-v1"
 
@@ -147,8 +148,8 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
                 reference_status = "changed"
             else:
                 try:
-                    from tools.policy.exclusions import load_material_source_roots
-                    rm.resolve_under_roots(target, load_material_source_roots())
+                    from tools.policy.exclusions import load_material_source_roots, resolve_policy_path
+                    rm.resolve_under_roots(target, load_material_source_roots(resolve_policy_path(root)))
                     reference_status = rm.verify_manifest(target, manifest).get("status", "changed")
                 except (OSError, ValueError):
                     reference_status = "changed"
@@ -164,6 +165,7 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
             entries.append({
                 "document_id": doc["document_id"],
                 "label": doc["label"],
+                "source_name": doc["source_name"],
                 "path": doc["label"].split("/")[:-1],
                 "doc_type": doc_type_for(doc["label"]),
                 "title": title_from(doc["text"], doc["label"]),
@@ -177,6 +179,7 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
             "label": str(meta.get("label") or ""),
             "kind": str(meta.get("kind") or ""),
             "filename": filename,
+            "source_path": str(meta.get("source_path") or ""),
             "sha256": _file_sha(path),
             "bytes": path.stat().st_size,
             "document_count": len(entries),
@@ -418,7 +421,24 @@ def build_index(root: Path, now: str | None = None) -> dict[str, Any]:
         "person_docs": person_docs,
         "nonfact_materials": nonfact,
         "skipped": skipped,
+        "asset_inventory": _asset_inventory(root),
+        "source_coverage": build_source_coverage(root, materials),
     }
+
+
+def _asset_inventory(root: Path) -> dict[str, str]:
+    paths = [p for folder, pattern in (("materials", "*.meta.yaml"), ("evidence_cards", "*.yaml"),
+                                      ("job_profiles", "*.yaml"), ("job_leads", "*.yaml"))
+             for p in (root / folder).glob(pattern)]
+    if (root / "personal_profile.yaml").is_file():
+        paths.append(root / "personal_profile.yaml")
+    result = {}
+    for path in sorted(paths):
+        try:
+            result[path.relative_to(root).as_posix()] = _file_sha(path)
+        except OSError:
+            result[path.relative_to(root).as_posix()] = "unreadable"
+    return result
 
 
 def _top_dirs(entry: dict[str, Any], limit: int = 5) -> str:
@@ -473,10 +493,30 @@ def render_index_md(index: dict[str, Any]) -> str:
         for item in index["skipped"]:
             lines.append(f"- {item['kind']}：{item['file']}（{item['error']}）")
     else:
-        lines.append("- 无（全量资产已纳入）")
+        lines.append("- 已登记资产构建无错误；不代表上游来源已全部纳入正文。")
+    coverage = index.get("source_coverage", {})
+    lines += ["", "## 来源覆盖（文件数，不等于正文分片数）"]
+    if not coverage.get("roots"):
+        lines.append("- 未配置材料来源根；本次仅检查已登记资产。")
+    else:
+        labels = {"indexed": "正文已索引", "unindexed": "未纳入正文", "stale": "来源与快照不一致",
+                  "filtered": "按拆档规则过滤", "metadata_only": "仅目录（附件/LFS/非UTF-8）", "unavailable": "无法读取"}
+        lines += ["| 状态 | 数量 |", "|---|---|"]
+        for status, count in sorted(coverage.get("counts", {}).items()):
+            lines.append(f"| {labels.get(status, status)} `{status}` | {count} |")
+        pointers = sum(x["availability"] == "lfs_pointer" for x in coverage["items"])
+        lines += [f"- Git LFS 指针：{pointers}；不含原件正文，不自动下载。",
+                  "- 附件只提供路径/格式/可用状态，不进入证据池；学习资料与模板未纳入项不等于遗漏事实。",
+                  "- 明细：`kb coverage --status unindexed` / `kb coverage --status metadata_only --json`。"]
+        if coverage.get("excluded_counts"):
+            lines.append("- 扫描排除（隐藏目录按目录计数）：" + " / ".join(
+                f"{reason} {count}" for reason, count in coverage["excluded_counts"].items()))
+        for error in coverage.get("errors", []):
+            lines.append(f"- 扫描未完成：{error['root_id']}/{error['path']}（{error['reason']}）")
     lines += ["", "## 范围说明",
               "- 纳入：材料 / 证据卡 / 职业档案 / 岗位画像 / 岗位线索",
               "- 上游：私有工作仓 worklog-private/ 为材料来源；引用式材料（source_mode=referenced）不复制纳入，其余未纳入部分按需分批",
+              "- 正文只纳入材料库的 md/txt；INDEX/AGENTS/CLAUDE/local-paths 与 templates/rules 目录按原拆档规则过滤。",
               "- 排除：匹配报告与运行产物（matching_reports/、outputs/，属运行输出）、上传简历记录（uploaded_resumes/，平台产物）、"
               "profiles/candidate_profile.yaml（模板占位）、release-notes/ 与 scripts/（仓库工程）；"
               "ui/src-tauri/resources/evidence_cards|job_profiles 为本地镜像副本，不重复索引",
@@ -495,6 +535,11 @@ def render_index_md(index: dict[str, Any]) -> str:
 def verify_index(root: Path, index: dict[str, Any]) -> list[dict[str, str]]:
     root = Path(root)
     stale: list[dict[str, str]] = []
+    if index.get("asset_inventory") != _asset_inventory(root):
+        stale.append({"kind": "inventory", "ref": "registered_assets", "path": "."})
+    coverage = build_source_coverage(root, index.get("materials", {}))
+    if coverage != index.get("source_coverage") or coverage["errors"]:
+        stale.append({"kind": "source_coverage", "ref": "allowed_roots", "path": "."})
 
     def check(kind: str, ref: str, path: Path, expected: str) -> None:
         if not path.is_file() or _file_sha(path) != expected:
@@ -509,8 +554,8 @@ def verify_index(root: Path, index: dict[str, Any]) -> list[dict[str, str]]:
                 try:
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                     target = Path(str(material.get("source_root") or "")) / str(material.get("source_relpath") or "")
-                    from tools.policy.exclusions import load_material_source_roots
-                    rm.resolve_under_roots(target, load_material_source_roots())
+                    from tools.policy.exclusions import load_material_source_roots, resolve_policy_path
+                    rm.resolve_under_roots(target, load_material_source_roots(resolve_policy_path(root)))
                     source_ok = rm.verify_manifest(target, manifest).get("status") == "ok"
                 except (OSError, ValueError):
                     source_ok = False

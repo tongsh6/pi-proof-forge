@@ -18,6 +18,8 @@
 - **profile**：revision, file_sha256, work[{id,company,short,start,end,evidence_ids}], job_preferences{confirmed_at, source ref}
 - **job**：job_id, target_role, company, status, jd_sha256, jd_chars, sha256, demo
 - **relations**：card→cites→doc、work→evidence→card、job_preferences→sourced_from→doc
+- **source_coverage**：roots / items（root_id、path、kind、status、availability、references）/ counts / excluded_counts / errors；附件与未纳入项只作导航，不新增事实。
+- **asset_inventory**：已登记实体文件路径及指纹，补足 verify 对新增、删除和 meta 变化的检测。
 
 ## 派生规则（全部确定性）
 
@@ -37,11 +39,12 @@ kb build [--root .] [--out knowledge-index]
 kb tree <material_id> [path前缀]
 kb find [--type T] [--material M] [--path P] [--title-token K] [--date-from] [--date-to] [--limit N]
 kb grep <字面量> [--scope docs|cards|jobs|all] [--material M] [--limit N]
-kb read <material_id> <document_id> [--force]     # 回读并校验档号；失效默认拒绝(exit 2)
+kb read <material_id> <document_id>             # 回读并校验档号；失效拒绝(exit 2)
 kb refs <card_id|work_id>
 kb cards [--missing time|role|any] [--has-date-hints] [--employer X] [--include-demo]
 kb person-docs
 kb verify
+kb coverage [--root-id ID] [--path PREFIX] [--status indexed|unindexed|stale|filtered|metadata_only|unavailable] [--limit N] [--json]
 kb index
 ```
 
@@ -80,9 +83,18 @@ kb index
 ### Task 8：收口
 - 全量回归 +（可选）独立审查；台账/路线图补记；分组提交
 
+## 2026-10-17 覆盖补齐切片
+
+- 已有能力：`material.reference.scan/create` 可直接纳入允许根内的六份工作流设计/实施文本；`split_material_documents`、索引构建、find/grep/read 均复用。
+- 实际缺口：上游未纳入文件、附件及拆档过滤项未进入导航；原“全量资产已纳入”只检查已登记实体；verify 不发现新增实体。
+- 最小补齐：在同一 index.json 增加 `source_coverage`（来源根、文件相对路径、状态、可用性、正文引用、计数和扫描错误）。由 infra 中的目录盘点函数生成，`kb coverage [--root-id ID] [--path PREFIX] [--status STATUS] [--limit N] [--json]` 薄适配查询。文本指纹与现有文档比对；附件只读文件头判断 LFS 指针，保持 metadata_only，不转换或下载。
+- 数据边界：只扫描既有本机材料来源白名单；隐藏目录剪枝、符号链接与敏感名跳过；解析过滤规则与证据选材共用。学习资料和模板仍可显示为未纳入或过滤项，不能自动成为个人经历。
+- 验收：先失败测试覆盖漏文本、过滤项、本地/LFS 附件、来源变化、缺失目录、符号链接/敏感边界、实体新增及 CLI；六份真实文本通过既有引用入口创建，再构建索引、find/grep/read 与覆盖盘点回读。仅声明 CLI/材料入口验证，不提升 GUI 深度验收状态。
+- 已实施：12 项新回归覆盖上述边界及 CRLF、分片顺序、跨快照拼接、非 UTF-8 和 `--root` 策略。六份设计/实施文档已通过引用入口纳入；材料 24 份/正文 6,601 档，六份检索与回读通过。附件仅目录覆盖结果、全量回归环境区别见同日项目台账。
+
 ## 测试基线命令
 
 ```
-python -m pytest tests/unit/infra/test_knowledge_index.py tests/unit/test_kb_cli.py -q
+python -m pytest tests/unit/infra/test_knowledge_index.py tests/unit/infra/test_knowledge_coverage.py tests/unit/test_kb_cli.py -q
 python -m pytest tests/unit -q          # 全量回归
 ```
