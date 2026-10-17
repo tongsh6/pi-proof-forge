@@ -1224,6 +1224,64 @@ def _reconcile_pool_status(scalars: dict[str, str], lists: dict[str, list[str]])
     return "legacy" if not status else status
 
 
+# ---- 补全分流：只记旁路文件，不改卡、不影响审核与档案修订；卡变化后旧判断失效 ----------------
+_TRIAGE_DECISIONS = {"needs_fill", "not_for_display", "duplicate"}
+
+
+def _triage_path() -> Path:
+    return _APP_DATA_DIR / "evidence_triage.json"
+
+
+def _load_triage() -> dict[str, Any]:
+    path = _triage_path()
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("evidence_triage_unreadable") from exc
+    if not isinstance(data, dict):
+        raise ValueError("evidence_triage_unreadable")
+    return data
+
+
+def _card_sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def handle_evidence_triage_set(params: dict[str, Any]) -> dict[str, Any]:
+    """记录或清除一张卡的补全分流；decision 为空即清除。"""
+    correlation_id = params["meta"]["correlation_id"]
+    evidence_id = str(params.get("evidence_id") or "").strip()
+    decision = str(params.get("decision") or "").strip()
+    note = str(params.get("note") or "").strip()
+    duplicate_of = str(params.get("duplicate_of") or "").strip()
+    if decision and decision not in _TRIAGE_DECISIONS:
+        raise ValueError("evidence_triage_decision_invalid")
+    if len(note) > 500:
+        raise ValueError("evidence_triage_note_too_long")
+    path = _find_evidence_path(evidence_id) if evidence_id else None
+    if path is None:
+        raise KeyError(f"NOT_FOUND: {evidence_id}")
+    if decision == "duplicate":
+        if not duplicate_of or duplicate_of == evidence_id or _find_evidence_path(duplicate_of) is None:
+            raise ValueError("evidence_triage_duplicate_invalid")
+    elif duplicate_of:
+        raise ValueError("evidence_triage_duplicate_invalid")
+    data = _load_triage()
+    if decision:
+        data[evidence_id] = {"decision": decision, "note": note, "duplicate_of": duplicate_of,
+                             "card_sha256": _card_sha(path), "decided_at": _utcnow_iso()}
+    else:
+        data.pop(evidence_id, None)
+    target = _triage_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
+    tmp.replace(target)
+    return {"meta": {"correlation_id": correlation_id}, "evidence_id": evidence_id, "triage": data.get(evidence_id)}
+
+
 def handle_evidence_reconcile(params: dict[str, Any]) -> dict[str, Any]:
     """只读对账报告：不改任何卡，只报告哪些结果不可逐字追溯、缺哪些字段、哪些卡可能重复、材料里有哪些年月线索。"""
     correlation_id = params["meta"]["correlation_id"]
@@ -1234,6 +1292,8 @@ def handle_evidence_reconcile(params: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("evidence_ids must be a list of strings")
         wanted = {item.strip() for item in requested if item.strip()}
     documents = _reconcile_material_documents()
+    triage = _load_triage()
+    shas: dict[str, str] = {}
     parsed: list[tuple[str, dict[str, str], dict[str, list[str]]]] = []
     if _EVIDENCE_DIR.exists():
         for path in sorted(_EVIDENCE_DIR.glob("*.yaml")):
@@ -1245,6 +1305,7 @@ def handle_evidence_reconcile(params: dict[str, Any]) -> dict[str, Any]:
             if wanted is not None and evidence_id not in wanted:
                 continue
             parsed.append((evidence_id, doc["scalars"], doc["lists"]))
+            shas[evidence_id] = _card_sha(path)
     bigrams = {evidence_id: _reconcile_bigrams(scalars.get("title", "")) for evidence_id, scalars, _ in parsed}
     items: list[dict[str, Any]] = []
     for evidence_id, scalars, lists in parsed:
@@ -1281,15 +1342,22 @@ def handle_evidence_reconcile(params: dict[str, Any]) -> dict[str, Any]:
             "untraceable_results": still_untraceable, "suggested_sources": suggestions, "verbatim_candidates": verbatim_candidates,
             "missing_fields": missing,
             "date_hints": date_hints, "possible_duplicates": duplicates,
+            "triage": ({**triage[evidence_id], "stale": triage[evidence_id].get("card_sha256") != shas[evidence_id]}
+                       if isinstance(triage.get(evidence_id), dict) else None),
         })
+    active = lambda item: item["triage"] and not item["triage"]["stale"]
+    counted = [item for item in items if not (active(item) and item["triage"]["decision"] != "needs_fill")]
     summary = {
         "total": len(items),
         "eligible": sum(item["pool_status"] == "eligible" for item in items),
         "incomplete": sum(item["pool_status"] == "incomplete" for item in items),
         "legacy": sum(item["pool_status"] == "legacy" for item in items),
         "untraceable_cards": sum(bool(item["untraceable_results"]) for item in items),
-        "missing_time_range": sum("time_range" in item["missing_fields"] for item in items),
-        "missing_role_scope": sum("role_scope" in item["missing_fields"] for item in items),
+        "missing_time_range": sum("time_range" in item["missing_fields"] for item in counted),
+        "missing_role_scope": sum("role_scope" in item["missing_fields"] for item in counted),
         "duplicate_cards": sum(bool(item["possible_duplicates"]) for item in items),
+        "triaged_out": len(items) - len(counted),
+        "needs_fill": sum(bool(active(item)) and item["triage"]["decision"] == "needs_fill" for item in items),
+        "untriaged": sum(not active(item) for item in items),
     }
     return {"meta": {"correlation_id": correlation_id}, "summary": summary, "items": items}

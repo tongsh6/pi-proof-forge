@@ -116,6 +116,16 @@ export interface EvidenceReconcileItem {
   missing_fields: string[];
   date_hints: string[];
   possible_duplicates: string[];
+  triage?: EvidenceTriage | null;
+}
+
+export type EvidenceTriageDecision = "needs_fill" | "not_for_display" | "duplicate";
+
+export interface EvidenceTriage {
+  decision: EvidenceTriageDecision;
+  note: string;
+  duplicate_of: string;
+  stale: boolean;
 }
 
 export interface EvidenceReconcileResult extends RpcResultBase {
@@ -128,6 +138,9 @@ export interface EvidenceReconcileResult extends RpcResultBase {
     missing_time_range: number;
     missing_role_scope: number;
     duplicate_cards: number;
+    triaged_out?: number;
+    needs_fill?: number;
+    untriaged?: number;
   };
   items: EvidenceReconcileItem[];
 }

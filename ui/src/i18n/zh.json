@@ -522,6 +522,17 @@
           "missingResults": "缺结果",
           "missingArtifacts": "缺附件",
           "duplicate": "疑似与 {{ids}} 重复"
+        },
+        "triage": {
+          "label": "补全分流",
+          "none": "未分流",
+          "needs_fill": "值得补",
+          "not_for_display": "不参与展示",
+          "duplicate": "与 {{id}} 重复",
+          "stale": "卡片已变化，之前的分流判断失效，请重新选择",
+          "summary": "值得补 {{needsFill}} · 已分流 {{out}} · 未分流 {{untriaged}}",
+          "showOut": "显示已分流的 {{count}} 张",
+          "hideOut": "收起已分流的卡"
         }
       }
     },

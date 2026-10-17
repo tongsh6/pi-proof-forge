@@ -33,6 +33,7 @@ import {
   removeMaterialReference,
   saveEvidenceDraft,
   scanMaterialReference,
+  setEvidenceTriage,
   updateEvidence,
 } from "@/lib/sidecar/api";
 import type {
@@ -43,6 +44,7 @@ import type {
   EvidenceListItem,
   EvidenceReconcileItem,
   EvidenceReconcileResult,
+  EvidenceTriageDecision,
   MaterialReferenceScanResult,
   MaterialSourceItem,
   MaterialSourceRoot,
@@ -293,12 +295,30 @@ export function EvidencePage() {
     }
   }, [t]);
 
+  const [showTriaged, setShowTriaged] = useState(false);
+  // 已分流且判断未过期的“不参与展示/重复”默认收起；“值得补”排最前。
+  const triagedOut = (item: EvidenceReconcileItem) => !!item.triage && !item.triage.stale && item.triage.decision !== "needs_fill";
   const reconcileProblems = useMemo(() => {
     const items = reconcile?.items ?? [];
     const weight = (item: EvidenceReconcileItem) =>
       (item.untraceable_results.length > 0 ? 4 : 0) + (!item.has_source ? 2 : 0) + item.missing_fields.length + (item.possible_duplicates.length > 0 ? 1 : 0);
-    return items.filter((item) => weight(item) > 0).sort((a, b) => weight(b) - weight(a));
-  }, [reconcile]);
+    const rank = (item: EvidenceReconcileItem) => (item.triage && !item.triage.stale && item.triage.decision === "needs_fill" ? 100 : 0) + weight(item);
+    return items
+      .filter((item) => weight(item) > 0 && (showTriaged || !triagedOut(item)))
+      .sort((a, b) => rank(b) - rank(a));
+  }, [reconcile, showTriaged]);
+  const hiddenTriaged = (reconcile?.items ?? []).filter(triagedOut).length;
+  const changeTriage = useCallback(
+    async (item: EvidenceReconcileItem, decision: EvidenceTriageDecision | "") => {
+      try {
+        await setEvidenceTriage(item.evidence_id, decision, decision === "duplicate" ? { duplicate_of: item.possible_duplicates[0] } : {});
+        await runReconcile();
+      } catch (reason) {
+        notify("error", getErrorMessage(reason));
+      }
+    },
+    [runReconcile]
+  );
   const reconcileReasons = useCallback(
     (item: EvidenceReconcileItem) => {
       const reasons: string[] = [];
@@ -1082,6 +1102,12 @@ export function EvidencePage() {
                         untraceable: reconcile.summary.untraceable_cards,
                         missingTime: reconcile.summary.missing_time_range,
                         duplicates: reconcile.summary.duplicate_cards,
+                      }) +
+                      " · " +
+                      t("pages.evidence.reconcile.triage.summary", {
+                        needsFill: reconcile.summary.needs_fill ?? 0,
+                        out: reconcile.summary.triaged_out ?? 0,
+                        untriaged: reconcile.summary.untriaged ?? 0,
                       })
                     : t("pages.evidence.reconcile.hint")}
                 </span>
@@ -1109,14 +1135,29 @@ export function EvidencePage() {
               {reconcile && reconcileProblems.length > 0 ? (
                 <ul className="divide-y divide-border" data-testid="evidence-reconcile-list">
                   {reconcileProblems.slice(0, 30).map((item) => (
-                    <li className="flex items-start justify-between gap-3 py-2" key={item.evidence_id}>
+                    <li className="flex items-start justify-between gap-3 py-2" data-evidence-id={item.evidence_id} key={item.evidence_id}>
                       <div className="min-w-0">
                         <p className="truncate text-sm text-text-primary">
                           {item.title || item.evidence_id}
                           <span className="ml-2 text-xs text-text-muted">{t(`pages.evidence.reconcile.pool.${item.pool_status}`, { defaultValue: item.pool_status })}</span>
                         </p>
                         <p className="mt-0.5 text-xs text-text-muted">{reconcileReasons(item).join(" · ")}</p>
+                        {item.triage?.stale ? <p className="mt-0.5 text-xs text-warning">{t("pages.evidence.reconcile.triage.stale")}</p> : null}
                       </div>
+                      <select
+                        aria-label={t("pages.evidence.reconcile.triage.label")}
+                        className="shrink-0 rounded-card border border-border bg-bg-primary px-2 py-1 text-xs"
+                        data-testid="evidence-triage-select"
+                        onChange={(event) => void changeTriage(item, event.target.value as EvidenceTriageDecision | "")}
+                        value={item.triage && !item.triage.stale ? item.triage.decision : ""}
+                      >
+                        <option value="">{t("pages.evidence.reconcile.triage.none")}</option>
+                        <option value="needs_fill">{t("pages.evidence.reconcile.triage.needs_fill")}</option>
+                        <option value="not_for_display">{t("pages.evidence.reconcile.triage.not_for_display")}</option>
+                        {item.possible_duplicates.length > 0 ? (
+                          <option value="duplicate">{t("pages.evidence.reconcile.triage.duplicate", { id: item.possible_duplicates[0] })}</option>
+                        ) : null}
+                      </select>
                       <button
                         className="shrink-0 rounded-card border border-border px-3 py-1 text-xs text-text-primary hover:bg-bg-hover"
                         onClick={() => void loadDetail(item.evidence_id)}
@@ -1127,6 +1168,16 @@ export function EvidencePage() {
                     </li>
                   ))}
                 </ul>
+              ) : null}
+              {reconcile && (hiddenTriaged > 0 || showTriaged) ? (
+                <button
+                  className="text-xs text-accent"
+                  data-testid="evidence-triage-show-hidden"
+                  onClick={() => setShowTriaged((value) => !value)}
+                  type="button"
+                >
+                  {showTriaged ? t("pages.evidence.reconcile.triage.hideOut") : t("pages.evidence.reconcile.triage.showOut", { count: hiddenTriaged })}
+                </button>
               ) : null}
               {reconcile && reconcileProblems.length > 30 ? (
                 <p className="text-xs text-text-muted">{t("pages.evidence.reconcile.more", { count: reconcileProblems.length - 30 })}</p>

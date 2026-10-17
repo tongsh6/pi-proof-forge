@@ -522,6 +522,17 @@
           "missingResults": "Missing results",
           "missingArtifacts": "Missing artifacts",
           "duplicate": "Possible duplicate of {{ids}}"
+        },
+        "triage": {
+          "label": "Triage",
+          "none": "Untriaged",
+          "needs_fill": "Worth filling",
+          "not_for_display": "Not for display",
+          "duplicate": "Duplicate of {{id}}",
+          "stale": "Card changed; previous triage is stale, choose again",
+          "summary": "worth filling {{needsFill}} · triaged out {{out}} · untriaged {{untriaged}}",
+          "showOut": "Show {{count}} triaged-out cards",
+          "hideOut": "Hide triaged-out cards"
         }
       }
     },

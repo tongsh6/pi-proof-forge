@@ -72,8 +72,10 @@ import type {
   SubmitReviewResult,
   UploadFilePayload,
   EvidenceReconcileResult,
+  EvidenceTriageDecision,
   ProfileAutoLinkResult,
 } from "./types";
+import type { RpcResultBase } from "@/lib/rpc/types";
 
 const UI_VERSION = "0.1.0";
 const PROTOCOL_VERSION = "1.0.0";
@@ -502,6 +504,14 @@ export async function listEvidenceMaterialSources(): Promise<MaterialListResult>
 
 export async function reconcileEvidence(evidenceIds?: string[]): Promise<EvidenceReconcileResult> {
   return client.call<EvidenceReconcileResult>("evidence.reconcile", evidenceIds ? { evidence_ids: evidenceIds } : {});
+}
+
+export async function setEvidenceTriage(
+  evidenceId: string,
+  decision: EvidenceTriageDecision | "",
+  extra: { duplicate_of?: string; note?: string } = {}
+): Promise<RpcResultBase> {
+  return client.call<RpcResultBase>("evidence.triage.set", { evidence_id: evidenceId, decision, ...extra });
 }
 
 export async function getProfile(): Promise<ProfileGetResult> {
