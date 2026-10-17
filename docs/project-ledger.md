@@ -2,6 +2,13 @@
 
 Last updated: 2026-10-17
 
+## 2026-10-17 `.pen` 设计同步（P0-026 续）
+
+- 范围：清空 `ui/design/DESIGN.md` 四处「`.pen` 待补」（Jobs 公司规模、Evidence 材料对账折叠区、证据卡补全分流、职业档案自动关联按钮），并补齐引用式材料在 Evidence 与 System Settings 的设计缺口；同日 `develop` 15 个提交（知识索引至分流首片）已推送 `origin/develop`。
+- 画布改动：Jobs `leadFilters` 加 `leadSizeFilter` 公司规模下拉、两条线索行加 `leadRow1Size`/`leadRow2Size` 规模·融资阶段；Evidence 材料来源区加 `refMaterialEntry`/`refMaterialItem`，新增 `materialReconcileFold`（六项计数、两条问题行、`triageSelect1/2` 分流下拉、卡变化警示、`reconcileShowHidden`）；Resumes 新增 `careerEditorOps`（自动关联证据/保存草稿/确认档案与禁用提示）；System Settings 新增 `setNav3`「材料来源」与 `setMaterialSourcesCard` 引用根字段卡。Screen/Evidence 900→1240、Screen/Resumes 900→968，左列屏幕按 40 间距重排，无重叠。
+- 验证：`Export` 四屏截图逐屏核对，截图存 `outputs/pen-sync-20261017/`；经 Pencil 画布 `save-document` 落盘（525,000 字节，JSON 可解析、14 个顶层画框）；设计文档与路线图同步更新。无代码、数据或平台写入。
+- 边界：这是设计真源同步，不是真实 App 页面验收；`.pen` 为示意数据，不含全部分流判定逻辑；真实 App 内分流验收仍待用户操作。
+
 ## 2026-10-17 证据卡补全分流首片（P0-026 续）
 
 - 试验（用户授权只读本机材料、仅输出计数）：55 张缺时间/职责的真实卡中，按标题相似度在人写文档找逐字区间/角色句的命中为 4/1/0（阈值 0.4/0.5/0.6）；放宽到标题子串后 23 张有候选，但 16 张有区间的卡中 10 张对应多个不同区间、可与日期线索核对的 4 张仅 1 张一致。结论：人写文档记的是公司/品牌级区间，原“逐字区间候选”一级不成立，自动匹配会把任职期当项目时间，已放弃。

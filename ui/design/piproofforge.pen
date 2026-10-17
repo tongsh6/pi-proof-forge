@@ -1668,6 +1668,7 @@
       "y": 820,
       "name": "Screen/Overview",
       "width": 1440,
+      "height": 1200,
       "fill": "$bg-primary",
       "cornerRadius": 24,
       "stroke": "$border",
@@ -2826,7 +2827,7 @@
       "y": 2060,
       "name": "Screen/Resumes",
       "width": 1440,
-      "height": 900,
+      "height": 968,
       "fill": "$bg-primary",
       "cornerRadius": 24,
       "stroke": "$border",
@@ -2904,6 +2905,88 @@
                   "content": "完整职业档案 / Career profile\n职业摘要 · 工作/合作经历 · 分组能力 · 教育展示选择 · 补充成果\n条目编辑 + 已审核证据关联；保存草稿 → 确认事实，缺项/陈旧版本禁止确认。",
                   "fontFamily": "Inter",
                   "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "gN0Ot",
+              "name": "careerEditorOps",
+              "width": "fill_container",
+              "height": 44,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "gap": 8,
+              "padding": [
+                0,
+                16
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "id": "DUqXa",
+                  "type": "ref",
+                  "ref": "tBGQE",
+                  "name": "careerAutolink",
+                  "width": 188,
+                  "descendants": {
+                    "0wv8M": {
+                      "icon": "link"
+                    },
+                    "fkAZC": {
+                      "content": "自动关联证据 / Auto-link"
+                    }
+                  }
+                },
+                {
+                  "id": "oDbGv",
+                  "type": "ref",
+                  "ref": "tBGQE",
+                  "name": "careerSaveDraft",
+                  "width": 164,
+                  "descendants": {
+                    "0wv8M": {
+                      "icon": "save"
+                    },
+                    "fkAZC": {
+                      "content": "保存草稿 / Save"
+                    }
+                  }
+                },
+                {
+                  "id": "stWVR",
+                  "type": "ref",
+                  "ref": "xWWct",
+                  "name": "careerConfirm",
+                  "width": 164,
+                  "descendants": {
+                    "swaWw": {
+                      "icon": "check"
+                    },
+                    "yG3EI": {
+                      "content": "确认档案 / Confirm"
+                    }
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "Q5uBj",
+                  "name": "careerOpsSpacer",
+                  "width": "fill_container",
+                  "height": 1
+                },
+                {
+                  "type": "text",
+                  "id": "AwD6z",
+                  "name": "careerOpsHint",
+                  "fill": "$text-muted",
+                  "content": "Sticky bar / 吸底操作行 · 未保存或过期时禁用自动关联",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 11,
                   "fontWeight": "normal"
                 }
               ]
@@ -3352,18 +3435,18 @@
               "id": "careerPrefs12",
               "name": "Career Preferences - Existing Flow Extension",
               "width": "fill_container",
-              "layout": "vertical",
-              "padding": 20,
-              "gap": 12,
               "fill": "$bg-panel",
               "cornerRadius": 16,
+              "layout": "vertical",
+              "gap": 12,
+              "padding": 20,
               "children": [
                 {
                   "type": "text",
                   "id": "prefsTitle12",
                   "name": "Preferences Heading",
-                  "content": "求职方向与边界 / Career Preferences",
                   "fill": "$text-primary",
+                  "content": "求职方向与边界 / Career Preferences",
                   "fontFamily": "Inter",
                   "fontSize": 18,
                   "fontWeight": "600"
@@ -3372,13 +3455,13 @@
                   "type": "text",
                   "id": "prefsBody12",
                   "name": "Preferences Workflow",
-                  "content": "默认折叠：已保存偏好条数。\n来源材料 ▾ → 文档片段 ▾ → 提炼求职偏好\n主投 / 桥接 / 探索 / 回避：可编辑摘要 + 只读原文引用\n□ 核对原文并确认 → 保存；未确认不生效。\n仅用于筛岗，不写入候选人简历；不改变职业事实确认。",
                   "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "默认折叠：已保存偏好条数。\n来源材料 ▾ → 文档片段 ▾ → 提炼求职偏好\n主投 / 桥接 / 探索 / 回避：可编辑摘要 + 只读原文引用\n□ 核对原文并确认 → 保存；未确认不生效。\n仅用于筛岗，不写入候选人简历；不改变职业事实确认。",
                   "fontFamily": "Inter",
                   "fontSize": 13,
-                  "fontWeight": "normal",
-                  "textGrowth": "fixed-width",
-                  "width": "fill_container"
+                  "fontWeight": "normal"
                 }
               ]
             }
@@ -3390,10 +3473,10 @@
       "type": "frame",
       "id": "JntHF",
       "x": 0,
-      "y": 3000,
+      "y": 3068,
       "name": "Screen/Evidence",
       "width": 1440,
-      "height": 900,
+      "height": 1240,
       "fill": "$bg-primary",
       "cornerRadius": 24,
       "stroke": "$border",
@@ -3557,6 +3640,458 @@
                   "fontFamily": "Inter",
                   "fontSize": 12,
                   "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "PhNNc",
+                  "name": "refMaterialEntry",
+                  "height": 30,
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "n8ovfu",
+                      "name": "refMaterialButton",
+                      "height": 26,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 8,
+                      "stroke": "$border-light",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "gap": 6,
+                      "padding": [
+                        5,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "cIBTK",
+                          "name": "refMaterialButtonIcon",
+                          "width": 12,
+                          "height": 12,
+                          "icon": "folder-plus",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "pZ8eH",
+                          "name": "refMaterialButtonText",
+                          "fill": "$text-primary",
+                          "content": "引用外部目录 / Reference folder",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "Qo7a9",
+                      "name": "refMaterialHint",
+                      "fill": "$text-muted",
+                      "content": "不复制原件 · 内容变更可检出并阻断",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "NPLcr",
+                  "name": "refMaterialItem",
+                  "width": "fill_container",
+                  "height": 40,
+                  "fill": "$bg-inset",
+                  "cornerRadius": 8,
+                  "gap": 10,
+                  "padding": [
+                    8,
+                    12
+                  ],
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rhZ8X",
+                      "name": "refMaterialItemTitle",
+                      "fill": "$text-primary",
+                      "content": "EC+ 始祖鸟工程档案（引用）· 6,058 档 · 就绪",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "jxltX",
+                      "name": "refMaterialItemActions",
+                      "fill": "$text-secondary",
+                      "content": "检查 · 刷新 · 解除",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "sa9zs",
+              "name": "materialReconcileFold",
+              "width": "fill_container",
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "UcapW",
+                  "name": "reconcileSummary",
+                  "width": "fill_container",
+                  "height": 52,
+                  "gap": 12,
+                  "padding": [
+                    16,
+                    20
+                  ],
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "L0CfC",
+                      "name": "reconcileTitleWrap",
+                      "gap": 10,
+                      "alignItems": "end",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Se9BT",
+                          "name": "reconcileTitle",
+                          "fill": "$text-primary",
+                          "content": "Material reconciliation / 材料对账",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "TlzQp",
+                          "name": "reconcileHint",
+                          "fill": "$text-secondary",
+                          "content": "Read-only / 只读检查，不改动任何卡 · 默认收起",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "QEcXB",
+                      "name": "reconcileChevron",
+                      "width": 16,
+                      "height": 16,
+                      "icon": "chevron-up",
+                      "library": "lucide",
+                      "fill": "$text-muted"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "vVC7Y",
+                  "name": "reconcileBody",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    0,
+                    20,
+                    16,
+                    20
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "AGLxK",
+                      "name": "reconcileCounts",
+                      "fill": "$text-secondary",
+                      "content": "可用 51 · 待补 60 · 未入池 10 · 结果不可追溯 4 · 缺时间 60 · 疑似重复 12 ｜ 值得补 2 · 已分流 3 · 未分流 79",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Yy7XE",
+                      "name": "reconcileRow1",
+                      "width": "fill_container",
+                      "height": 54,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 8,
+                      "gap": 12,
+                      "padding": [
+                        8,
+                        12
+                      ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "CyAYz",
+                          "name": "reconcileRow1Text",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "gHnea",
+                              "name": "reconcileRow1Title",
+                              "fill": "$text-primary",
+                              "content": "统一运动中心 · MongoDB 迁移",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "tTndJ",
+                              "name": "reconcileRow1Reason",
+                              "fill": "$text-secondary",
+                              "content": "2 条结果在材料里找不到原文 · 缺时间（材料中出现：2024-06、2024-09） · 疑似与 ec_41be… 重复",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "r0cmY",
+                          "name": "reconcileRow1Actions",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "JvSeY",
+                              "name": "triageSelect1",
+                              "height": 28,
+                              "fill": "$bg-panel",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "gap": 6,
+                              "padding": [
+                                5,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "DH3FC",
+                                  "name": "triageSelect1Text",
+                                  "fill": "$text-primary",
+                                  "content": "值得补",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "icon",
+                                  "id": "iL4sb",
+                                  "name": "triageSelect1Chevron",
+                                  "width": 12,
+                                  "height": 12,
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "X93HtC",
+                              "name": "reconcileView1",
+                              "height": 28,
+                              "fill": "$bg-panel",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "gap": 6,
+                              "padding": [
+                                5,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "elJYH",
+                                  "name": "reconcileView1Text",
+                                  "fill": "$text-primary",
+                                  "content": "查看",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "piZaa",
+                      "name": "reconcileRow2",
+                      "width": "fill_container",
+                      "height": 54,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 8,
+                      "gap": 12,
+                      "padding": [
+                        8,
+                        12
+                      ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Sifsg",
+                          "name": "reconcileRow2Text",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "eOSUM",
+                              "name": "reconcileRow2Title",
+                              "fill": "$text-primary",
+                              "content": "Feature 治理职责划分",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "zCIqT",
+                              "name": "reconcileRow2Warning",
+                              "fill": "$warning",
+                              "content": "卡已变化，之前的分流判断失效，请重新选择",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "yvHeY",
+                          "name": "reconcileRow2Actions",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "CqHVp",
+                              "name": "triageSelect2",
+                              "height": 28,
+                              "fill": "$bg-panel",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "gap": 6,
+                              "padding": [
+                                5,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "GWRUC",
+                                  "name": "triageSelect2Text",
+                                  "fill": "$text-primary",
+                                  "content": "未分流",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "icon",
+                                  "id": "VZLfm",
+                                  "name": "triageSelect2Chevron",
+                                  "width": 12,
+                                  "height": 12,
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "k7w6J1",
+                              "name": "reconcileView2",
+                              "height": 28,
+                              "fill": "$bg-panel",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "gap": 6,
+                              "padding": [
+                                5,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "wIgWc",
+                                  "name": "reconcileView2Text",
+                                  "fill": "$text-primary",
+                                  "content": "查看",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "Q3zZSm",
+                      "name": "reconcileShowHidden",
+                      "fill": "$accent",
+                      "content": "显示已分流的 3 张 / Show 3 hidden",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    }
+                  ]
                 }
               ]
             },
@@ -3908,7 +4443,7 @@
       "type": "frame",
       "id": "FLWrf",
       "x": 0,
-      "y": 3940,
+      "y": 4348,
       "name": "Screen/Jobs",
       "width": 1440,
       "height": 1080,
@@ -4281,6 +4816,45 @@
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "qdEPg",
+                          "name": "leadSizeFilter",
+                          "height": 26,
+                          "fill": "$bg-panel",
+                          "cornerRadius": 8,
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "gap": 6,
+                          "padding": [
+                            5,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Td31T",
+                              "name": "leadSizeFilterText",
+                              "fill": "$text-secondary",
+                              "content": "公司规模 · 全部规模",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "icon",
+                              "id": "T9rMeK",
+                              "name": "leadSizeFilterChevron",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$text-muted"
+                            }
+                          ]
                         }
                       ]
                     },
@@ -4365,6 +4939,16 @@
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "SxQQy",
+                          "name": "leadRow1Size",
+                          "fill": "$text-muted",
+                          "content": "1000-9999人 · 已上市",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
                         }
                       ]
                     },
@@ -4389,6 +4973,16 @@
                           "name": "leadRow2Text",
                           "fill": "$text-primary",
                           "content": "Anthropic · Developer Experience Engineer · Referral · Favorited",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lJBcw",
+                          "name": "leadRow2Size",
+                          "fill": "$text-muted",
+                          "content": "1000-9999人 · 战略融资",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -4617,7 +5211,7 @@
       "type": "frame",
       "id": "ihiWw",
       "x": 0,
-      "y": 5060,
+      "y": 5468,
       "name": "Screen/Quick Run",
       "width": 1440,
       "height": 900,
@@ -5016,95 +5610,95 @@
                       "id": "semHead12",
                       "name": "Semantic Assessment",
                       "fill": "$text-primary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
                       "content": "语义岗位适配 / Semantic Job Fit",
                       "fontFamily": "Inter",
                       "fontSize": 16,
-                      "fontWeight": "normal",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container"
+                      "fontWeight": "normal"
                     },
                     {
                       "type": "text",
                       "id": "semFit12",
                       "name": "Fit Example",
                       "fill": "$text-primary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
                       "content": "75 / 100（示意数据）",
                       "fontFamily": "Inter",
                       "fontSize": 24,
-                      "fontWeight": "normal",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container"
+                      "fontWeight": "normal"
                     },
                     {
                       "type": "text",
                       "id": "semBasis12",
                       "name": "Source Review",
                       "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
                       "content": "已评审 51 张证据；模型判读，原文引用已核验。",
                       "fontFamily": "Inter",
                       "fontSize": 12,
-                      "fontWeight": "normal",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container"
+                      "fontWeight": "normal"
                     },
                     {
                       "type": "text",
                       "id": "semScores12",
                       "name": "Separate Quality Metrics",
                       "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
                       "content": "简历要求覆盖    50 / 100\n表达质量         88 / 100\n事实完整性       待补证据",
                       "fontFamily": "Inter",
                       "fontSize": 13,
-                      "fontWeight": "normal",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container"
+                      "fontWeight": "normal"
                     },
                     {
                       "type": "frame",
                       "id": "semReq12",
                       "name": "Requirement Disclosure",
-                      "layout": "vertical",
                       "width": "fill_container",
-                      "gap": 10,
-                      "padding": 12,
                       "fill": "$bg-primary",
                       "cornerRadius": 8,
+                      "layout": "vertical",
+                      "gap": 10,
+                      "padding": 12,
                       "children": [
                         {
                           "type": "text",
                           "id": "semReqTitle12",
                           "name": "Requirement Summary",
                           "fill": "$text-primary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
                           "content": "▸ 分布式系统可靠性\n简历未呈现",
                           "fontFamily": "Inter",
                           "fontSize": 13,
-                          "fontWeight": "normal",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container"
+                          "fontWeight": "normal"
                         },
                         {
                           "type": "text",
                           "id": "semReqReason12",
                           "name": "Expanded Requirement Example",
                           "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
                           "content": "展开后：证据池判断、完整要求、理由与来源原文。\n例如：存在多实例恢复实践，尚缺完整生产运维证据。",
                           "fontFamily": "Inter",
                           "fontSize": 12,
-                          "fontWeight": "normal",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container"
+                          "fontWeight": "normal"
                         },
                         {
                           "type": "text",
                           "id": "semQuote12",
                           "name": "Evidence Quote Example",
                           "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
                           "content": "“实现多实例任务抢占与故障恢复”\n证据编号 · actions · 简历未呈现",
                           "fontFamily": "Inter",
                           "fontSize": 12,
-                          "fontWeight": "normal",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container"
+                          "fontWeight": "normal"
                         }
                       ]
                     }
@@ -5151,7 +5745,7 @@
       "type": "frame",
       "id": "ZSLCx",
       "x": 0,
-      "y": 6000,
+      "y": 6408,
       "name": "Screen/Agent Run",
       "width": 1440,
       "height": 900,
@@ -6052,7 +6646,7 @@
       "type": "frame",
       "id": "upl7d",
       "x": 0,
-      "y": 6940,
+      "y": 7348,
       "name": "Screen/Submissions",
       "width": 1440,
       "height": 900,
@@ -6993,7 +7587,7 @@
       "type": "frame",
       "id": "OGiSD",
       "x": 0,
-      "y": 7880,
+      "y": 8288,
       "name": "Screen/Policy",
       "width": 1440,
       "height": 900,
@@ -12436,7 +13030,7 @@
       "type": "frame",
       "id": "FWOoc",
       "x": 0,
-      "y": 8880,
+      "y": 9228,
       "name": "Screen/System Settings",
       "width": 1440,
       "height": 1160,
@@ -12642,6 +13236,32 @@
                           "name": "setNav2Text",
                           "fill": "$text-secondary",
                           "content": "LLM Config / 模型",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "wRlyD",
+                      "name": "setNav3",
+                      "width": "fill_container",
+                      "height": 42,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 12,
+                      "gap": 10,
+                      "padding": [
+                        10,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "dnsET",
+                          "name": "setNav3Text",
+                          "fill": "$text-secondary",
+                          "content": "Material Sources / 材料来源",
                           "fontFamily": "Inter",
                           "fontSize": 13,
                           "fontWeight": "600"
@@ -13005,6 +13625,53 @@
                           "name": "setLlmText",
                           "fill": "$text-primary",
                           "content": "api_key masked · update allowed · clear supported",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "bFkGZ",
+                      "name": "setMaterialSourcesHead",
+                      "fill": "$text-primary",
+                      "content": "Material Sources / 材料来源",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "NyhBf",
+                      "name": "setMaterialSourcesCard",
+                      "width": "fill_container",
+                      "height": 58,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 12,
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "aHp0l",
+                          "name": "setMaterialSourcesTitle",
+                          "fill": "$text-primary",
+                          "content": "worklog-private / 本地工作资料（引用根）",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Mk1C8",
+                          "name": "setMaterialSourcesStatus",
+                          "fill": "$text-secondary",
+                          "content": "Referenced root · 就绪 · 检查 · 移除（移除后依赖该根的引用材料将阻断）",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"

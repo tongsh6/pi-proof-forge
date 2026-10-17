@@ -1344,7 +1344,7 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 - 线索详情：薪资 · 地区行末尾追加“公司规模: 规模 / 融资阶段 / 行业”；画像侧栏公司行追加规模。
 - 文案键：`pages.jobs.leads.companySize / allSizes / sizeUnder100 / sizeUnder500`。
 
-验证：tests/unit/gui/test_jobs_liepin_detail_ui.py 新增行文案与下拉档位断言；`.pen` 待补（Jobs 线索行与筛选区各加一处实例）。
+验证：tests/unit/gui/test_jobs_liepin_detail_ui.py 新增行文案与下拉档位断言。`.pen` 已同步：Screen/Jobs 的 `leadFilters` 新增 `leadSizeFilter` 公司规模下拉，`leadRow1`/`leadRow2` 各加 `leadRow1Size`/`leadRow2Size` 规模·融资阶段行。
 
 ### 2026-10-12 证据页“材料对账”折叠区
 
@@ -1356,9 +1356,9 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 - 内容区：一行说明“只读检查，不改动任何卡”+ 右侧 `page-icon-button` 重新对账；下面是问题清单（`ul.divide-y`），每行左侧标题 + 池状态小字，第二行原因串（如“2 条结果在材料里找不到原文 · 缺时间（材料中出现：2024-06、2024-09） · 疑似与 ec_x 重复”），右侧“查看”进入该卡详情。最多显示 30 行，超出给一句提示。
 - 不新增页面、不新增统计条项；展开时才请求，避免首屏多一次扫描。
 
-验证：tests/unit/gui/test_evidence_reconcile_ui.py；`.pen` 待补（Evidence 页加一处折叠区实例）。
+验证：tests/unit/gui/test_evidence_reconcile_ui.py。`.pen` 已同步：Screen/Evidence 新增 `materialReconcileFold` 折叠区实例（摘要行、六项计数、问题行占位与展开箭头）。
 
-2026-10-17 补全分流：对账列表每行右侧增加小号下拉“未分流 / 值得补 / 不参与展示 /（有疑似重复时）与 ec_x 重复”，位于“查看”按钮左侧；摘要行追加“值得补 · 已分流 · 未分流”计数。已分流卡默认收起，清单下方文字按钮“显示已分流的 N 张 / 收起”。卡变化后行内以警示色提示“之前的分流判断失效”。不新增页面或统计条。验证：tests/unit/gui/test_evidence_triage_ui.py；`.pen` 待补。
+2026-10-17 补全分流：对账列表每行右侧增加小号下拉“未分流 / 值得补 / 不参与展示 /（有疑似重复时）与 ec_x 重复”，位于“查看”按钮左侧；摘要行追加“值得补 · 已分流 · 未分流”计数。已分流卡默认收起，清单下方文字按钮“显示已分流的 N 张 / 收起”。卡变化后行内以警示色提示“之前的分流判断失效”。不新增页面或统计条。验证：tests/unit/gui/test_evidence_triage_ui.py。`.pen` 已同步：对账行 `triageSelect1`/`triageSelect2` 分流下拉、`reconcileCounts` 值得补/已分流/未分流计数、`reconcileRow2Warning` 卡变化警示与 `reconcileShowHidden` 文字按钮。
 
 ### 2026-10-12 职业档案“自动关联证据”按钮
 
@@ -1368,7 +1368,7 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 - 行为：一次调用完成建议与写入，成功后刷新档案并弹出“已自动关联 N 张，M 张无法判定”；无法判定的卡仍通过各段工作下的“关联证据”多选处理。写入后确认复选框自然失效，用户需重新确认。
 - 不新增面板、不新增列表；规则说明放在按钮 title。
 
-验证：tests/unit/gui/test_career_autolink_ui.py；`.pen` 待补（职业档案编辑器操作行加一个按钮实例）。
+验证：tests/unit/gui/test_career_autolink_ui.py。`.pen` 已同步：Screen/Resumes 新增 `careerEditorOps` 吸底操作行（`careerAutolink` 自动关联证据、保存草稿、确认档案与禁用提示）。
 
 
 2026-10-12 Quick Run 停止状态校正：方向不符的 SKIPPED 结果显示后续阶段“已跳过”和“本次未生成简历”，操作入口返回岗位中心，不显示 PDF 准备入口。
@@ -1386,3 +1386,4 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 - 证据页材料库折叠区新增「引用外部目录」：选来源根 → 相对路径 → 扫描预览（文件数/跳过项）→ 命名创建；材料下拉与已引用列表对引用材料标注「引用 N 档」，并提供状态检查 / 刷新 / 解除（刷新与解除需确认）。
 - 系统设置新增「材料来源」分类：管理允许被引用的外部来源根（路径必须为已存在目录）；移除来源后，依赖该根的引用材料校验失败并阻断。
 - 语义：不复制原件；内容变更可检出并阻断（「来源已变更，需重审」），刷新后以最新内容为新基线；快照材料行为不变。
+- `.pen` 已同步（2026-10-17 补记）：Screen/Evidence 材料来源区（`docPick1`）新增 `refMaterialEntry`（引用外部目录入口与不复制原件提示）与 `refMaterialItem`（引用材料条目、检查/刷新/解除）；Screen/System Settings 新增 `setNav3`「材料来源」导航与 `setMaterialSourcesCard` 引用根字段卡。左列屏幕增高后按 40 间距重排，无重叠。
