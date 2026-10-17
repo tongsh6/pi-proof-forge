@@ -1146,7 +1146,7 @@ export function EvidencePage() {
                       </div>
                       <select
                         aria-label={t("pages.evidence.reconcile.triage.label")}
-                        className="shrink-0 rounded-card border border-border bg-bg-primary px-2 py-1 text-xs"
+                        className="w-36 shrink-0 truncate rounded-card border border-border bg-bg-primary px-2 py-1 text-xs"
                         data-testid="evidence-triage-select"
                         onChange={(event) => void changeTriage(item, event.target.value as EvidenceTriageDecision | "")}
                         value={item.triage && !item.triage.stale ? item.triage.decision : ""}
