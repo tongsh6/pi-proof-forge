@@ -1,4 +1,4 @@
-"""材料对账折叠区：展开时才调用对账接口，列出有问题的卡与原因，“查看”进入该卡详情。"""
+"""材料对账折叠区：展开时才调用对账接口，列出有问题的卡与原因，“查看”就地展开只读摘要，“打开完整详情”进入编辑区。"""
 import subprocess
 from pathlib import Path
 
@@ -28,8 +28,18 @@ assert.ok(text(rows[0]).includes('pages.evidence.reconcile.reasons.untraceable')
 assert.ok(text(rows[1]).includes('pages.evidence.reconcile.reasons.noSource')&&text(rows[1]).includes('pages.evidence.reconcile.reasons.missingRole'));
 const fold2=nodes(tree).find(n=>n.props&&n.props['data-testid']==='evidence-reconcile-fold');assert.ok(text(fold2).includes('pages.evidence.reconcile.summaryLine'),'对账后摘要行替换提示');
 const view=nodes(rows[0]).find(n=>n.type==='button');view.props.onClick();await settle();
-assert.ok(calls.some(c=>c[0]==='get'&&c[1]==='B'),'“查看”进入该卡详情');
-assert.ok(scrolls.includes('[data-testid="evidence-detail-panel"]'),'“查看”后把详情面板滚入视口，避免长列表下看起来无响应');
+assert.ok(calls.some(c=>c[0]==='get'&&c[1]==='B'),'“查看”加载该卡摘要');
+const preview=nodes(tree).find(n=>n.props&&n.props['data-testid']==='evidence-reconcile-preview');
+assert.ok(preview,'“查看”应在该行就地展开摘要，而不是把数据放到远处');
+assert.ok(text(preview).includes('标题B'),'摘要显示该卡标题');
+assert.ok(text(preview).includes('pages.evidence.reconcile.preview.openFull'),'摘要提供打开完整详情入口');
+const diagnosis=nodes(preview).find(n=>n.props&&n.props['data-testid']==='evidence-reconcile-diagnosis');
+assert.ok(diagnosis,'摘要包含对账发现（不可追溯原文/时间线索/重复）');
+assert.ok(text(diagnosis).includes('改写句')&&text(diagnosis).includes('pages.evidence.reconcile.preview.verbatimLine'),'摘要显示不可追溯结果与原文候选');
+assert.ok(text(diagnosis).includes('2024-06'),'摘要显示材料中的时间线索');
+assert.equal(scrolls.length,0,'仅查看摘要不滚动页面');
+const full=nodes(preview).find(n=>n.props&&n.props['data-testid']==='evidence-reconcile-open-full');full.props.onClick();await settle();
+assert.ok(scrolls.includes('[data-testid="evidence-detail-panel"]'),'“打开完整详情”才把详情面板滚入视口');
 fold2.props.onToggle({currentTarget:{open:true}});await settle();assert.equal(reconcileCalls.length,1,'已有结果时再次展开不重复调用');
 const run=nodes(tree).find(n=>n.props&&n.props['data-testid']==='evidence-reconcile-run');run.props.onClick();await settle();assert.equal(reconcileCalls.length,2,'重新对账按钮再调一次');
 })().catch(e=>{console.error(e);process.exitCode=1});

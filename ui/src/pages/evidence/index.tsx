@@ -243,7 +243,43 @@ export function EvidencePage() {
     panel?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }, []);
 
-  const handleReconcileView = useCallback(async (item: EvidenceReconcileItem) => {
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewDetail, setPreviewDetail] = useState<EvidenceDetail | null>(null);
+  const [previewState, setPreviewState] = useState<"idle" | "loading" | "error">("idle");
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewIdRef = useRef<string | null>(null);
+  const toggleReconcilePreview = useCallback(async (item: EvidenceReconcileItem) => {
+    // 对账行“查看”就地展开只读摘要：数据出现在点击位置，避免用户以为没有响应。
+    if (previewIdRef.current === item.evidence_id) {
+      previewIdRef.current = null;
+      setPreviewId(null);
+      setPreviewDetail(null);
+      setPreviewState("idle");
+      setPreviewError(null);
+      return;
+    }
+    previewIdRef.current = item.evidence_id;
+    setPreviewId(item.evidence_id);
+    setPreviewDetail(null);
+    setPreviewState("loading");
+    setPreviewError(null);
+    try {
+      const result = await getEvidence(item.evidence_id);
+      if (previewIdRef.current !== item.evidence_id) return;
+      setPreviewDetail(result.evidence);
+      setPreviewState("idle");
+    } catch (reason) {
+      if (previewIdRef.current !== item.evidence_id) return;
+      setPreviewState("error");
+      setPreviewError(getErrorMessage(reason));
+    }
+  }, []);
+  const handleReconcileOpenFull = useCallback(async (item: EvidenceReconcileItem) => {
+    previewIdRef.current = null;
+    setPreviewId(null);
+    setPreviewDetail(null);
+    setPreviewState("idle");
+    setPreviewError(null);
     const loaded = await loadDetail(item.evidence_id);
     if (loaded) focusDetailPanel();
   }, [focusDetailPanel, loadDetail]);
@@ -908,6 +944,100 @@ export function EvidencePage() {
     return () => window.removeEventListener("pipf:refresh", onRefresh);
   }, [loadEvidence]);
 
+  const renderReconcilePreview = (item: EvidenceReconcileItem) => {
+    const lines = (value?: string) => (value ?? "").split("\n").map((row) => row.trim()).filter(Boolean);
+    const chip = "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary";
+    const levelChip = (level?: string) => (level ? <span className={chip}>{level}</span> : null);
+    const detail = previewDetail;
+    return (
+      <div className="mt-2 rounded-card border border-accent/40 bg-bg-primary/60 p-3 text-xs" data-testid="evidence-reconcile-preview"
+        role="region" aria-label={t("pages.evidence.reconcile.preview.title")}>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm font-medium text-text-primary">
+            {t("pages.evidence.reconcile.preview.title")} · {detail?.title || item.title || item.evidence_id}
+          </p>
+          <button className="shrink-0 text-text-muted underline" onClick={() => void toggleReconcilePreview(item)} type="button">
+            {t("pages.evidence.reconcile.preview.close")}
+          </button>
+        </div>
+        {previewState === "loading" ? <p className="mt-2 text-text-secondary">{t("pages.evidence.reconcile.preview.loading")}</p> : null}
+        {previewState === "error" ? <p className="mt-2 text-error" role="alert">{previewError || t("pages.evidence.reconcile.preview.error")}</p> : null}
+        {detail ? (
+          <>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className={chip}>{t(`pages.evidence.reconcile.pool.${item.pool_status}`, { defaultValue: item.pool_status })}</span>
+              <span className={chip}>{t("pages.evidence.reconcile.preview.review")}：{detail.review_decision || t("pages.evidence.reconcile.preview.pendingReview")}</span>
+              <span className={chip}>{detail.candidate_pool_eligible ? t("pages.evidence.reconcile.preview.inPool") : t("pages.evidence.reconcile.preview.notInPool")}</span>
+            </div>
+            <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.time")}</dt>
+                <dd className="mt-0.5 flex flex-wrap items-center gap-1 text-text-primary">{detail.time_range || "—"}{levelChip(detail.time_range_provenance?.level)}</dd></div>
+              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.role")}</dt>
+                <dd className="mt-0.5 flex flex-wrap items-center gap-1 text-text-primary">{detail.role_scope || "—"}{levelChip(detail.role_scope_provenance?.level)}</dd></div>
+              <div className="sm:col-span-2"><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.context")}</dt>
+                <dd className="mt-0.5 text-text-primary">{detail.context || "—"}</dd></div>
+              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.stack")}</dt>
+                <dd className="mt-0.5 text-text-primary">{detail.stack.length ? detail.stack.join(" · ") : "—"}</dd></div>
+              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.tags")}</dt>
+                <dd className="mt-0.5 text-text-primary">{detail.tags.length ? detail.tags.join(" · ") : "—"}</dd></div>
+              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.sources")}</dt>
+                <dd className="mt-0.5 text-text-primary">{t("pages.evidence.reconcile.preview.sourceDocs", { count: detail.source_documents?.length ?? 0 })}</dd></div>
+              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.artifacts")}</dt>
+                <dd className="mt-0.5 text-text-primary">{detail.artifacts.length}</dd></div>
+            </dl>
+            {lines(detail.actions).length ? (
+              <div className="mt-2"><p className="text-text-muted">{t("pages.evidence.reconcile.preview.actions")}</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-text-primary">{lines(detail.actions).map((row, index) => <li key={index}>{row}</li>)}</ul></div>
+            ) : null}
+            {lines(detail.results).length ? (
+              <div className="mt-2"><p className="text-text-muted">{t("pages.evidence.reconcile.preview.results")}</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-text-primary">{lines(detail.results).map((row, index) => <li key={index}>{row}</li>)}</ul></div>
+            ) : null}
+            {detail.missing_items?.length ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-text-muted">{t("pages.evidence.reconcile.preview.missing")}</span>
+                {detail.missing_items.map((missing) => <span className={chip} key={missing}>{missing}</span>)}
+              </div>
+            ) : null}
+            {item.untraceable_results.length || item.verbatim_candidates.length || item.date_hints.length || item.suggested_sources.length || item.possible_duplicates.length ? (
+              <div className="mt-2 rounded-card bg-bg-hover/40 px-2 py-1.5" data-testid="evidence-reconcile-diagnosis">
+                <p className="text-text-muted">{t("pages.evidence.reconcile.preview.diagnosis")}</p>
+                {item.untraceable_results.length ? <div className="mt-1">
+                  <span className="text-text-muted">{t("pages.evidence.reconcile.preview.untraceable")}</span>
+                  <ul className="mt-0.5 list-disc pl-5 text-text-primary">{item.untraceable_results.slice(0, 3).map((row) => <li key={row}>{row}</li>)}</ul>
+                </div> : null}
+                {item.verbatim_candidates.length ? <div className="mt-1">
+                  <span className="text-text-muted">{t("pages.evidence.reconcile.preview.verbatim")}</span>
+                  <ul className="mt-0.5 space-y-0.5 text-text-primary">{item.verbatim_candidates.slice(0, 3).map((row) => (
+                    <li key={row.result}>{t("pages.evidence.reconcile.preview.verbatimLine", { text: row.verbatim, similarity: row.similarity.toFixed(2) })}</li>
+                  ))}</ul>
+                </div> : null}
+                {item.date_hints.length ? <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <span className="text-text-muted">{t("pages.evidence.reconcile.preview.dateHints")}</span>
+                  {item.date_hints.slice(0, 4).map((hint) => <span className={chip} key={hint}>{hint}</span>)}
+                </div> : null}
+                {item.suggested_sources.length ? <div className="mt-1">
+                  <span className="text-text-muted">{t("pages.evidence.reconcile.preview.suggested")}</span>
+                  <ul className="mt-0.5 space-y-0.5 text-text-primary">{item.suggested_sources.slice(0, 2).map((row) => (
+                    <li key={`${row.material_id}:${row.document}:${row.result}`}>{row.material_id} / {row.document} · {row.result}</li>
+                  ))}</ul>
+                </div> : null}
+                {item.possible_duplicates.length ? <p className="mt-1 text-text-primary">{t("pages.evidence.reconcile.preview.duplicates", { ids: item.possible_duplicates.join("、") })}</p> : null}
+              </div>
+            ) : null}
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-2">
+              <button className="rounded-card border border-accent px-3 py-1 text-xs text-accent" data-testid="evidence-reconcile-open-full"
+                onClick={() => void handleReconcileOpenFull(item)} type="button">
+                {t("pages.evidence.reconcile.preview.openFull")}
+              </button>
+              <span className="text-text-muted">{t("pages.evidence.reconcile.preview.hint")}</span>
+            </div>
+          </>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <header className="page-header">
@@ -951,6 +1081,10 @@ export function EvidencePage() {
           </button>
         </div>
       </header>
+
+      <p className="rounded-card border border-border bg-bg-panel/60 px-3 py-2 text-xs text-text-muted" data-testid="evidence-relation-hint">
+        {t("pages.evidence.relationHint")}
+      </p>
 
       {loadState === "error" ? (
         <section className="rounded-panel border border-error/50 bg-bg-panel p-6 shadow-[var(--shadow-panel)]">
@@ -1257,7 +1391,8 @@ export function EvidencePage() {
               {reconcile && reconcileProblems.length > 0 ? (
                 <ul className="divide-y divide-border" data-testid="evidence-reconcile-list">
                   {reconcileProblems.slice(0, 30).map((item) => (
-                    <li className="flex items-start justify-between gap-3 py-2" data-evidence-id={item.evidence_id} key={item.evidence_id}>
+                    <li className="py-2" data-evidence-id={item.evidence_id} key={item.evidence_id}>
+                      <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm text-text-primary">
                           {item.title || item.evidence_id}
@@ -1315,13 +1450,16 @@ export function EvidencePage() {
                         ) : null}
                       </select>
                       <button
+                        aria-expanded={previewId === item.evidence_id}
                         className="shrink-0 rounded-card border border-border px-3 py-1 text-xs text-text-primary hover:bg-bg-hover"
                         data-testid="evidence-reconcile-view"
-                        onClick={() => void handleReconcileView(item)}
+                        onClick={() => void toggleReconcilePreview(item)}
                         type="button"
                       >
-                        {t("pages.evidence.reconcile.view")}
+                        {t(previewId === item.evidence_id ? "pages.evidence.reconcile.hidePreview" : "pages.evidence.reconcile.view")}
                       </button>
+                      </div>
+                      {previewId === item.evidence_id ? renderReconcilePreview(item) : null}
                     </li>
                   ))}
                 </ul>

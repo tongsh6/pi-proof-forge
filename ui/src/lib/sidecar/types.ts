@@ -68,6 +68,8 @@ export interface EvidenceDetail {
   reviewed_at?: string;
   candidate_pool_eligible?: boolean;
   missing_items?: string[];
+  time_range_provenance?: {level?: string; precision?: string; evidence?: unknown[]};
+  role_scope_provenance?: {level?: string; confidence?: number; evidence?: unknown[]};
 }
 
 export interface EvidenceListResult extends RpcResultBase {
