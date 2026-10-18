@@ -21,6 +21,7 @@ Last updated: 2026-10-17
 - C4 跨文档推断：新 RPC `evidence.inferFields`；kb 索引按卡标题/标签/技术栈检索（限 20 篇，排除设计资料来源与合成夹具）；日期与第一人称句聚合后每卡一次 LLM 产出 L3 候选；校验任职区间与 excerpt 可回读后才入 `app-data/evidence_inference.json`，按卡 sha256+文档集合指纹缓存，否决候选不再提名。
 - C5 用户确认：新 RPC `evidence.confirmInference` 支持接受（保留 L3 + confirmed）、修改后接受（L4）、否决（记 hash 不再提名）；写卡后进入待审核且保留 provenance。对账面板新增「待确认推断」行与高/低置信分组、批量接受高置信、修改值、单条否决；证据页 `.pen` 已同步该行（Screen/Evidence 1310 高，左列重排）。
 - C6 开关：系统设置「证据推断」开关持久化 `policy.local.yaml`，关闭后只返回规则 L2 时间线索、不调用模型；UI 支持切换。
+- 修复（2026-10-18）：材料对账列表“查看”原本只加载右侧详情、在长列表下详情面板位于折叠区下方且不滚动，用户看到“无反应”。现点击后滚动右侧详情面板到视口顶部（`evidence-detail-panel`），并补 GUI 合同测试；设计职责仍为“进入该卡详情、只读不改卡”。
 - C7 文档：`sidecar-rpc.md`、`DESIGN.md`、`ui/design/piproofforge.pen` 已同步；`tsc --noEmit` 与全量回归通过（1400+ 项）。
 - C8 阻塞：真实 85 卡运行与用户批量确认需要先在真实 App 完成分流（当前无 `app-data/evidence_triage.json`）；本轮按边界保留未验收，未用合成夹具冒充真实数据结果。
 - 边界：推断不写卡、不自动确认；L2/L3 措辞降级与简历 trace 等级展示留 Phase D；无平台写入；P0-026 仍唯一 `next`。

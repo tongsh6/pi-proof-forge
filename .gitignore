@@ -53,6 +53,7 @@ policy.local.yaml
 
 # Local IDE and scratch diagnostics
 .idea/
+.tmp/
 debug_dom*.html
 debug_dom*.png
 policy_validation.yaml

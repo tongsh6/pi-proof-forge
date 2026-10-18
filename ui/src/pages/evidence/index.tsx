@@ -235,6 +235,19 @@ export function EvidencePage() {
     }
   }, []);
 
+  const focusDetailPanel = useCallback(() => {
+    // Tauri/Vite 渲染层：对账列表在详情面板上方，点击“查看”后需要把右侧详情滚入视口，
+    // 否则在长列表下用户看不到任何变化（看起来像按钮无响应）。
+    if (typeof document === "undefined") return;
+    const panel = document.querySelector<HTMLElement>('[data-testid="evidence-detail-panel"]');
+    panel?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const handleReconcileView = useCallback(async (item: EvidenceReconcileItem) => {
+    const loaded = await loadDetail(item.evidence_id);
+    if (loaded) focusDetailPanel();
+  }, [focusDetailPanel, loadDetail]);
+
   const hasLoadedRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [reconcile, setReconcile] = useState<EvidenceReconcileResult | null>(null);
@@ -1303,7 +1316,8 @@ export function EvidencePage() {
                       </select>
                       <button
                         className="shrink-0 rounded-card border border-border px-3 py-1 text-xs text-text-primary hover:bg-bg-hover"
-                        onClick={() => void loadDetail(item.evidence_id)}
+                        data-testid="evidence-reconcile-view"
+                        onClick={() => void handleReconcileView(item)}
                         type="button"
                       >
                         {t("pages.evidence.reconcile.view")}
@@ -1474,7 +1488,10 @@ export function EvidencePage() {
               )}
             </section>
 
-            <aside className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-[6.5rem] xl:max-h-[calc(100vh-8rem)] xl:self-start xl:overflow-y-auto">
+            <aside
+              className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-[6.5rem] xl:max-h-[calc(100vh-8rem)] xl:self-start xl:overflow-y-auto"
+              data-testid="evidence-detail-panel"
+            >
               <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
                 <div>
                   <h2 className="text-lg font-semibold text-text-primary">
