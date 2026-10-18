@@ -132,6 +132,8 @@ export function EvidencePage() {
   // 允许从总览等页面带 ?status=gap 直接进入已筛选列表。
   const initialStatus = searchParams.get("status") ?? "";
   const [items, setItems] = useState<EvidenceListItem[]>([]);
+  // 列表单次最多取 100 张（后端上限）；超出时列表与对账全量计数会不一致，需要明示。
+  const [listTruncated, setListTruncated] = useState(false);
   const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EvidenceDetail | null>(null);
@@ -324,10 +326,13 @@ export function EvidencePage() {
     if ((inferenceByCard.get(evidenceId)?.candidates ?? []).length > 0) tags.push("inference");
     return tags;
   }, [inferenceByCard, reconcileItemByCard]);
+  // 进入页面自动对账一次；失败后不重试（否则 sidecar 不可用时会变成紧密请求循环），由“重新对账”按钮手动触发。
+  const autoReconciledRef = useRef(false);
   useEffect(() => {
-    if (loadState !== "ready" || reconcile || reconcileState === "running") return;
+    if (loadState !== "ready" || autoReconciledRef.current) return;
+    autoReconciledRef.current = true;
     void runReconcile();
-  }, [loadState, reconcile, reconcileState, runReconcile]);
+  }, [loadState, runReconcile]);
   useEffect(() => {
     if (!materialDrawerOpen || typeof window === "undefined") return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -426,6 +431,7 @@ export function EvidencePage() {
           listEvidenceMaterialSources(),
         ]);
         setItems(result.items);
+        setListTruncated(Boolean(result.next_cursor));
         setMaterialSources(materialResult.items);
         setSelectedMaterialId((current) => {
           if (
@@ -966,6 +972,11 @@ export function EvidencePage() {
                   <p className="text-sm text-text-secondary">
                     {t("pages.evidence.listCount", { count: filteredItems.length })}
                   </p>
+                  {listTruncated ? (
+                    <p className="text-xs text-warning" data-testid="evidence-list-truncated">
+                      {t("pages.evidence.listTruncated", { count: items.length })}
+                    </p>
+                  ) : null}
                 </div>
                 <form
                   className="mt-3 flex flex-wrap items-center gap-2"
@@ -1450,7 +1461,7 @@ export function EvidencePage() {
                         {item.date_hints.length ? (
                           <div className="mt-2 flex flex-wrap items-center gap-1">
                             <span className="text-[10px] text-text-muted">{t("pages.evidence.reconcile.preview.dateHints")}</span>
-                            {item.date_hints.slice(0, 4).map((hint) => <span className="rounded bg-bg-inset px-1 py-0.5 font-mono text-[10px] text-text-secondary" key={hint}>{hint}</span>)}
+                            {item.date_hints.slice(0, 4).map((hint) => <span className="rounded bg-bg-hover px-1 py-0.5 font-mono text-[10px] text-text-secondary" key={hint}>{hint}</span>)}
                           </div>
                         ) : null}
                         {item.possible_duplicates.length ? (

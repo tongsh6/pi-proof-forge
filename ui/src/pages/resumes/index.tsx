@@ -260,6 +260,13 @@ export function ResumesPage() {
     void loadData();
   }, [loadData]);
 
+  // 深链 `/resumes?section=materials`（证据页空态/提炼抽屉跳转）：加载完成后滚到材料库区块。
+  useEffect(() => {
+    if (loadState !== "ready" || typeof window === "undefined" || typeof document === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("section") !== "materials") return;
+    document.getElementById("resumes-materials")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, [loadState]);
+
   const handleSaveProfile = useCallback(async () => {
     setProfileSaving(true);
     setError(null);
@@ -650,7 +657,7 @@ export function ResumesPage() {
               ) : null}
             </div>
 
-            <div className="border-t border-border pt-5">
+            <div className="scroll-mt-28 border-t border-border pt-5" id="resumes-materials">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-text-primary">

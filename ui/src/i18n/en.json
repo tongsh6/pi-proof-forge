@@ -401,6 +401,7 @@
       },
       "listTitle": "Evidence cards",
       "listCount": "{{count}} cards loaded",
+      "listTruncated": "Only the first {{count}} cards are loaded; summary counts cover all cards. Narrow with search or filters.",
       "artifactFallback": "Artifact",
       "actions": {
         "new": "New Card",

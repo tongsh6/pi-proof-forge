@@ -1471,7 +1471,7 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 
 **空状态**：0 张卡时不显示汇总条与表格，只显示一块空态面板：一句说明 + 「从材料提炼」主按钮 + 「新增」次按钮；没有材料时主按钮改为「去简历中心上传材料」。
 
-**兼容与数据**：不新增 RPC；对账、推断、分流、确认推断沿用 `evidence.reconcile` / `evidence.inferFields` / `evidence.confirmInference` / `evidence.triage.set`。列表问题标签与筛选在前端由对账结果按 `evidence_id` 合并，对账未完成前列表照常显示、标签为空。
+**兼容与数据**：不新增 RPC；对账、推断、分流、确认推断沿用 `evidence.reconcile` / `evidence.inferFields` / `evidence.confirmInference` / `evidence.triage.set`。列表问题标签与筛选在前端由对账结果按 `evidence_id` 合并，对账未完成前列表照常显示、标签为空。自动对账每次进入页面只发起一次，失败不自动重试，错误显示在汇总条提示行，由“重新对账”手动触发。列表单次最多加载 100 张（后端上限）；响应带 `next_cursor` 时在列表标题旁显示“仅加载前 N 张，汇总条计数为全量”的警示（`evidence-list-truncated`），超过 100 张后的按问题服务端筛选留作后续切片。
 
 **验证口径**：`tests/unit/gui` 中 `test_evidence_reconcile_ui.py` / `test_evidence_triage_ui.py` / `test_evidence_inference_ui.py`（如存在）按新位置改写断言，对账行相关 `data-testid` 迁到详情面板「对账发现」区；新增一条断言“页面进入后自动发起一次对账且列表与汇总条计数一致”。1440×900 下双栏顶部必须在首屏内（页头 + 汇总条合计高度 ≤ 160px）。
 

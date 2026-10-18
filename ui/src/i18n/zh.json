@@ -401,6 +401,7 @@
       },
       "listTitle": "证据列表",
       "listCount": "已加载 {{count}} 张证据卡",
+      "listTruncated": "仅加载前 {{count}} 张，汇总条计数为全量；请用搜索或筛选缩小范围。",
       "artifactFallback": "附件",
       "actions": {
         "new": "新增",
