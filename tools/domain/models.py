@@ -14,6 +14,7 @@ class EvidenceCard:
     stack: tuple[str, ...] = ()
     period: str = ""
     context: str = ""
+    role_scope: str = ""
     time_range_provenance: dict | None = None
     role_scope_provenance: dict | None = None
 

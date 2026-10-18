@@ -2,6 +2,17 @@
 
 Last updated: 2026-10-17
 
+## 2026-10-18 生成按等级降级与首屏组织（Phase D1–D4，P0-026 续）
+
+- 定位与复用：真实生成入口是 `tools/run_generation.py`（A/B 模板拼装），已在其中消费字段级 provenance；`tools/engines/generation/template_assembler.py` 与 `llm_rewriter.py` 同步补齐纯函数/受控改写能力，不新增生成框架。
+- D1 等级降级：证据卡读取时携带 `time_range_provenance`/`role_scope_provenance`/等级；L1/L4 保留负责/主导；L3 动作与结果降级为参与/推动，角色行呈现“参与 / 推动 · 角色”；L5 时间卡不进入正文；年精度只呈现起始年（如 2022）。
+- D2 受控改写：`LLMRewriter.rewrite` 支持 `level_context`（max_role_level/time_precision），改写后规则复核：强措辞增加或月份精度变细则回退模板原文；提示词同步约束。
+- D3 首屏组织（确定性部分）：按 JD 语义引用排序证据卡（引用优先，未引用压缩为最多 4 / 最少 2 条）；首屏标记移到第一条经历之后，使 JD 前三条职责对应的 bullet 进入首屏。B4 突出点提名发生在评估阶段（生成之前无法消费），正文回填突出点需评估后二次生成，本轮明确留作后续切片，不冒充已完成。
+- D4 追溯：生成 trace 的 claims 对时间/角色携带 `provenance`（等级、依据、确认记录），trace 顶层增加 `field_provenance`；评估器解析卡内 JSON provenance，R1.4 措辞上限对真实卡生效。
+- 验证：新增生成 provenance/首屏/受控改写测试 5 项，更新首屏标记与定向生成回归；全量回归 **1438 通过、1 跳过、18 subtests**；`tsc --noEmit` 与 `check_execution_roadmap` 通过。
+- D5 阻塞：真实 App 用目标 JD 重新生成两页 PDF 并验收需要用户操作（生成、评测、固定 PDF 与人工审核）；本轮未执行真实生成，不以合成夹具冒充验收。C8（真实 85 卡推断确认）同样等待用户先在 App 分流。
+- 边界：无平台写入；P0-026 仍唯一 `next`。
+
 ## 2026-10-18 证据可信等级与跨文档推断（Phase C，P0-026 续）
 
 - 定位与复用：沿用证据卡 YAML、对账面板、`kb` 索引、职业档案任职区间与 LLM 配置；新增 `tools/infra/evidence_provenance.py`（等级/出处结构）与 `tools/infra/evidence_inference.py`（检索/聚合/校验/缓存），不新建存储或 RAG。

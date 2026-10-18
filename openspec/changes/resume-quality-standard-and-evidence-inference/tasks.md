@@ -62,11 +62,16 @@
 
 ## Phase D - 生成按等级降级与首屏重排
 
-- [ ] D1 `template_assembler.py`：按 `role_scope_provenance.level` 选动词组；按 `time_range_provenance.precision` 格式化时间；L5 时间卡不进正文
-- [ ] D2 `llm_rewriter.py`：约束"不得提高角色强度、不得增加时间精度"；改写后规则比对动词组，违规回退模板句
-- [ ] D3 首屏组织：突出点（B4）置于摘要或第一条经历；JD 前三职责对应 bullet 进入首屏；无关经历压缩规则（R2.4）
-- [ ] D4 `resume_trace` 增加字段等级、依据与确认记录
+- [x] D1 `template_assembler.py`：按 `role_scope_provenance.level` 选动词组；按 `time_range_provenance.precision` 格式化时间；L5 时间卡不进正文
+  - 实现：`tools/engines/generation/template_assembler.py` 增加字段级渲染（L1/L4 保留负责/主导；L3 动作/结果降级参与/推动；L5 时间卡不进入正文；年精度只呈现起始年），并接入真实 `tools/run_generation.py` 的 A/B 模板拼装。
+- [x] D2 `llm_rewriter.py`：约束"不得提高角色强度、不得增加时间精度"；改写后规则比对动词组，违规回退模板句
+  - 实现：`llm_rewriter.py` 增加 `level_context` 约束；改写后规则复核强措辞与月份精度，发现提升则回退模板原文；测试覆盖“变强/变精细被拒、合规改写通过”。
+- [x] D3 首屏组织：突出点（B4）置于摘要或第一条经历；JD 前三职责对应 bullet 进入首屏；无关经历压缩规则（R2.4）
+  - 实现（确定性部分）：按 JD 语义引用排序证据卡（引用优先、未引用压缩为最多 4/最少 2 条），首屏标记移到第一条经历之后，使 JD 前三条职责对应的 bullet 进入首屏。B4 突出点由评估阶段提名、生成先于评估，正文回填突出点需评估后二次生成，本轮未实现，留作后续切片（已在台账记录边界）。
+- [x] D4 `resume_trace` 增加字段等级、依据与确认记录
+  - 实现：生成 trace 的 claims 对时间/角色携带 `provenance`（等级、依据、确认记录），trace 顶层新增 `field_provenance`（含字段等级）；评估器读取卡 JSON provenance，R1.4 对真实卡生效。
 - [ ] D5 P0-026 当前目标 JD 重新生成两页 PDF：质量报告四层结果、突出点、trace 全量记录；用户真实 App 验收
+  - 阻塞（2026-10-18）：需用户在真实 App 用 P0-026 目标 JD 重新生成两页 PDF 并验收（生成/评测/固定 PDF 与用户审核）。本轮已完成 D1–D4 代码与合成夹具测试，未执行真实生成，不以合成夹具冒充 D5 验收。
 - [ ] D6 路线图与台账收口：在 P0-026 下记录本变更结果；阈值按真实分布调整并写入 `config/quality/thresholds.yaml`
 
 ---

@@ -21,6 +21,7 @@ class EvidenceStore:
                 "title": card.title,
                 "raw_source": card.raw_source,
                 "time_range": card.period,
+                "role_scope": card.role_scope,
                 "time_range_provenance_json": (json.dumps(card.time_range_provenance, ensure_ascii=False, sort_keys=True)
                                               if card.time_range_provenance else ""),
                 "role_scope_provenance_json": (json.dumps(card.role_scope_provenance, ensure_ascii=False, sort_keys=True)
@@ -51,6 +52,7 @@ class EvidenceStore:
             tags=tuple(lists.get("tags", [])),
             stack=tuple(lists.get("stack", [])),
             period=scalars.get("time_range", ""),
+            role_scope=scalars.get("role_scope", ""),
             time_range_provenance=parse_provenance(scalars.get(PROVENANCE_SCALARS["time_range"])),
             role_scope_provenance=parse_provenance(scalars.get(PROVENANCE_SCALARS["role_scope"])),
         )

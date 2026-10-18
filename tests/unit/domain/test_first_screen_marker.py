@@ -53,7 +53,10 @@ def test_template_writes_exactly_one_first_screen_marker():
     assert content.count(FIRST_SCREEN_MARKER) == 1
     first, rest = te.split_first_screen(content)
     assert "职业概述" in first
-    assert "项目经历" in rest
+    assert "项目经历" in first
+    # D3：第一条经历（含 JD 相关 bullet）必须在首屏内，标记后才能进入其余经历。
+    assert "交易服务重构" in first
+    assert "请求延迟降低 20%" not in rest
 
 
 def test_rendered_html_and_parsed_resume_ignore_marker():

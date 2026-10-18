@@ -45,6 +45,8 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 `small_company_high_match_delivery`
 
+2026-10-18 生成按等级降级与首屏（Phase D1–D4）：真实 A/B 模板拼装已消费字段级 provenance（L1/L4 保留负责/主导，L3 降级参与/推动，L5 时间卡不进正文，年精度只呈现年）；LLM 改写受控复核并在提升强度/精度时回退模板；按 JD 引用排序证据卡并把首屏标记移到第一条经历之后，使 JD 前三条职责 bullet 进入首屏；resume_trace 的 claims 与顶层记录字段等级/依据/确认记录。B4 突出点回填正文需评估后二次生成，明确列为后续切片；D5 真实 App 两页 PDF 验收与 C8 真实卡确认待用户操作。P0-026 保持唯一 `next`。
+
 2026-10-18 证据可信等级与跨文档推断（Phase C）：证据卡支持 L1–L5 provenance（字段级、含出处/置信度/确认记录，旧卡默认 L1/L5），单文档提炼注入文档元数据产出 L1/L2 时间候选（角色仅 L1），新增 `evidence.inferFields`（kb 检索→规则聚合→每卡一次 LLM→任职区间与原文回读校验→本地缓存/否决过滤）与 `evidence.confirmInference`（接受/修改后接受 L4/否决）；证据页对账面板新增「待确认推断」与批量接受高置信、低置信折叠，系统设置新增推断开关（关闭只给规则 L2 线索）；`.pen` 证据页同步。真实 85 卡运行与用户批量确认（C8）阻塞于用户先在 App 分流；P0-026 保持唯一 `next`，继续 Phase D。
 
 2026-10-18 四层质量报告 Phase B：已接通受控 LLM 判项（带引用、无引用 fail-closed、按输入指纹缓存）、R1.4/R2.1/R3.1/R3.5 判定、突出点提名 top-2 与用户否决/替换（`quality.decideHighlight` + `app-data/quality_decisions.json`），Quick Run 与固定 PDF 审批的四层报告展示突出点与候选。规则/缓存/决策回归通过，真实本机模型回归结果见台账。P0-026 保持唯一 `next`，继续 Phase C/D。

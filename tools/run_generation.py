@@ -7,13 +7,15 @@ import os
 import re
 from pathlib import Path
 import sys
-from typing import Any, TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
+from tools.engines.generation import template_assembler
+from tools.infra import evidence_provenance as provenance
 from tools.infra.llm.client import LLMClient, llm_timeout_from_env
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
@@ -38,6 +40,10 @@ class CardView(TypedDict):
     stack: list[str]
     artifacts: list[str]
     source_sha256: str
+    time_range_provenance: NotRequired[dict[str, Any] | None]
+    role_scope_provenance: NotRequired[dict[str, Any] | None]
+    time_range_level: NotRequired[str]
+    role_scope_level: NotRequired[str]
 
 
 def read_text(path: str) -> str:
@@ -106,6 +112,10 @@ def load_cards(evidence_dir: Path, card_ids: list[str], material_dir: Path | Non
             "results": doc["lists"].get("results", []),
             "stack": doc["lists"].get("stack", []),
             "artifacts": doc["lists"].get("artifacts", []),
+            "time_range_provenance": provenance.field_provenance(doc["scalars"], "time_range"),
+            "role_scope_provenance": provenance.field_provenance(doc["scalars"], "role_scope"),
+            "time_range_level": provenance.field_level(doc["scalars"], "time_range"),
+            "role_scope_level": provenance.field_level(doc["scalars"], "role_scope"),
         }
 
     cards: list[CardView] = []
@@ -183,8 +193,9 @@ def build_template_resume(
     *, personal_profile: dict[str, Any] | None = None,
     job_context: dict[str, Any] | None = None,
     positioning: str = "technical_depth", custom_positioning: str = "",
-    claims: list[dict[str, str]] | None = None,
+    claims: list[dict[str, Any]] | None = None,
     preferred_facts: list[dict[str, Any]] | None = None,
+    semantic_report: dict[str, Any] | None = None,
 ) -> str:
     profile = personal_profile or {}
     target = job_context or {}
@@ -192,12 +203,15 @@ def build_template_resume(
     targeted=preferred_facts is not None
     preferred_profile={f['field'] for f in (preferred_facts or []) if f['source_id']=='personal_profile'}
 
-    def fact(text: str, kind: str, field: str, evidence_id: str = "") -> str:
+    def fact(text: str, kind: str, field: str, evidence_id: str = "", field_provenance: dict[str, Any] | None = None) -> str:
         text = " ".join(str(text).split())
         if re.search(r"Evidence trace|Source report|(?:/Users/|/private/|/tmp/)|\bec[-_][\w-]+", text, re.I):
             raise ValueError("internal_metadata_in_resume_fact")
         if text:
-            claims.append({"text": text, "source_kind": kind, "field": field, "evidence_id": evidence_id})
+            claim: dict[str, Any] = {"text": text, "source_kind": kind, "field": field, "evidence_id": evidence_id}
+            if field_provenance:
+                claim["provenance"] = field_provenance
+            claims.append(claim)
         return text
 
     name = fact(profile.get("name", ""), "personal_profile", "name")
@@ -239,9 +253,12 @@ def build_template_resume(
         lines.extend(['','## 核心能力'])
         for item in groups:
             lines.append('- '+personal(item['category'],f"career.skills.{item['id']}.category")+'：'+personal(item['description'],f"career.skills.{item['id']}.description"))
-    # 首屏切分标记：模板决定首屏边界，评估器按此切分；渲染层忽略该注释行。
-    lines.extend(['', FIRST_SCREEN_MARKER, ''])
-    stacks = unique_stack(cards,limit=sum(len(c['stack']) for c in cards)) if targeted else unique_stack(cards)
+    # 首屏切分标记：优先放在第一条经历之后，使 JD 前三条职责对应的经历 bullet 进入首屏；
+    # 没有可用经历时退回摘要/能力区结尾。渲染层忽略该注释行。
+    first_screen_fallback = len(lines)
+    visible_cards = [card for card in cards if template_assembler.visible_in_resume(card)]
+    render_cards = template_assembler.order_cards_for_resume(visible_cards, semantic_report)
+    stacks = unique_stack(visible_cards,limit=sum(len(c['stack']) for c in visible_cards)) if targeted else unique_stack(visible_cards)
     keywords = [str(term).casefold() for term in target.get("keywords", [])]
     stacks.sort(key=lambda value: value.casefold() not in keywords)
     if targeted:
@@ -273,12 +290,21 @@ def build_template_resume(
     if targeted:del lines[work_start:]
     project_start=len(lines)
     lines.extend(["", "## 项目经历"])
-    for card in cards:
+    marker_done = False
+    for card in render_cards:
+        time_level = template_assembler.level_of(card, "time_range")
+        role_level = template_assembler.level_of(card, "role_scope")
         title = fact(card["title"], "evidence", "title", card["id"])
-        period = fact(card["time_range"], "evidence", "time_range", card["id"])
+        period_text = template_assembler.format_time(
+            card["time_range"], time_level, template_assembler.precision_of(card)
+        )
+        period = fact(period_text, "evidence", "time_range", card["id"],
+                      card.get("time_range_provenance")) if period_text else ""
         lines.append(f"### {title}" + (f"（{period}）" if period else ""))
-        if card["role_scope"]:
-            lines.append("角色：" + fact(card["role_scope"], "evidence", "role_scope", card["id"]))
+        role_value = template_assembler.role_text(card["role_scope"], role_level)
+        if role_value:
+            lines.append("角色：" + fact(role_value, "evidence", "role_scope", card["id"],
+                                         card.get("role_scope_provenance")))
         if card["context"]:
             lines.append("场景：" + fact(card["context"], "evidence", "context", card["id"]))
         linked=[item for item in work if card['id'] in item.get('evidence_ids',[]) and item.get('company')]
@@ -296,11 +322,16 @@ def build_template_resume(
         for field, values in (("actions", actions), ("results", results[:2])):
             for value in values:
                 if value:
-                    rendered = fact(value, "evidence", field, card["id"])
+                    rendered = fact(template_assembler.downgrade_wording(value, role_level), "evidence", field, card["id"])
                     if targeted and field == 'results' and rendered in ' '.join(card['context'].split()):
                         continue
                     lines.append("- " + rendered)
         lines.append("")
+        if not marker_done:
+            lines.extend(["", FIRST_SCREEN_MARKER, ""])
+            marker_done = True
+    if not marker_done:
+        lines[first_screen_fallback:first_screen_fallback] = ["", FIRST_SCREEN_MARKER, ""]
     lines.extend(deferred_work)
     education=[item for item in career.get('education',[]) if item.get('school') and item.get('degree')]
     if career.get('education_visibility')=='show' and education:
@@ -461,13 +492,14 @@ def _legacy_main() -> int:
                         print("[generation] LLM 未返回可验证的证据选择，已阻断生成。")
                         return 1
                     strategy = "rule_fallback_locked_evidence_fields"
-            claims: list[dict[str, str]] = []
+            claims: list[dict[str, Any]] = []
             content = build_template_resume(
                 version, report_id, score_total, now, selected_cards,
                 personal_profile=profile, job_context=target,
                 positioning=args.resume_positioning, custom_positioning=args.custom_positioning,
                 claims=claims,
                 preferred_facts=semantic_preferred_facts(semantic) if semantic else None,
+                semantic_report=semantic,
             )
             paths = {"personal_profile": profile_path, "matching_report": Path(report_path)}
             if semantic:
@@ -496,6 +528,15 @@ def _legacy_main() -> int:
                 "resume_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
                 "evidence_card_ids": [card["id"] for card in selected_cards],
                 "claims": claims,
+                "field_provenance": {
+                    card["id"]: {
+                        "time_range": card.get("time_range_provenance"),
+                        "role_scope": card.get("role_scope_provenance"),
+                        "time_range_level": card.get("time_range_level", "L1"),
+                        "role_scope_level": card.get("role_scope_level", "L1"),
+                    }
+                    for card in selected_cards
+                },
                 "inputs": {key: {
                     "path": str(path.resolve()), "exists": path.is_file(),
                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "",

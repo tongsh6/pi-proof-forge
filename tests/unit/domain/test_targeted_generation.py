@@ -58,6 +58,7 @@ def test_generation_uses_profile_and_target_without_internal_metadata(monkeypatc
     trace = json.loads(resume.with_suffix(".trace.json").read_text())
     assert trace["evidence_card_ids"] == ["ec-1"]
     assert trace["claims"]
+    assert trace["field_provenance"]["ec-1"]["time_range_level"] == "L1"
     assert trace["readiness"]["status"] == "NEEDS_EVIDENCE"
     assert trace["readiness"]["missing_career_fields"]
     from tools.sidecar.handlers.resume import _parse_preview_markdown

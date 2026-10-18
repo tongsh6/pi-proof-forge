@@ -542,7 +542,11 @@ def evaluate_eligible(
 
 
 def _provenance_level(card: dict, field: str) -> str:
+    from tools.infra import evidence_provenance as evidence_provenance
+
     raw = card.get(f"{field}_provenance")
+    if not isinstance(raw, dict):
+        raw = evidence_provenance.parse_provenance(card.get(f"{field}_provenance_json"))
     if isinstance(raw, dict):
         level = raw.get("level")
     else:
