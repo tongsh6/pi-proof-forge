@@ -183,6 +183,35 @@ def load_material_source_roots(path: Path | None = None) -> list[dict[str, str]]
     return roots
 
 
+def load_evidence_inference_enabled(path: Path | None = None) -> bool:
+    """系统设置：是否允许 LLM 跨文档推断（默认开启）。"""
+    policy_path = _resolve_policy_path(path)
+    if policy_path is None or not policy_path.exists():
+        return True
+    try:
+        raw = parse_simple_yaml(policy_path.read_text(encoding="utf-8")).get("scalars", {}).get(
+            "evidence_inference_enabled", "true")
+    except ValueError:
+        return True
+    return str(raw).strip().lower() not in {"false", "0", "no", "off"}
+
+
+def save_evidence_inference_enabled(enabled: bool, path: Path | None = None) -> Path | None:
+    policy_path = _resolve_policy_path(path)
+    if policy_path is None:
+        return None
+    scalars: dict[str, str] = {}
+    lists: dict[str, list[str]] = {}
+    if policy_path.exists():
+        doc = parse_simple_yaml(policy_path.read_text(encoding="utf-8"))
+        scalars = doc.get("scalars", {})
+        lists = doc.get("lists", {})
+    scalars["evidence_inference_enabled"] = "true" if enabled else "false"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(dump_yaml(scalars, lists), encoding="utf-8")
+    return policy_path
+
+
 def save_material_source_roots(roots: list[dict[str, str]], path: Path | None = None) -> Path | None:
     """保存允许根：必须是已存在目录；拒绝危险根（/、仓库根、材料库）；按解析路径去重；
     id 冲突时重新生成；自动生成 id 与默认 label。"""

@@ -41,16 +41,24 @@
 
 ## Phase C - 证据可信等级与推断候选
 
-- [ ] C1 证据卡 schema：`time_range_provenance`、`role_scope_provenance`（含 level/precision/evidence/confidence/confirmed_by_user）；缺省兼容；卡指纹纳入 provenance
-- [ ] C2 `validator.py` / `store.py`：读写与校验；旧卡加载不报错；测试覆盖 L1–L5 各一例
-- [ ] C3 单文档提炼增强：`_llm_draft_prompt` 注入 `document_metadata`（路径、文件名日期、首个日期标题、修改时间、任职区间）；要求按 L1/L2 输出时间并给依据；角色仅 L1
+- [x] C1 证据卡 schema：`time_range_provenance`、`role_scope_provenance`（含 level/precision/evidence/confidence/confirmed_by_user）；缺省兼容；卡指纹纳入 provenance
+  - 实现：卡 YAML 新增 `time_range_provenance_json`/`role_scope_provenance_json`（字段级等级，缺省 L1/L5；结构 L1–L5 见 `tools/infra/evidence_provenance.py`），卡文件 sha256 指纹自然覆盖 provenance。
+- [x] C2 `validator.py` / `store.py`：读写与校验；旧卡加载不报错；测试覆盖 L1–L5 各一例
+  - 实现：EvidenceCard/引擎 store/validator 与 sidecar evidence handler 读写、校验 provenance；旧卡缺字段按 L1/L5 兼容；手工改时间/角色自动降级 L4。
+- [x] C3 单文档提炼增强：`_llm_draft_prompt` 注入 `document_metadata`（路径、文件名日期、首个日期标题、修改时间、任职区间）；要求按 L1/L2 输出时间并给依据；角色仅 L1
+  - 实现：`_llm_draft_prompt` 注入 `document_metadata`（路径/文件名日期/首个日期标题/修改时间/任职区间 keys），要求 L1/L2 时间候选与引用；角色仅 L1。无依据候选丢弃并记 `provenance_warnings`。
   - 测试：有文件名日期的文档 → L2 时间候选 + 依据键；无任何线索 → 留空
-- [ ] C4 `evidence.inferFields` RPC：kb 检索（限 20 篇、排除设计资料来源）→ 规则聚合（年月、第一人称句分类）→ LLM 一次调用 → 校验（任职区间内、excerpt 可回读）→ 写 `app-data/evidence_inference.json`
+- [x] C4 `evidence.inferFields` RPC：kb 检索（限 20 篇、排除设计资料来源）→ 规则聚合（年月、第一人称句分类）→ LLM 一次调用 → 校验（任职区间内、excerpt 可回读）→ 写 `app-data/evidence_inference.json`
+  - 实现：`tools/infra/evidence_inference.py` + RPC `evidence.inferFields`：kb 索引按标题/标签/技术栈检索（限 20 篇、排除设计资料与合成夹具）→ 日期/第一人称句聚合 → 每卡一次 LLM → 校验任职区间内且 excerpt 可回读 → 写 `app-data/evidence_inference.json`；按卡指纹+文档集合缓存，否决项不再提名。
   - 测试：候选时间超出任职区间被丢弃；excerpt 不可回读被丢弃；否决过的候选不再提名
-- [ ] C5 对账面板"待确认推断"列：接受 / 修改后接受（转 L4）/ 否决；批量接受高置信候选；低置信折叠
-- [ ] C6 系统设置：推断开关；关闭时只显示规则 L2 线索
-- [ ] C7 同步 `sidecar-rpc.md`、`DESIGN.md`、`.pen`（证据页列变更）；全量回归与 `tsc`
+- [x] C5 对账面板"待确认推断"列：接受 / 修改后接受（转 L4）/ 否决；批量接受高置信候选；低置信折叠
+  - 实现：RPC `evidence.confirmInference`（接受/修改后接受/否决；修改后接受记 L4；写卡后进入待审核）；对账面板「待确认推断」列支持单条接受/否决、修改值、批量接受高置信候选与低置信折叠；证据页 `.pen` 同步该行。
+- [x] C6 系统设置：推断开关；关闭时只显示规则 L2 线索
+  - 实现：系统设置新增「证据推断」开关（`policy.local.yaml` 持久化，默认开启）；关闭时 `evidence.inferFields` 只返回规则 L2 时间线索且不调用模型；UI 同步。
+- [x] C7 同步 `sidecar-rpc.md`、`DESIGN.md`、`.pen`（证据页列变更）；全量回归与 `tsc`
+  - 实现：`sidecar-rpc.md`、`DESIGN.md`、`ui/design/piproofforge.pen`（证据页待确认推断行）已同步；全量回归与 `tsc` 通过。
 - [ ] C8 真实数据：对 85 卡（先经用户分流）运行推断，用户在真实 App 批量确认；台账记录确认前后的缺时间/缺角色计数与接受率
+  - 阻塞（2026-10-18）：真实数据需用户先在 App 证据页对缺字段卡分流为「值得补」，当前本机无 `app-data/evidence_triage.json`、用户未在真实 App 操作；本轮未运行真实 85 卡推断，不以合成夹具冒充 C8 验收。
 
 ## Phase D - 生成按等级降级与首屏重排
 

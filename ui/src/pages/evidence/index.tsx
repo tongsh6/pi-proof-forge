@@ -18,6 +18,7 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { confirmAction, notify } from "@/lib/ui";
 import {
+  confirmEvidenceInference,
   createEvidence,
   createMaterialReference,
   checkMaterialReference,
@@ -26,6 +27,7 @@ import {
   getEvidence,
   getSettings,
   importEvidence,
+  inferEvidenceFields,
   listEvidenceMaterialSources,
   listEvidence,
   reconcileEvidence,
@@ -41,6 +43,8 @@ import type {
   EvidenceDraftPayload,
   EvidenceDetail,
   EvidenceFilters,
+  EvidenceInferenceCandidate,
+  EvidenceInferenceResult,
   EvidenceListItem,
   EvidenceReconcileItem,
   EvidenceReconcileResult,
@@ -247,6 +251,88 @@ export function EvidencePage() {
       setReconcileError(getErrorMessage(reason));
     }
   }, []);
+
+  const [inference, setInference] = useState<EvidenceInferenceResult | null>(null);
+  const [inferenceState, setInferenceState] = useState<"idle" | "running" | "error">("idle");
+  const [inferenceError, setInferenceError] = useState<string | null>(null);
+  const [inferenceNotice, setInferenceNotice] = useState("");
+  const [inferenceBusy, setInferenceBusy] = useState(false);
+  const [inferenceEdits, setInferenceEdits] = useState<Record<string, string>>({});
+  const [showLowConfidence, setShowLowConfidence] = useState(false);
+  const inferenceByCard = useMemo(
+    () => new Map((inference?.cards ?? []).map((card) => [card.card_id, card])),
+    [inference],
+  );
+  const runInference = useCallback(async () => {
+    setInferenceState("running");
+    setInferenceError(null);
+    try {
+      setInference(await inferEvidenceFields());
+      setInferenceState("idle");
+    } catch (reason) {
+      setInferenceState("error");
+      setInferenceError(getErrorMessage(reason));
+    }
+  }, []);
+  const candidateKey = (evidenceId: string, candidate: EvidenceInferenceCandidate) =>
+    `${evidenceId}:${candidate.field}:${candidate.candidate_hash}`;
+  const handleInferenceDecision = useCallback(async (
+    item: EvidenceReconcileItem,
+    cardSha: string,
+    candidate: EvidenceInferenceCandidate,
+    action: "accept" | "reject",
+    value?: string,
+  ) => {
+    setInferenceBusy(true);
+    setInferenceError(null);
+    try {
+      await confirmEvidenceInference({
+        evidence_id: item.evidence_id,
+        card_sha256: cardSha,
+        field: candidate.field,
+        action,
+        ...(value ? { value } : {}),
+      });
+      setInference((current) => current && {
+        ...current,
+        cards: current.cards.map((card) => card.card_id === item.evidence_id
+          ? { ...card, candidates: card.candidates.filter((entry) => entry.candidate_hash !== candidate.candidate_hash) }
+          : card),
+      });
+      setInferenceNotice(t(action === "accept" ? "pages.evidence.reconcile.inference.accepted" : "pages.evidence.reconcile.inference.rejected"));
+      await runReconcile();
+      await loadDetail(item.evidence_id).catch(() => null);
+    } catch (reason) {
+      setInferenceError(getErrorMessage(reason));
+    } finally {
+      setInferenceBusy(false);
+    }
+  }, [loadDetail, runReconcile, t]);
+  const batchAcceptHighConfidence = useCallback(async () => {
+    if (!inference) return;
+    setInferenceBusy(true);
+    setInferenceError(null);
+    setInferenceNotice("");
+    try {
+      for (const card of inference.cards) {
+        const item = reconcile?.items.find((entry) => entry.evidence_id === card.card_id);
+        if (!item) continue;
+        for (const candidate of card.candidates.filter((entry) => (entry.confidence ?? 0) >= 0.5)) {
+          await confirmEvidenceInference({
+            evidence_id: card.card_id, card_sha256: card.card_sha256,
+            field: candidate.field, action: "accept",
+          });
+        }
+      }
+      setInferenceNotice(t("pages.evidence.reconcile.inference.batchAccepted"));
+      await runInference();
+      await runReconcile();
+    } catch (reason) {
+      setInferenceError(getErrorMessage(reason));
+    } finally {
+      setInferenceBusy(false);
+    }
+  }, [inference, reconcile, runInference, runReconcile, t]);
 
   const referencedSources = useMemo(
     () => materialSources.filter((source) => source.source_mode === "referenced"),
@@ -1128,6 +1214,29 @@ export function EvidencePage() {
                   <RefreshCw className={reconcileState === "running" ? "animate-spin" : ""} size={15} />
                 </button>
               </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="evidence-inference-toolbar">
+                <button
+                  className="rounded-card border border-accent px-2 py-1 text-accent disabled:opacity-50"
+                  data-testid="evidence-inference-run"
+                  disabled={inferenceState === "running" || inferenceBusy}
+                  onClick={() => void runInference()}
+                  type="button"
+                >
+                  {t(inferenceState === "running" ? "pages.evidence.reconcile.inference.running" : "pages.evidence.reconcile.inference.run")}
+                </button>
+                {inference && inference.cards.some((card) => card.candidates.some((candidate) => (candidate.confidence ?? 0) >= 0.5)) ? (
+                  <button className="text-accent underline disabled:opacity-50" data-testid="evidence-inference-batch"
+                    disabled={inferenceBusy} onClick={() => void batchAcceptHighConfidence()} type="button">
+                    {t("pages.evidence.reconcile.inference.batchAccept")}
+                  </button>
+                ) : null}
+                {inference && !inference.enabled ? <span className="text-warning">{t("pages.evidence.reconcile.inference.disabledHint")}</span> : null}
+                {inference?.summary ? <span className="text-text-muted">{t("pages.evidence.reconcile.inference.summary", {
+                  cards: inference.summary.requested, candidates: inference.summary.candidates,
+                })}</span> : null}
+                {inferenceNotice ? <span role="status" className="text-success">{inferenceNotice}</span> : null}
+                {inferenceError ? <span role="alert" className="text-error">{inferenceError}</span> : null}
+              </div>
               {reconcileState === "error" && reconcileError ? <p className="text-sm text-error">{reconcileError}</p> : null}
               {reconcile && reconcileProblems.length === 0 ? (
                 <p className="text-sm text-text-secondary">{t("pages.evidence.reconcile.clean")}</p>
@@ -1143,6 +1252,40 @@ export function EvidencePage() {
                         </p>
                         <p className="mt-0.5 text-xs text-text-muted">{reconcileReasons(item).join(" · ")}</p>
                         {item.triage?.stale ? <p className="mt-0.5 text-xs text-warning">{t("pages.evidence.reconcile.triage.stale")}</p> : null}
+                        {(() => {
+                          const card = inferenceByCard.get(item.evidence_id);
+                          if (!card || card.candidates.length === 0) return null;
+                          const high = card.candidates.filter((candidate) => (candidate.confidence ?? 0) >= 0.5);
+                          const low = card.candidates.filter((candidate) => (candidate.confidence ?? 0) < 0.5);
+                          const renderCandidate = (candidate: EvidenceInferenceCandidate, lowConfidence = false) => {
+                            const key = candidateKey(item.evidence_id, candidate);
+                            return <div key={key} className="mt-1 rounded-card border border-border bg-bg-primary/60 px-2 py-1 text-xs" data-testid="evidence-inference-candidate" data-field={candidate.field}>
+                              <p className="text-text-primary">
+                                {t(candidate.field === "time_range" ? "pages.evidence.reconcile.inference.time" : "pages.evidence.reconcile.inference.role")}：{candidate.value}
+                                <span className="ml-2 text-text-muted">{candidate.level}{typeof candidate.confidence === "number" ? ` · ${candidate.confidence.toFixed(2)}` : ""}{lowConfidence ? ` · ${t("pages.evidence.reconcile.inference.lowConfidence")}` : ""}</span>
+                              </p>
+                              <p className="mt-0.5 truncate text-text-muted">{(candidate.evidence[0]?.excerpt || candidate.evidence[0]?.key || "").slice(0, 120)}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <input aria-label={t("pages.evidence.reconcile.inference.editLabel")} className="w-40 rounded-card border border-border bg-bg-primary px-2 py-0.5 text-xs"
+                                  value={inferenceEdits[key] ?? candidate.value}
+                                  onChange={(event) => setInferenceEdits((current) => ({ ...current, [key]: event.target.value }))} />
+                                <button type="button" className="text-accent underline disabled:opacity-50" disabled={inferenceBusy}
+                                  onClick={() => void handleInferenceDecision(item, card.card_sha256, candidate, "accept")}>{t("pages.evidence.reconcile.inference.accept")}</button>
+                                <button type="button" className="text-accent underline disabled:opacity-50" disabled={inferenceBusy}
+                                  onClick={() => void handleInferenceDecision(item, card.card_sha256, candidate, "accept", inferenceEdits[key] ?? candidate.value)}>{t("pages.evidence.reconcile.inference.acceptEdited")}</button>
+                                <button type="button" className="text-warning underline disabled:opacity-50" disabled={inferenceBusy}
+                                  onClick={() => void handleInferenceDecision(item, card.card_sha256, candidate, "reject")}>{t("pages.evidence.reconcile.inference.reject")}</button>
+                              </div>
+                            </div>;
+                          };
+                          return <div className="mt-1 space-y-1" data-testid="evidence-inference-candidates">
+                            {high.map((candidate) => renderCandidate(candidate))}
+                            {low.length > 0 ? (showLowConfidence ? <>
+                              {low.map((candidate) => renderCandidate(candidate, true))}
+                              <button type="button" className="text-xs text-text-muted underline" onClick={() => setShowLowConfidence(false)}>{t("pages.evidence.reconcile.inference.hideLow")}</button>
+                            </> : <button type="button" className="text-xs text-text-muted underline" data-testid="evidence-inference-show-low" onClick={() => setShowLowConfidence(true)}>{t("pages.evidence.reconcile.inference.showLow", { count: low.length })}</button>) : null}
+                          </div>;
+                        })()}
                       </div>
                       <select
                         aria-label={t("pages.evidence.reconcile.triage.label")}

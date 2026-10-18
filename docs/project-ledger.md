@@ -2,6 +2,18 @@
 
 Last updated: 2026-10-17
 
+## 2026-10-18 证据可信等级与跨文档推断（Phase C，P0-026 续）
+
+- 定位与复用：沿用证据卡 YAML、对账面板、`kb` 索引、职业档案任职区间与 LLM 配置；新增 `tools/infra/evidence_provenance.py`（等级/出处结构）与 `tools/infra/evidence_inference.py`（检索/聚合/校验/缓存），不新建存储或 RAG。
+- C1/C2 provenance：卡字段 `time_range`/`role_scope` 可带 `*_provenance_json`（L1–L5、precision、evidence、confidence、confirmed_by_user、first_person_hits）；缺省按 L1（有值）/L5（空值）兼容旧卡；domain/引擎 store/validator 与 sidecar 读写同步；手工改时间/角色自动降级 L4。卡文件 sha256 指纹包含 provenance。
+- C3 单文档提炼：`_llm_draft_prompt` 注入文档元数据（路径/文件名日期/首个日期标题/修改时间/任职区间 keys），要求模型按 L1（原文引用）/L2（元数据键）输出时间候选、角色仅 L1；无依据或超出任职区间的候选丢弃并记录 `provenance_warnings`。
+- C4 跨文档推断：新 RPC `evidence.inferFields`；kb 索引按卡标题/标签/技术栈检索（限 20 篇，排除设计资料来源与合成夹具）；日期与第一人称句聚合后每卡一次 LLM 产出 L3 候选；校验任职区间与 excerpt 可回读后才入 `app-data/evidence_inference.json`，按卡 sha256+文档集合指纹缓存，否决候选不再提名。
+- C5 用户确认：新 RPC `evidence.confirmInference` 支持接受（保留 L3 + confirmed）、修改后接受（L4）、否决（记 hash 不再提名）；写卡后进入待审核且保留 provenance。对账面板新增「待确认推断」行与高/低置信分组、批量接受高置信、修改值、单条否决；证据页 `.pen` 已同步该行（Screen/Evidence 1310 高，左列重排）。
+- C6 开关：系统设置「证据推断」开关持久化 `policy.local.yaml`，关闭后只返回规则 L2 时间线索、不调用模型；UI 支持切换。
+- C7 文档：`sidecar-rpc.md`、`DESIGN.md`、`ui/design/piproofforge.pen` 已同步；`tsc --noEmit` 与全量回归通过（1400+ 项）。
+- C8 阻塞：真实 85 卡运行与用户批量确认需要先在真实 App 完成分流（当前无 `app-data/evidence_triage.json`）；本轮按边界保留未验收，未用合成夹具冒充真实数据结果。
+- 边界：推断不写卡、不自动确认；L2/L3 措辞降级与简历 trace 等级展示留 Phase D；无平台写入；P0-026 仍唯一 `next`。
+
 ## 2026-10-18 四层质量报告 Phase B：受控 LLM 判项与突出点（P0-026 续）
 
 - 定位与复用：在 Phase A 规则报告上接通设计中的 LLM 判项，不新建模型调用框架。判项走 `LLMClient` 与既有 OpenAI-compatible 配置（pipeline `--use-llm` + 系统设置持久化 env），结果只进入质量报告与匹配矩阵，不改生成内容。

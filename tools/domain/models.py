@@ -14,6 +14,8 @@ class EvidenceCard:
     stack: tuple[str, ...] = ()
     period: str = ""
     context: str = ""
+    time_range_provenance: dict | None = None
+    role_scope_provenance: dict | None = None
 
     def is_eligible(self) -> bool:
         return len(self.results) > 0 and len(self.artifacts) > 0

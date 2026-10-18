@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from tools.domain.models import EvidenceCard
+from tools.infra.evidence_provenance import PROVENANCE_SCALARS, parse_provenance
 from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
 
 
@@ -18,6 +20,11 @@ class EvidenceStore:
                 "id": card.id,
                 "title": card.title,
                 "raw_source": card.raw_source,
+                "time_range": card.period,
+                "time_range_provenance_json": (json.dumps(card.time_range_provenance, ensure_ascii=False, sort_keys=True)
+                                              if card.time_range_provenance else ""),
+                "role_scope_provenance_json": (json.dumps(card.role_scope_provenance, ensure_ascii=False, sort_keys=True)
+                                              if card.role_scope_provenance else ""),
             },
             {
                 "results": list(card.results),
@@ -43,4 +50,7 @@ class EvidenceStore:
             artifacts=tuple(lists.get("artifacts", [])),
             tags=tuple(lists.get("tags", [])),
             stack=tuple(lists.get("stack", [])),
+            period=scalars.get("time_range", ""),
+            time_range_provenance=parse_provenance(scalars.get(PROVENANCE_SCALARS["time_range"])),
+            role_scope_provenance=parse_provenance(scalars.get(PROVENANCE_SCALARS["role_scope"])),
         )

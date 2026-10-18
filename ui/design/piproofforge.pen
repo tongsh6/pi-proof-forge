@@ -3476,7 +3476,7 @@
       "y": 3068,
       "name": "Screen/Evidence",
       "width": 1440,
-      "height": 1240,
+      "height": 1310,
       "fill": "$bg-primary",
       "cornerRadius": 24,
       "stroke": "$border",
@@ -3946,6 +3946,150 @@
                                   "name": "reconcileView1Text",
                                   "fill": "$text-primary",
                                   "content": "查看",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "N947f",
+                      "name": "reconcileInferenceRow",
+                      "width": "fill_container",
+                      "height": 62,
+                      "fill": "$bg-inset",
+                      "cornerRadius": 8,
+                      "gap": 12,
+                      "padding": [
+                        8,
+                        12
+                      ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "p8MPOm",
+                          "name": "reconcileInferenceText",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NtNBx",
+                              "name": "reconcileInferenceTitle",
+                              "fill": "$text-primary",
+                              "content": "Pending inference / 待确认推断（不写卡，确认后生效）",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ASi2D",
+                              "name": "reconcileInferenceReason",
+                              "fill": "$text-secondary",
+                              "content": "时间：2023-03（L3 · 0.70）· 原文“我负责统一运动中心改造，推动活动报名聚合上线。”",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "M9Bpl",
+                          "name": "reconcileInferenceActions",
+                          "gap": 6,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "R1sQl3",
+                              "name": "reconcileInferenceAccept",
+                              "height": 26,
+                              "fill": "$bg-panel",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "gap": 6,
+                              "padding": [
+                                5,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "KEPIl",
+                                  "name": "reconcileInferenceAcceptText",
+                                  "fill": "$accent",
+                                  "content": "接受",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "A5xO6O",
+                              "name": "reconcileInferenceEdit",
+                              "height": 26,
+                              "fill": "$bg-panel",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "gap": 6,
+                              "padding": [
+                                5,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "aku3m",
+                                  "name": "reconcileInferenceEditText",
+                                  "fill": "$text-primary",
+                                  "content": "修改后接受",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "kUhr9",
+                              "name": "reconcileInferenceReject",
+                              "height": 26,
+                              "fill": "$bg-panel",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "gap": 6,
+                              "padding": [
+                                5,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "nL5lK",
+                                  "name": "reconcileInferenceRejectText",
+                                  "fill": "$warning",
+                                  "content": "否决",
                                   "fontFamily": "JetBrains Mono",
                                   "fontSize": 11,
                                   "fontWeight": "normal"
@@ -4443,7 +4587,7 @@
       "type": "frame",
       "id": "FLWrf",
       "x": 0,
-      "y": 4348,
+      "y": 4418,
       "name": "Screen/Jobs",
       "width": 1440,
       "height": 1080,
@@ -5211,7 +5355,7 @@
       "type": "frame",
       "id": "ihiWw",
       "x": 0,
-      "y": 5468,
+      "y": 5538,
       "name": "Screen/Quick Run",
       "width": 1440,
       "height": 900,
@@ -5745,7 +5889,7 @@
       "type": "frame",
       "id": "ZSLCx",
       "x": 0,
-      "y": 6408,
+      "y": 6478,
       "name": "Screen/Agent Run",
       "width": 1440,
       "height": 900,
@@ -6646,7 +6790,7 @@
       "type": "frame",
       "id": "upl7d",
       "x": 0,
-      "y": 7348,
+      "y": 7418,
       "name": "Screen/Submissions",
       "width": 1440,
       "height": 900,
@@ -7587,7 +7731,7 @@
       "type": "frame",
       "id": "OGiSD",
       "x": 0,
-      "y": 8288,
+      "y": 8358,
       "name": "Screen/Policy",
       "width": 1440,
       "height": 900,
@@ -13030,7 +13174,7 @@
       "type": "frame",
       "id": "FWOoc",
       "x": 0,
-      "y": 9228,
+      "y": 9298,
       "name": "Screen/System Settings",
       "width": 1440,
       "height": 1160,

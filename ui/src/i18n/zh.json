@@ -450,7 +450,7 @@
         "size": "{{count}} 个附件",
         "importTitle": "导入附件"
       },
-      "materialSources": {
+    "materialSources": {
         "title": "材料来源",
         "count": "{{count}} 份可用于提炼证据的材料",
         "source": "来自简历中心",
@@ -504,6 +504,26 @@
         "summaryLine": "可用 {{eligible}} · 待补 {{incomplete}} · 未入池 {{legacy}} · 结果不可追溯 {{untraceable}} · 缺时间 {{missingTime}} · 疑似重复 {{duplicates}}",
         "scope": "只读检查，不改动任何卡；修正请在右侧详情里编辑后保存。",
         "run": "重新对账",
+      "inference": {
+        "run": "推断缺失字段",
+        "running": "推断中…",
+        "disabledHint": "系统设置已关闭 LLM 推断，仅显示规则时间线索。",
+        "summary": "{{cards}} 卡 · {{candidates}} 个候选",
+        "highConfidence": "高置信候选",
+        "lowConfidence": "低置信",
+        "time": "时间",
+        "role": "角色",
+        "accept": "接受",
+        "acceptEdited": "修改后接受",
+        "reject": "否决",
+        "editLabel": "修改候选值",
+        "batchAccept": "批量接受高置信候选",
+        "batchAccepted": "已批量接受高置信候选，重新评测后生效。",
+        "accepted": "已接受推断，字段已写入并进入待审核。",
+        "rejected": "已否决该候选，后续不再重复提名。",
+        "showLow": "显示低置信候选（{{count}}）",
+        "hideLow": "收起低置信候选"
+      },
         "view": "查看",
         "clean": "所有卡的结果都能追溯到材料，字段完整，没有疑似重复。",
         "more": "还有 {{count}} 张未显示，先处理上面的。",
@@ -1215,7 +1235,8 @@
       "nav": {
         "channels": "通道",
         "llm": "模型",
-        "materialSources": "材料来源"
+        "materialSources": "材料来源",
+      "evidenceInference": "证据推断"
       },
       "exclusionList": {
         "title": "企业例外清单",
@@ -1332,6 +1353,13 @@
           "CREDENTIAL_STORAGE_ERROR": "本机凭据文件操作失败，请检查保存路径与文件权限后重试。",
           "INTERNAL_ERROR": "请求未完成，请稍后手动重试。"
         }
+      },
+      "evidenceInference": {
+        "title": "证据推断",
+        "subtitle": "对缺时间/角色的证据卡，用跨文档规则与 LLM 产出带出处的候选，确认后才写入卡片。",
+        "enabled": "允许 LLM 跨文档推断",
+        "enabledHint": "关闭后只显示规则可得的 L2 时间线索，不调用模型；接受/否决仍然有效。",
+        "note": "推断候选不写卡；接受后字段进入待审核，来源与置信度记录在卡片 provenance 中。"
       },
       "materialSources": {
         "title": "材料来源",
@@ -1650,7 +1678,8 @@
     },
     "settings": {
       "materialRootSaved": "材料来源根已保存",
-      "materialRootRemoved": "材料来源根已移除"
+      "materialRootRemoved": "材料来源根已移除",
+      "evidenceInferenceSaved": "证据推断设置已保存"
     }
   },
   "reasons": {

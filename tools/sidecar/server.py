@@ -33,6 +33,8 @@ from tools.sidecar.handlers.evidence import (
     handle_evidence_save_draft,
     handle_evidence_reconcile,
     handle_evidence_triage_set,
+    handle_evidence_confirm_inference,
+    handle_evidence_infer_fields,
     handle_evidence_update,
 )
 from tools.sidecar.handlers.overview import handle_overview_get
@@ -112,6 +114,8 @@ def _create_router() -> Router:
     router.register("evidence.saveDraft", handle_evidence_save_draft)
     router.register("evidence.reconcile", handle_evidence_reconcile)
     router.register("evidence.triage.set", handle_evidence_triage_set)
+    router.register("evidence.inferFields", handle_evidence_infer_fields)
+    router.register("evidence.confirmInference", handle_evidence_confirm_inference)
     router.register("jobs.listLeads", handle_jobs_list_leads)
     router.register("jobs.searchLiepin", handle_jobs_search_liepin)
     router.register("jobs.fetchLiepinDetail", handle_jobs_fetch_liepin_detail)

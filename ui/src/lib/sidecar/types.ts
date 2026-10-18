@@ -128,6 +128,45 @@ export interface EvidenceTriage {
   stale: boolean;
 }
 
+export type EvidenceInferenceCandidate = {
+  field: "time_range" | "role_scope";
+  value: string;
+  level: string;
+  confidence?: number;
+  precision?: string;
+  first_person_hits?: Record<string, number>;
+  candidate_hash: string;
+  evidence: Array<{material_id:string;document_id:string;sha256?:string;excerpt?:string;key?:string}>;
+};
+
+export interface EvidenceInferenceCard {
+  card_id: string;
+  card_sha256: string;
+  cache: "hit" | "miss";
+  status: "ok" | "rules_only" | "llm_error";
+  error?: string;
+  candidates: EvidenceInferenceCandidate[];
+  documents: number;
+  windows: string[];
+}
+
+export interface EvidenceInferenceResult extends RpcResultBase {
+  status: string;
+  enabled: boolean;
+  cards: EvidenceInferenceCard[];
+  summary: {requested:number;cards_with_candidates?:number;candidates:number;time_candidates?:number;role_candidates?:number;rules_only?:number;cache_hits?:number;errors?:number};
+}
+
+export interface EvidenceInferenceConfirmResult extends RpcResultBase {
+  status: "accepted" | "rejected";
+  evidence_id: string;
+  field: "time_range" | "role_scope";
+  value?: string;
+  card_sha256?: string;
+  provenance?: Record<string, unknown>;
+  candidate_hash?: string;
+}
+
 export interface EvidenceReconcileResult extends RpcResultBase {
   summary: {
     total: number;
@@ -439,6 +478,7 @@ export interface SettingsGetResult extends RpcResultBase {
   exclusion_list: string[];
   excluded_legal_entities: string[];
   material_source_roots: MaterialSourceRoot[];
+  evidence_inference?: { enabled: boolean };
   channels: ChannelConfig[];
   liepin_api: LiepinAuthState;
   llm_config: LlmConfig;
@@ -449,6 +489,7 @@ export type SettingsUpdateSection =
   | "exclusion_list"
   | "excluded_legal_entities"
   | "material_source_roots"
+  | "evidence_inference"
   | "llm_config";
 
 export interface SettingsUpdateResult extends RpcResultBase {

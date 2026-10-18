@@ -512,6 +512,20 @@ export async function decideQualityHighlight(input:{
   return client.call<RpcResultBase>("quality.decideHighlight", input);
 }
 
+export async function inferEvidenceFields(cardIds?:string[]):Promise<import('./types').EvidenceInferenceResult> {
+  return client.call("evidence.inferFields", cardIds?.length ? {card_ids:cardIds} : {});
+}
+
+export async function confirmEvidenceInference(input:{
+  evidence_id:string;card_sha256:string;field:"time_range"|"role_scope";action:"accept"|"reject";value?:string;
+}):Promise<import('./types').EvidenceInferenceConfirmResult> {
+  return client.call("evidence.confirmInference", input);
+}
+
+export async function updateEvidenceInferenceSetting(enabled:boolean):Promise<import('./types').SettingsUpdateResult> {
+  return client.call("settings.update", {section:"evidence_inference", payload:{enabled}});
+}
+
 export async function setEvidenceTriage(
   evidenceId: string,
   decision: EvidenceTriageDecision | "",

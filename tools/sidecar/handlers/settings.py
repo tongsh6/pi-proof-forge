@@ -11,10 +11,12 @@ from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
 from tools.policy.exclusions import (
     resolve_policy_path,
     load_delivery_settings,
+    load_evidence_inference_enabled,
     load_exclusion_list,
     load_legal_entity_exclusion_list,
     load_material_source_roots,
     save_delivery_settings,
+    save_evidence_inference_enabled,
     save_exclusion_list,
     save_legal_entity_exclusion_list,
     save_material_source_roots,
@@ -58,6 +60,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
         "exclusion_list": exclusion_list,
         "excluded_legal_entities": legal_entity_exclusion_list,
         "material_source_roots": load_material_source_roots(),
+        "evidence_inference": {"enabled": load_evidence_inference_enabled()},
         "channels": [
             {
                 "id": "liepin",
@@ -213,6 +216,16 @@ def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
             unsupported = ", ".join(sorted(unsupported_fields))
             raise ValueError(f"unsupported llm_config fields: {unsupported}")
         _ = _save_llm_config(payload)
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "section": section,
+            "saved": True,
+        }
+
+    if section == "evidence_inference":
+        if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
+            raise ValueError("evidence_inference payload must be {enabled: bool}")
+        _ = save_evidence_inference_enabled(payload["enabled"])
         return {
             "meta": {"correlation_id": correlation_id},
             "section": section,

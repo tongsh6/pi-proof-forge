@@ -450,7 +450,7 @@
         "size": "{{count}} artifacts",
         "importTitle": "Import artifact"
       },
-      "materialSources": {
+    "materialSources": {
         "title": "Material Sources",
         "count": "{{count}} materials available for evidence extraction",
         "source": "From Resumes",
@@ -504,6 +504,26 @@
         "summaryLine": "Eligible {{eligible}} · Incomplete {{incomplete}} · Not pooled {{legacy}} · Untraceable results {{untraceable}} · Missing time {{missingTime}} · Possible duplicates {{duplicates}}",
         "scope": "Read-only check; nothing is changed. Fix cards in the detail pane and save.",
         "run": "Re-run reconciliation",
+        "inference": {
+          "run": "Infer missing fields",
+          "running": "Inferring\u2026",
+          "disabledHint": "LLM inference is disabled in settings; only rule-based time hints are shown.",
+          "summary": "{{cards}} cards \u00b7 {{candidates}} candidates",
+          "highConfidence": "High-confidence",
+          "lowConfidence": "Low confidence",
+          "time": "Time",
+          "role": "Role",
+          "accept": "Accept",
+          "acceptEdited": "Accept edited",
+          "reject": "Reject",
+          "editLabel": "Edit candidate value",
+          "batchAccept": "Accept high-confidence candidates",
+          "batchAccepted": "High-confidence candidates accepted; re-evaluate to apply.",
+          "accepted": "Inference accepted; fields saved and pending review.",
+          "rejected": "Candidate rejected; it will not be nominated again.",
+          "showLow": "Show low-confidence candidates ({{count}})",
+          "hideLow": "Hide low-confidence candidates"
+        },
         "view": "View",
         "clean": "Every result is traceable, fields are complete and no duplicates were found.",
         "more": "{{count}} more not shown; handle the ones above first.",
@@ -1215,7 +1235,8 @@
       "nav": {
         "channels": "Channels",
         "llm": "LLM Config",
-        "materialSources": "Material sources"
+        "materialSources": "Material sources",
+      "evidenceInference": "Evidence inference"
       },
       "exclusionList": {
         "title": "Company exclusion list",
@@ -1332,6 +1353,13 @@
           "CREDENTIAL_STORAGE_ERROR": "The local credential file operation failed. Check the storage path and file permissions, then retry.",
           "INTERNAL_ERROR": "The request did not complete. Retry manually later."
         }
+      },
+      "evidenceInference": {
+        "title": "Evidence inference",
+        "subtitle": "Infer provenance-backed time/role candidates from documents; write to cards only after confirmation.",
+        "enabled": "Allow LLM cross-document inference",
+        "enabledHint": "When off, only rule-based L2 time hints are shown without model calls; accept/reject still applies.",
+        "note": "Candidates never write cards directly; accepted fields enter review and keep provenance/confidence."
       },
       "materialSources": {
         "title": "Material sources",
@@ -1650,7 +1678,8 @@
     },
     "settings": {
       "materialRootSaved": "Source root saved",
-      "materialRootRemoved": "Source root removed"
+      "materialRootRemoved": "Source root removed",
+      "evidenceInferenceSaved": "Evidence inference settings saved"
     }
   },
   "reasons": {

@@ -45,6 +45,8 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 `small_company_high_match_delivery`
 
+2026-10-18 证据可信等级与跨文档推断（Phase C）：证据卡支持 L1–L5 provenance（字段级、含出处/置信度/确认记录，旧卡默认 L1/L5），单文档提炼注入文档元数据产出 L1/L2 时间候选（角色仅 L1），新增 `evidence.inferFields`（kb 检索→规则聚合→每卡一次 LLM→任职区间与原文回读校验→本地缓存/否决过滤）与 `evidence.confirmInference`（接受/修改后接受 L4/否决）；证据页对账面板新增「待确认推断」与批量接受高置信、低置信折叠，系统设置新增推断开关（关闭只给规则 L2 线索）；`.pen` 证据页同步。真实 85 卡运行与用户批量确认（C8）阻塞于用户先在 App 分流；P0-026 保持唯一 `next`，继续 Phase D。
+
 2026-10-18 四层质量报告 Phase B：已接通受控 LLM 判项（带引用、无引用 fail-closed、按输入指纹缓存）、R1.4/R2.1/R3.1/R3.5 判定、突出点提名 top-2 与用户否决/替换（`quality.decideHighlight` + `app-data/quality_decisions.json`），Quick Run 与固定 PDF 审批的四层报告展示突出点与候选。规则/缓存/决策回归通过，真实本机模型回归结果见台账。P0-026 保持唯一 `next`，继续 Phase C/D。
 
 2026-10-18 四层质量报告首片（Phase A）：已按 `openspec/changes/resume-quality-standard-and-evidence-inference` 落地四层标准规则判项、`quality_report`/`auto_pass`/`llm_pending`、legacy 分数降级、审批门禁改读 auto_pass、Quick Run/审批页四层展示与首屏标记；Phase A 基线（最新目标 JD PDF，不重新生成）合格层通过、对位/优质/突出未通过，auto_pass=false（LLM 判项待 Phase B）。全量回归与 tsc 通过，无平台写入。P0-026 保持唯一 `next`，继续 Phase B/C/D。详见台账同日「四层简历质量报告首片」。

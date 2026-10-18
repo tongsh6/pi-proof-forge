@@ -9,6 +9,7 @@ import {
   Save,
   Server,
   Settings2,
+  Sparkles,
   ShieldCheck,
   Wifi,
   XCircle,
@@ -23,6 +24,7 @@ import {
   getSettings,
   openLiepinAuthorization,
   updateLiepinCredential,
+  updateEvidenceInferenceSetting,
   updateLlmConfig,
   updateMaterialSourceRoots,
 } from "@/lib/sidecar/api";
@@ -35,7 +37,7 @@ import type {
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
-type SectionId = "channels" | "materialSources" | "llm";
+type SectionId = "channels" | "materialSources" | "evidenceInference" | "llm";
 type LlmSaveState = "idle" | "saving" | "saved";
 type LlmCheckState = "idle" | "checking" | "checked";
 
@@ -332,6 +334,7 @@ export function SystemSettingsPage() {
   const [newRootPath, setNewRootPath] = useState("");
   const [newRootLabel, setNewRootLabel] = useState("");
   const [rootsBusy, setRootsBusy] = useState(false);
+  const [inferenceToggleBusy, setInferenceToggleBusy] = useState(false);
   const [rootsError, setRootsError] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -342,7 +345,9 @@ export function SystemSettingsPage() {
       ? "llm"
       : searchParams.get("section") === "materialSources"
         ? "materialSources"
-        : "channels");
+        : searchParams.get("section") === "evidenceInference"
+          ? "evidenceInference"
+          : "channels");
   const [llmForm, setLlmForm] = useState<LlmForm>(() => toLlmForm(null));
   const [llmSaveState, setLlmSaveState] = useState<LlmSaveState>("idle");
   const [llmCheckState, setLlmCheckState] = useState<LlmCheckState>("idle");
@@ -372,6 +377,19 @@ export function SystemSettingsPage() {
       setError(getErrorMessage(nextError));
     }
   }, []);
+
+  const handleInferenceToggle = useCallback(async (enabled: boolean) => {
+    setInferenceToggleBusy(true);
+    try {
+      await updateEvidenceInferenceSetting(enabled);
+      await loadSettings();
+      notify("success", t("toasts.settings.evidenceInferenceSaved"));
+    } catch (reason) {
+      notify("error", getErrorMessage(reason));
+    } finally {
+      setInferenceToggleBusy(false);
+    }
+  }, [loadSettings, t]);
 
   useEffect(() => {
     void loadSettings();
@@ -635,8 +653,8 @@ export function SystemSettingsPage() {
         <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
           <aside className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]">
             <nav className="space-y-2" aria-label={t("pages.systemSettings.title")}>
-              {(["channels", "materialSources", "llm"] as SectionId[]).map((section) => {
-                const Icon = section === "channels" ? Wifi : section === "materialSources" ? FolderOpen : Settings2;
+              {(["channels", "materialSources", "evidenceInference", "llm"] as SectionId[]).map((section) => {
+                const Icon = section === "channels" ? Wifi : section === "materialSources" ? FolderOpen : section === "evidenceInference" ? Sparkles : Settings2;
                 const isActive = section === activeSection;
                 return (
                   <button
@@ -878,6 +896,31 @@ export function SystemSettingsPage() {
                     {t("pages.systemSettings.materialSources.add")}
                   </button>
                 </div>
+              </div>
+            ) : activeSection === "evidenceInference" ? (
+              <div className="space-y-5" data-testid="settings-evidence-inference">
+                <div className="border-b border-border pb-4">
+                  <h2 className="text-lg font-semibold text-text-primary">
+                    {t("pages.systemSettings.evidenceInference.title")}
+                  </h2>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {t("pages.systemSettings.evidenceInference.subtitle")}
+                  </p>
+                </div>
+                <label className="flex items-start gap-3 rounded-card border border-border bg-bg-primary/70 p-4 text-sm">
+                  <input
+                    checked={settings.evidence_inference?.enabled !== false}
+                    data-testid="evidence-inference-toggle"
+                    disabled={inferenceToggleBusy}
+                    onChange={(event) => void handleInferenceToggle(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <span className="block font-medium text-text-primary">{t("pages.systemSettings.evidenceInference.enabled")}</span>
+                    <span className="mt-1 block text-text-secondary">{t("pages.systemSettings.evidenceInference.enabledHint")}</span>
+                  </span>
+                </label>
+                <p className="text-xs text-text-muted">{t("pages.systemSettings.evidenceInference.note")}</p>
               </div>
             ) : (
               <div className="space-y-5">
