@@ -1164,7 +1164,8 @@ export function EvidencePage() {
                   ) : null}
                   {editing ? (
                   <button
-                    className="rounded-card border border-border p-2 text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-card border border-accent bg-accent px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    data-testid="evidence-save"
                     disabled={isBusy || detailState!=="ready"}
                     onClick={() =>
                       generatedDraft
@@ -1172,10 +1173,10 @@ export function EvidencePage() {
                         : void handleSave()
                     }
                     title={t("pages.evidence.actions.save")}
-                    aria-label={t("pages.evidence.actions.save")}
                     type="button"
                   >
-                    <SaveIcon size={16} />
+                    <SaveIcon size={14} />
+                    {t("pages.evidence.actions.save")}
                   </button>
                   ) : null}
                 </div>
@@ -1423,15 +1424,15 @@ export function EvidencePage() {
                             <span className="ml-2 text-text-muted">{candidate.level}{typeof candidate.confidence === "number" ? ` · ${candidate.confidence.toFixed(2)}` : ""}{lowConfidence ? ` · ${t("pages.evidence.reconcile.inference.lowConfidence")}` : ""}</span>
                           </p>
                           <p className="mt-0.5 truncate text-text-muted">{(candidate.evidence[0]?.excerpt || candidate.evidence[0]?.key || "").slice(0, 120)}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <input aria-label={t("pages.evidence.reconcile.inference.editLabel")} className="w-40 rounded-card border border-border bg-bg-primary px-2 py-0.5 text-xs"
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5" role="group" aria-label={t("pages.evidence.reconcile.inference.editLabel")}>
+                            <input aria-label={t("pages.evidence.reconcile.inference.editLabel")} className="w-40 rounded-card border border-border bg-bg-primary px-2 py-1 text-xs"
                               value={inferenceEdits[key] ?? candidate.value}
                               onChange={(event) => setInferenceEdits((current) => ({ ...current, [key]: event.target.value }))} />
-                            <button type="button" className="text-accent underline disabled:opacity-50" disabled={inferenceBusy}
+                            <button type="button" className="rounded-card border border-accent bg-accent px-2 py-1 text-xs font-medium text-white disabled:opacity-50" disabled={inferenceBusy}
                               onClick={() => void handleInferenceDecision(item, cardSha, candidate, "accept")}>{t("pages.evidence.reconcile.inference.accept")}</button>
-                            <button type="button" className="text-accent underline disabled:opacity-50" disabled={inferenceBusy}
+                            <button type="button" className="rounded-card border border-border px-2 py-1 text-xs text-text-primary hover:bg-bg-hover disabled:opacity-50" disabled={inferenceBusy}
                               onClick={() => void handleInferenceDecision(item, cardSha, candidate, "accept", inferenceEdits[key] ?? candidate.value)}>{t("pages.evidence.reconcile.inference.acceptEdited")}</button>
-                            <button type="button" className="text-warning underline disabled:opacity-50" disabled={inferenceBusy}
+                            <button type="button" className="rounded-card border border-warning/60 px-2 py-1 text-xs text-warning hover:bg-warning/10 disabled:opacity-50" disabled={inferenceBusy}
                               onClick={() => void handleInferenceDecision(item, cardSha, candidate, "reject")}>{t("pages.evidence.reconcile.inference.reject")}</button>
                           </div>
                         </div>
@@ -1640,7 +1641,7 @@ export function EvidencePage() {
 
       {materialDrawerOpen ? (
         <div
-          className="fixed inset-0 z-40 flex justify-end bg-black/50"
+          className="fixed inset-0 z-[var(--z-drawer)] flex justify-end bg-black/50"
           data-testid="evidence-drawer-overlay"
           onClick={(event) => {
             if (event.target === event.currentTarget) setMaterialDrawerOpen(false);

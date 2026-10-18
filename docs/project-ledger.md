@@ -11,6 +11,7 @@ Last updated: 2026-10-17
 - 后端：`evidence.list` 补充 `time_range_level`/`role_scope_level`/`source_document_count`（无新 RPC）；`ui` 列表一次取 100 条供前端问题筛选。i18n 删除 reconcile.hint/scope/view/hidePreview 与 triage.showOut/hideOut，新增 summary/emptyState/diagnosis 等文案。
 - 验证：全量回归与 `tsc` 通过；GUI 合同按新结构重写（自动对账、汇总筛选、详情对账发现/分流、抽屉流程、引用迁移），`.pen` 已保存。
 - 同日实现复核修复（4 项）：① 自动对账失败会无限重试（effect 以 `!reconcile` 为条件，失败后 reconcile 仍为 null）→ 改为 `autoReconciledRef` 每次加载只自动对账一次，失败由“重新对账”手动触发；② 列表受后端 100 条上限截断而汇总条为全量 → 按 `next_cursor` 显示“仅加载前 N 张”提示（`evidence-list-truncated`，文案 `listTruncated`）；③ 空态/抽屉跳转 `/resumes?section=materials` 简历页不响应 → 材料库区块加 `id="resumes-materials"` 并在加载完成后滚入；④ 对账发现时间线索 chip 用了未定义的 `bg-bg-inset` → 改 `bg-bg-hover`。新增 `tests/unit/gui/test_evidence_reconcile_failure_ui.py` 3 项（先红后绿），GUI 93 项与 `tsc` 通过。
+- 同日偏差收口（3 项）：抽屉遮罩改用新增 token `--z-drawer: 150`（侧栏 100 / 对话框 200 之间），打开时盖住侧栏；详情保存按钮改为主色“图标 + 文字”（`evidence-save`），与编辑/取消同形态；推断候选接受 / 修改后接受 / 否决改为按钮组（主色 / 描边 / 警示描边）。DESIGN 的 Layering 表按实际 token 重写（原表 z-dropdown/z-modal 50/z-tooltip 与代码不符）。`test_evidence_reconcile_failure_ui.py` 追加源码合同 1 项，GUI 94 项与 `tsc` 通过。
 
 ## 2026-10-18 证据页信息架构与对账就地查看（UX 修复，P0-026 续）
 

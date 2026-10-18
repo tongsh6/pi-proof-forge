@@ -57,3 +57,16 @@ const {EvidencePage}=load(api);
 (async()=>{await settle(EvidencePage);assert.equal(tid('evidence-list-truncated'),undefined,'未截断时不显示提示');})().catch(e=>{console.error(e);process.exitCode=1});
 ''')
 
+
+def test_redesign_deviations_closed():
+    """2026-10-18 复核遗留三项：抽屉层级高于侧栏、保存为文字+图标、推断操作为按钮组。"""
+    src = (Path(__file__).resolve().parents[3] / "ui/src/pages/evidence/index.tsx").read_text(encoding="utf-8")
+    tokens = (Path(__file__).resolve().parents[3] / "ui/src/styles/tokens.css").read_text(encoding="utf-8")
+    assert "--z-drawer: 150" in tokens and "--z-nav: 100" in tokens and "--z-modal: 200" in tokens
+    assert "z-[var(--z-drawer)]" in src and 'z-40 flex justify-end' not in src
+    save = src[src.index('data-testid="evidence-save"'):]
+    save = save[: save.index("</button>")]
+    assert "<SaveIcon" in save and 'pages.evidence.actions.save")}\n' in save, "保存按钮须同时有图标与文字"
+    actions = src[src.index('role="group"'):]
+    actions = actions[: actions.index("</div>")]
+    assert "underline" not in actions and actions.count("rounded-card border") >= 3, "推断候选操作须为按钮组"
