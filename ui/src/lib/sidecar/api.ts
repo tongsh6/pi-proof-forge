@@ -506,6 +506,12 @@ export async function reconcileEvidence(evidenceIds?: string[]): Promise<Evidenc
   return client.call<EvidenceReconcileResult>("evidence.reconcile", evidenceIds ? { evidence_ids: evidenceIds } : {});
 }
 
+export async function decideQualityHighlight(input:{
+  run_id:string;resume_sha256:string;highlight_id:string;action:"reject"|"select";
+}):Promise<RpcResultBase> {
+  return client.call<RpcResultBase>("quality.decideHighlight", input);
+}
+
 export async function setEvidenceTriage(
   evidenceId: string,
   decision: EvidenceTriageDecision | "",

@@ -2,6 +2,17 @@
 
 Last updated: 2026-10-17
 
+## 2026-10-18 四层质量报告 Phase B：受控 LLM 判项与突出点（P0-026 续）
+
+- 定位与复用：在 Phase A 规则报告上接通设计中的 LLM 判项，不新建模型调用框架。判项走 `LLMClient` 与既有 OpenAI-compatible 配置（pipeline `--use-llm` + 系统设置持久化 env），结果只进入质量报告与匹配矩阵，不改生成内容。
+- B1 受控通道：新增 `tools/engines/evaluation/llm_judge.py`，单次调用输出 `r1_4/r2_1/r3_1/r3_5/r4_1` 五段 JSON；每条必须带 bullet 编号或证据卡 id 引用，无引用项丢弃，整体不可解析视为无效并保留 pending；`r2_1` 必须逐条覆盖全部 JD 条目才生效。缓存落 `app-data/quality_judgments/`，键 `resume_sha256 + job_profile_id + cards_fingerprint + model + prompt_version`，只缓存通过校验的结果；`max_tokens=2500` 防止本地模型无界生成。
+- B2/B3 判项：R1.4 强措辞（负责/主导/独立负责/全权负责/设计并落地）必须被判项覆盖，`supported=false` 或缺判项均记失败；R2.1 用判项回写矩阵 `status`/`bullet_ref`/`first_screen`；R3.1 逐经历 bullet 判定场景/动作/结果，缺判项或缺段失败；R3.5 判定摘要行数、角色规模匹配与通用形容词。LLM 模式下的 `llm_pending` 只保留未覆盖段，全部覆盖后清空。
+- B4 突出点：R4.1 提名 0–3 条候选（规模/难度/范围/稀缺组合，等级 L1/L2），按超出维度数与用户选择排序取 top-2；用户否决/替换写 `app-data/quality_decisions.json`（按 resume sha，同一候选 reject/select 互斥，重算时排除否决项并优先已选项）。新增 sidecar RPC `quality.decideHighlight`，校验 run、resume sha、highlight id 与 action 后原子落盘。
+- B5 审批展示：四层报告组件在突出层显示突出点/候选（bullet ↔ JD、超出维度、等级、理由、引用），提供「否决」「设为突出点」；Quick Run 与固定 PDF 审批接入并提示「已记录，重新评测后生效」。契约见 `sidecar-rpc.md`，GUI 合同测试覆盖渲染与页面接线。
+- 验证：新增 judge 校验 4 项、缓存/决策 4 项、judged evaluator 4 项、judge 集成 4 项、决策 RPC 6 项、GUI 合同更新；全量 **1408 通过、1 跳过、18 subtests**；`tsc --noEmit` 通过。
+- B6 真实 JD 回归（本机 LM Studio）：`qwen3.8-flash-next` 系列加载 SIGSEGV、配置模型 27B 首次加载超时后，使用 `qwen/qwen3.6-35b-a3b`；关闭本机 reasoning 输出（仅本机 base_url 加 `reasoning_effort=none`）、`max_tokens=6000` 避免 thinking 吃满预算。首次 miss 58.0s，判项段 `r1_4/r3_1/r3_5/r4_1`，`r2_1` 仅覆盖 16/18 个 JD 条目，按 fail-closed 保留 R2.1 pending；同输入第二次 **cache hit、0.112s**、判项段一致，即 0 模型调用。真实结果：合格 R1.5 失败、对位 R2.2/R2.3/R2.4、优质 R3.1/R3.2、突出 R4.2（2 条候选均非首屏），auto_pass=false。证据 `outputs/acceptance/resume-quality-20261018/judged/validation.json`；不宣称判项稳定，R2.1 待重试或模型升级。
+- 边界：LLM 判项不稳定时保留 pending/fail-closed，不伪造通过；用户决策只影响突出点选择，不写卡、不改生成事实；P0-026 仍唯一 `next`。
+
 ## 2026-10-18 四层简历质量报告首片（Phase A，P0-026 续）
 
 - 定位与复用：简历质量缺口的规则部分落在既有 `run_evaluation`（pipeline 实际评测入口）与 sidecar `agent.py` 审批门禁；复用 `resume_trace` claims、语义评审矩阵、职业档案与证据卡解析，不新建评测框架。新增 `tools/engines/evaluation/tiered_evaluator.py` 承受 pure 规则判项，IO 留在 `run_evaluation`。

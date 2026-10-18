@@ -45,6 +45,8 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 `small_company_high_match_delivery`
 
+2026-10-18 四层质量报告 Phase B：已接通受控 LLM 判项（带引用、无引用 fail-closed、按输入指纹缓存）、R1.4/R2.1/R3.1/R3.5 判定、突出点提名 top-2 与用户否决/替换（`quality.decideHighlight` + `app-data/quality_decisions.json`），Quick Run 与固定 PDF 审批的四层报告展示突出点与候选。规则/缓存/决策回归通过，真实本机模型回归结果见台账。P0-026 保持唯一 `next`，继续 Phase C/D。
+
 2026-10-18 四层质量报告首片（Phase A）：已按 `openspec/changes/resume-quality-standard-and-evidence-inference` 落地四层标准规则判项、`quality_report`/`auto_pass`/`llm_pending`、legacy 分数降级、审批门禁改读 auto_pass、Quick Run/审批页四层展示与首屏标记；Phase A 基线（最新目标 JD PDF，不重新生成）合格层通过、对位/优质/突出未通过，auto_pass=false（LLM 判项待 Phase B）。全量回归与 tsc 通过，无平台写入。P0-026 保持唯一 `next`，继续 Phase B/C/D。详见台账同日「四层简历质量报告首片」。
 
 2026-10-17 设计真源同步：已清空 DESIGN.md 四处「`.pen` 待补」并补齐引用式材料缺口，Jobs/Evidence/Resumes/System Settings 四屏画布更新落盘，屏幕列重排无重叠；同期 `develop` 15 个提交已推送 `origin/develop`。仅设计同步，不改变实现与验收状态；真实 App 分流验收仍待用户，P0-026 保持唯一 `next`。详见台账同日「`.pen` 设计同步」。

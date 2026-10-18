@@ -26,12 +26,18 @@
 
 ## Phase B - LLM 判项与突出点提名
 
-- [ ] B1 受控 JSON 判项通道：输入 bullet 列表 + 卡摘要 + JD 条目，输出带引用；无引用项按失败处理；缓存键 `resume_sha256 + job_profile_id + cards_fingerprint`
-- [ ] B2 R1.4 角色措辞强度判定（结合 C 阶段等级；C 未完成前只检测"负责/主导"是否有 L1 支撑）
-- [ ] B3 R2.1 状态细化（supported/weak/absent + bullet_ref）、R3.1 三段判定、R3.5 摘要判定
-- [ ] B4 R4.1 突出点提名：`exceeds` 四维度、top-2、理由与引用；否决写 `app-data/quality_decisions.json` 并在重算时排除
-- [ ] B5 审批页突出点区：展示理由、替换、否决；GUI 合同测试
-- [ ] B6 真实 JD 回归：同岗位重跑验证缓存命中（目标 0 模型调用），记录判项稳定性；台账记录
+- [x] B1 受控 JSON 判项通道：输入 bullet 列表 + 卡摘要 + JD 条目，输出带引用；无引用项按失败处理；缓存键 `resume_sha256 + job_profile_id + cards_fingerprint`
+  - 实现：`tools/engines/evaluation/llm_judge.py`（提示词 + 受控 JSON 校验，无引用项丢弃、无 JSON 视为无效）+ `tools/infra/quality_judge_cache.py`（键 `resume_sha256 + job_profile_id + cards_fingerprint + model + prompt_version`，只缓存通过校验结果）。
+- [x] B2 R1.4 角色措辞强度判定（结合 C 阶段等级；C 未完成前只检测"负责/主导"是否有 L1 支撑）
+  - 实现：R1.4 强措辞 bullet 必须出现在判项中；`supported=false` 或无判项都记失败，不静默通过。
+- [x] B3 R2.1 状态细化（supported/weak/absent + bullet_ref）、R3.1 三段判定、R3.5 摘要判定
+  - 实现：R2.1 必须覆盖全部 JD 条目才生效（覆盖后回写矩阵状态/bullet_ref/首屏）；R3.1 逐经历 bullet 三段判定，缺失按失败；R3.5 摘要行数/角色规模匹配/通用形容词。
+- [x] B4 R4.1 突出点提名：`exceeds` 四维度、top-2、理由与引用；否决写 `app-data/quality_decisions.json` 并在重算时排除
+  - 实现：R4.1 提名 0–3 候选（scale/difficulty/scope/scarcity、L1/L2），排序后取 top-2；否决/替换写 `app-data/quality_decisions.json`（按 resume sha，同一候选 reject/select 互斥），重算时排除/优先。
+- [x] B5 审批页突出点区：展示理由、替换、否决；GUI 合同测试
+  - 实现：四层报告突出点/候选区展示理由、引用与超出维度；「否决」「设为突出点」按钮经 `quality.decideHighlight` 落盘，提示重新评测后生效；Quick Run 与固定 PDF 审批接入。
+- [x] B6 真实 JD 回归：同岗位重跑验证缓存命中（目标 0 模型调用），记录判项稳定性；台账记录
+  - 结果（2026-10-18）：本机 LM Studio `qwen/qwen3.6-35b-a3b`（`qwen3.8-flash-next` 加载 SIGSEGV 后换用）；首次 miss 58.0s，判项段 `r1_4/r3_1/r3_5/r4_1`，`r2_1` 仅覆盖 16/18 条目按 fail-closed 保留 pending；同输入第二次 hit **0.112s**、判项段一致，即 0 模型调用。证据 `outputs/acceptance/resume-quality-20261018/judged/validation.json`。不宣称判项稳定；R2.1 覆盖不完整仍 pending。
 
 ## Phase C - 证据可信等级与推断候选
 

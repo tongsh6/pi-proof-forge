@@ -22,6 +22,7 @@ import {
   listEvidenceMaterialSources,
   listJobProfiles,
   startQuickRun,
+  decideQualityHighlight,
 } from "@/lib/sidecar/api";
 import type {
   JobProfileListItem,
@@ -138,6 +139,7 @@ export function QuickRunPage() {
   const [quickRunId, setQuickRunId] = useState<string | null>(null);
   const [quickRunStatus, setQuickRunStatus] = useState<string | null>(null);
   const [quickRunResult, setQuickRunResult] = useState<QuickRunStartResult | null>(null);
+  const [qualityDecisionNotice, setQualityDecisionNotice] = useState("");
   const [runError, setRunError] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   // 全局任务：页面切走后运行仍在进行，侧栏显示进度；回到页面时恢复计时或读回同一目标的结果。
@@ -154,6 +156,17 @@ export function QuickRunPage() {
     setQuickRunId(null); setQuickRunStatus(null); setQuickRunResult(null); setRunError(null);
     if (!quickRunInFlightRef.current) setRunState("ready_to_run");
   }, []);
+
+  const decideHighlight = useCallback(async (highlightId: string, action: "reject" | "select") => {
+    const report = quickRunResult?.quality_report;
+    if (!quickRunResult?.run_id || !report?.resume_version) return;
+    try {
+      await decideQualityHighlight({run_id: quickRunResult.run_id, resume_sha256: report.resume_version, highlight_id: highlightId, action});
+      setQualityDecisionNotice(t("quality.report.decisionSaved"));
+    } catch (error) {
+      setQualityDecisionNotice(getErrorMessage(error));
+    }
+  }, [quickRunResult, t]);
 
   useEffect(() => {
     if (requestedProfileId !== null) setSelectedProfileId(requestedProfileId);
@@ -655,7 +668,8 @@ export function QuickRunPage() {
               </div>
               {quickRunResult?.quality_report && (
                 <div className="mt-5">
-                  <QualityReportPanel report={quickRunResult.quality_report}/>
+                  <QualityReportPanel report={quickRunResult.quality_report} onHighlightDecision={decideHighlight}/>
+                  {qualityDecisionNotice && <p role="status" className="mt-2 text-xs text-text-secondary">{qualityDecisionNotice}</p>}
                 </div>
               )}
               {quickRunResult?.semantic_review ? (

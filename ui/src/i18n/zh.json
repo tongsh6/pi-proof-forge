@@ -1809,7 +1809,14 @@
       "llmPending": "LLM 判项待接入（Phase B）：{{rules}}",
       "legacy": "对比旧版分数（不参与通过判定）",
       "legacyValue": "规则总分 {{rule}} · 表达参考 {{expression}}",
-      "openCard": "在证据页查看"
+      "openCard": "在证据页查看",
+      "highlights": "突出点与候选",
+      "exceeds": "超出维度",
+      "candidate": "候选",
+      "rejected": "已否决",
+      "reject": "否决",
+      "select": "设为突出点",
+      "decisionSaved": "已记录突出点决策；重新评测后生效。"
     }
   }
 }

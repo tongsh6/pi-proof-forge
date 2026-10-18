@@ -10,12 +10,28 @@ const TIERS: Array<[keyof NonNullable<QualityReport['tiers']>, string]> = [
   ['distinct', 'quality.report.tier.distinct'],
 ];
 
-export function QualityReportPanel({report,title}:{report?:QualityReport|null;title?:string}){
+type CandidateDetail = {
+  highlight_id?: string;
+  bullet_ref?: string;
+  jd_item_id?: string;
+  exceeds?: string;
+  level?: string;
+  reason?: string;
+  rejected?: boolean;
+};
+
+type HighlightDecision = (highlightId: string, action: 'reject' | 'select') => void | Promise<void>;
+
+export function QualityReportPanel({report,title,onHighlightDecision}:{report?:QualityReport|null;title?:string;onHighlightDecision?:HighlightDecision}){
   const {t}=useTranslation();
   const navigate=useNavigate();
   if(!report||!report.tiers)return <p className="rounded-card border border-border p-3 text-xs text-text-muted">{t('quality.report.missing')}</p>;
   const pending=report.llm_pending||[];
   const legacy=report.legacy_scores;
+  const distinct=report.tiers.distinct;
+  const highlights=(distinct?.highlights||[]) as Array<Record<string, unknown>>;
+  const candidates=(((distinct?.metrics||{}) as Record<string, unknown>).candidates||[]) as CandidateDetail[];
+  const highlightIds=new Set(highlights.map(item=>String(item.highlight_id||'')));
   return <section aria-label={title||t('quality.report.title')} className="space-y-3 text-sm">
     <div className="flex items-center justify-between gap-3">
       <p className="font-medium">{title||t('quality.report.title')}</p>
@@ -42,6 +58,28 @@ export function QualityReportPanel({report,title}:{report?:QualityReport|null;ti
             </li>;
           })}</ul>:
           <p className="mt-2 text-xs text-text-muted">{t('quality.report.noFailures')}</p>}
+        {name==='distinct'&&(highlights.length>0||candidates.length>0)&&<div className="mt-3 space-y-2">
+          <p className="text-xs font-medium text-text-primary">{t('quality.report.highlights')}</p>
+          {highlights.map((item,index)=>{
+            const highlightId=String(item.highlight_id||'');
+            return <div key={highlightId||index} className="rounded-card border border-accent/40 p-2 text-xs">
+              <p className="break-words">{String(item.bullet_ref||'')} ↔ {String(item.jd_item_id||'')} · {t('quality.report.exceeds')}: {String(item.exceeds||'')} · {String(item.level||'')}</p>
+              {!!item.reason&&<p className="mt-1 break-words text-text-secondary">{String(item.reason)}</p>}
+              {onHighlightDecision&&<div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" className="text-warning underline" onClick={()=>void onHighlightDecision(highlightId,'reject')}>{t('quality.report.reject')}</button>
+                {candidates.filter(candidate=>!candidate.rejected&&!highlightIds.has(String(candidate.highlight_id||''))).slice(0,2).map(candidate=><button type="button" key={String(candidate.highlight_id)} className="text-accent underline"
+                  onClick={()=>void onHighlightDecision(String(candidate.highlight_id||''),'select')}>{t('quality.report.select')}</button>)}
+              </div>}
+            </div>;
+          })}
+          {candidates.length>0&&<div className="space-y-1">
+            {candidates.map(candidate=><p key={String(candidate.highlight_id)} className="break-words text-text-muted">
+              {candidate.rejected?t('quality.report.rejected'):t('quality.report.candidate')} · {String(candidate.bullet_ref||'')} ↔ {String(candidate.jd_item_id||'')} · {String(candidate.level||'')}
+              {!candidate.rejected&&onHighlightDecision&&!highlightIds.has(String(candidate.highlight_id||''))&&
+                <button type="button" className="ml-2 text-accent underline" onClick={()=>void onHighlightDecision(String(candidate.highlight_id||''),'select')}>{t('quality.report.select')}</button>}
+            </p>)}
+          </div>}
+        </div>}
       </details>;
     })}
     {pending.length>0&&<p className="text-xs text-warning">{t('quality.report.llmPending',{rules:pending.join('、')})}</p>}

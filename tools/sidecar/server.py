@@ -36,6 +36,7 @@ from tools.sidecar.handlers.evidence import (
     handle_evidence_update,
 )
 from tools.sidecar.handlers.overview import handle_overview_get
+from tools.sidecar.handlers.quality import handle_quality_decide_highlight
 from tools.sidecar.handlers.native_pdf import handle_authorize_single_pdf_delivery, handle_prepare_pdf, handle_begin_upload, handle_finish_upload, handle_inspect_pdf_packet, handle_record_pdf_inspection
 from tools.sidecar.handlers.native_pdf import handle_pdf_target_packet, handle_record_pdf_target
 from tools.sidecar.handlers.native_pdf import handle_begin_pdf_delivery, handle_record_pdf_communication
@@ -122,6 +123,7 @@ def _create_router() -> Router:
     router.register("jobs.generateProfileDraft", handle_jobs_generate_profile_draft)
     router.register("jobs.saveProfileDraft", handle_jobs_save_profile_draft)
     router.register("overview.get", handle_overview_get)
+    router.register("quality.decideHighlight", handle_quality_decide_highlight)
     router.register("profile.get", handle_profile_get)
     router.register("profile.generateJobPreferences", job_preferences.handle_generate)
     router.register("profile.saveJobPreferences", job_preferences.handle_save)

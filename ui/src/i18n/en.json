@@ -1809,7 +1809,14 @@
       "llmPending": "LLM judgements pending (Phase B): {{rules}}",
       "legacy": "Compare legacy scores (not used for pass judgement)",
       "legacyValue": "Rule total {{rule}} · expression reference {{expression}}",
-      "openCard": "Open in Evidence"
+      "openCard": "Open in Evidence",
+      "highlights": "Highlights & candidates",
+      "exceeds": "Exceeded dimensions",
+      "candidate": "Candidate",
+      "rejected": "Rejected",
+      "reject": "Reject",
+      "select": "Set as highlight",
+      "decisionSaved": "Highlight decision saved; re-evaluate to apply."
     }
   }
 }

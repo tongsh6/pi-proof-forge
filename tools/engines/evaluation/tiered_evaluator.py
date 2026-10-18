@@ -130,6 +130,42 @@ def split_first_screen(resume: str) -> tuple[str, str]:
     return first, rest
 
 
+def extract_bullets(resume: str) -> list[dict[str, object]]:
+    rows, _marker = _bullet_rows(resume)
+    return rows
+
+
+def strong_wording_bullets(resume: str) -> list[dict[str, object]]:
+    return [row for row in extract_bullets(resume) if _STRONG_ROLE_RE.search(str(row.get("text", "")))]
+
+
+def _pending_rules(judgments: dict | None) -> list[str]:
+    if not isinstance(judgments, dict):
+        return list(PHASE_A_LLM_PENDING)
+    sections = set(judgments.get("judged_sections") or [])
+    pending: list[str] = []
+    for section, rule in (("r1_4", "R1.4"), ("r2_1", "R2.1"), ("r3_1", "R3.1"),
+                          ("r3_5", "R3.5"), ("r4_1", "R4.1")):
+        if section not in sections:
+            pending.append(rule)
+    return pending
+
+
+def _judge_candidates(judgments: dict | None) -> list[dict[str, object]]:
+    if not isinstance(judgments, dict) or "r4_1" not in (judgments.get("judged_sections") or []):
+        return []
+    result: list[dict[str, object]] = []
+    for item in judgments.get("r4_1", []) or []:
+        if not isinstance(item, dict):
+            continue
+        bullet = item.get("bullet")
+        jd_id = str(item.get("jd_item_id", ""))
+        if not isinstance(bullet, int) or not jd_id:
+            continue
+        result.append({**item, "highlight_id": f"hl_b{bullet}_{jd_id}"})
+    return result
+
+
 def _split_first_screen(resume: str) -> tuple[str, str, str]:
     index = resume.find(FIRST_SCREEN_MARKER)
     if index >= 0:
@@ -328,6 +364,7 @@ def evaluate_eligible(
     job_context: dict,
     pdf_check: dict | None,
     config: QualityConfig,
+    judgments: dict | None = None,
 ) -> TierResult:
     thresholds = config.thresholds
     first_screen, _rest, _mode = _split_first_screen(resume)
@@ -439,10 +476,10 @@ def evaluate_eligible(
                 _failure("R1.3", f"工作经历「{_short(entry['title'])}」", "经历缺少时间（至少到年）")
             )
 
-    # R1.4 角色措辞不得高于证据可信等级（C 阶段前缺省按 L1 处理）。
-    for row in trace_result["bullets"]:
-        if not _STRONG_ROLE_RE.search(str(row.get("text", ""))):
-            continue
+    # R1.4 角色措辞不得高于证据可信等级；LLM 判项必须带引用，缺失按失败处理。
+    strong_rows = [row for row in trace_result["bullets"] if _STRONG_ROLE_RE.search(str(row.get("text", "")))]
+    flagged_bullets: set[int] = set()
+    for row in strong_rows:
         for evidence_id in row.get("evidence_ids", []):
             level = _provenance_level(cards.get(evidence_id, {}), "role_scope")
             if level in {"L3", "L5"}:
@@ -453,7 +490,29 @@ def evaluate_eligible(
                         f"角色措辞“{_short(row['text'], 20)}”高于 {level} 允许强度",
                     )
                 )
+                flagged_bullets.add(int(row["number"]))
                 break
+    if isinstance(judgments, dict) and "r1_4" in (judgments.get("judged_sections") or []):
+        judged = {
+            int(item["bullet"]): item
+            for item in judgments.get("r1_4", []) or []
+            if isinstance(item, dict) and isinstance(item.get("bullet"), int)
+        }
+        for row in strong_rows:
+            number = int(row["number"])
+            if number in flagged_bullets:
+                continue
+            item = judged.get(number)
+            if item is None:
+                failures.append(_failure("R1.4", f"bullet#{number}", "缺少带引用的角色措辞判定"))
+            elif item.get("supported") is False:
+                failures.append(
+                    _failure(
+                        "R1.4",
+                        f"bullet#{number} / {'、'.join(item.get('citations') or [])}",
+                        f"角色措辞缺少已引用证据支持：{item.get('reason', '')}",
+                    )
+                )
 
     # R1.5 篇幅/首屏/裁切。
     failures.extend(_pdf_failures(pdf_check, first_screen, thresholds))
@@ -551,7 +610,7 @@ def _structure_failures(resume: str, career: dict) -> list[QualityFailure]:
     return failures
 
 
-def _fit_matrix(resume: str, semantic_review: dict | None) -> tuple[list[dict[str, object]], list[dict]]:
+def _fit_matrix(resume: str, semantic_review: dict | None, judgments: dict | None = None) -> tuple[list[dict[str, object]], list[dict]]:
     if not isinstance(semantic_review, dict) or semantic_review.get("mode") != "semantic":
         return [], []
     bullets, _marker = _bullet_rows(resume)
@@ -575,6 +634,7 @@ def _fit_matrix(resume: str, semantic_review: dict | None) -> tuple[list[dict[st
                         bullet_refs.append(ref)
                     first_screen = first_screen or bool(bullet["first_screen"])
         row = {
+            "jd_item_id": str(requirement.get("requirement_id", "")),
             "jd_item": _short(requirement.get("text", ""), 120),
             "kind": requirement.get("kind", "must_have"),
             "status": status,
@@ -582,8 +642,30 @@ def _fit_matrix(resume: str, semantic_review: dict | None) -> tuple[list[dict[st
             "first_screen": first_screen,
         }
         rows.append(row)
-        if status == "absent":
-            gap_rows.append({"item": row["jd_item"], "reason": _short(requirement.get("reason", ""), 200)})
+    if isinstance(judgments, dict) and "r2_1" in (judgments.get("judged_sections") or []):
+        judged = {
+            str(item.get("jd_item_id", "")): item
+            for item in judgments.get("r2_1", []) or []
+            if isinstance(item, dict)
+        }
+        bullet_index = {f"bullet#{int(bullet['number'])}": bullet for bullet in bullets}
+        for row in rows:
+            item = judged.get(str(row.get("jd_item_id", "")))
+            if not item:
+                continue
+            row["status"] = item.get("status", row["status"])
+            refs = [
+                ref for ref in re.findall(r"bullet#\d+", str(item.get("bullet_ref", "")))
+                if ref in bullet_index
+            ]
+            if refs:
+                row["bullet_ref"] = "、".join(dict.fromkeys(refs))
+                row["first_screen"] = any(bool(bullet_index[ref]["first_screen"]) for ref in refs)
+            row["judged"] = True
+            row["reason"] = item.get("reason", "")
+    for row in rows:
+        if row["status"] == "absent":
+            gap_rows.append({"item": row["jd_item"], "reason": _short(row.get("reason", ""), 200)})
     return rows, gap_rows
 
 
@@ -593,12 +675,13 @@ def evaluate_fit(
     semantic_review: dict | None,
     job_context: dict,
     config: QualityConfig,
+    judgments: dict | None = None,
 ) -> TierResult:
     thresholds = config.thresholds["fit"]
     failures: list[QualityFailure] = []
     if not isinstance(semantic_review, dict) or semantic_review.get("mode") != "semantic":
         failures.append(_failure("R2.1", "semantic_review", "缺少语义评审，无法建立 JD 支撑矩阵"))
-    matrix, gap_rows = _fit_matrix(resume, semantic_review)
+    matrix, gap_rows = _fit_matrix(resume, semantic_review, judgments)
     responsibilities = [row for row in matrix if row.get("kind") == "responsibility"]
     top_count = int(thresholds["first_screen_required_jd_items"])
     top = responsibilities[:top_count]
@@ -675,6 +758,7 @@ def evaluate_strong(
     cards: dict[str, dict],
     trace: dict,
     config: QualityConfig,
+    judgments: dict | None = None,
 ) -> TierResult:
     thresholds = config.thresholds["strong"]
     bullets, _marker = _bullet_rows(resume)
@@ -742,30 +826,117 @@ def evaluate_strong(
     for variants in casing.values():
         if len(variants) > 1:
             failures.append(_failure("R3.6", "术语大小写", "同一术语大小写不一致：" + " / ".join(sorted(variants))))
+    # R3.1 三段判定：每个经历 bullet 必须有带引用的场景/动作/结果判定，缺失按失败处理。
+    if isinstance(judgments, dict) and "r3_1" in (judgments.get("judged_sections") or []):
+        judged = {
+            int(item["bullet"]): item
+            for item in judgments.get("r3_1", []) or []
+            if isinstance(item, dict) and isinstance(item.get("bullet"), int)
+        }
+        for bullet in experience:
+            item = judged.get(int(bullet["number"]))
+            if item is None:
+                failures.append(_failure("R3.1", f"bullet#{bullet['number']}", "缺少带引用的三段判定"))
+                continue
+            missing = [label for label, key in (("场景", "scene"), ("动作", "action"), ("结果", "result")) if not item.get(key)]
+            if missing:
+                failures.append(
+                    _failure("R3.1", f"bullet#{bullet['number']}", "缺少" + "、".join(missing) + "段")
+                )
+    # R3.5 摘要判定：<=3 行、角色/规模匹配、无通用形容词。
+    if isinstance(judgments, dict) and "r3_5" in (judgments.get("judged_sections") or []):
+        summary_judgment = judgments.get("r3_5") or {}
+        max_lines = int(thresholds.get("summary_max_lines", 3))
+        lines = summary_judgment.get("summary_lines")
+        if isinstance(lines, int) and lines > max_lines:
+            failures.append(_failure("R3.5", "摘要", f"定位摘要 {lines} 行，超过 {max_lines} 行"))
+        if summary_judgment.get("role_scale_match") is False:
+            failures.append(_failure("R3.5", "摘要", "定位摘要未说明做什么、在什么规模/领域与岗位匹配点"))
+        adjectives = summary_judgment.get("generic_adjectives") or []
+        if adjectives:
+            failures.append(_failure("R3.5", "摘要", "定位摘要含通用形容词：" + "、".join(str(item) for item in adjectives[:5])))
     metrics = {
         "quant_first_screen": round(quant_first, 4),
         "quant_total": round(quant_total, 4),
         "filler_hits": len(filler_hits),
         "duplicate_bullets": sum(len(numbers) - 1 for numbers in normalized.values() if len(numbers) > 1),
+        "judged_r3_1": isinstance(judgments, dict) and "r3_1" in (judgments.get("judged_sections") or []),
+        "judged_r3_5": isinstance(judgments, dict) and "r3_5" in (judgments.get("judged_sections") or []),
     }
     return TierResult(passed=not failures, failures=tuple(failures), metrics=metrics)
 
 
+def _candidate_highlights(
+    resume: str,
+    candidates: list[dict] | None,
+    decisions: dict | None,
+) -> list[dict[str, object]]:
+    bullets, _marker = _bullet_rows(resume)
+    by_number = {f"bullet#{int(bullet['number'])}": bullet for bullet in bullets}
+    rejected = {str(item) for item in ((decisions or {}).get("rejected") or [])}
+    selected = {str(item) for item in ((decisions or {}).get("selected") or [])}
+    items: list[dict[str, object]] = []
+    for candidate in candidates or []:
+        if not isinstance(candidate, dict):
+            continue
+        highlight_id = str(candidate.get("highlight_id") or "")
+        bullet = candidate.get("bullet")
+        if not highlight_id or not isinstance(bullet, int) or highlight_id in rejected:
+            continue
+        ref = f"bullet#{bullet}"
+        row = by_number.get(ref)
+        exceeds = [str(value) for value in (candidate.get("exceeds") or [])]
+        items.append(
+            {
+                "highlight_id": highlight_id,
+                "bullet_ref": ref,
+                "jd_item_id": str(candidate.get("jd_item_id", "")),
+                "exceeds": "、".join(exceeds),
+                "level": str(candidate.get("level", "")),
+                "reason": str(candidate.get("reason", "")),
+                "citations": list(candidate.get("citations") or []),
+                "first_screen": bool(row["first_screen"]) if row else False,
+                "selected_by_user": highlight_id in selected,
+            }
+        )
+    items.sort(
+        key=lambda item: (
+            0 if item["selected_by_user"] else 1,
+            -len(str(item["exceeds"]).split("、")) if item["exceeds"] else 0,
+            item["bullet_ref"],
+        )
+    )
+    return items
+
+
 def evaluate_distinct(
     *,
-    highlights: list[dict] | None,
+    resume: str = "",
+    highlights: list[dict] | None = None,
+    candidates: list[dict] | None = None,
+    decisions: dict | None = None,
     config: QualityConfig,
 ) -> TierResult:
     thresholds = config.thresholds["distinct"]
-    items = [item for item in (highlights or []) if isinstance(item, dict)]
+    if candidates is not None:
+        items = _candidate_highlights(resume, candidates, decisions)
+    else:
+        items = [item for item in (highlights or []) if isinstance(item, dict)]
+        if decisions:
+            rejected = {str(value) for value in (decisions.get("rejected") or [])}
+            items = [item for item in items if str(item.get("highlight_id") or "") not in rejected]
     failures: list[QualityFailure] = []
     minimum = int(thresholds["min_highlights"])
     maximum = int(thresholds["max_highlights"])
     if len(items) < minimum:
-        failures.append(_failure("R4.2", "highlights", "无合格突出点（LLM 提名 Phase B 未接入）"))
+        reason = "无合格突出点" if candidates is not None else "无合格突出点（LLM 提名尚未运行或全部被否决）"
+        failures.append(_failure("R4.2", "highlights", reason))
+    chosen = items[:maximum] if len(items) > maximum else items
     if len(items) > maximum:
-        failures.append(_failure("R4.2", "highlights", f"突出点 {len(items)} 条，超过 {maximum} 条上限"))
-    for index, item in enumerate(items, start=1):
+        failures.append(
+            _failure("R4.2", "highlights", f"突出点 {len(items)} 条，超过 {maximum} 条上限")
+        )
+    for index, item in enumerate(chosen, start=1):
         level = str(item.get("level", "L1"))
         if level not in {"L1", "L2"}:
             failures.append(
@@ -773,8 +944,29 @@ def evaluate_distinct(
             )
         if item.get("first_screen") is False:
             failures.append(_failure("R4.2", f"突出点#{index}", "突出点未置于首屏"))
-    metrics = {"count": len(items), "levels": sorted({str(item.get("level", "L1")) for item in items})}
-    return TierResult(passed=not failures, failures=tuple(failures), metrics=metrics, highlights=tuple(items))
+    rejected_ids = {str(value) for value in ((decisions or {}).get("rejected") or [])}
+    candidate_details = [
+        {
+            "highlight_id": item.get("highlight_id", ""),
+            "bullet_ref": item.get("bullet_ref", ""),
+            "jd_item_id": item.get("jd_item_id", ""),
+            "exceeds": item.get("exceeds", ""),
+            "level": item.get("level", ""),
+            "reason": item.get("reason", ""),
+            "first_screen": item.get("first_screen"),
+            "rejected": str(item.get("highlight_id", "")) in rejected_ids,
+        }
+        for item in (items if candidates is not None else [])
+    ]
+    metrics = {
+        "count": len(chosen),
+        "candidate_count": len(candidates or []) if candidates is not None else len(items),
+        "levels": sorted({str(item.get("level", "L1")) for item in chosen}),
+        "rejected": len((decisions or {}).get("rejected") or []),
+        "selected": len((decisions or {}).get("selected") or []),
+        "candidates": candidate_details,
+    }
+    return TierResult(passed=not failures, failures=tuple(failures), metrics=metrics, highlights=tuple(chosen))
 
 
 def _tier_gap_tasks(tiers: dict[str, dict[str, object]], fit_gaps: list[dict]) -> list[str]:
@@ -806,6 +998,9 @@ def build_quality_report(
     job_context: dict,
     pdf_check: dict | None = None,
     highlights: list[dict] | None = None,
+    judgments: dict | None = None,
+    decisions: dict | None = None,
+    judge_meta: dict[str, object] | None = None,
     config: QualityConfig | None = None,
     resume_version: str = "",
     job_profile_id: str = "",
@@ -821,10 +1016,21 @@ def build_quality_report(
         job_context=job_context,
         pdf_check=pdf_check,
         config=config,
+        judgments=judgments,
     )
-    fit = evaluate_fit(resume=resume, semantic_review=semantic_review, job_context=job_context, config=config)
-    strong = evaluate_strong(resume=resume, cards=cards, trace=trace, config=config)
-    distinct = evaluate_distinct(highlights=highlights, config=config)
+    fit = evaluate_fit(
+        resume=resume, semantic_review=semantic_review, job_context=job_context,
+        config=config, judgments=judgments,
+    )
+    strong = evaluate_strong(resume=resume, cards=cards, trace=trace, config=config, judgments=judgments)
+    judge_candidates = _judge_candidates(judgments) if judgments is not None else None
+    distinct = evaluate_distinct(
+        resume=resume,
+        highlights=highlights,
+        candidates=judge_candidates,
+        decisions=decisions,
+        config=config,
+    )
     evaluated = {
         "eligible": eligible.to_dict(),
         "fit": fit.to_dict(),
@@ -835,7 +1041,7 @@ def build_quality_report(
     if blocked_by:
         for tier in ("fit", "strong", "distinct"):
             evaluated[tier]["blocked_by"] = blocked_by
-    llm_pending = list(PHASE_A_LLM_PENDING)
+    llm_pending = _pending_rules(judgments)
     all_passed = all(bool(tier["passed"]) for tier in evaluated.values())
     report: dict[str, object] = {
         "schema_version": 1,
@@ -846,6 +1052,7 @@ def build_quality_report(
         "thresholds": copy.deepcopy(config.thresholds),
         "tiers": evaluated,
         "auto_pass": bool(all_passed and not llm_pending),
+        "quality_judge": judge_meta or None,
         "llm_pending": llm_pending,
         "gap_tasks": _tier_gap_tasks(evaluated, list(fit.highlights)),
         "legacy_scores": legacy_scores or {"rule_total": None, "llm_expression": None},

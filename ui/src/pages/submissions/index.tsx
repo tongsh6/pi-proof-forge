@@ -49,6 +49,7 @@ import {
   recheckLiepinNativePdfRemoval,
   type NativePdfPreparation,
   type FeedbackSyncResult,
+  decideQualityHighlight,
 } from "@/lib/sidecar/api";
 import type { ChannelSessionResult, FeedbackIterationResult, FeedbackListResult, SubmissionCheckModeResult, SubmissionDetail, SubmissionListItem } from "@/lib/sidecar/types";
 
@@ -197,7 +198,18 @@ export function SubmissionsPage() {
   const [acceptPdfEffects, setAcceptPdfEffects] = useState(false);
   const [acceptAttachmentRemoval, setAcceptAttachmentRemoval] = useState(false);
   const [nativePdfError, setNativePdfError] = useState("");
+  const [qualityDecisionNotice, setQualityDecisionNotice] = useState("");
   const [nativePdfPreview,setNativePdfPreview]=useState("");
+  const decideHighlight = useCallback(async (highlightId: string, action: "reject" | "select") => {
+    const report = nativePdf?.quality?.quality_report;
+    if (!nativePdf?.run_id || !report?.resume_version) return;
+    try {
+      await decideQualityHighlight({run_id: nativePdf.run_id, resume_sha256: report.resume_version, highlight_id: highlightId, action});
+      setQualityDecisionNotice(t("quality.report.decisionSaved"));
+    } catch (error) {
+      setQualityDecisionNotice(getErrorMessage(error));
+    }
+  }, [nativePdf, t]);
   const [previewedPdf,setPreviewedPdf]=useState("");
   useEffect(() => {
     if (nativeSessionBusy || consumedQuickRun.current === requestedQuickRun) return;
@@ -627,7 +639,8 @@ export function SubmissionsPage() {
               {nativePdf && <div className="mt-3 space-y-2">
                 <p>{nativePdf.company} · {nativePdf.position}</p>
                 <PdfQualitySummary quality={nativePdf.quality}/>
-                {nativePdf.quality?.quality_report&&<QualityReportPanel report={nativePdf.quality.quality_report}/>}
+                {nativePdf.quality?.quality_report&&<QualityReportPanel report={nativePdf.quality.quality_report} onHighlightDecision={decideHighlight}/>}
+                {qualityDecisionNotice&&<p role="status" className="text-xs text-text-secondary">{qualityDecisionNotice}</p>}
                 {nativePdf.pdf_filename&&<p className="break-all">PDF: {nativePdf.pdf_filename}</p>}
                 <p className="font-mono text-xs text-text-muted" title={nativePdf.pdf_sha256}>{t("pages.submissions.pdfFingerprint")}: {nativePdf.pdf_sha256?.slice(0, 12)}…</p>
                 <p role="status">{t(`pages.submissions.nativePdf.phase.${nativePdf.phase}`, {defaultValue:nativePdf.phase})}</p>

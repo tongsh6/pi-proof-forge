@@ -1,6 +1,7 @@
 """P0-026：评分依据必须与显示的质量指标一致。"""
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -193,3 +194,117 @@ def test_cli_writes_four_tier_quality_report_and_legacy_scores(tmp_path, monkeyp
     # 评估阶段还没有 PDF，R1.5 必须显式记录未校验，不能假装通过。
     rules = [failure["rule"] for failure in report["tiers"]["eligible"]["failures"]]
     assert "R1.5" in rules
+
+
+class _FakeJudgeClient:
+    chat_completions_url = "http://fake/v1/chat/completions"
+
+    def __init__(self, content):
+        self.calls = 0
+        self.content = content
+
+    def post_json(self, url, payload):
+        self.calls += 1
+        self.last_prompt = payload["messages"][-1]["content"]
+        return {"choices": [{"message": {"content": self.content}}]}
+
+    @staticmethod
+    def extract_content(response):
+        return response["choices"][0]["message"]["content"]
+
+
+def _judge_fixture(tmp_path, monkeypatch):
+    monkeypatch.setenv("PPF_QUALITY_JUDGE_CACHE_DIR", str(tmp_path / "judge-cache"))
+    resume = (
+        "# 张三\n13800000000 | a@b.com | 上海\n当前定位：平台负责人\n\n"
+        "## 职业概述\n负责平台架构与交付。\n\n<!-- first-screen-end -->\n\n"
+        "## 项目经历\n### 统一平台（2022-03 ~ 2023-09）\n- 负责完成平台抽象\n"
+    )
+    semantic = {
+        "mode": "semantic",
+        "requirements": [
+            {"requirement_id": "d1", "kind": "responsibility", "text": "负责核心平台交付"},
+        ],
+    }
+    payload = {
+        "r1_4": [{"bullet": 1, "supported": True, "citations": ["ec_1"], "reason": "卡中明确本人负责"}],
+        "r2_1": [{"jd_item_id": "d1", "status": "supported", "bullet_ref": "bullet#1",
+                  "citations": ["ec_1"], "reason": ""}],
+        "r3_1": [{"bullet": 1, "scene": True, "action": True, "result": True,
+                  "citations": ["ec_1"], "reason": ""}],
+        "r3_5": {"summary_lines": 2, "role_scale_match": True, "generic_adjectives": [],
+                 "citations": ["bullet#1"], "reason": ""},
+        "r4_1": [{"bullet": 1, "jd_item_id": "d1", "exceeds": ["scale"], "level": "L1",
+                  "citations": ["ec_1"], "reason": "规模"}],
+    }
+    return resume, semantic, json.dumps(payload, ensure_ascii=False)
+
+
+def test_quality_judge_cache_hit_avoids_second_model_call(tmp_path, monkeypatch):
+    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    client = _FakeJudgeClient(content)
+    first, meta_first, _decisions = run_evaluation._run_quality_judge(
+        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+        client_factory=lambda: client,
+    )
+    assert first is not None and meta_first["cache"] == "miss" and client.calls == 1
+    assert "遵守" not in meta_first.get("error", "")
+    second, meta_second, _ = run_evaluation._run_quality_judge(
+        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+        client_factory=lambda: client,
+    )
+    assert second == first
+    assert meta_second["cache"] == "hit"
+    assert client.calls == 1, "缓存命中不应再次调用模型"
+
+
+def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path, monkeypatch):
+    resume, semantic, _content = _judge_fixture(tmp_path, monkeypatch)
+    client = _FakeJudgeClient("not-json")
+    judgments, meta, _ = run_evaluation._run_quality_judge(
+        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+        client_factory=lambda: client,
+    )
+    assert judgments is None
+    assert meta["cache"] == "miss" and meta.get("error") == "invalid_judge_response"
+    _judgments2, meta2, _ = run_evaluation._run_quality_judge(
+        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+        client_factory=lambda: client,
+    )
+    assert meta2["cache"] == "miss"
+    assert client.calls == 2, "无效结果不得写入缓存"
+
+
+def test_quality_judge_disabled_without_llm_or_semantic_review(tmp_path, monkeypatch):
+    resume, semantic, _content = _judge_fixture(tmp_path, monkeypatch)
+    judgments, meta, decisions = run_evaluation._run_quality_judge(
+        resume_text=resume, trace={}, semantic_review=None, job_profile_path="job.yaml",
+        use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+        client_factory=lambda: _FakeJudgeClient("{}"),
+    )
+    assert judgments is None and meta["cache"] == "disabled"
+    assert decisions == {"rejected": [], "selected": []}
+    judgments, meta, _ = run_evaluation._run_quality_judge(
+        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        use_llm=False, model="fake-model", api_key="k", base_url="http://fake/v1",
+        client_factory=lambda: _FakeJudgeClient("{}"),
+    )
+    assert judgments is None and meta["cache"] == "disabled"
+
+
+def test_quality_judge_loads_user_highlight_decisions(tmp_path, monkeypatch):
+    from tools.infra import quality_judge_cache
+    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    resume_sha = hashlib.sha256(resume.encode("utf-8")).hexdigest()
+    quality_judge_cache.save_highlight_decision(Path.cwd(), resume_sha, "hl_b1_d1", "reject")
+    _judgments, _meta, decisions = run_evaluation._run_quality_judge(
+        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+        client_factory=lambda: _FakeJudgeClient(content),
+    )
+    assert decisions == {"rejected": ["hl_b1_d1"], "selected": []}

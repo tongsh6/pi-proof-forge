@@ -7,15 +7,17 @@ import os
 import re
 from pathlib import Path
 import sys
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tools.infra import quality_judge_cache
 from tools.infra.llm.client import LLMClient, llm_timeout_from_env
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.infra.persistence.review_snapshot import read_generation_trace
+from tools.engines.evaluation import llm_judge, tiered_evaluator
 from tools.engines.evaluation.keyword_coverage import contains_term, keyword_coverage, unique_terms
 
 
@@ -291,6 +293,96 @@ def _load_quality_career(trace: dict) -> dict:
     return {}
 
 
+def _judge_jd_items(semantic_review: dict | None) -> list[dict[str, str]]:
+    if not isinstance(semantic_review, dict) or semantic_review.get("mode") != "semantic":
+        return []
+    items: list[dict[str, str]] = []
+    for row in semantic_review.get("requirements") or []:
+        if not isinstance(row, dict):
+            continue
+        requirement_id = str(row.get("requirement_id") or "")
+        text = str(row.get("text") or "")
+        if requirement_id and text:
+            items.append({"id": requirement_id, "kind": str(row.get("kind", "must_have")), "text": text})
+    return items
+
+
+def _judge_cache_root() -> Path:
+    override = os.getenv("PPF_QUALITY_JUDGE_CACHE_DIR", "").strip()
+    return Path(override) if override else Path.cwd() / "app-data" / "quality_judgments"
+
+
+def _run_quality_judge(
+    *,
+    resume_text: str,
+    trace: dict,
+    semantic_review: dict | None,
+    job_profile_path: str | None,
+    use_llm: bool,
+    model: str,
+    api_key: str,
+    base_url: str,
+    client_factory: Any = None,
+) -> tuple[dict | None, dict[str, Any], dict[str, list[str]]]:
+    """B1/B4：命中缓存或调用一次受控判项；任何失败都保留 pending，不伪造通过。"""
+    resume_sha256 = hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
+    decisions = quality_judge_cache.load_decisions(Path.cwd(), resume_sha256)
+    cards = _load_quality_cards(trace)
+    jd_items = _judge_jd_items(semantic_review)
+    meta: dict[str, Any] = {"cache": "disabled", "reason": "llm_not_configured_or_no_jd_items"}
+    if not (use_llm and model and api_key and jd_items):
+        return None, meta, decisions
+    bullets = tiered_evaluator.extract_bullets(resume_text)
+    job_profile_id = Path(job_profile_path).stem if job_profile_path else ""
+    key = quality_judge_cache.judge_cache_key(
+        resume_sha256=resume_sha256,
+        job_profile_id=job_profile_id,
+        cards=cards,
+        model=model,
+        prompt_version=llm_judge.PROMPT_VERSION,
+    )
+    meta = {"cache": "miss", "model": model, "prompt_version": llm_judge.PROMPT_VERSION, "key": key}
+    cached = quality_judge_cache.load_judgment(_judge_cache_root(), key)
+    if cached is not None:
+        meta["cache"] = "hit"
+        meta["judged_sections"] = cached.get("judged_sections")
+        return cached, meta, decisions
+    prompt = llm_judge.build_judge_prompt(bullets=bullets, cards=cards, jd_items=jd_items)
+    try:
+        client = client_factory() if client_factory is not None else LLMClient(
+            base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env()
+        )
+        payload: dict[str, object] = {
+            "model": model,
+            "temperature": 0,
+            "max_tokens": 6000,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": "You are a strict judge. Return ONLY the JSON object."},
+                {"role": "user", "content": prompt},
+            ],
+        }
+        # 本机 LM Studio 的 Qwen reasoning 模型会把预算耗在 thinking 上，导致最终 content 为空；
+        # 只对本机 base_url 关闭推理输出，不改变远端模型请求语义。
+        if "127.0.0.1" in base_url or "localhost" in base_url:
+            payload["reasoning_effort"] = "none"
+        response = client.post_json(client.chat_completions_url, payload)
+        parsed = llm_judge.parse_judgments(
+            client.extract_content(response), bullets=bullets, jd_items=jd_items, cards=cards
+        )
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
+        meta["error"] = str(exc)[:300]
+        print(f"[evaluation] LLM 判项不可用，保留 pending：{exc}")
+        return None, meta, decisions
+    if parsed is None:
+        meta["error"] = "invalid_judge_response"
+        return None, meta, decisions
+    quality_judge_cache.save_judgment(_judge_cache_root(), key, parsed)
+    meta["judged_sections"] = parsed.get("judged_sections")
+    meta["rejected_items"] = parsed.get("rejected_items")
+    return parsed, meta, decisions
+
+
 def _load_job_context(job_profile_path: str | None) -> dict:
     if not job_profile_path:
         return {}
@@ -317,6 +409,18 @@ def _quality_markdown(quality_report: dict | None) -> str:
     pending = quality_report.get("llm_pending") or []
     if pending:
         lines.append("- LLM 判项待接入（Phase B）：" + "、".join(str(item) for item in pending))
+    judge = quality_report.get("quality_judge")
+    if isinstance(judge, dict) and judge.get("cache") in {"hit", "miss"}:
+        lines.append(f"- LLM 判项缓存：{judge.get('cache')}（{judge.get('model', '')} / prompt v{judge.get('prompt_version', '')}）")
+    distinct = tiers.get("distinct") if isinstance(tiers, dict) else None
+    highlights = (distinct or {}).get("highlights") if isinstance(distinct, dict) else None
+    if isinstance(highlights, list):
+        for item in highlights:
+            if isinstance(item, dict):
+                lines.append(
+                    f"- 突出点：{item.get('bullet_ref', '')} ↔ JD {item.get('jd_item_id', '')}"
+                    f"（{item.get('exceeds', '')}，{item.get('level', '')}）{item.get('reason', '')}"
+                )
     lines.append(
         "- 自动通过: "
         + ("是" if quality_report.get("auto_pass") else "否")
@@ -459,6 +563,16 @@ def _legacy_main() -> int:
 
     from tools.engines.evaluation import tiered_evaluator
 
+    quality_judgments, judge_meta, judge_decisions = _run_quality_judge(
+        resume_text=resume_text,
+        trace=trace,
+        semantic_review=semantic_review,
+        job_profile_path=job_profile_path,
+        use_llm=use_llm,
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+    )
     quality_report = None
     try:
         quality_report = tiered_evaluator.build_quality_report(
@@ -469,6 +583,9 @@ def _legacy_main() -> int:
             semantic_review=semantic_review,
             job_context=_load_job_context(job_profile_path),
             pdf_check=None,
+            judgments=quality_judgments,
+            decisions=judge_decisions,
+            judge_meta=judge_meta,
             resume_version=hashlib.sha256(resume_text.encode("utf-8")).hexdigest(),
             job_profile_id=Path(job_profile_path).stem if job_profile_path else "",
             legacy_scores={
@@ -478,6 +595,7 @@ def _legacy_main() -> int:
         )
         final_markdown = final_markdown.rstrip() + "\n" + _quality_markdown(quality_report)
     except (OSError, ValueError, TypeError) as exc:
+        judge_meta = {**judge_meta, "report_error": str(exc)[:300]}
         print(f"[evaluation] 四层质量报告生成失败：{exc}")
 
     output_file = Path(output_path)
@@ -496,6 +614,7 @@ def _legacy_main() -> int:
         "quantification": rule_result['quantification'],
         "semantic_review": semantic_review,
         "quality_report": quality_report,
+        "quality_judge": judge_meta,
         "legacy_scores": {
             "rule_total": rule_result["total_score"],
             "llm_expression": rule_result["expression_score"],

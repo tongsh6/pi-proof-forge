@@ -171,7 +171,7 @@ def job_context():
     }
 
 
-def build(resume=RESUME, cards=None, claims=None, pdf_check=..., semantic=None, highlights=None, profile=None, context=None):
+def build(resume=RESUME, cards=None, claims=None, pdf_check=..., semantic=None, highlights=None, profile=None, context=None, judgments=None, decisions=None):
     return te.build_quality_report(
         resume=resume,
         trace=trace(claims if claims is not None else claims_for_resume()),
@@ -181,6 +181,8 @@ def build(resume=RESUME, cards=None, claims=None, pdf_check=..., semantic=None, 
         job_context=context if context is not None else job_context(),
         pdf_check={"pages": 2, "clipped": False} if pdf_check is ... else pdf_check,
         highlights=highlights,
+        judgments=judgments,
+        decisions=decisions,
         resume_version="sha-test",
         job_profile_id="jp-test",
     )
@@ -330,3 +332,95 @@ def test_quality_config_loads_thresholds_and_filler_lexicon():
     assert config.thresholds["strong"]["quant_first_screen_min_ratio"] == pytest.approx(0.6)
     assert "深入理解" in config.filler_terms
     assert any(term.lower() == "proven" for term in config.filler_terms)
+
+
+def judged_payload(*, semantic_ids=("d1",), r1_4=None, r3_1=None, r3_5=None, r4_1=None, r2_1=None):
+    return {
+        "schema_version": 1,
+        "prompt_version": 1,
+        "judged_sections": ["r1_4", "r2_1", "r3_1", "r3_5", "r4_1"],
+        "rejected_items": 0,
+        "r1_4": r1_4 if r1_4 is not None else [],
+        "r2_1": r2_1 if r2_1 is not None else [
+            {"jd_item_id": jd_id, "status": "supported", "bullet_ref": "bullet#1",
+             "citations": ["ec_00000001"], "reason": "首屏技能区支撑"} for jd_id in semantic_ids
+        ],
+        "r3_1": r3_1 if r3_1 is not None else [
+            {"bullet": 2, "scene": True, "action": True, "result": True, "citations": ["ec_00000001"], "reason": ""},
+            {"bullet": 3, "scene": True, "action": True, "result": True, "citations": ["ec_00000001"], "reason": ""},
+        ],
+        "r3_5": r3_5 if r3_5 is not None else {
+            "summary_lines": 2, "role_scale_match": True, "generic_adjectives": [],
+            "citations": ["bullet#1"], "reason": "",
+        },
+        "r4_1": r4_1 if r4_1 is not None else [
+            {"bullet": 1, "jd_item_id": "d1", "exceeds": ["scale"], "level": "L1",
+             "citations": ["ec_00000001"], "reason": "规模超出 JD 字面"}
+        ],
+    }
+
+
+def test_judged_mode_clears_pending_and_feeds_matrix_and_highlights():
+    report = build(judgments=judged_payload())
+    assert report["llm_pending"] == []
+    assert report["quality_judge"] is None  # judge_meta 由调用方传入，纯函数不伪造
+    fit = report["tiers"]["fit"]
+    assert fit["matrix"][0]["judged"] is True
+    assert fit["matrix"][0]["first_screen"] is True
+    distinct = report["tiers"]["distinct"]
+    assert distinct["highlights"][0]["highlight_id"] == "hl_b1_d1"
+    assert distinct["metrics"]["candidate_count"] == 1
+    # 四层仍未全部通过（R3.2 首屏量化），所以 auto_pass 仍为 False，但不再因 LLM pending 而挂起。
+    assert report["auto_pass"] is False
+
+
+def test_judged_r3_1_and_r3_5_and_r1_4_failures_are_reported():
+    payload = judged_payload(
+        r1_4=[{"bullet": 2, "supported": False, "citations": ["ec_00000001"], "reason": "卡中没有本人负责表述"}],
+        r3_1=[
+            {"bullet": 2, "scene": True, "action": False, "result": True, "citations": ["ec_00000001"], "reason": "缺动作"},
+            {"bullet": 3, "scene": True, "action": True, "result": True, "citations": ["ec_00000001"], "reason": ""},
+        ],
+        r3_5={"summary_lines": 4, "role_scale_match": False, "generic_adjectives": ["丰富经验"],
+              "citations": ["bullet#1"], "reason": ""},
+    )
+    claims = [
+        {**claim, "text": "负责完成平台抽象"} if claim["text"] == "完成平台抽象" else claim
+        for claim in claims_for_resume()
+    ]
+    report = build(resume=RESUME.replace("- 完成平台抽象", "- 负责完成平台抽象"), claims=claims, judgments=payload)
+    all_rules = rules(report, "eligible") + rules(report, "strong")
+    assert all_rules.count("R1.4") == 1
+    assert all_rules.count("R3.1") == 1
+    assert all_rules.count("R3.5") >= 2
+
+
+def test_judged_r2_1_overrides_matrix_status_and_top_responsibility():
+    payload = judged_payload(
+        semantic_ids=("d1",),
+        r2_1=[{"jd_item_id": "d1", "status": "weak", "bullet_ref": "bullet#2",
+               "citations": ["ec_00000001"], "reason": "仅部分支撑"}],
+    )
+    report = build(judgments=payload)
+    matrix = report["tiers"]["fit"]["matrix"]
+    assert matrix[0]["status"] == "weak"
+    assert matrix[0]["first_screen"] is False
+    assert "R2.2" in rules(report, "fit")
+
+
+def test_highlight_decisions_reject_and_select_are_applied():
+    candidates = [
+        {"bullet": 1, "jd_item_id": "d1", "exceeds": ["scale"], "level": "L1",
+         "citations": ["ec_00000001"], "reason": "规模"},
+        {"bullet": 2, "jd_item_id": "d1", "exceeds": ["difficulty"], "level": "L1",
+         "citations": ["ec_00000001"], "reason": "难度"},
+    ]
+    payload = judged_payload(r4_1=candidates)
+    report = build(
+        judgments=payload,
+        decisions={"rejected": ["hl_b1_d1"], "selected": ["hl_b2_d1"]},
+    )
+    distinct = report["tiers"]["distinct"]
+    assert distinct["metrics"]["rejected"] == 1
+    assert distinct["metrics"]["selected"] == 1
+    assert [item["highlight_id"] for item in distinct["highlights"]] == ["hl_b2_d1"]
