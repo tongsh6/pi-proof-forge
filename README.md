@@ -50,6 +50,7 @@ GUI 关键文档：
 
 - `ui/design/DESIGN.md`
 - `ui/design/piproofforge.pen`
+- `ui/design/brand/APP_ICON.md`（应用图标规范与资产）
 - `AIEF/context/tech/GUI_ARCHITECTURE.md`
 
 ## GUI 当前状态
@@ -265,6 +266,7 @@ GUI key docs:
 
 - `ui/design/DESIGN.md`
 - `ui/design/piproofforge.pen`
+- `ui/design/brand/APP_ICON.md` (app icon spec and assets)
 - `AIEF/context/tech/GUI_ARCHITECTURE.md`
 
 ### GUI Status

@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">PiProofForge app icon</title>
+  <desc id="desc">A forged satin-metal pi mark on a deep navy squircle, with a subtle forge heat glow.</desc>
+
+  <!--
+    PiProofForge app icon (master)
+    Canvas: 1024 x 1024, transparent margin 100 (macOS icon grid); squircle tile 824 x 824, r 185.
+    Mark: single-piece pi glyph, 600 x 520 optical box, centered at 512, 512.
+    Palette: bg #071023 family, mark #38BDF8 / #22D3EE family, forge accent #F59E0B.
+    Source of truth for app-icon-1024.png and the raster icon set in ui/src-tauri/icons/.
+  -->
+
+  <defs>
+    <linearGradient id="bg" x1="160" y1="100" x2="880" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#132A50"/>
+      <stop offset="0.46" stop-color="#09162C"/>
+      <stop offset="1" stop-color="#050B18"/>
+    </linearGradient>
+
+    <radialGradient id="sheen" cx="330" cy="210" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#DBF3FF" stop-opacity="0.09"/>
+      <stop offset="0.6" stop-color="#9CD9FF" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#9CD9FF" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="heat" cx="512" cy="500" r="390" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity="0.13"/>
+      <stop offset="0.55" stop-color="#38BDF8" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="forgeHeat" cx="790" cy="280" r="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F59E0B" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#F59E0B" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="bottomShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.55" stop-color="#00040C" stop-opacity="0"/>
+      <stop offset="1" stop-color="#00040C" stop-opacity="0.4"/>
+    </linearGradient>
+
+    <linearGradient id="tileRim" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E6F8FF" stop-opacity="0.3"/>
+      <stop offset="0.28" stop-color="#7DD3FC" stop-opacity="0.07"/>
+      <stop offset="0.75" stop-color="#38BDF8" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#0EA5E9" stop-opacity="0.16"/>
+    </linearGradient>
+
+    <!-- Satin anodized cyan-steel, light from upper left. -->
+    <linearGradient id="metal" x1="0.08" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#CFFAFE"/>
+      <stop offset="0.12" stop-color="#67E8F9"/>
+      <stop offset="0.38" stop-color="#22D3EE"/>
+      <stop offset="0.66" stop-color="#0EA5E9"/>
+      <stop offset="0.88" stop-color="#0891B2"/>
+      <stop offset="1" stop-color="#0B6B86"/>
+    </linearGradient>
+
+    <linearGradient id="metalRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="0.2" stop-color="#D7F7FF" stop-opacity="0.32"/>
+      <stop offset="0.55" stop-color="#C7F5FF" stop-opacity="0.07"/>
+      <stop offset="0.82" stop-color="#062A3D" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#041C2A" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <linearGradient id="sideShade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0.52" stop-color="#002B3C" stop-opacity="0"/>
+      <stop offset="1" stop-color="#002B3C" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <linearGradient id="hotEdge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FBBF24" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FDE68A" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <filter id="markShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#000611" flood-opacity="0.6"/>
+    </filter>
+    <filter id="markGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+
+    <clipPath id="tile">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+    <clipPath id="markClip">
+      <path d="M-16,0 H532 L558,26 V78 H516 V480 L496,520 H432 L412,480 V78 H104 V480 L84,520 H20 L0,480 V78 H-42 V26 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#heat)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#forgeHeat)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#sheen)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#bottomShade)"/>
+  </g>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="url(#tileRim)" stroke-width="3"/>
+
+  <!-- Mark: one struck/forged piece -->
+  <g transform="translate(246.26,244.2) scale(1.03)">
+    <g filter="url(#markGlow)" opacity="0.2">
+      <path d="M-16,0 H532 L558,26 V78 H516 V480 L496,520 H432 L412,480 V78 H104 V480 L84,520 H20 L0,480 V78 H-42 V26 Z" fill="#22D3EE"/>
+    </g>
+
+    <g filter="url(#markShadow)">
+      <path d="M-16,0 H532 L558,26 V78 H516 V480 L496,520 H432 L412,480 V78 H104 V480 L84,520 H20 L0,480 V78 H-42 V26 Z" fill="url(#metal)"/>
+    </g>
+
+    <g clip-path="url(#markClip)">
+      <rect x="-70" y="0" width="700" height="540" fill="url(#sideShade)"/>
+      <path d="M-16,0 H532 L545,13 H-29 Z" fill="#FFFFFF" opacity="0.28"/>
+      <path d="M0,78 H92 V476 L84,520 H0 Z" fill="#FFFFFF" opacity="0.1"/>
+      <!-- heat left on the struck end -->
+      <path d="M500,0 H532 L558,26 H520 Z" fill="url(#hotEdge)" opacity="0.2"/>
+    </g>
+
+    <path d="M-16,0 H532 L558,26 V78 H516 V480 L496,520 H432 L412,480 V78 H104 V480 L84,520 H20 L0,480 V78 H-42 V26 Z"
+          fill="none" stroke="url(#metalRim)" stroke-width="3.5" stroke-linejoin="round"/>
+    <path d="M532,0 L558,26" fill="none" stroke="#FDE68A" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+  </g>
+</svg>
