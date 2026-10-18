@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -138,6 +139,21 @@ def _render_html_to_pdf(html_path: Path, pdf_path: Path) -> None:
         ], html_path, pdf_path)
     else:
         raise RuntimeError('PDF_RENDERER_UNAVAILABLE: 未找到已安装的 Chromium/Chrome 或 WeasyPrint；HTML 预览仍可使用')
+
+
+def pdf_page_count(path: Path) -> int | None:
+    """只读统计 PDF 页数；无法解析时返回 None，由调用方显式记录未校验。"""
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return None
+    if not data.startswith(b'%PDF-'):
+        return None
+    pages = len(re.findall(rb'/Type\s*/Page(?!s)', data))
+    if pages:
+        return pages
+    counts = [int(value) for value in re.findall(rb'/Count\s+(\d+)', data)]
+    return max(counts) if counts else None
 
 
 def markdown_to_pdf(md_path: Path, pdf_path: Path) -> None:

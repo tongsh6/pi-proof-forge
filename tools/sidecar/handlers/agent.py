@@ -15,7 +15,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from tools.infra.export.pdf_exporter import markdown_to_pdf
+from tools.infra.export.pdf_exporter import markdown_to_pdf, pdf_page_count
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.sidecar.handlers.resume import read_generation_trace
 
@@ -792,6 +792,7 @@ def _quick_run_result_details(
     reasons = list(readiness.get("reasons") or ["需人工审核简历事实与岗位适用性"])
     evaluation_score = None
     semantic_review = None
+    quality_report: dict[str, Any] | None = None
     evaluation_gaps: list[str] = []
     if resume_a is not None and isinstance(scorecard_artifact, str) and scorecard_artifact:
         try:
@@ -808,37 +809,81 @@ def _quick_run_result_details(
                     semantic_review = semantic_value
                     expression = score.get('expression_score')
                     evaluation_score = expression if type(expression) in (int, float) and 0 <= expression <= 100 else None
+                report_value = score.get('quality_report')
+                if isinstance(report_value, dict):
+                    quality_report = report_value
         except (OSError, ValueError, TypeError, AttributeError):
             pass
+    if quality_report is not None and pdf_artifact:
+        from tools.engines.evaluation import tiered_evaluator
+
+        pdf_path = _resolve_project_path(pdf_artifact)
+        quality_report = tiered_evaluator.apply_pdf_check(
+            quality_report,
+            {
+                "pages": pdf_page_count(pdf_path),
+                "clipped": None,
+                "clip_check": "not_available",
+                "path": pdf_artifact,
+            },
+        )
     advisory_messages = {"保持当前证据完整度，按新 JD 微调关键词", "暂无高优先级补证据任务。"}
     pending_gaps = list(dict.fromkeys(
         task for task in [*matching_lists.get("gap_tasks", []), *evaluation_gaps]
         if task not in advisory_messages
     ))
+    quality_failures: list[str] = []
+    if isinstance(quality_report, dict):
+        tiers = quality_report.get("tiers") if isinstance(quality_report.get("tiers"), dict) else {}
+        for tier_name in ("eligible", "fit", "strong", "distinct"):
+            tier = tiers.get(tier_name) if isinstance(tiers, dict) else None
+            tier = tier if isinstance(tier, dict) else {}
+            for failure in tier.get("failures", []) or []:
+                if not isinstance(failure, dict):
+                    continue
+                quality_failures.append(
+                    f"{failure.get('rule', '')} {failure.get('target', '')}：{failure.get('reason', '')}".strip()
+                )
+        pending_rules = quality_report.get("llm_pending") or []
+        if pending_rules:
+            quality_failures.append(
+                "LLM 判项未接入（Phase B）：" + "、".join(str(item) for item in pending_rules)
+            )
+    auto_pass = bool(quality_report.get("auto_pass")) if isinstance(quality_report, dict) else False
     if not resume_traceable:
         reasons.append("独立追溯缺失或正文/输入已变化，请重新生成并审核")
-    if evaluation_score is None:
-        reasons.append("缺少与本版简历匹配的规则评测")
-    elif evaluation_score < 78:
-        reasons.append(f"{'表达质量' if semantic_review else '规则评分'} {evaluation_score}/100，低于参考线 78")
+    if quality_report is None:
+        reasons.append("缺少四层质量报告（旧版评测结果），请重新生成并评测")
+    elif not auto_pass:
+        if quality_failures:
+            reasons.extend(quality_failures[:8])
+        else:
+            reasons.append("四层质量报告未全部通过")
     if semantic_review and not semantic_review.get('all_requirements_supported'):
         reasons.append('岗位要求仍有证据不足、部分支持、冲突或简历未呈现的项目')
     if pending_gaps:
         reasons.append("仍有待处理的证据或岗位匹配缺口")
     if pdf_export_error:
         reasons.append("PDF 导出失败：" + pdf_export_error)
+    reasons = list(dict.fromkeys(reasons))
+    quality_passed = bool(
+        quality_report is not None
+        and auto_pass
+        and resume_traceable
+        and matching_uses_selected_evidence
+        and bool(pdf_artifact)
+        and readiness["status"] != "NEEDS_EVIDENCE"
+        and (semantic_review is None or semantic_review.get('all_requirements_supported') is True)
+    )
     readiness.update({
         "deliverable": False,
         "evaluation_score": evaluation_score,
-        "evaluation_reference_score": 78,
+        "auto_pass": auto_pass,
+        "quality_report": quality_report,
+        "quality_failures": quality_failures[:20],
         "gap_tasks": pending_gaps,
         "reasons": reasons,
-        "quality_passed": bool(
-            resume_traceable and matching_uses_selected_evidence and bool(pdf_artifact)
-            and readiness["status"] != "NEEDS_EVIDENCE"
-            and evaluation_score is not None and evaluation_score >= 78 and not pending_gaps
-            and (semantic_review is None or semantic_review.get('all_requirements_supported') is True)
-        ),
+        "quality_passed": quality_passed,
     })
     if resume_a is None or not resume_a.is_file():
         readiness.update(status="NOT_GENERATED", content_ready=False, quality_passed=False,
@@ -852,6 +897,7 @@ def _quick_run_result_details(
         "score_total": score_total,
         "score_breakdown": score_breakdown,
         "semantic_review": semantic_review,
+        "quality_report": quality_report,
         "career_direction":career_direction,
         "gaps": matching_lists.get("gaps", []),
         "gap_tasks": matching_lists.get("gap_tasks", []),

@@ -1792,6 +1792,24 @@
     "gaps": "本版待处理缺口",
     "scope": "评估范围：{{qualification_count}}项任职要求、{{responsibility_count}}项工作职责、{{check_count}}个原文子项。未识别的职责不计为已覆盖。",
     "inResume": "正文",
-    "ruleFit": "规则匹配参考"
+    "ruleFit": "规则匹配参考",
+    "report": {
+      "title": "四层质量报告",
+      "missing": "本版评测未包含四层质量报告（旧版结果），请重新生成并评测。",
+      "tier": {
+        "eligible": "合格",
+        "fit": "对位",
+        "strong": "优质",
+        "distinct": "突出"
+      },
+      "passed": "通过",
+      "failed": "未通过",
+      "blockedBy": "（下层未通过，本层结论仅供参考：{{tier}}）",
+      "noFailures": "本层无规则缺口。",
+      "llmPending": "LLM 判项待接入（Phase B）：{{rules}}",
+      "legacy": "对比旧版分数（不参与通过判定）",
+      "legacyValue": "规则总分 {{rule}} · 表达参考 {{expression}}",
+      "openCard": "在证据页查看"
+    }
   }
 }

@@ -118,3 +118,78 @@ def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypa
     result = json.loads(output.with_suffix(".json").read_text())
     assert result["traceability"]["status"] == "unverified"
     assert result["traceability"]["verified_bullets"] == 0
+
+
+def _quality_fixture(tmp_path):
+    card = tmp_path / "ec-1.yaml"
+    card.write_text(
+        'id: "ec-1"\ntitle: "交易服务重构"\ntime_range: "2022-03 ~ 2023-09"\n'
+        'role_scope: "模块负责人"\ncontext: "峰值延迟高"\n'
+        'results:\n  - "请求延迟降低 20%"\nstack:\n  - "Java"\n'
+        'artifacts:\n  - "报告.pdf"\n',
+        encoding="utf-8",
+    )
+    profile = tmp_path / "personal_profile.yaml"
+    profile.write_text('name: "测试候选人"\nphone: "13800000000"\n', encoding="utf-8")
+    job = tmp_path / "job.yaml"
+    job.write_text(
+        'target_role: "平台负责人"\ncompany: "示例科技"\neducation: "本科"\nwork_years: "1-3年"\n'
+        'keywords:\n  - "Java"\nmust_have:\n  - "本科及以上学历"\n',
+        encoding="utf-8",
+    )
+    resume = tmp_path / "resume_mr-test_A.md"
+    resume.write_text(
+        "# 测试候选人\n13800000000 | candidate@example.com | 上海\n当前定位：平台负责人\n\n"
+        "## 职业概述\n负责平台架构与交付。\n\n<!-- first-screen-end -->\n\n"
+        "## 核心技能\nJava\n\n## 项目经历\n### 交易服务重构（2022-03 ~ 2023-09）\n"
+        "角色：模块负责人\n- 请求延迟降低 20%\n\n"
+        "## 工作经历\n### 示例科技 · 平台负责人（2021-03 ~ 至今）\n\n"
+        "## 教育经历\n### 示例大学（2010-09 ~ 2014-06）\n软件工程 · 本科\n",
+        encoding="utf-8",
+    )
+    claims = [
+        {"text": "测试候选人", "source_kind": "personal_profile", "field": "name", "evidence_id": ""},
+        {"text": "负责平台架构与交付。", "source_kind": "personal_profile", "field": "career.summary", "evidence_id": ""},
+        {"text": "交易服务重构", "source_kind": "evidence", "field": "title", "evidence_id": "ec-1"},
+        {"text": "2022-03 ~ 2023-09", "source_kind": "evidence", "field": "time_range", "evidence_id": "ec-1"},
+        {"text": "模块负责人", "source_kind": "evidence", "field": "role_scope", "evidence_id": "ec-1"},
+        {"text": "请求延迟降低 20%", "source_kind": "evidence", "field": "results", "evidence_id": "ec-1"},
+        {"text": "示例科技", "source_kind": "personal_profile", "field": "career.work.w1.company", "evidence_id": ""},
+        {"text": "平台负责人", "source_kind": "personal_profile", "field": "career.work.w1.title", "evidence_id": ""},
+    ]
+    trace = {
+        "schema_version": 1,
+        "resume_sha256": hashlib.sha256(resume.read_bytes()).hexdigest(),
+        "evidence_card_ids": ["ec-1"],
+        "inputs": {
+            "personal_profile": {"path": str(profile), "exists": True, "sha256": ""},
+            "job_profile": {"path": str(job), "exists": True, "sha256": ""},
+            "ec-1": {"path": str(card), "exists": True, "sha256": ""},
+        },
+        "claims": claims,
+    }
+    resume.with_suffix(".trace.json").write_text(json.dumps(trace))
+    return resume, job, tmp_path / "scorecard.md"
+
+
+def test_cli_writes_four_tier_quality_report_and_legacy_scores(tmp_path, monkeypatch):
+    resume, job, output = _quality_fixture(tmp_path)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["evaluate", "--input", str(resume), "--output", str(output), "--job-profile", str(job)],
+    )
+    assert run_evaluation._legacy_main() == 0
+    result = json.loads(output.with_suffix(".json").read_text())
+    report = result["quality_report"]
+    assert set(report["tiers"]) == {"eligible", "fit", "strong", "distinct"}
+    assert report["thresholds_version"] == 1
+    assert report["llm_pending"]
+    assert report["auto_pass"] is False
+    assert result["legacy_scores"]["rule_total"] == result["total_score"]
+    assert result["legacy_scores"]["llm_expression"] == result["expression_score"]
+    markdown = output.read_text()
+    assert "## 质量报告（四层，规则部分）" in markdown
+    assert "LLM 判项待接入（Phase B）" in markdown
+    # 评估阶段还没有 PDF，R1.5 必须显式记录未校验，不能假装通过。
+    rules = [failure["rule"] for failure in report["tiers"]["eligible"]["failures"]]
+    assert "R1.5" in rules

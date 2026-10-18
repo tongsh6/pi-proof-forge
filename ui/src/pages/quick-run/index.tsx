@@ -1,4 +1,5 @@
 import { PdfQualitySummary } from '@/components/pdf-quality-summary';
+import { QualityReportPanel } from '@/components/quality-report';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -652,6 +653,11 @@ export function QuickRunPage() {
                   {quickRunResult?.score_total ?? "--"}
                 </p>
               </div>
+              {quickRunResult?.quality_report && (
+                <div className="mt-5">
+                  <QualityReportPanel report={quickRunResult.quality_report}/>
+                </div>
+              )}
               {quickRunResult?.semantic_review ? (
                 <div className="mt-5 space-y-4" data-testid="quick-run-semantic-review">
                   <p className="text-xs text-text-secondary">{t("pages.quickRun.semantic.basis", { count: quickRunResult.semantic_review.reviewed_card_count ?? 0 })}</p>

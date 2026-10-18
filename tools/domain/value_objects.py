@@ -131,3 +131,7 @@ class ReviewDecision:
     decided_by: str
     decided_at: str  # ISO 8601
     note: str = ""
+
+
+# 简历首屏切分标记：模板写入，评估器按此切分；渲染层必须忽略该注释行。
+FIRST_SCREEN_MARKER = "<!-- first-screen-end -->"

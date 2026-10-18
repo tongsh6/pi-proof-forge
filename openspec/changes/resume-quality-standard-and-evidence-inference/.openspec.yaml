@@ -1,0 +1,19 @@
+change: resume-quality-standard-and-evidence-inference
+title: 以简历文体定义高质量标准，并让证据卡时间/角色可由带出处推断补齐
+status: proposed
+owner: pi-proof-forge team
+created_at: 2026-10-17
+updated_at: 2026-10-17
+relates_to: P0-026（简历质量修复部分）
+artifacts:
+  - proposal.md
+  - design.md
+  - tasks.md
+  - specs/resume-quality/spec.md
+  - specs/evidence-provenance/spec.md
+notes: |
+  来源：2026-10-17 探索对话。用户确认三点：
+  1) 「突出点」相对目标 JD 定义；
+  2) 证据卡时间/角色接受 L2 元数据推断与 L3 跨文档推断，正文措辞按等级降级；
+  3) 核心产物是简历，高质量必须在「简历」这一文体定位下定义，而非泛文档质量。
+  本变更不改变 P0-026 唯一 next，是其“简历质量修复”的实施载体。

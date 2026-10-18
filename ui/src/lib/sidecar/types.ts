@@ -917,11 +917,25 @@ export interface ReviewCandidateItem {
   job_url?: string;
 }
 
+export type QualityFailure = {rule:string;target?:string;reason?:string};
+export type QualityTier = {
+  passed:boolean;failures:QualityFailure[];metrics?:Record<string,unknown>;
+  matrix?:Array<Record<string,unknown>>;highlights?:Array<Record<string,unknown>>;blocked_by?:string;
+};
+export type QualityReport = {
+  schema_version?:number;resume_version?:string;job_profile_id?:string;thresholds_version?:number;
+  auto_pass?:boolean;llm_pending?:string[];gap_tasks?:string[];
+  legacy_scores?:{rule_total?:number|null;llm_expression?:number|null};
+  tiers?:{eligible?:QualityTier;fit?:QualityTier;strong?:QualityTier;distinct?:QualityTier};
+};
+
 export type PdfQuality = {
   matching_mode?:'semantic'|'rule';
   status:'bound'|'current'|'unrecorded';
   matching_score?:number|null;resume_score?:number|null;expression_score?:number|null;
   content_ready?:boolean;quality_passed?:boolean;gap_tasks?:string[];evaluation_version?:string;
+  auto_pass?:boolean;quality_report?:QualityReport|null;quality_failures?:string[];
+  legacy_scores?:{rule_total?:number|null;llm_expression?:number|null};
 };
 
 export interface GetPendingReviewResult extends RpcResultBase {
@@ -1005,6 +1019,7 @@ export interface QuickRunStartResult extends RpcResultBase {
       citations: Array<{ fact_id: string; quote: string; source_id: string; field: string; in_resume: boolean }>;
     }>;
   } | null;
+  quality_report?: QualityReport | null;
   llm_config_summary?: LlmConfigSummary;
   material_source?: MaterialSourceItem | null;
   job_profile?: {
@@ -1023,6 +1038,9 @@ export interface QuickRunStartResult extends RpcResultBase {
     status: "NEEDS_EVIDENCE" | "NEEDS_REVIEW" | "NOT_GENERATED";
     deliverable: boolean;
     quality_passed: boolean;
+    auto_pass?: boolean;
+    quality_report?: QualityReport | null;
+    quality_failures?: string[];
     evaluation_score: number | null;
     reasons: string[];
     gap_tasks: string[];

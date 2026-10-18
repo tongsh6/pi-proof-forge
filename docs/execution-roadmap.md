@@ -45,6 +45,8 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 `small_company_high_match_delivery`
 
+2026-10-18 四层质量报告首片（Phase A）：已按 `openspec/changes/resume-quality-standard-and-evidence-inference` 落地四层标准规则判项、`quality_report`/`auto_pass`/`llm_pending`、legacy 分数降级、审批门禁改读 auto_pass、Quick Run/审批页四层展示与首屏标记；Phase A 基线（最新目标 JD PDF，不重新生成）合格层通过、对位/优质/突出未通过，auto_pass=false（LLM 判项待 Phase B）。全量回归与 tsc 通过，无平台写入。P0-026 保持唯一 `next`，继续 Phase B/C/D。详见台账同日「四层简历质量报告首片」。
+
 2026-10-17 设计真源同步：已清空 DESIGN.md 四处「`.pen` 待补」并补齐引用式材料缺口，Jobs/Evidence/Resumes/System Settings 四屏画布更新落盘，屏幕列重排无重叠；同期 `develop` 15 个提交已推送 `origin/develop`。仅设计同步，不改变实现与验收状态；真实 App 分流验收仍待用户，P0-026 保持唯一 `next`。详见台账同日「`.pen` 设计同步」。
 
 2026-10-17 补全分流首片：试验确认人写文档只有公司/品牌级区间，不做自动逐字区间候选；证据页对账列表新增分流（值得补/不参与展示/重复），判断绑定卡指纹、不改卡，分流掉的卡不计缺口。1365 项回归与 tsc 通过，真实 App 页面验收待补；`.pen` 已于同日补齐。P0-026 保持唯一 `next`，下一步由用户在 App 分流后补“值得补”的卡。详见台账同日“证据卡补全分流首片”。

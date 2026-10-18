@@ -1,0 +1,14 @@
+version: 1
+eligible_max_pdf_pages: 2
+eligible_require_summary: true
+eligible_require_core_experience: true
+fit_first_screen_required_jd_items: 3
+fit_min_supported_must_have_ratio: 0.6
+strong_quant_first_screen_min_ratio: 0.6
+strong_quant_total_min_ratio: 0.4
+strong_filler_max_hits: 0
+strong_summary_max_lines: 3
+distinct_min_highlights: 1
+distinct_max_highlights: 2
+distinct_min_confidence: 0.5
+inference_min_confidence: 0.5

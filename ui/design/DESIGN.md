@@ -1387,3 +1387,11 @@ Agent Run 结果区并列展示“App 自行确认”和“外部观察确认”
 - 系统设置新增「材料来源」分类：管理允许被引用的外部来源根（路径必须为已存在目录）；移除来源后，依赖该根的引用材料校验失败并阻断。
 - 语义：不复制原件；内容变更可检出并阻断（「来源已变更，需重审」），刷新后以最新内容为新基线；快照材料行为不变。
 - `.pen` 已同步（2026-10-17 补记）：Screen/Evidence 材料来源区（`docPick1`）新增 `refMaterialEntry`（引用外部目录入口与不复制原件提示）与 `refMaterialItem`（引用材料条目、检查/刷新/解除）；Screen/System Settings 新增 `setNav3`「材料来源」导航与 `setMaterialSourcesCard` 引用根字段卡。左列屏幕增高后按 40 间距重排，无重叠。
+
+### 四层质量报告（2026-10-18，Phase A）
+
+- Quick Run 结果区与投递记录固定 PDF 审批区新增「四层质量报告」折叠组件：合格 / 对位 / 优质 / 突出四层，显示通过状态、规则缺口（`rule · target · reason`）与 LLM 待判项；failure 指向证据卡 id 时提供「在证据页查看」跳转。
+- 旧版规则总分与表达参考分移入「对比旧版分数（不参与通过判定）」折叠区；78 参考线不再展示或决定通过，`evaluation_reference_score` 字段废弃。
+- 简历 Markdown 模板在首屏末尾写入 `<!-- first-screen-end -->`，渲染层忽略该注释行；评估器以该标记切分首屏，旧正文缺少标记时按前 30% 行回退并记录 `first_screen.mode=fallback`。
+- Phase A 只实现规则判项，未接入的 LLM 判项在报告中列为「LLM 判项待接入（Phase B）」，不显示为已通过。
+- `.pen` 待补（Quick Run 结果区与审批区的四层折叠实例）。

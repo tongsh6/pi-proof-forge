@@ -1,4 +1,5 @@
 import { PdfQualitySummary } from '@/components/pdf-quality-summary';
+import { QualityReportPanel } from '@/components/quality-report';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -626,6 +627,7 @@ export function SubmissionsPage() {
               {nativePdf && <div className="mt-3 space-y-2">
                 <p>{nativePdf.company} · {nativePdf.position}</p>
                 <PdfQualitySummary quality={nativePdf.quality}/>
+                {nativePdf.quality?.quality_report&&<QualityReportPanel report={nativePdf.quality.quality_report}/>}
                 {nativePdf.pdf_filename&&<p className="break-all">PDF: {nativePdf.pdf_filename}</p>}
                 <p className="font-mono text-xs text-text-muted" title={nativePdf.pdf_sha256}>{t("pages.submissions.pdfFingerprint")}: {nativePdf.pdf_sha256?.slice(0, 12)}…</p>
                 <p role="status">{t(`pages.submissions.nativePdf.phase.${nativePdf.phase}`, {defaultValue:nativePdf.phase})}</p>

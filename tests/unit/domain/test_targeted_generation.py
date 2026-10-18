@@ -189,6 +189,18 @@ def test_high_score_without_real_gaps_is_quality_passed_but_needs_review(monkeyp
     scorecard = output / "scorecard.md"
     monkeypatch.setattr("sys.argv", ["evaluate", "--input", str(resume), "--output", str(scorecard), "--job-profile", str(job)])
     assert run_evaluation._legacy_main() == 0
+    # Phase A 尚未接入 LLM 判项，这里预置一份四层全通过的 quality_report，
+    # 验证审批门禁只消费 auto_pass，而不是旧版 78 参考线。
+    score_data = json.loads(scorecard.with_suffix(".json").read_text())
+    score_data["quality_report"] = {
+        "schema_version": 1,
+        "auto_pass": True,
+        "llm_pending": [],
+        "tiers": {name: {"passed": True, "failures": []} for name in ("eligible", "fit", "strong", "distinct")},
+        "gap_tasks": [],
+        "legacy_scores": {"rule_total": score_data.get("total_score"), "llm_expression": score_data.get("expression_score")},
+    }
+    scorecard.with_suffix(".json").write_text(json.dumps(score_data), encoding="utf-8")
     summary = output.parent / "outputs/agent_runs/target/summary.json"
     summary.parent.mkdir(parents=True)
     summary.write_text(json.dumps({"artifacts": {
@@ -199,6 +211,9 @@ def test_high_score_without_real_gaps_is_quality_passed_but_needs_review(monkeyp
     result = agent._quick_run_result_details("target", "", "", selected_evidence_card_ids=["ec-1"])
     assert result["resume_readiness"]["evaluation_score"] >= 78
     assert result["resume_readiness"]["gap_tasks"] == []
+    assert result["resume_readiness"]["auto_pass"] is True
+    assert result["resume_readiness"]["quality_report"]["auto_pass"] is True
+    assert "evaluation_reference_score" not in result["resume_readiness"]
     assert result["resume_readiness"]["quality_passed"] is True
     assert result["resume_readiness"]["status"] == "NEEDS_REVIEW"
     assert result["resume_readiness"]["deliverable"] is False

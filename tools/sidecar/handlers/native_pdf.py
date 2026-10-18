@@ -100,14 +100,20 @@ def _quality_snapshot(saved,markdown,pdf):
         number=lambda v:v if type(v) in (int,float) and 0<=v<=100 else None
         expression=number(score.get('expression_score'))
         gaps=list(dict.fromkeys(str(s) for s in score.get('gap_tasks',[])))
-        semantic_pass=semantic.get('all_requirements_supported') is True and expression is not None and expression>=78 if semantic else (number(score.get('total_score')) or 0)>=78
-        passed=bool(ready.get('content_ready') is True and ready.get('quality_passed') is True and semantic_pass
-                    and score.get('traceability',{}).get('status')=='verified' and not gaps)
+        report=score.get('quality_report') if isinstance(score.get('quality_report'),dict) else None
+        auto_pass=bool(report.get('auto_pass')) if report else False
+        legacy=score.get('legacy_scores') if isinstance(score.get('legacy_scores'),dict) else {
+            'rule_total':number(score.get('total_score')),'llm_expression':expression}
+        passed=bool(ready.get('content_ready') is True and ready.get('quality_passed') is True and auto_pass
+                    and score.get('traceability',{}).get('status')=='verified')
         return {'status':'bound','resume_sha256':md_sha,'pdf_sha256':hashlib.sha256(pdf).hexdigest(),
                 'scorecard_sha256':hashlib.sha256(raw).hexdigest(),'evaluation_version':score.get('evaluation_version','legacy'),'matching_mode':'semantic' if semantic else 'rule',
                 'matching_score':number(semantic.get('fit_score',saved.get('score_total'))),
                 'resume_score':number(semantic.get('resume_score')),'expression_score':expression,
-                'content_ready':ready.get('content_ready') is True,'quality_passed':passed,'gap_tasks':gaps}
+                'content_ready':ready.get('content_ready') is True,'quality_passed':passed,'gap_tasks':gaps,
+                'auto_pass':auto_pass,'quality_report':report,
+                'quality_failures':list(ready.get('quality_failures') or [])[:20],
+                'legacy_scores':legacy}
     except (KeyError,TypeError,OSError,ValueError) as exc:
         raise ValueError('quality_scorecard_missing_or_changed') from exc
 

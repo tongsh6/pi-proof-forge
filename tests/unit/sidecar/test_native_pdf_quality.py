@@ -52,11 +52,16 @@ def test_public_quality_cannot_be_replaced_after_snapshot_and_legacy_is_unknown(
 
 def test_rule_mode_quality_pass_does_not_require_semantic_review(tmp_path,monkeypatch):
     saved,md,pdf,path=sample(tmp_path,monkeypatch)
-    score=json.loads(path.with_suffix('.json').read_text());score.update(total_score=95,expression_score=100,semantic_review=None,gap_tasks=[])
+    report={'schema_version':1,'auto_pass':True,'llm_pending':[],
+            'tiers':{name:{'passed':True,'failures':[]} for name in ('eligible','fit','strong','distinct')},
+            'gap_tasks':[],'legacy_scores':{'rule_total':95,'llm_expression':100}}
+    score=json.loads(path.with_suffix('.json').read_text());score.update(total_score=95,expression_score=100,semantic_review=None,gap_tasks=[],quality_report=report)
     path.with_suffix('.json').write_text(json.dumps(score));saved['resume_readiness']['quality_passed']=True
     quality=flow._quality_snapshot(saved,md,pdf)
     assert quality['quality_passed'] is True
     assert quality['matching_mode']=='rule'
+    assert quality['auto_pass'] is True and quality['quality_report']['auto_pass'] is True
+    assert quality['legacy_scores']=={'rule_total':95,'llm_expression':100}
 
 
 def test_missing_bound_quality_cannot_enter_upload_or_change_queue(tmp_path,monkeypatch):

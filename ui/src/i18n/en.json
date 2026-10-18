@@ -1792,6 +1792,24 @@
     "gaps": "Open gaps for this version",
     "scope": "Scope: {{qualification_count}} qualifications, {{responsibility_count}} responsibilities, {{check_count}} source clauses. Unrecognized responsibilities are not counted as covered.",
     "inResume": "Resume",
-    "ruleFit": "Rule match reference"
+    "ruleFit": "Rule match reference",
+    "report": {
+      "title": "Four-tier quality report",
+      "missing": "This evaluation has no four-tier quality report (legacy result). Regenerate and evaluate again.",
+      "tier": {
+        "eligible": "Eligible",
+        "fit": "Fit",
+        "strong": "Strong",
+        "distinct": "Distinct"
+      },
+      "passed": "Passed",
+      "failed": "Not passed",
+      "blockedBy": "(lower tier not passed; this tier is advisory only: {{tier}})",
+      "noFailures": "No rule failures in this tier.",
+      "llmPending": "LLM judgements pending (Phase B): {{rules}}",
+      "legacy": "Compare legacy scores (not used for pass judgement)",
+      "legacyValue": "Rule total {{rule}} · expression reference {{expression}}",
+      "openCard": "Open in Evidence"
+    }
   }
 }

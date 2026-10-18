@@ -26,6 +26,9 @@ def parse_resume_markdown(text: str) -> dict[str, Any]:
         stripped = line.strip()
         if not stripped:
             continue
+        if stripped.startswith("<!--"):
+            # 首屏切分等设计标记不进入候选人可见的预览与 PDF。
+            continue
         if stripped.startswith("# ") and not name:
             name = stripped[2:].strip()
             continue
@@ -168,6 +171,8 @@ def _section_body(lines: list[str], *, experience: bool) -> str:
     for line in lines:
         value = line.strip()
         if not value:
+            continue
+        if value.startswith('<!--'):
             continue
         if not value.startswith('- ') and in_list:
             body.append('</ul>'); in_list = False

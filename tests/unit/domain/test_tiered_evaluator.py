@@ -1,0 +1,332 @@
+"""Phase A：四层简历质量标准、规则判项与质量报告结构。"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from tools.engines.evaluation import tiered_evaluator as te
+
+
+def career_profile(**overrides):
+    profile = {
+        "revision": "rev-1",
+        "career_status": {"reviewed": True, "ready": True, "missing": []},
+        "career": {
+            "schema_version": 1,
+            "summary": "负责平台架构与交付。",
+            "education_visibility": "show",
+            "work": [
+                {
+                    "id": "w1",
+                    "company": "示例科技",
+                    "title": "平台负责人",
+                    "start": "2021-03",
+                    "end": "",
+                    "current": True,
+                    "scope": "负责平台架构与交付。",
+                    "contributions": ["搭建统一平台"],
+                    "evidence_ids": ["ec_00000001"],
+                }
+            ],
+            "education": [
+                {
+                    "id": "e1",
+                    "school": "示例大学",
+                    "major": "软件工程",
+                    "degree": "本科",
+                    "start": "2010-09",
+                    "end": "2014-06",
+                    "current": False,
+                }
+            ],
+            "skills": [{"id": "s1", "category": "架构", "description": "平台治理", "evidence_ids": []}],
+            "extras": [],
+        },
+    }
+    profile.update(overrides)
+    return profile
+
+
+def card(card_id="ec_00000001", **overrides):
+    value = {
+        "id": card_id,
+        "title": "统一平台建设",
+        "time_range": "2022-03 ~ 2023-09",
+        "role_scope": "平台负责人",
+        "context": "多品牌微服务散落。",
+        "results": ["查询耗时从 2 秒降至 300 毫秒", "覆盖 8 个品牌"],
+        "artifacts": ["性能报告.pdf"],
+        "actions": ["完成平台抽象"],
+    }
+    value.update(overrides)
+    return value
+
+
+def trace(claims, inputs=None):
+    return {
+        "claims": claims,
+        "inputs": inputs or {},
+        "evidence_card_ids": ["ec_00000001"],
+        "status": "verified",
+    }
+
+
+RESUME = """# 张三
+13800000000 | zhangsan@example.com | 上海
+当前定位：平台负责人
+求职意向：示例科技 · 平台负责人
+
+## 职业概述
+负责平台架构与交付，覆盖 8 个品牌。
+
+## 核心能力
+- 架构：平台治理
+
+<!-- first-screen-end -->
+
+## 核心技能
+Java、Redis
+
+## 项目经历
+### 统一平台建设（2022-03 ~ 2023-09）
+角色：平台负责人
+场景：多品牌微服务散落。
+所属工作：示例科技
+- 完成平台抽象
+- 查询耗时从 2 秒降至 300 毫秒
+
+## 工作经历
+### 示例科技 · 平台负责人（2021-03 ~ 至今）
+
+## 教育经历
+### 示例大学（2010-09 ~ 2014-06）
+软件工程 · 本科
+"""
+
+
+def claims_for_resume():
+    return [
+        {"text": "张三", "source_kind": "personal_profile", "field": "name", "evidence_id": ""},
+        {"text": "13800000000", "source_kind": "personal_profile", "field": "phone", "evidence_id": ""},
+        {"text": "zhangsan@example.com", "source_kind": "personal_profile", "field": "email", "evidence_id": ""},
+        {"text": "上海", "source_kind": "personal_profile", "field": "city", "evidence_id": ""},
+        {"text": "平台负责人", "source_kind": "personal_profile", "field": "current_position", "evidence_id": ""},
+        {"text": "负责平台架构与交付，覆盖 8 个品牌。", "source_kind": "personal_profile", "field": "career.summary", "evidence_id": ""},
+        {"text": "架构：平台治理", "source_kind": "personal_profile", "field": "career.skills.s1.category", "evidence_id": ""},
+        {"text": "Java", "source_kind": "evidence", "field": "stack", "evidence_id": "ec_00000001"},
+        {"text": "统一平台建设", "source_kind": "evidence", "field": "title", "evidence_id": "ec_00000001"},
+        {"text": "2022-03 ~ 2023-09", "source_kind": "evidence", "field": "time_range", "evidence_id": "ec_00000001"},
+        {"text": "平台负责人", "source_kind": "evidence", "field": "role_scope", "evidence_id": "ec_00000001"},
+        {"text": "多品牌微服务散落。", "source_kind": "evidence", "field": "context", "evidence_id": "ec_00000001"},
+        {"text": "示例科技", "source_kind": "personal_profile", "field": "career.work.w1.company", "evidence_id": ""},
+        {"text": "平台负责人", "source_kind": "personal_profile", "field": "career.work.w1.title", "evidence_id": ""},
+        {"text": "完成平台抽象", "source_kind": "evidence", "field": "actions", "evidence_id": "ec_00000001"},
+        {"text": "查询耗时从 2 秒降至 300 毫秒", "source_kind": "evidence", "field": "results", "evidence_id": "ec_00000001"},
+        {"text": "示例大学", "source_kind": "personal_profile", "field": "career.education.e1.school", "evidence_id": ""},
+        {"text": "软件工程 · 本科", "source_kind": "personal_profile", "field": "career.education.e1.major", "evidence_id": ""},
+    ]
+
+
+def semantic_review(statuses=("supported",)):
+    rows = []
+    for index, status in enumerate(statuses, start=1):
+        rows.append(
+            {
+                "requirement_id": f"d{index}",
+                "kind": "responsibility",
+                "text": f"{index}. 负责核心平台交付 {index}",
+                "status": status if status != "not_present" else "supported",
+                "resume_status": status,
+                "reason": "示例理由",
+                "citations": [
+                    {
+                        "fact_id": "f1",
+                        "quote": "完成平台抽象",
+                        "source_id": "ec_00000001",
+                        "field": "actions",
+                        "text": "完成平台抽象",
+                        "in_resume": True,
+                    }
+                ],
+            }
+        )
+    return {
+        "mode": "semantic",
+        "fit_score": 80,
+        "resume_score": 80,
+        "requirements": rows,
+        "all_requirements_supported": all(row["resume_status"] == "supported" for row in rows),
+    }
+
+
+def job_context():
+    return {
+        "target_role": "平台负责人",
+        "company": "示例科技",
+        "education": "本科",
+        "work_years": "5-10年",
+        "keywords": ["Java"],
+        "must_have": ["本科及以上学历"],
+    }
+
+
+def build(resume=RESUME, cards=None, claims=None, pdf_check=..., semantic=None, highlights=None, profile=None, context=None):
+    return te.build_quality_report(
+        resume=resume,
+        trace=trace(claims if claims is not None else claims_for_resume()),
+        career_profile=profile if profile is not None else career_profile(),
+        cards=cards if cards is not None else {"ec_00000001": card()},
+        semantic_review=semantic if semantic is not None else semantic_review(),
+        job_context=context if context is not None else job_context(),
+        pdf_check={"pages": 2, "clipped": False} if pdf_check is ... else pdf_check,
+        highlights=highlights,
+        resume_version="sha-test",
+        job_profile_id="jp-test",
+    )
+
+
+def rules(report, tier):
+    return [failure["rule"] for failure in report["tiers"][tier]["failures"]]
+
+
+def test_first_screen_uses_explicit_marker_and_falls_back_without_one():
+    first, rest = te.split_first_screen(RESUME)
+    assert "职业概述" in first and "核心技能" not in first
+    assert "<!-- first-screen-end -->" not in first + rest
+    fallback_first, _ = te.split_first_screen("# 张三\n当前定位：平台负责人\n\n## 工作经历\n- x")
+    assert "当前定位" in fallback_first
+
+
+def test_eligible_tier_passes_for_traceable_two_page_resume():
+    report = build()
+    eligible = report["tiers"]["eligible"]
+    assert eligible["passed"] is True, eligible["failures"]
+    assert eligible["metrics"]["pdf_pages"] == 2
+
+
+def test_r1_3_missing_card_time_fails_and_points_to_card():
+    report = build(cards={"ec_00000001": card(time_range="")})
+    assert report["tiers"]["eligible"]["passed"] is False
+    failure = next(item for item in report["tiers"]["eligible"]["failures"] if item["rule"] == "R1.3")
+    assert "ec_00000001" in failure["target"]
+    assert "统一平台建设" in failure["target"]
+
+
+def test_r1_1_untraceable_bullet_fails():
+    claims = [claim for claim in claims_for_resume() if claim["text"] != "完成平台抽象"]
+    report = build(claims=claims)
+    assert "R1.1" in rules(report, "eligible")
+
+
+def test_r1_6_internal_ids_and_paths_are_rejected():
+    report = build(resume=RESUME.replace("Java、Redis", "Java、Redis、ec_1234abcd"))
+    assert "R1.6" in rules(report, "eligible")
+    report = build(resume=RESUME.replace("上海", "/Users/loong/private"))
+    assert "R1.6" in rules(report, "eligible")
+
+
+def test_r1_2_requires_confirmed_career_profile_and_consistent_period():
+    unconfirmed = career_profile(career_status={"reviewed": False, "ready": False, "missing": [{"field": "work"}]})
+    report = build(profile=unconfirmed)
+    assert "R1.2" in rules(report, "eligible")
+    conflict = career_profile()
+    conflict["career"]["work"][0]["start"] = "2010-01"
+    conflict["career"]["work"][0]["end"] = "2012-01"
+    conflict["career"]["work"][0]["current"] = False
+    report = build(profile=conflict)
+    assert "R1.2" in rules(report, "eligible")
+
+
+def test_r1_7_hard_condition_conflict_is_marked_not_hidden():
+    context = job_context()
+    context["education"] = "本科"
+    profile = career_profile()
+    profile["career"]["education"] = [
+        {"id": "e1", "school": "示例学院", "major": "软件工程", "degree": "大专", "start": "2010-09", "end": "2013-06", "current": False}
+    ]
+    report = build(profile=profile, context=context)
+    assert "R1.7" in rules(report, "eligible")
+
+
+def test_r1_8_required_resume_sections():
+    report = build(resume=RESUME.replace("## 教育经历", "## 其他"))
+    assert "R1.8" in rules(report, "eligible")
+
+
+def test_r1_4_role_wording_above_level_is_rejected():
+    cards = {"ec_00000001": card(role_scope_provenance={"level": "L3", "evidence": []})}
+    claims = claims_for_resume()
+    claims = [
+        {**claim, "text": "负责完成平台抽象"} if claim["text"] == "完成平台抽象" else claim
+        for claim in claims
+    ]
+    report = build(
+        resume=RESUME.replace("- 完成平台抽象", "- 负责完成平台抽象"),
+        cards=cards,
+        claims=claims,
+    )
+    assert "R1.4" in rules(report, "eligible")
+
+
+def test_fit_tier_matrix_marks_first_screen_and_top_three_requirements():
+    report = build(semantic=semantic_review(("supported", "partial", "not_present")))
+    fit = report["tiers"]["fit"]
+    assert fit["matrix"], fit
+    assert fit["matrix"][0]["status"] == "supported"
+    assert fit["matrix"][0]["first_screen"] is False
+    assert "R2.2" in [failure["rule"] for failure in fit["failures"]]
+    assert any(task for task in report["gap_tasks"])
+
+
+def test_strong_tier_quantification_filler_duplicates_and_casing():
+    resume = RESUME.replace(
+        "- 完成平台抽象\n- 查询耗时从 2 秒降至 300 毫秒",
+        "- 深入理解平台架构\n- 深入理解平台架构\n- 使用 redis 与 Redis 开发",
+    )
+    cards = {"ec_00000001": card(results=["覆盖 8 个品牌"])}
+    report = build(resume=resume, cards=cards)
+    strong_rules = rules(report, "strong")
+    assert "R3.2" in strong_rules
+    assert "R3.3" in strong_rules
+    assert "R3.4" in strong_rules
+    assert "R3.6" in strong_rules
+
+
+def test_distinct_tier_requires_one_or_two_first_screen_highlights():
+    report = build(highlights=[])
+    assert "R4.2" in rules(report, "distinct")
+    assert "R4.1" in report["llm_pending"]
+    three = [
+        {"bullet_ref": "bullet#1", "jd_item": "d1", "level": "L1", "exceeds": "规模"},
+        {"bullet_ref": "bullet#2", "jd_item": "d2", "level": "L1", "exceeds": "难度"},
+        {"bullet_ref": "bullet#3", "jd_item": "d3", "level": "L1", "exceeds": "范围"},
+    ]
+    assert "R4.2" in rules(build(highlights=three), "distinct")
+    weak = [{"bullet_ref": "bullet#1", "jd_item": "d1", "level": "L3", "exceeds": "规模"}]
+    assert "R4.3" in rules(build(highlights=weak), "distinct")
+
+
+def test_quality_report_auto_pass_requires_all_tiers_and_no_pending_llm_rules():
+    report = build()
+    assert report["tiers"]["eligible"]["passed"] is True
+    assert report["auto_pass"] is False
+    assert set(report["llm_pending"]) >= {"R1.4", "R2.1", "R3.1", "R3.5", "R4.1"}
+    assert report["legacy_scores"] == {"rule_total": None, "llm_expression": None}
+
+
+def test_apply_pdf_check_updates_r1_5_and_auto_pass():
+    report = build(pdf_check=None)
+    assert "R1.5" in rules(report, "eligible")
+    updated = te.apply_pdf_check(report, {"pages": 3, "clipped": False})
+    assert "R1.5" in rules(updated, "eligible")
+    updated = te.apply_pdf_check(report, {"pages": 2, "clipped": False})
+    assert "R1.5" not in [failure["rule"] for failure in updated["tiers"]["eligible"]["failures"]]
+    assert updated["tiers"]["eligible"]["metrics"]["pdf_pages"] == 2
+
+
+def test_quality_config_loads_thresholds_and_filler_lexicon():
+    config = te.load_quality_config(Path.cwd())
+    assert config.thresholds["strong"]["quant_first_screen_min_ratio"] == pytest.approx(0.6)
+    assert "深入理解" in config.filler_terms
+    assert any(term.lower() == "proven" for term in config.filler_terms)

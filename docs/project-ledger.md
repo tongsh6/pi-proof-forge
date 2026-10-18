@@ -2,6 +2,16 @@
 
 Last updated: 2026-10-17
 
+## 2026-10-18 四层简历质量报告首片（Phase A，P0-026 续）
+
+- 定位与复用：简历质量缺口的规则部分落在既有 `run_evaluation`（pipeline 实际评测入口）与 sidecar `agent.py` 审批门禁；复用 `resume_trace` claims、语义评审矩阵、职业档案与证据卡解析，不新建评测框架。新增 `tools/engines/evaluation/tiered_evaluator.py` 承受 pure 规则判项，IO 留在 `run_evaluation`。
+- 标准与配置：新增 `config/quality/thresholds.yaml`（R3.2 首屏 ≥0.6 / 全文 ≥0.4、R4.2 1–2 条、PDF ≤2 页等）与 `config/quality/filler_lexicon.yaml`（中英空话词表，可编辑）；加载失败回退内置默认值，不新增运行依赖。
+- 规则判项：合格层 R1.1 追溯、R1.2 档案一致性/项目时间窗、R1.3 时间缺失（含卡 id）、R1.4 措辞上限（C 前按 L1）、R1.5 页数/首屏、R1.6 内部痕迹、R1.7 硬条件、R1.8 结构；对位层 R2.2 首屏前三职责、R2.3、R2.4，矩阵增加正文呈现与首屏列；优质层 R3.2 可验证量化、R3.3 空话、R3.4 重复、R3.6 术语大小写；突出层 R4.2 数量/首屏、R4.3 等级过滤。输出 `quality_report`：四层失败项必须定位 bullet/条目/卡 id，`auto_pass = 四层通过 ∧ llm_pending 为空`；Phase A 的 7 项 LLM 判项显式列为 pending，因此 auto_pass 保持 false（不假装通过）。
+- 接入：`run_evaluation` 写 `quality-v1`、`quality_report` 与 `legacy_scores`，Markdown 增加四层报告段；`agent.py` 的 `quality_passed` 改读 `auto_pass`，PDF 导出后回填 R1.5 页数并重算，`reasons` 由 failures 生成，删除「低于参考线 78」与 `evaluation_reference_score`；`native_pdf` 质量快照携带四层报告供审批页展示；UI 新增四层折叠组件（failure 指向卡时可跳证据页）、旧分对比折叠区，Quick Run 与投递审批接入。A/B 模板与 HTML 渲染支持 `<!-- first-screen-end -->` 首屏标记。
+- 验证：新增 tiered evaluator 15 项、首屏标记 2 项、评测报告接入 1 项、GUI 合同 3 项；`tsc --noEmit` 通过；全量回归 **1386 通过、1 跳过、18 subtests**。`check_execution_roadmap` 通过。
+- A11 只读基线（不重新生成）：最新 resume A `9c93df84…` + target JD 固定 PDF（2 页）→ 合格层通过（裁切未自动校验，记 `clip_check=not_available`）、对位失败 R2.2/R2.3/R2.4、优质失败 R3.2、突出失败 R4.2；`auto_pass=false`（7 项 LLM pending）、legacy 52/68、17 项 gap；无平台写入。证据 `outputs/acceptance/resume-quality-20261018/`。
+- 边界：Phase A 仅规则部分；R1.4 只做措辞上限检测；PDF 裁切仍由原生验收确认；真实 App 页面验收与 Phase B 之后统一进行。P0-026 仍唯一 `next`。
+
 ## 2026-10-17 `.pen` 设计同步（P0-026 续）
 
 - 范围：清空 `ui/design/DESIGN.md` 四处「`.pen` 待补」（Jobs 公司规模、Evidence 材料对账折叠区、证据卡补全分流、职业档案自动关联按钮），并补齐引用式材料在 Evidence 与 System Settings 的设计缺口；同日 `develop` 15 个提交（知识索引至分流首片）已推送 `origin/develop`。

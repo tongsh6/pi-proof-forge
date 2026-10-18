@@ -245,6 +245,86 @@ def evaluate_rule(
             "gap_tasks": [task for task in gap_tasks if task != "暂无高优先级补证据任务。"]}
 
 
+_QUALITY_INPUT_KEYS = {
+    "personal_profile",
+    "matching_report",
+    "semantic_matching",
+    "job_profile",
+    "job_description",
+}
+
+
+def _load_quality_cards(trace: dict) -> dict[str, dict]:
+    """从生成 trace 的输入指纹中读取本次使用的证据卡（只读）。"""
+    cards: dict[str, dict] = {}
+    inputs = trace.get("inputs") if isinstance(trace, dict) else None
+    if not isinstance(inputs, dict):
+        return cards
+    for key, meta in inputs.items():
+        if key in _QUALITY_INPUT_KEYS or not isinstance(meta, dict):
+            continue
+        path = meta.get("path")
+        if not isinstance(path, str) or not path.endswith(".yaml"):
+            continue
+        card_id = str(key).split("career_evidence:")[-1]
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", card_id):
+            continue
+        try:
+            doc = parse_simple_yaml(read_text(path))
+        except (OSError, ValueError):
+            continue
+        cards[card_id] = {**doc["scalars"], **doc["lists"]}
+    return cards
+
+
+def _load_quality_career(trace: dict) -> dict:
+    from tools.infra.career_profile import load_career_profile
+
+    inputs = trace.get("inputs") if isinstance(trace, dict) else None
+    meta = inputs.get("personal_profile") if isinstance(inputs, dict) else None
+    path = meta.get("path") if isinstance(meta, dict) else None
+    if isinstance(path, str) and Path(path).is_file():
+        try:
+            return load_career_profile(Path(path))
+        except (OSError, ValueError):
+            return {}
+    return {}
+
+
+def _load_job_context(job_profile_path: str | None) -> dict:
+    if not job_profile_path:
+        return {}
+    doc = parse_simple_yaml(read_text(job_profile_path))
+    context: dict = dict(doc["scalars"])
+    context.update(doc["lists"])
+    return context
+
+
+def _quality_markdown(quality_report: dict | None) -> str:
+    if not isinstance(quality_report, dict):
+        return ""
+    labels = {"eligible": "合格", "fit": "对位", "strong": "优质", "distinct": "突出"}
+    tiers = quality_report.get("tiers") if isinstance(quality_report.get("tiers"), dict) else {}
+    lines = ["", "## 质量报告（四层，规则部分）"]
+    for name, label in labels.items():
+        tier = tiers.get(name) if isinstance(tiers, dict) else None
+        tier = tier if isinstance(tier, dict) else {}
+        lines.append(f"- {label}: {'通过' if tier.get('passed') else '未通过'}")
+        for failure in (tier.get("failures") or [])[:10]:
+            lines.append(
+                f"  - {failure.get('rule', '')} {failure.get('target', '')}：{failure.get('reason', '')}"
+            )
+    pending = quality_report.get("llm_pending") or []
+    if pending:
+        lines.append("- LLM 判项待接入（Phase B）：" + "、".join(str(item) for item in pending))
+    lines.append(
+        "- 自动通过: "
+        + ("是" if quality_report.get("auto_pass") else "否")
+        + "（四层全通过且无 LLM 待判项）"
+    )
+    return "\n".join(lines) + "\n"
+
+
 def _legacy_main() -> int:
     parser = argparse.ArgumentParser(description="Run evaluation workflow")
     _ = parser.add_argument("--input", required=True, help="Generated resume path")
@@ -377,12 +457,35 @@ def _legacy_main() -> int:
         print("LLM mode required but model/api_key is missing")
         return 1
 
+    from tools.engines.evaluation import tiered_evaluator
+
+    quality_report = None
+    try:
+        quality_report = tiered_evaluator.build_quality_report(
+            resume=resume_text,
+            trace=trace,
+            career_profile=_load_quality_career(trace),
+            cards=_load_quality_cards(trace),
+            semantic_review=semantic_review,
+            job_context=_load_job_context(job_profile_path),
+            pdf_check=None,
+            resume_version=hashlib.sha256(resume_text.encode("utf-8")).hexdigest(),
+            job_profile_id=Path(job_profile_path).stem if job_profile_path else "",
+            legacy_scores={
+                "rule_total": rule_result["total_score"],
+                "llm_expression": rule_result["expression_score"],
+            },
+        )
+        final_markdown = final_markdown.rstrip() + "\n" + _quality_markdown(quality_report)
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"[evaluation] 四层质量报告生成失败：{exc}")
+
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     _ = output_file.write_text(final_markdown, encoding="utf-8")
     output_file.with_suffix(".json").write_text(json.dumps({
         "schema_version": 1,
-        "evaluation_version": "assessment-v3",
+        "evaluation_version": "quality-v1",
         "resume_sha256": hashlib.sha256(resume_text.encode("utf-8")).hexdigest(),
         "total_score": rule_result["total_score"],
         "gap_tasks": rule_result["gap_tasks"],
@@ -392,6 +495,11 @@ def _legacy_main() -> int:
         "expression_score": rule_result["expression_score"],
         "quantification": rule_result['quantification'],
         "semantic_review": semantic_review,
+        "quality_report": quality_report,
+        "legacy_scores": {
+            "rule_total": rule_result["total_score"],
+            "llm_expression": rule_result["expression_score"],
+        },
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0
 

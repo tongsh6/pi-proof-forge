@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.infra.llm.client import LLMClient, llm_timeout_from_env
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
@@ -238,6 +239,8 @@ def build_template_resume(
         lines.extend(['','## 核心能力'])
         for item in groups:
             lines.append('- '+personal(item['category'],f"career.skills.{item['id']}.category")+'：'+personal(item['description'],f"career.skills.{item['id']}.description"))
+    # 首屏切分标记：模板决定首屏边界，评估器按此切分；渲染层忽略该注释行。
+    lines.extend(['', FIRST_SCREEN_MARKER, ''])
     stacks = unique_stack(cards,limit=sum(len(c['stack']) for c in cards)) if targeted else unique_stack(cards)
     keywords = [str(term).casefold() for term in target.get("keywords", [])]
     stacks.sort(key=lambda value: value.casefold() not in keywords)
