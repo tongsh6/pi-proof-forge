@@ -3475,8 +3475,9 @@
       "x": 0,
       "y": 3068,
       "name": "Screen/Evidence",
+      "clip": true,
       "width": 1440,
-      "height": 1310,
+      "height": 980,
       "fill": "$bg-primary",
       "cornerRadius": 24,
       "stroke": "$border",
@@ -3534,12 +3535,12 @@
           "height": "fill_container",
           "fill": "$bg-primary",
           "layout": "vertical",
-          "gap": 24,
-          "padding": 28,
+          "gap": 16,
+          "padding": 24,
           "children": [
             {
               "type": "frame",
-              "id": "xIM9s",
+              "id": "xHx7U",
               "name": "evHeader",
               "width": "fill_container",
               "justifyContent": "space_between",
@@ -3547,14 +3548,14 @@
               "children": [
                 {
                   "type": "frame",
-                  "id": "sdQGz",
-                  "name": "evTitleWrap",
+                  "id": "mXXhE",
+                  "name": "evHeaderLeft",
                   "layout": "vertical",
-                  "gap": 6,
+                  "gap": 2,
                   "children": [
                     {
                       "type": "text",
-                      "id": "hTrkQ",
+                      "id": "n5pxK",
                       "name": "evTitle",
                       "fill": "$text-primary",
                       "content": "Evidence / 证据卡",
@@ -3564,10 +3565,10 @@
                     },
                     {
                       "type": "text",
-                      "id": "L3OLe",
+                      "id": "sVLKs",
                       "name": "evSubtitle",
                       "fill": "$text-secondary",
-                      "content": "Curate evidence cards, attach artifacts and mark the gaps blocking delivery.",
+                      "content": "Distill materials, reconcile cards, then fix fields and sources in one place.",
                       "fontFamily": "Inter",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -3576,165 +3577,64 @@
                 },
                 {
                   "type": "frame",
-                  "id": "ynOwo",
-                  "name": "evActions",
-                  "gap": 12,
-                  "children": [
-                    {
-                      "id": "5IZrr",
-                      "type": "ref",
-                      "ref": "xWWct",
-                      "name": "evNew",
-                      "descendants": {
-                        "swaWw": {
-                          "icon": "plus"
-                        },
-                        "yG3EI": {
-                          "content": "New Card / 新增"
-                        }
-                      }
-                    },
-                    {
-                      "id": "ITtsE",
-                      "type": "ref",
-                      "ref": "tBGQE",
-                      "name": "evImport",
-                      "descendants": {
-                        "0wv8M": {
-                          "icon": "upload"
-                        },
-                        "fkAZC": {
-                          "content": "Import / 导入"
-                        }
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "frame",
-              "id": "docPick1",
-              "name": "Material Document Picker",
-              "width": "fill_container",
-              "fill": "$bg-panel",
-              "cornerRadius": 12,
-              "layout": "vertical",
-              "gap": 8,
-              "padding": 16,
-              "children": [
-                {
-                  "type": "text",
-                  "id": "docPickTitle",
-                  "fill": "$text-primary",
-                  "content": "选择工作文档 · 名称筛选 → 片段选择 → 查看原文",
-                  "fontFamily": "Inter",
-                  "fontSize": 14,
-                  "fontWeight": "600"
-                },
-                {
-                  "type": "text",
-                  "id": "docPickHelp",
-                  "fill": "$text-secondary",
-                  "content": "复用已导入 TXT / Markdown；长文完整分段；选择后提炼，审核后保存。\n来源指纹随卡保留；普通编辑变为待审核，可按原来源重审。\n切卡清空重审草稿，详情加载中禁用保存；可用数按真实候选资格统计。",
-                  "fontFamily": "Inter",
-                  "fontSize": 12,
-                  "fontWeight": "normal"
-                },
-                {
-                  "type": "frame",
-                  "id": "PhNNc",
-                  "name": "refMaterialEntry",
-                  "height": 30,
+                  "id": "iofDl",
+                  "name": "evHeaderActions",
                   "gap": 8,
                   "alignItems": "center",
                   "children": [
                     {
                       "type": "frame",
-                      "id": "n8ovfu",
-                      "name": "refMaterialButton",
-                      "height": 26,
-                      "fill": "$bg-inset",
+                      "id": "XQyFO",
+                      "name": "evRefresh",
+                      "width": 36,
+                      "height": 36,
                       "cornerRadius": 8,
                       "stroke": "$border-light",
                       "strokeWidth": 1,
                       "strokeAlignment": "inner",
-                      "gap": 6,
-                      "padding": [
-                        5,
-                        10
-                      ],
+                      "justifyContent": "center",
                       "alignItems": "center",
                       "children": [
                         {
                           "type": "icon",
-                          "id": "cIBTK",
-                          "name": "refMaterialButtonIcon",
-                          "width": 12,
-                          "height": 12,
-                          "icon": "folder-plus",
+                          "id": "b2FBZO",
+                          "name": "evRefreshIcon",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "refresh-cw",
                           "library": "lucide",
                           "fill": "$text-secondary"
-                        },
-                        {
-                          "type": "text",
-                          "id": "pZ8eH",
-                          "name": "refMaterialButtonText",
-                          "fill": "$text-primary",
-                          "content": "引用外部目录 / Reference folder",
-                          "fontFamily": "Inter",
-                          "fontSize": 11,
-                          "fontWeight": "600"
                         }
                       ]
                     },
                     {
-                      "type": "text",
-                      "id": "Qo7a9",
-                      "name": "refMaterialHint",
-                      "fill": "$text-muted",
-                      "content": "不复制原件 · 内容变更可检出并阻断",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 11,
-                      "fontWeight": "normal"
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "NPLcr",
-                  "name": "refMaterialItem",
-                  "width": "fill_container",
-                  "height": 40,
-                  "fill": "$bg-inset",
-                  "cornerRadius": 8,
-                  "gap": 10,
-                  "padding": [
-                    8,
-                    12
-                  ],
-                  "justifyContent": "space_between",
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "rhZ8X",
-                      "name": "refMaterialItemTitle",
-                      "fill": "$text-primary",
-                      "content": "EC+ 始祖鸟工程档案（引用）· 6,058 档 · 就绪",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 11,
-                      "fontWeight": "normal"
+                      "id": "cT64f",
+                      "type": "ref",
+                      "ref": "tBGQE",
+                      "name": "evDistill",
+                      "descendants": {
+                        "0wv8M": {
+                          "icon": "sparkles"
+                        },
+                        "fkAZC": {
+                          "content": "从材料提炼"
+                        }
+                      }
                     },
                     {
-                      "type": "text",
-                      "id": "jxltX",
-                      "name": "refMaterialItemActions",
-                      "fill": "$text-secondary",
-                      "content": "检查 · 刷新 · 解除",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 11,
-                      "fontWeight": "normal"
+                      "id": "KBhVZ",
+                      "type": "ref",
+                      "ref": "xWWct",
+                      "name": "evNew",
+                      "width": 104,
+                      "descendants": {
+                        "swaWw": {
+                          "icon": "plus"
+                        },
+                        "yG3EI": {
+                          "content": "新增"
+                        }
+                      }
                     }
                   ]
                 }
@@ -3742,8 +3642,8 @@
             },
             {
               "type": "frame",
-              "id": "sa9zs",
-              "name": "materialReconcileFold",
+              "id": "GQNdX",
+              "name": "evSummaryStrip",
               "width": "fill_container",
               "fill": "$bg-panel",
               "cornerRadius": 12,
@@ -3751,127 +3651,46 @@
               "strokeWidth": 1,
               "strokeAlignment": "inner",
               "layout": "vertical",
+              "gap": 6,
+              "padding": [
+                10,
+                14
+              ],
               "children": [
                 {
                   "type": "frame",
-                  "id": "UcapW",
-                  "name": "reconcileSummary",
+                  "id": "jpM7O",
+                  "name": "evSummaryRow",
                   "width": "fill_container",
-                  "height": 52,
                   "gap": 12,
-                  "padding": [
-                    16,
-                    20
-                  ],
                   "justifyContent": "space_between",
                   "alignItems": "center",
                   "children": [
                     {
                       "type": "frame",
-                      "id": "L0CfC",
-                      "name": "reconcileTitleWrap",
-                      "gap": 10,
-                      "alignItems": "end",
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "Se9BT",
-                          "name": "reconcileTitle",
-                          "fill": "$text-primary",
-                          "content": "Material reconciliation / 材料对账",
-                          "fontFamily": "Inter",
-                          "fontSize": 15,
-                          "fontWeight": "600"
-                        },
-                        {
-                          "type": "text",
-                          "id": "TlzQp",
-                          "name": "reconcileHint",
-                          "fill": "$text-secondary",
-                          "content": "Read-only / 只读检查，不改动任何卡 · 默认收起",
-                          "fontFamily": "Inter",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "icon",
-                      "id": "QEcXB",
-                      "name": "reconcileChevron",
-                      "width": 16,
-                      "height": 16,
-                      "icon": "chevron-up",
-                      "library": "lucide",
-                      "fill": "$text-muted"
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "vVC7Y",
-                  "name": "reconcileBody",
-                  "width": "fill_container",
-                  "layout": "vertical",
-                  "gap": 8,
-                  "padding": [
-                    0,
-                    20,
-                    16,
-                    20
-                  ],
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "AGLxK",
-                      "name": "reconcileCounts",
-                      "fill": "$text-secondary",
-                      "content": "可用 51 · 待补 60 · 未入池 10 · 结果不可追溯 4 · 缺时间 60 · 疑似重复 12 ｜ 值得补 2 · 已分流 3 · 未分流 79",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 11,
-                      "fontWeight": "normal"
-                    },
-                    {
-                      "type": "frame",
-                      "id": "Yy7XE",
-                      "name": "reconcileRow1",
-                      "width": "fill_container",
-                      "height": 54,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 8,
-                      "gap": 12,
-                      "padding": [
-                        8,
-                        12
-                      ],
-                      "justifyContent": "space_between",
+                      "id": "CxWPs",
+                      "name": "evSummaryCounts",
+                      "gap": 4,
                       "alignItems": "center",
                       "children": [
                         {
                           "type": "frame",
-                          "id": "CyAYz",
-                          "name": "reconcileRow1Text",
-                          "width": "fill_container",
-                          "layout": "vertical",
-                          "gap": 2,
+                          "id": "AuP3g",
+                          "name": "evCountAll",
+                          "fill": "$bg-inset",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
                           "children": [
                             {
                               "type": "text",
-                              "id": "gHnea",
-                              "name": "reconcileRow1Title",
-                              "fill": "$text-primary",
-                              "content": "统一运动中心 · MongoDB 迁移",
+                              "id": "mQYhb",
+                              "name": "evCountAllText",
+                              "fill": "$accent",
+                              "content": "全部 85",
                               "fontFamily": "Inter",
-                              "fontSize": 13,
-                              "fontWeight": "600"
-                            },
-                            {
-                              "type": "text",
-                              "id": "tTndJ",
-                              "name": "reconcileRow1Reason",
-                              "fill": "$text-secondary",
-                              "content": "2 条结果在材料里找不到原文 · 缺时间（材料中出现：2024-06、2024-09） · 疑似与 ec_41be… 重复",
-                              "fontFamily": "JetBrains Mono",
                               "fontSize": 11,
                               "fontWeight": "normal"
                             }
@@ -3879,42 +3698,499 @@
                         },
                         {
                           "type": "frame",
-                          "id": "r0cmY",
-                          "name": "reconcileRow1Actions",
-                          "gap": 8,
+                          "id": "XPMwX",
+                          "name": "evCountEligible",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "v6jiK8",
+                              "name": "evCountEligibleText",
+                              "fill": "$text-secondary",
+                              "content": "可用 42",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "r44gW",
+                          "name": "evCountIncomplete",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "t6jTuJ",
+                              "name": "evCountIncompleteText",
+                              "fill": "$text-secondary",
+                              "content": "待补 33",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Km030",
+                          "name": "evCountLegacy",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "YaD34",
+                              "name": "evCountLegacyText",
+                              "fill": "$text-secondary",
+                              "content": "未入池 10",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ciT2F",
+                          "name": "evCountUntraceable",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "QkfFQ",
+                              "name": "evCountUntraceableText",
+                              "fill": "$text-secondary",
+                              "content": "不可追溯 4",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "RhJyx",
+                          "name": "evCountMissingTime",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "JSzsb",
+                              "name": "evCountMissingTimeText",
+                              "fill": "$text-secondary",
+                              "content": "缺时间 38",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "chy9q",
+                          "name": "evCountDuplicate",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "N9RDT",
+                              "name": "evCountDuplicateText",
+                              "fill": "$text-secondary",
+                              "content": "疑似重复 12",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "j6TY3",
+                          "name": "evCountPending",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "J2O10R",
+                              "name": "evCountPendingText",
+                              "fill": "$text-secondary",
+                              "content": "待确认 6",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "E7KIl",
+                          "name": "evCountNeedsFill",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "XFXmy",
+                              "name": "evCountNeedsFillText",
+                              "fill": "$text-secondary",
+                              "content": "值得补 8",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "xeJvr",
+                          "name": "evCountTriaged",
+                          "cornerRadius": 6,
+                          "padding": [
+                            4,
+                            7
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "I3z4a",
+                              "name": "evCountTriagedText",
+                              "fill": "$text-secondary",
+                              "content": "已分流 5",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "XK9OR",
+                      "name": "evSummaryActions",
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "gYCiu",
+                          "name": "evReconcile",
+                          "cornerRadius": 8,
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "gap": 5,
+                          "padding": [
+                            5,
+                            9
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "fBMXK",
+                              "name": "evReconcileIcon",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "refresh-cw",
+                              "library": "lucide",
+                              "fill": "$text-secondary"
+                            },
+                            {
+                              "type": "text",
+                              "id": "BwWDy",
+                              "name": "evReconcileText",
+                              "fill": "$text-primary",
+                              "content": "重新对账",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "vPpkB",
+                          "name": "evInfer",
+                          "cornerRadius": 8,
+                          "stroke": "$border-light",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "gap": 5,
+                          "padding": [
+                            5,
+                            9
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "TUIsv",
+                              "name": "evInferIcon",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "sparkles",
+                              "library": "lucide",
+                              "fill": "$text-secondary"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZDZCG",
+                              "name": "evInferText",
+                              "fill": "$text-primary",
+                              "content": "运行推断",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "vzfMp",
+                          "name": "evBatchAccept",
+                          "fill": "$accent",
+                          "cornerRadius": 8,
+                          "gap": 5,
+                          "padding": [
+                            5,
+                            9
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "T08RX",
+                              "name": "evBatchAcceptIcon",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "check-check",
+                              "library": "lucide",
+                              "fill": "$bg-primary"
+                            },
+                            {
+                              "type": "text",
+                              "id": "HMetM",
+                              "name": "evBatchAcceptText",
+                              "fill": "$bg-primary",
+                              "content": "批量接受高置信",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "TThLh",
+                  "name": "evSummaryHint",
+                  "fill": "$text-muted",
+                  "content": "对账只读；列表问题标签与筛选由对账结果合并。LLM 推断已开启，关闭后只显示规则时间线索。",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "z8AlOL",
+              "name": "evMain",
+              "width": "fill_container",
+              "height": "fill_container",
+              "gap": 18,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "e9FNZ",
+                  "name": "evListCard",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "$bg-panel",
+                  "cornerRadius": 12,
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "h2HYEY",
+                      "name": "evListHead",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 10,
+                      "padding": [
+                        14,
+                        16,
+                        10,
+                        16
+                      ],
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "A47ui",
+                          "name": "evListTitleRow",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "frame",
-                              "id": "JvSeY",
-                              "name": "triageSelect1",
-                              "height": 28,
-                              "fill": "$bg-panel",
-                              "cornerRadius": 8,
-                              "stroke": "$border-light",
-                              "strokeWidth": 1,
-                              "strokeAlignment": "inner",
-                              "gap": 6,
-                              "padding": [
-                                5,
-                                10
-                              ],
+                              "id": "rwudx",
+                              "name": "evListTitleLeft",
+                              "gap": 8,
                               "alignItems": "center",
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "DH3FC",
-                                  "name": "triageSelect1Text",
+                                  "id": "wRQJJ",
+                                  "name": "evListTitle",
                                   "fill": "$text-primary",
-                                  "content": "值得补",
-                                  "fontFamily": "JetBrains Mono",
+                                  "content": "证据卡",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 15,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "uKiqd",
+                                  "name": "evListCount",
+                                  "fill": "$text-muted",
+                                  "content": "85 张 · 按问题筛选",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "o5EY9y",
+                              "name": "evListSync",
+                              "fill": "$text-muted",
+                              "content": "问题标签来自最近一次对账",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "t04Ml",
+                          "name": "evListFilters",
+                          "width": "fill_container",
+                          "gap": 6,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "AmMcU",
+                              "name": "evSearch",
+                              "width": "fill_container",
+                              "height": 30,
+                              "fill": "$bg-primary",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "padding": [
+                                0,
+                                9
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "wmw8I",
+                                  "name": "evSearchIcon",
+                                  "width": 12,
+                                  "height": 12,
+                                  "icon": "search",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "g9rxgK",
+                                  "name": "evSearchPlaceholder",
+                                  "fill": "$text-muted",
+                                  "content": " 搜索标题 / 角色 / 时间",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "wBY4G",
+                              "name": "evRoleFilter",
+                              "width": 76,
+                              "height": 30,
+                              "fill": "$bg-primary",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "padding": [
+                                0,
+                                9
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "OZjz5",
+                                  "name": "evRoleFilterText",
+                                  "fill": "$text-secondary",
+                                  "content": "角色",
+                                  "fontFamily": "Inter",
                                   "fontSize": 11,
                                   "fontWeight": "normal"
                                 },
                                 {
                                   "type": "icon",
-                                  "id": "iL4sb",
-                                  "name": "triageSelect1Chevron",
+                                  "id": "o4Zr2",
+                                  "name": "evRoleFilterChevron",
                                   "width": 12,
                                   "height": 12,
                                   "icon": "chevron-down",
@@ -3925,30 +4201,81 @@
                             },
                             {
                               "type": "frame",
-                              "id": "X93HtC",
-                              "name": "reconcileView1",
-                              "height": 28,
-                              "fill": "$bg-panel",
+                              "id": "rWgXy",
+                              "name": "evTagFilter",
+                              "width": 76,
+                              "height": 30,
+                              "fill": "$bg-primary",
                               "cornerRadius": 8,
                               "stroke": "$border-light",
                               "strokeWidth": 1,
                               "strokeAlignment": "inner",
-                              "gap": 6,
                               "padding": [
-                                5,
-                                10
+                                0,
+                                9
                               ],
+                              "justifyContent": "space_between",
                               "alignItems": "center",
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "elJYH",
-                                  "name": "reconcileView1Text",
-                                  "fill": "$text-primary",
-                                  "content": "查看",
-                                  "fontFamily": "JetBrains Mono",
+                                  "id": "UNzbc",
+                                  "name": "evTagFilterText",
+                                  "fill": "$text-secondary",
+                                  "content": "标签",
+                                  "fontFamily": "Inter",
                                   "fontSize": 11,
                                   "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "icon",
+                                  "id": "jyLT8",
+                                  "name": "evTagFilterChevron",
+                                  "width": 12,
+                                  "height": 12,
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "FsPUf",
+                              "name": "evProblemFilter",
+                              "width": 108,
+                              "height": 30,
+                              "fill": "$bg-primary",
+                              "cornerRadius": 8,
+                              "stroke": "$border-light",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "padding": [
+                                0,
+                                9
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "V9MwIl",
+                                  "name": "evProblemFilterText",
+                                  "fill": "$text-secondary",
+                                  "content": "全部问题",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "icon",
+                                  "id": "ww998",
+                                  "name": "evProblemFilterChevron",
+                                  "width": 12,
+                                  "height": 12,
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
                                 }
                               ]
                             }
@@ -3958,110 +4285,1597 @@
                     },
                     {
                       "type": "frame",
-                      "id": "N947f",
-                      "name": "reconcileInferenceRow",
+                      "id": "m4uap9",
+                      "name": "evTable",
                       "width": "fill_container",
-                      "height": 62,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 8,
-                      "gap": 12,
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "MopNe",
+                          "name": "evTableHead",
+                          "width": "fill_container",
+                          "height": 28,
+                          "fill": "$bg-inset",
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            16
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "VEUaz",
+                              "name": "colHead",
+                              "width": 190,
+                              "height": 28,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "YuhCP",
+                                  "name": "colHeadText",
+                                  "fill": "$text-muted",
+                                  "content": "标题",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "wtXPv",
+                              "name": "colHead",
+                              "width": 116,
+                              "height": 28,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "hjcIq",
+                                  "name": "colHeadText",
+                                  "fill": "$text-muted",
+                                  "content": "时间",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "u3h69",
+                              "name": "colHead",
+                              "width": 110,
+                              "height": 28,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "HQDMA",
+                                  "name": "colHeadText",
+                                  "fill": "$text-muted",
+                                  "content": "角色",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "c5dSG",
+                              "name": "colHead",
+                              "width": 48,
+                              "height": 28,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "UiphM",
+                                  "name": "colHeadText",
+                                  "fill": "$text-muted",
+                                  "content": "来源",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ktKa4",
+                              "name": "colHead",
+                              "width": 170,
+                              "height": 28,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "KpJNj",
+                                  "name": "colHeadText",
+                                  "fill": "$text-muted",
+                                  "content": "状态与问题",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "NVn20",
+                          "name": "evRow",
+                          "width": "fill_container",
+                          "height": 58,
+                          "fill": "$accent-bg",
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            16
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "jAyaS",
+                              "name": "evRowTitle",
+                              "width": 190,
+                              "layout": "vertical",
+                              "gap": 2,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "M32j3",
+                                  "name": "evRowTitleText",
+                                  "fill": "$text-primary",
+                                  "content": "统一运动中心 · 会员活动链路重构",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "DxN0F",
+                                  "name": "evRowMeta",
+                                  "fill": "$accent",
+                                  "content": "当前选中",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "I3pmPF",
+                              "name": "evRowTime",
+                              "width": 116,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "X4rCBj",
+                                  "name": "evRowTimeText",
+                                  "fill": "$text-primary",
+                                  "content": "2023-03 ~ 2023-08",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "Y3p3qH",
+                                  "name": "evTimeLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    2,
+                                    5
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "o2nve",
+                                      "name": "evTimeLevelText",
+                                      "fill": "$text-secondary",
+                                      "content": "L3",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "GpEpX",
+                              "name": "evRole",
+                              "width": 110,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Y3whHW",
+                                  "name": "evRowRoleText",
+                                  "fill": "$text-secondary",
+                                  "content": "参与 / 推动 · 平台负责人",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "ZIKsU",
+                                  "name": "evRoleLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    2,
+                                    5
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "MATOv",
+                                      "name": "evRoleLevelText",
+                                      "fill": "$text-secondary",
+                                      "content": "L3",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "c5NhI",
+                              "name": "evSource",
+                              "width": 48,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "V6tey",
+                                  "name": "evSourceText",
+                                  "fill": "$text-secondary",
+                                  "content": "6 份",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "N2n9AT",
+                              "name": "evStatus",
+                              "width": 170,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "OhdJ2",
+                                  "name": "evStatusRow",
+                                  "gap": 4,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "hMm4L",
+                                      "name": "evStatusChip",
+                                      "fill": "$bg-inset",
+                                      "cornerRadius": 4,
+                                      "padding": [
+                                        2,
+                                        5
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "IM2GZ",
+                                          "name": "evStatusChipText",
+                                          "fill": "$text-secondary",
+                                          "content": "待审核",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 10,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "iFtoV",
+                                  "name": "evTagRow",
+                                  "gap": 3,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "S8Q6aY",
+                                      "name": "evProblemTag",
+                                      "cornerRadius": 4,
+                                      "stroke": "$border-light",
+                                      "strokeWidth": 1,
+                                      "strokeAlignment": "inner",
+                                      "padding": [
+                                        1,
+                                        4
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "eLNGB",
+                                          "name": "evProblemTagText",
+                                          "fill": "$text-muted",
+                                          "content": "不可追溯",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "RxozQ",
+                                      "name": "evProblemTag",
+                                      "cornerRadius": 4,
+                                      "stroke": "$border-light",
+                                      "strokeWidth": 1,
+                                      "strokeAlignment": "inner",
+                                      "padding": [
+                                        1,
+                                        4
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "fTjCh",
+                                          "name": "evProblemTagText",
+                                          "fill": "$text-muted",
+                                          "content": "待确认",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "G3wps2",
+                                      "name": "evProblemTag",
+                                      "cornerRadius": 4,
+                                      "stroke": "$border-light",
+                                      "strokeWidth": 1,
+                                      "strokeAlignment": "inner",
+                                      "padding": [
+                                        1,
+                                        4
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "yvPZ1",
+                                          "name": "evProblemTagText",
+                                          "fill": "$text-muted",
+                                          "content": "值得补",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nS1Tn",
+                          "name": "evRowDivider",
+                          "width": "fill_container",
+                          "height": 1,
+                          "fill": "$border-light"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "g7vKHA",
+                          "name": "evRow",
+                          "width": "fill_container",
+                          "height": 58,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            16
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "LB61f",
+                              "name": "evRowTitle",
+                              "width": 190,
+                              "layout": "vertical",
+                              "gap": 2,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "a5QSR",
+                                  "name": "evRowTitleText",
+                                  "fill": "$text-primary",
+                                  "content": "交易服务重构",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "ERAdC",
+                                  "name": "evRowMeta",
+                                  "fill": "$text-muted",
+                                  "content": "证据卡",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "yy7aT",
+                              "name": "evRowTime",
+                              "width": 116,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "X58EYD",
+                                  "name": "evRowTimeText",
+                                  "fill": "$text-primary",
+                                  "content": "2021-03 ~ 2024-03",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "KE7vL",
+                                  "name": "evTimeLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    2,
+                                    5
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "I3v5c",
+                                      "name": "evTimeLevelText",
+                                      "fill": "$text-secondary",
+                                      "content": "L1",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "iNQ5q",
+                              "name": "evRole",
+                              "width": 110,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ZRoQz",
+                                  "name": "evRowRoleText",
+                                  "fill": "$text-secondary",
+                                  "content": "负责人",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "hTYOa",
+                                  "name": "evRoleLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    2,
+                                    5
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "RZTu0",
+                                      "name": "evRoleLevelText",
+                                      "fill": "$text-secondary",
+                                      "content": "L1",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "DnDiN",
+                              "name": "evSource",
+                              "width": 48,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "C8zCA",
+                                  "name": "evSourceText",
+                                  "fill": "$text-secondary",
+                                  "content": "4 份",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "fLkyf",
+                              "name": "evStatus",
+                              "width": 170,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "X1TbS",
+                                  "name": "evStatusRow",
+                                  "gap": 4,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "QOlN5",
+                                      "name": "evStatusChip",
+                                      "fill": "$bg-inset",
+                                      "cornerRadius": 4,
+                                      "padding": [
+                                        2,
+                                        5
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "aYQ7n",
+                                          "name": "evStatusChipText",
+                                          "fill": "$text-secondary",
+                                          "content": "可用",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 10,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "g4KKN",
+                          "name": "evRowDivider",
+                          "width": "fill_container",
+                          "height": 1,
+                          "fill": "$border-light"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "MkwCL",
+                          "name": "evRow",
+                          "width": "fill_container",
+                          "height": 58,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            16
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "zQlRr",
+                              "name": "evRowTitle",
+                              "width": 190,
+                              "layout": "vertical",
+                              "gap": 2,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "O1QqU",
+                                  "name": "evRowTitleText",
+                                  "fill": "$text-primary",
+                                  "content": "会员中心数据看板",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "I1Mwcy",
+                                  "name": "evRowMeta",
+                                  "fill": "$text-muted",
+                                  "content": "证据卡",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "eZiDC",
+                              "name": "evRowTime",
+                              "width": 116,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "EwkML",
+                                  "name": "evRowTimeText",
+                                  "fill": "$text-primary",
+                                  "content": "2022",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "D8Prky",
+                                  "name": "evTimeLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    2,
+                                    5
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "bfOCf",
+                                      "name": "evTimeLevelText",
+                                      "fill": "$text-secondary",
+                                      "content": "L2",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ioIEQ",
+                              "name": "evRole",
+                              "width": 110,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "fIycV",
+                                  "name": "evRowRoleText",
+                                  "fill": "$text-secondary",
+                                  "content": "数据负责人",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "B3j0qg",
+                                  "name": "evRoleLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    2,
+                                    5
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "G538c",
+                                      "name": "evRoleLevelText",
+                                      "fill": "$text-secondary",
+                                      "content": "L3",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "IRgkZ",
+                              "name": "evSource",
+                              "width": 48,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "V8qh9",
+                                  "name": "evSourceText",
+                                  "fill": "$text-secondary",
+                                  "content": "2 份",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "qaYi6",
+                              "name": "evStatus",
+                              "width": 170,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "eE2L5",
+                                  "name": "evStatusRow",
+                                  "gap": 4,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "KYJvy",
+                                      "name": "evStatusChip",
+                                      "fill": "$bg-inset",
+                                      "cornerRadius": 4,
+                                      "padding": [
+                                        2,
+                                        5
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "o1ptp",
+                                          "name": "evStatusChipText",
+                                          "fill": "$text-secondary",
+                                          "content": "待补",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 10,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "tEmyk",
+                                  "name": "evTagRow",
+                                  "gap": 3,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "EGc84",
+                                      "name": "evProblemTag",
+                                      "cornerRadius": 4,
+                                      "stroke": "$border-light",
+                                      "strokeWidth": 1,
+                                      "strokeAlignment": "inner",
+                                      "padding": [
+                                        1,
+                                        4
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "Pi6PQ",
+                                          "name": "evProblemTagText",
+                                          "fill": "$text-muted",
+                                          "content": "缺时间",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "zmJP0",
+                                      "name": "evProblemTag",
+                                      "cornerRadius": 4,
+                                      "stroke": "$border-light",
+                                      "strokeWidth": 1,
+                                      "strokeAlignment": "inner",
+                                      "padding": [
+                                        1,
+                                        4
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "A4ABo",
+                                          "name": "evProblemTagText",
+                                          "fill": "$text-muted",
+                                          "content": "待确认",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nIqRe",
+                          "name": "evRowDivider",
+                          "width": "fill_container",
+                          "height": 1,
+                          "fill": "$border-light"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "L6Xf8R",
+                          "name": "evRow",
+                          "width": "fill_container",
+                          "height": 58,
+                          "gap": 8,
+                          "padding": [
+                            0,
+                            16
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "WHIRj",
+                              "name": "evRowTitle",
+                              "width": 190,
+                              "layout": "vertical",
+                              "gap": 2,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "cqSF3",
+                                  "name": "evRowTitleText",
+                                  "fill": "$text-primary",
+                                  "content": "无时间项目",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "ERJ6C",
+                                  "name": "evRowMeta",
+                                  "fill": "$text-muted",
+                                  "content": "证据卡",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "VJGEG",
+                              "name": "evRowTime",
+                              "width": 116,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "sNbFh",
+                                  "name": "evRowTimeText",
+                                  "fill": "$text-primary",
+                                  "content": "—",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "TjXch",
+                                  "name": "evTimeLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    2,
+                                    5
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "V2AEGH",
+                                      "name": "evTimeLevelText",
+                                      "fill": "$text-secondary",
+                                      "content": "L5",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "R9UDgb",
+                              "name": "evRole",
+                              "width": 110,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "VSPYt",
+                                  "name": "evRowRoleText",
+                                  "fill": "$text-secondary",
+                                  "content": "—",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "opXUb",
+                                  "name": "evRoleLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    2,
+                                    5
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "sEAZ2",
+                                      "name": "evRoleLevelText",
+                                      "fill": "$text-secondary",
+                                      "content": "L5",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "dKscw",
+                              "name": "evSource",
+                              "width": 48,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "yF8jM",
+                                  "name": "evSourceText",
+                                  "fill": "$text-secondary",
+                                  "content": "—",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "fH2YN",
+                              "name": "evStatus",
+                              "width": 170,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "tKElp",
+                                  "name": "evStatusRow",
+                                  "gap": 4,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "pbQK0",
+                                      "name": "evStatusChip",
+                                      "fill": "$bg-inset",
+                                      "cornerRadius": 4,
+                                      "padding": [
+                                        2,
+                                        5
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "pvo6t",
+                                          "name": "evStatusChipText",
+                                          "fill": "$text-secondary",
+                                          "content": "未入池",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 10,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "erRHK",
+                                  "name": "evTagRow",
+                                  "gap": 3,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "bolpu",
+                                      "name": "evProblemTag",
+                                      "cornerRadius": 4,
+                                      "stroke": "$border-light",
+                                      "strokeWidth": 1,
+                                      "strokeAlignment": "inner",
+                                      "padding": [
+                                        1,
+                                        4
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "Q9RLwW",
+                                          "name": "evProblemTagText",
+                                          "fill": "$text-muted",
+                                          "content": "不展示",
+                                          "fontFamily": "Inter",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "H31V8G",
+                          "name": "evRowDivider",
+                          "width": "fill_container",
+                          "height": 1,
+                          "fill": "$border-light"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SCqb1",
+                      "name": "evListFoot",
+                      "width": "fill_container",
+                      "height": "fill_container"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "MRonV",
+                      "name": "evListFooter",
+                      "width": "fill_container",
                       "padding": [
                         8,
-                        12
+                        16
                       ],
                       "justifyContent": "space_between",
                       "alignItems": "center",
                       "children": [
                         {
+                          "type": "text",
+                          "id": "dG0I8",
+                          "name": "evListFooterCount",
+                          "fill": "$text-muted",
+                          "content": "显示 4 / 85 · 每页 50",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ZN1aP",
+                          "name": "evListFooterHint",
+                          "fill": "$text-muted",
+                          "content": "状态列不再展示分数；分数与技术信息在详情「技术详情」中",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "DhFfU",
+                  "name": "evDetailCard",
+                  "width": 420,
+                  "height": "fill_container",
+                  "fill": "$bg-panel",
+                  "cornerRadius": 12,
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "layout": "vertical",
+                  "gap": 9,
+                  "padding": 14,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "tvyUQ",
+                      "name": "evDetailHead",
+                      "width": "fill_container",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
                           "type": "frame",
-                          "id": "p8MPOm",
-                          "name": "reconcileInferenceText",
-                          "width": "fill_container",
+                          "id": "BggCt",
+                          "name": "evDetailHeadLeft",
                           "layout": "vertical",
-                          "gap": 2,
+                          "gap": 4,
                           "children": [
                             {
                               "type": "text",
-                              "id": "NtNBx",
-                              "name": "reconcileInferenceTitle",
+                              "id": "UVnYa",
+                              "name": "evDetailTitle",
                               "fill": "$text-primary",
-                              "content": "Pending inference / 待确认推断（不写卡，确认后生效）",
+                              "content": "证据卡详情",
+                              "fontFamily": "Inter",
+                              "fontSize": 14,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "e16INc",
+                              "name": "evDetailChips",
+                              "gap": 4,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "o4Qpi",
+                                  "name": "evDetailStatus",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    1,
+                                    4
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "WdjYB",
+                                      "name": "evDetailStatusText",
+                                      "fill": "$warning",
+                                      "content": "待审核",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 9,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "oRHgH",
+                                  "name": "evDetailPool",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    1,
+                                    4
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "ENVcQ",
+                                      "name": "evDetailPoolText",
+                                      "fill": "$text-secondary",
+                                      "content": "未入池",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 9,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "k0AQfK",
+                          "name": "evDetailActions",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Zf7NR",
+                              "name": "evEdit",
+                              "fill": "$accent",
+                              "content": "编辑",
                               "fontFamily": "Inter",
                               "fontSize": 12,
                               "fontWeight": "600"
                             },
                             {
                               "type": "text",
-                              "id": "ASi2D",
-                              "name": "reconcileInferenceReason",
-                              "fill": "$text-secondary",
-                              "content": "时间：2023-03（L3 · 0.70）· 原文“我负责统一运动中心改造，推动活动报名聚合上线。”",
-                              "fontFamily": "JetBrains Mono",
-                              "fontSize": 11,
+                              "id": "U7beO",
+                              "name": "evSave",
+                              "fill": "$text-muted",
+                              "content": "保存",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "OOnC4",
+                              "name": "evCancel",
+                              "fill": "$text-muted",
+                              "content": "取消",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
                               "fontWeight": "normal"
                             }
                           ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "boiR3",
+                      "name": "evDetailDivider",
+                      "width": "fill_container",
+                      "height": 1,
+                      "fill": "$border-light"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "N78tNL",
+                      "name": "evField",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "qkn2P",
+                          "name": "evFieldLabel",
+                          "fill": "$text-muted",
+                          "content": "标题",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
                         },
                         {
                           "type": "frame",
-                          "id": "M9Bpl",
-                          "name": "reconcileInferenceActions",
-                          "gap": 6,
-                          "alignItems": "center",
+                          "id": "BZ9Oo",
+                          "name": "evFieldValue",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
                           "children": [
                             {
                               "type": "frame",
-                              "id": "R1sQl3",
-                              "name": "reconcileInferenceAccept",
-                              "height": 26,
-                              "fill": "$bg-panel",
-                              "cornerRadius": 8,
-                              "stroke": "$border-light",
-                              "strokeWidth": 1,
-                              "strokeAlignment": "inner",
-                              "gap": 6,
-                              "padding": [
-                                5,
-                                10
-                              ],
+                              "id": "DDLk1",
+                              "name": "evFieldValueRow",
+                              "gap": 5,
                               "alignItems": "center",
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "KEPIl",
-                                  "name": "reconcileInferenceAcceptText",
-                                  "fill": "$accent",
-                                  "content": "接受",
-                                  "fontFamily": "JetBrains Mono",
-                                  "fontSize": 11,
-                                  "fontWeight": "normal"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "frame",
-                              "id": "A5xO6O",
-                              "name": "reconcileInferenceEdit",
-                              "height": 26,
-                              "fill": "$bg-panel",
-                              "cornerRadius": 8,
-                              "stroke": "$border-light",
-                              "strokeWidth": 1,
-                              "strokeAlignment": "inner",
-                              "gap": 6,
-                              "padding": [
-                                5,
-                                10
-                              ],
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "text",
-                                  "id": "aku3m",
-                                  "name": "reconcileInferenceEditText",
+                                  "id": "IQmvn",
+                                  "name": "evFieldValueText",
                                   "fill": "$text-primary",
-                                  "content": "修改后接受",
-                                  "fontFamily": "JetBrains Mono",
+                                  "content": "统一运动中心 · 会员活动链路重构",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "S0DjXE",
+                      "name": "evField",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "aHk8U",
+                          "name": "evFieldLabel",
+                          "fill": "$text-muted",
+                          "content": "时间",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "C3UXEK",
+                          "name": "evFieldValue",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Dxvkz",
+                              "name": "evFieldValueRow",
+                              "gap": 5,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "FGp1W",
+                                  "name": "evFieldValueText",
+                                  "fill": "$text-primary",
+                                  "content": "2023-03 ~ 2023-08",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "M4iPk",
+                                  "name": "evFieldLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    1,
+                                    4
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "LImMb",
+                                      "name": "evFieldLevelText",
+                                      "fill": "$accent",
+                                      "content": "L3",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 9,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "lwkLE",
+                              "name": "evFieldSource",
+                              "fill": "$text-muted",
+                              "content": "来源：2023-03 周报 · 会员活动复盘",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ZThFj",
+                      "name": "evField",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "edFc0",
+                          "name": "evFieldLabel",
+                          "fill": "$text-muted",
+                          "content": "角色",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "l58PV",
+                          "name": "evFieldValue",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "pq1ui",
+                              "name": "evFieldValueRow",
+                              "gap": 5,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "KYRty",
+                                  "name": "evFieldValueText",
+                                  "fill": "$text-primary",
+                                  "content": "参与 / 推动 · 平台负责人",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "lyH4t",
+                                  "name": "evFieldLevel",
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "padding": [
+                                    1,
+                                    4
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "fJvnT",
+                                      "name": "evFieldLevelText",
+                                      "fill": "$accent",
+                                      "content": "L3",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 9,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "o12qmz",
+                              "name": "evFieldSource",
+                              "fill": "$text-muted",
+                              "content": "来源：会员活动复盘",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "jMxGa",
+                      "name": "evField",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "m2zyGg",
+                          "name": "evFieldLabel",
+                          "fill": "$text-muted",
+                          "content": "场景",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "sNMcg",
+                          "name": "evFieldValue",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Hx0Tl",
+                              "name": "evFieldValueRow",
+                              "gap": 5,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ALiqY",
+                                  "name": "evFieldValueText",
+                                  "fill": "$text-primary",
+                                  "content": "会员中心活动报名链路割裂、活动效果无法归因。",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Mhijd",
+                      "name": "evActionsField",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "jemsd",
+                          "name": "evActionsLabel",
+                          "fill": "$text-muted",
+                          "content": "行动",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "t20zor",
+                          "name": "evActionList",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "I4tmu",
+                              "name": "evAction1",
+                              "width": "fill_container",
+                              "gap": 5,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "Vk73r",
+                                  "name": "evAction1Dot",
+                                  "width": 4,
+                                  "height": 4,
+                                  "fill": "$accent",
+                                  "cornerRadius": 2
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "Y5EQUt",
+                                  "name": "evAction1Text",
+                                  "fill": "$text-secondary",
+                                  "content": "参与会员活动报名聚合改造，统一活动入口与报名状态。",
+                                  "fontFamily": "Inter",
                                   "fontSize": 11,
                                   "fontWeight": "normal"
                                 }
@@ -4069,28 +5883,27 @@
                             },
                             {
                               "type": "frame",
-                              "id": "kUhr9",
-                              "name": "reconcileInferenceReject",
-                              "height": 26,
-                              "fill": "$bg-panel",
-                              "cornerRadius": 8,
-                              "stroke": "$border-light",
-                              "strokeWidth": 1,
-                              "strokeAlignment": "inner",
-                              "gap": 6,
-                              "padding": [
-                                5,
-                                10
-                              ],
-                              "alignItems": "center",
+                              "id": "ji8gj",
+                              "name": "evAction2",
+                              "width": "fill_container",
+                              "gap": 5,
                               "children": [
                                 {
+                                  "type": "frame",
+                                  "id": "x02pl5",
+                                  "name": "evAction2Dot",
+                                  "width": 4,
+                                  "height": 4,
+                                  "fill": "$accent",
+                                  "cornerRadius": 2
+                                },
+                                {
                                   "type": "text",
-                                  "id": "nL5lK",
-                                  "name": "reconcileInferenceRejectText",
-                                  "fill": "$warning",
-                                  "content": "否决",
-                                  "fontFamily": "JetBrains Mono",
+                                  "id": "S9LKmk",
+                                  "name": "evAction2Text",
+                                  "fill": "$text-secondary",
+                                  "content": "推动活动数据看板落地，支持按活动、渠道查看转化。",
+                                  "fontFamily": "Inter",
                                   "fontSize": 11,
                                   "fontWeight": "normal"
                                 }
@@ -4102,44 +5915,329 @@
                     },
                     {
                       "type": "frame",
-                      "id": "piZaa",
-                      "name": "reconcileRow2",
+                      "id": "B4wMIW",
+                      "name": "evResultsField",
                       "width": "fill_container",
-                      "height": 54,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 8,
-                      "gap": 12,
-                      "padding": [
-                        8,
-                        12
-                      ],
-                      "justifyContent": "space_between",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "jzZDB",
+                          "name": "evResultsLabel",
+                          "fill": "$text-muted",
+                          "content": "成果",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ukomT",
+                          "name": "evResultList",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "qArHa",
+                              "name": "evResult1",
+                              "width": "fill_container",
+                              "gap": 5,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "vmGRN",
+                                  "name": "evResult1Dot",
+                                  "width": 4,
+                                  "height": 4,
+                                  "fill": "$success",
+                                  "cornerRadius": 2
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "brn9c",
+                                  "name": "evResult1Text",
+                                  "fill": "$text-secondary",
+                                  "content": "报名转化率提升 18%，活动归因覆盖 6 个渠道。",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Z5oMW",
+                              "name": "evResult2",
+                              "width": "fill_container",
+                              "gap": 5,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "I0Ndx",
+                                  "name": "evResult2Dot",
+                                  "width": 4,
+                                  "height": 4,
+                                  "fill": "$success",
+                                  "cornerRadius": 2
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "ZO44c",
+                                  "name": "evResult2Text",
+                                  "fill": "$text-secondary",
+                                  "content": "活动配置耗时从 2 天缩短到 4 小时。",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Ditq1",
+                      "name": "evStackRow",
+                      "width": "fill_container",
+                      "gap": 6,
                       "alignItems": "center",
                       "children": [
                         {
+                          "type": "text",
+                          "id": "Y8ERw",
+                          "name": "evStackLabel",
+                          "fill": "$text-muted",
+                          "content": "技术栈",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
                           "type": "frame",
-                          "id": "Sifsg",
-                          "name": "reconcileRow2Text",
+                          "id": "S9AQXT",
+                          "name": "evPill",
+                          "fill": "$bg-inset",
+                          "cornerRadius": 4,
+                          "padding": [
+                            1,
+                            5
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "BEAvS",
+                              "name": "evPillText",
+                              "fill": "$text-secondary",
+                              "content": "Java",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "px3QR",
+                          "name": "evPill",
+                          "fill": "$bg-inset",
+                          "cornerRadius": 4,
+                          "padding": [
+                            1,
+                            5
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "ijwwi",
+                              "name": "evPillText",
+                              "fill": "$text-secondary",
+                              "content": "Spring",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QWOLP",
+                          "name": "evPill",
+                          "fill": "$bg-inset",
+                          "cornerRadius": 4,
+                          "padding": [
+                            1,
+                            5
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "F3UPKL",
+                              "name": "evPillText",
+                              "fill": "$text-secondary",
+                              "content": "MySQL",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "EkoIk",
+                      "name": "evTagRow",
+                      "width": "fill_container",
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "qaSje",
+                          "name": "evTagsLabel",
+                          "fill": "$text-muted",
+                          "content": "标签",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "k1XJBR",
+                          "name": "evPill",
+                          "fill": "$bg-inset",
+                          "cornerRadius": 4,
+                          "padding": [
+                            1,
+                            5
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "h6uVr",
+                              "name": "evPillText",
+                              "fill": "$text-secondary",
+                              "content": "会员",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "gECNq",
+                          "name": "evPill",
+                          "fill": "$bg-inset",
+                          "cornerRadius": 4,
+                          "padding": [
+                            1,
+                            5
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "aR5YA",
+                              "name": "evPillText",
+                              "fill": "$text-secondary",
+                              "content": "活动",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "GOz17",
+                      "name": "evDiagnosis",
+                      "width": "fill_container",
+                      "fill": "$bg-inset",
+                      "cornerRadius": 8,
+                      "layout": "vertical",
+                      "gap": 5,
+                      "padding": 9,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "j8crgT",
+                          "name": "evDiagHead",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "AsWNa",
+                              "name": "evDiagTitle",
+                              "fill": "$warning",
+                              "content": "对账发现",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "fttEH",
+                              "name": "evDiagHint",
+                              "fill": "$text-muted",
+                              "content": "只读诊断，不自动改卡",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "a5xXk",
+                          "name": "evDiagReason",
+                          "fill": "$text-secondary",
+                          "content": "2 条结果在材料里找不到原文 · 缺时间 · 疑似与 ec_41be… 重复",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "sBBIZ",
+                          "name": "evDiagUntraceable",
                           "width": "fill_container",
                           "layout": "vertical",
                           "gap": 2,
                           "children": [
                             {
                               "type": "text",
-                              "id": "eOSUM",
-                              "name": "reconcileRow2Title",
-                              "fill": "$text-primary",
-                              "content": "Feature 治理职责划分",
+                              "id": "vuOit",
+                              "name": "evDiagUntraceableLabel",
+                              "fill": "$text-muted",
+                              "content": "不可追溯结果与原文候选",
                               "fontFamily": "Inter",
-                              "fontSize": 13,
-                              "fontWeight": "600"
+                              "fontSize": 9,
+                              "fontWeight": "normal"
                             },
                             {
                               "type": "text",
-                              "id": "zCIqT",
-                              "name": "reconcileRow2Warning",
-                              "fill": "$warning",
-                              "content": "卡已变化，之前的分流判断失效，请重新选择",
+                              "id": "T30w3F",
+                              "name": "evDiagLine1",
+                              "fill": "$text-secondary",
+                              "content": "报名转化率提升 18% → “报名量环比提升约两成”",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "h4fan",
+                              "name": "evDiagLine2",
+                              "fill": "$text-secondary",
+                              "content": "活动归因覆盖 6 个渠道 → “6 条渠道可归因”",
                               "fontFamily": "JetBrains Mono",
                               "fontSize": 11,
                               "fontWeight": "normal"
@@ -4148,430 +6246,447 @@
                         },
                         {
                           "type": "frame",
-                          "id": "yvHeY",
-                          "name": "reconcileRow2Actions",
-                          "gap": 8,
+                          "id": "I3rBU",
+                          "name": "evDiagHints",
+                          "gap": 4,
                           "alignItems": "center",
                           "children": [
                             {
+                              "type": "text",
+                              "id": "Mp9kj",
+                              "name": "evDiagHintsLabel",
+                              "fill": "$text-muted",
+                              "content": "材料时间线索",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
                               "type": "frame",
-                              "id": "CqHVp",
-                              "name": "triageSelect2",
-                              "height": 28,
-                              "fill": "$bg-panel",
-                              "cornerRadius": 8,
-                              "stroke": "$border-light",
-                              "strokeWidth": 1,
-                              "strokeAlignment": "inner",
-                              "gap": 6,
+                              "id": "vXW4d",
+                              "name": "evHint1",
+                              "fill": "$bg-inset",
+                              "cornerRadius": 4,
                               "padding": [
-                                5,
-                                10
+                                1,
+                                4
                               ],
-                              "alignItems": "center",
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "GWRUC",
-                                  "name": "triageSelect2Text",
-                                  "fill": "$text-primary",
-                                  "content": "未分流",
-                                  "fontFamily": "JetBrains Mono",
-                                  "fontSize": 11,
+                                  "id": "ClZJ9",
+                                  "name": "evHint1Text",
+                                  "fill": "$text-secondary",
+                                  "content": "2023-03",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
                                   "fontWeight": "normal"
-                                },
-                                {
-                                  "type": "icon",
-                                  "id": "VZLfm",
-                                  "name": "triageSelect2Chevron",
-                                  "width": 12,
-                                  "height": 12,
-                                  "icon": "chevron-down",
-                                  "library": "lucide",
-                                  "fill": "$text-muted"
                                 }
                               ]
                             },
                             {
                               "type": "frame",
-                              "id": "k7w6J1",
-                              "name": "reconcileView2",
-                              "height": 28,
-                              "fill": "$bg-panel",
-                              "cornerRadius": 8,
+                              "id": "LcxIA",
+                              "name": "evHint2",
+                              "fill": "$bg-inset",
+                              "cornerRadius": 4,
+                              "padding": [
+                                1,
+                                4
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "cgGFN",
+                                  "name": "evHint2Text",
+                                  "fill": "$text-secondary",
+                                  "content": "2023-06",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "ni4wC",
+                              "name": "evHint3",
+                              "fill": "$bg-inset",
+                              "cornerRadius": 4,
+                              "padding": [
+                                1,
+                                4
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "W89hl",
+                                  "name": "evHint3Text",
+                                  "fill": "$text-secondary",
+                                  "content": "2023-08",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "vMpBU",
+                          "name": "evDiagDuplicate",
+                          "fill": "$accent",
+                          "content": "疑似重复：ec_41be… · 打开对照",
+                          "fontFamily": "Inter",
+                          "fontSize": 9,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "G18gaX",
+                          "name": "evDiagTriage",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "D2qeug",
+                              "name": "evDiagTriageLabel",
+                              "fill": "$text-muted",
+                              "content": "补全分流",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "v0xfUG",
+                              "name": "evTriageSelect",
+                              "width": 92,
+                              "height": 22,
+                              "fill": "$bg-primary",
+                              "cornerRadius": 6,
                               "stroke": "$border-light",
                               "strokeWidth": 1,
                               "strokeAlignment": "inner",
-                              "gap": 6,
                               "padding": [
-                                5,
-                                10
+                                0,
+                                6
                               ],
+                              "justifyContent": "space_between",
                               "alignItems": "center",
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "wIgWc",
-                                  "name": "reconcileView2Text",
+                                  "id": "PUYri",
+                                  "name": "evTriageSelectText",
+                                  "fill": "$text-secondary",
+                                  "content": "值得补",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "icon",
+                                  "id": "el56g",
+                                  "name": "evTriageChevron",
+                                  "width": 10,
+                                  "height": 10,
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
+                                  "fill": "$text-muted"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mSN2X",
+                          "name": "evDiagInfer",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 3,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "y836C3",
+                              "name": "evInferHead",
+                              "width": "fill_container",
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "vBoen",
+                                  "name": "evInferLabel",
+                                  "fill": "$text-muted",
+                                  "content": "待确认推断",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "OYUBA",
+                                  "name": "evInferMeta",
                                   "fill": "$text-primary",
-                                  "content": "查看",
-                                  "fontFamily": "JetBrains Mono",
-                                  "fontSize": 11,
+                                  "content": "时间 2023-03 · L3 · 0.70",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
                                   "fontWeight": "normal"
                                 }
                               ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "yUW9l",
+                              "name": "evInferExcerpt",
+                              "fill": "$text-muted",
+                              "content": "原文“2023 年 3 月起负责会员活动链路改造”",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "bmjZv",
+                              "name": "evInferBtns",
+                              "gap": 4,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "vL6vz",
+                                  "name": "evInferAccept",
+                                  "fill": "$accent",
+                                  "cornerRadius": 5,
+                                  "padding": [
+                                    2,
+                                    6
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "vfOF9",
+                                      "name": "evInferAcceptText",
+                                      "fill": "$bg-primary",
+                                      "content": "接受",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 8,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "p5auBh",
+                                  "name": "evInferEdit",
+                                  "cornerRadius": 5,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "padding": [
+                                    2,
+                                    6
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "z5YsEo",
+                                      "name": "evInferEditText",
+                                      "fill": "$text-secondary",
+                                      "content": "修改后接受",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 8,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "gghBD",
+                                  "name": "evInferReject",
+                                  "cornerRadius": 5,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "padding": [
+                                    2,
+                                    6
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "vmggf",
+                                      "name": "evInferRejectText",
+                                      "fill": "$text-secondary",
+                                      "content": "否决",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 8,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "YYcNx",
+                              "name": "evInferLow",
+                              "fill": "$text-muted",
+                              "content": "显示低置信候选（2）",
+                              "fontFamily": "Inter",
+                              "fontSize": 8,
+                              "fontWeight": "normal"
                             }
                           ]
                         }
                       ]
                     },
                     {
-                      "type": "text",
-                      "id": "Q3zZSm",
-                      "name": "reconcileShowHidden",
-                      "fill": "$accent",
-                      "content": "显示已分流的 3 张 / Show 3 hidden",
-                      "fontFamily": "Inter",
-                      "fontSize": 12,
-                      "fontWeight": "600"
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "text",
-              "id": "eTxt01",
-              "name": "工作材料手动草稿",
-              "fill": "$text-secondary",
-              "content": "Markdown / TXT 材料 → 选择原文片段 → 模型提炼或手工草稿 → 原文指纹和结果校验 → 审核后保存",
-              "fontFamily": "Inter",
-              "fontSize": 13,
-              "fontWeight": "normal"
-            },
-            {
-              "type": "frame",
-              "id": "mvGn3",
-              "name": "evColumns",
-              "width": "fill_container",
-              "height": "fill_container",
-              "gap": 20,
-              "children": [
-                {
-                  "type": "frame",
-                  "id": "hUZH1",
-                  "name": "evTablePanel",
-                  "width": "fill_container",
-                  "height": "fill_container",
-                  "fill": "$bg-panel",
-                  "cornerRadius": 16,
-                  "stroke": "$border-light",
-                  "strokeWidth": 1,
-                  "strokeAlignment": "inner",
-                  "layout": "vertical",
-                  "gap": 12,
-                  "padding": 18,
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "oKBOM",
-                      "name": "evTableTitle",
-                      "fill": "$text-primary",
-                      "content": "Evidence Cards / 证据卡列表",
-                      "fontFamily": "Inter",
-                      "fontSize": 14,
-                      "fontWeight": "600"
-                    },
-                    {
                       "type": "frame",
-                      "id": "GpeBt",
-                      "name": "evTableHead",
+                      "id": "gK7UK",
+                      "name": "evDetailFolds",
                       "width": "fill_container",
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
                       "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        12,
-                        14
-                      ],
+                      "gap": 2,
                       "children": [
                         {
-                          "type": "text",
-                          "id": "j44xe",
-                          "name": "evTableHeadText",
-                          "fill": "$text-secondary",
-                          "content": "Title / 标题        Time / 时间        Role / 角色        Score        Status",
-                          "fontFamily": "JetBrains Mono",
-                          "fontSize": 11,
-                          "fontWeight": "600"
+                          "type": "frame",
+                          "id": "Zt8mb",
+                          "name": "evFoldSupplement",
+                          "width": "fill_container",
+                          "height": 26,
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "BQb82",
+                              "name": "evFoldSupplementText",
+                              "fill": "$text-secondary",
+                              "content": "从其他文档补充依据",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "icon",
+                              "id": "I9YS3L",
+                              "name": "evFoldSupplementChevron",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$text-muted"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "z40jL",
+                          "name": "evFoldImport",
+                          "width": "fill_container",
+                          "height": 26,
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "sU6CE",
+                              "name": "evFoldImportText",
+                              "fill": "$text-secondary",
+                              "content": "导入附件",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "icon",
+                              "id": "nwQdy",
+                              "name": "evFoldImportChevron",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$text-muted"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nwqmc",
+                          "name": "evFoldTech",
+                          "width": "fill_container",
+                          "height": 26,
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "kSnbH",
+                              "name": "evFoldTechText",
+                              "fill": "$text-secondary",
+                              "content": "技术详情（含 evidence_id、来源与分数）",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "icon",
+                              "id": "K3csmY",
+                              "name": "evFoldTechChevron",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$text-muted"
+                            }
+                          ]
                         }
                       ]
                     },
                     {
                       "type": "frame",
-                      "id": "vfOaK",
-                      "name": "evRow1",
+                      "id": "u0NRDf",
+                      "name": "evDeleteSpacer",
                       "width": "fill_container",
-                      "fill": "$accent-bg",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        14,
-                        16
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "XESaD",
-                          "name": "evRow1Text",
-                          "fill": "$text-primary",
-                          "content": "Launch pipeline hardening · EC-2026-017 · 2024-2025 · Staff Engineer · 91 · PASS",
-                          "fontFamily": "JetBrains Mono",
-                          "fontSize": 11,
-                          "fontWeight": "normal"
-                        }
-                      ]
+                      "height": "fill_container"
                     },
                     {
                       "type": "frame",
-                      "id": "5kesy",
-                      "name": "evRow2",
+                      "id": "zfECV",
+                      "name": "evDeleteWrap",
                       "width": "fill_container",
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        14,
-                        16
-                      ],
+                      "justifyContent": "end",
                       "children": [
                         {
-                          "type": "text",
-                          "id": "EuAqf",
-                          "name": "evRow2Text",
-                          "fill": "$text-primary",
-                          "content": "Sidecar resilience drill · EC-2026-016 · 2025 · TL · 84 · READY",
-                          "fontFamily": "JetBrains Mono",
-                          "fontSize": 11,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "FxieP",
-                      "name": "evRow3",
-                      "width": "fill_container",
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        14,
-                        16
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "XMPfq",
-                          "name": "evRow3Text",
-                          "fill": "$text-primary",
-                          "content": "ReleaseHub evaluation loop · EC-2026-015 · 2025 · Builder · 76 · GAP",
-                          "fontFamily": "JetBrains Mono",
-                          "fontSize": 11,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "uApfC",
-                  "name": "evDetail",
-                  "width": 420,
-                  "height": "fill_container",
-                  "fill": "$bg-panel",
-                  "cornerRadius": 16,
-                  "stroke": "$border-light",
-                  "strokeWidth": 1,
-                  "strokeAlignment": "inner",
-                  "layout": "vertical",
-                  "gap": 14,
-                  "padding": 18,
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "M02Xd",
-                      "name": "evDetailTitle",
-                      "fill": "$text-primary",
-                      "content": "EC-2026-017  PASS",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 13,
-                      "fontWeight": "700"
-                    },
-                    {
-                      "type": "frame",
-                      "id": "gvpnJ",
-                      "name": "evTitleCard",
-                      "width": "fill_container",
-                      "height": 76,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        10,
-                        12
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "kPACa",
-                          "name": "evTitleCardText",
-                          "fill": "$text-primary",
-                          "content": "Title / 标题\nLaunch pipeline hardening for self-serve releases",
-                          "fontFamily": "Inter",
-                          "fontSize": 13,
-                          "fontWeight": "600"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "oidVg",
-                      "name": "evTimeCard",
-                      "width": "fill_container",
-                      "height": 66,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        10,
-                        12
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "BW1T5",
-                          "name": "evTimeCardText",
-                          "fill": "$text-secondary",
-                          "content": "Time Range / 时间\n2024.11 - 2025.02",
-                          "fontFamily": "Inter",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "zv29B",
-                      "name": "evRoleCard",
-                      "width": "fill_container",
-                      "height": 66,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        10,
-                        12
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "t2FOn",
-                          "name": "evRoleCardText",
-                          "fill": "$text-secondary",
-                          "content": "Role / 角色\nStaff Engineer / Workflow owner",
-                          "fontFamily": "Inter",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "Y49b6",
-                      "name": "evResultCard",
-                      "width": "fill_container",
-                      "height": 92,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        10,
-                        12
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "rd3z1",
-                          "name": "evResultCardText",
-                          "fill": "$success",
-                          "content": "Results / 成果\nCut manual release lead time by 43%, raised delivery confidence and introduced automated gates.",
-                          "fontFamily": "Inter",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "pXvpC",
-                      "name": "evStackCard",
-                      "width": "fill_container",
-                      "height": 66,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 4,
-                      "padding": [
-                        10,
-                        12
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "bw99i",
-                          "name": "evStackCardText",
-                          "fill": "$text-secondary",
-                          "content": "Stack & Tags / 技术栈\nPython · GitHub Actions · Tauri · Sidecar · Retry",
-                          "fontFamily": "Inter",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "BwiTd",
-                      "name": "evArtifactsCard",
-                      "width": "fill_container",
-                      "height": 118,
-                      "fill": "$bg-inset",
-                      "cornerRadius": 12,
-                      "layout": "vertical",
-                      "gap": 6,
-                      "padding": [
-                        10,
-                        12
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "IH6pb",
-                          "name": "evArtifactsCardText",
-                          "fill": "$text-primary",
-                          "content": "Artifacts / 附件\nrelease-loop-metrics.pdf · PDF · 1.2 MB · Preview · Delete\nrecovery-session.mp4 · MP4 · 48 MB · Preview · Re-upload",
-                          "fontFamily": "JetBrains Mono",
-                          "fontSize": 11,
-                          "fontWeight": "normal"
+                          "type": "frame",
+                          "id": "CqGNX",
+                          "name": "evDelete",
+                          "width": "fill_container",
+                          "height": 32,
+                          "cornerRadius": 8,
+                          "stroke": "$error",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "uSlUz",
+                              "name": "evDeleteText",
+                              "fill": "$error",
+                              "content": "删除证据卡",
+                              "fontFamily": "Inter",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
                         }
                       ]
                     }
@@ -4587,7 +6702,7 @@
       "type": "frame",
       "id": "FLWrf",
       "x": 0,
-      "y": 4418,
+      "y": 5108,
       "name": "Screen/Jobs",
       "width": 1440,
       "height": 1080,
@@ -5355,7 +7470,7 @@
       "type": "frame",
       "id": "ihiWw",
       "x": 0,
-      "y": 5538,
+      "y": 6228,
       "name": "Screen/Quick Run",
       "width": 1440,
       "height": 900,
@@ -5889,7 +8004,7 @@
       "type": "frame",
       "id": "ZSLCx",
       "x": 0,
-      "y": 6478,
+      "y": 7168,
       "name": "Screen/Agent Run",
       "width": 1440,
       "height": 900,
@@ -6790,7 +8905,7 @@
       "type": "frame",
       "id": "upl7d",
       "x": 0,
-      "y": 7418,
+      "y": 8108,
       "name": "Screen/Submissions",
       "width": 1440,
       "height": 900,
@@ -7731,7 +9846,7 @@
       "type": "frame",
       "id": "OGiSD",
       "x": 0,
-      "y": 8358,
+      "y": 9048,
       "name": "Screen/Policy",
       "width": 1440,
       "height": 900,
@@ -13174,7 +15289,7 @@
       "type": "frame",
       "id": "FWOoc",
       "x": 0,
-      "y": 9298,
+      "y": 9988,
       "name": "Screen/System Settings",
       "width": 1440,
       "height": 1160,
@@ -13823,6 +15938,666 @@
                       ]
                     }
                   ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "J1qI7P",
+      "x": 0,
+      "y": 4088,
+      "name": "State/Evidence 提炼抽屉",
+      "clip": true,
+      "width": 1440,
+      "height": 980,
+      "fill": "$bg-primary",
+      "cornerRadius": 24,
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
+      "layout": "none",
+      "children": [
+        {
+          "type": "frame",
+          "id": "hoGVC",
+          "x": 0,
+          "y": 0,
+          "name": "drawerNavBg",
+          "width": 264,
+          "height": 980,
+          "fill": "$sidebar-bg",
+          "layout": "vertical",
+          "gap": 10,
+          "padding": [
+            24,
+            20
+          ],
+          "children": [
+            {
+              "type": "text",
+              "id": "tTe53",
+              "name": "drawerNavBrand",
+              "fill": "$text-primary",
+              "content": "PiProofForge",
+              "fontFamily": "Inter",
+              "fontSize": 16,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "WIfZV",
+              "name": "drawerNavSub",
+              "fill": "$text-muted",
+              "content": "Autonomous job delivery cockpit",
+              "fontFamily": "Inter",
+              "fontSize": 11,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "q3wwGL",
+              "name": "drawerNav1",
+              "width": "fill_container",
+              "height": 40,
+              "cornerRadius": 8,
+              "padding": [
+                0,
+                10
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Rah2R",
+                  "name": "drawerNav1Text",
+                  "fill": "$text-secondary",
+                  "content": "Overview / 概览",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "KHKJl",
+              "name": "drawerNav2",
+              "width": "fill_container",
+              "height": 40,
+              "cornerRadius": 8,
+              "padding": [
+                0,
+                10
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Alrg1",
+                  "name": "drawerNav2Text",
+                  "fill": "$text-secondary",
+                  "content": "Resumes / 简历中心",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "A29ltI",
+              "name": "drawerNav3",
+              "width": "fill_container",
+              "height": 40,
+              "fill": "$sidebar-active",
+              "cornerRadius": 8,
+              "stroke": "$accent",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "padding": [
+                0,
+                10
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "qnyoW",
+                  "name": "drawerNav3Text",
+                  "fill": "$text-primary",
+                  "content": "Evidence / 证据卡",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "flql7",
+              "name": "drawerNav4",
+              "width": "fill_container",
+              "height": 40,
+              "cornerRadius": 8,
+              "padding": [
+                0,
+                10
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "B3CBj",
+                  "name": "drawerNav4Text",
+                  "fill": "$text-secondary",
+                  "content": "Jobs / 岗位中心",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "eJxY0",
+              "name": "drawerNav5",
+              "width": "fill_container",
+              "height": 40,
+              "cornerRadius": 8,
+              "padding": [
+                0,
+                10
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "yFFak",
+                  "name": "drawerNav5Text",
+                  "fill": "$text-secondary",
+                  "content": "Quick Run / 快速执行",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "wGUsi",
+          "x": 264,
+          "y": 0,
+          "name": "drawerMainBg",
+          "width": 1176,
+          "height": 980,
+          "layout": "vertical",
+          "gap": 18,
+          "padding": 28,
+          "children": [
+            {
+              "type": "text",
+              "id": "LbYqc",
+              "name": "drawerPageTitle",
+              "fill": "$text-primary",
+              "content": "Evidence / 证据卡",
+              "fontFamily": "Inter",
+              "fontSize": 22,
+              "fontWeight": "700"
+            },
+            {
+              "type": "frame",
+              "id": "ae8MT",
+              "name": "drawerSummaryShadow",
+              "width": "fill_container",
+              "height": 56,
+              "fill": "$bg-panel",
+              "cornerRadius": 12,
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner"
+            },
+            {
+              "type": "frame",
+              "id": "MPFoc",
+              "name": "drawerRowShadow",
+              "width": "fill_container",
+              "height": 58,
+              "fill": "$bg-panel",
+              "cornerRadius": 8
+            },
+            {
+              "type": "frame",
+              "id": "O5Xtxt",
+              "name": "drawerRowShadow",
+              "width": "fill_container",
+              "height": 58,
+              "fill": "$bg-panel",
+              "cornerRadius": 8
+            },
+            {
+              "type": "frame",
+              "id": "SH47p",
+              "name": "drawerRowShadow",
+              "width": "fill_container",
+              "height": 58,
+              "fill": "$bg-panel",
+              "cornerRadius": 8
+            },
+            {
+              "type": "frame",
+              "id": "P1p6e",
+              "name": "drawerRowShadow",
+              "width": "fill_container",
+              "height": 58,
+              "fill": "$bg-panel",
+              "cornerRadius": 8
+            },
+            {
+              "type": "frame",
+              "id": "cgHvS",
+              "name": "drawerRowShadow",
+              "width": "fill_container",
+              "height": 58,
+              "fill": "$bg-panel",
+              "cornerRadius": 8
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "cv4Hv",
+          "x": 0,
+          "y": 0,
+          "name": "drawerDim",
+          "opacity": 0.62,
+          "width": 1440,
+          "height": 980,
+          "fill": "#05080F"
+        },
+        {
+          "type": "frame",
+          "id": "PPM8x",
+          "x": 880,
+          "y": 0,
+          "name": "evDistillDrawer",
+          "width": 560,
+          "height": 980,
+          "fill": "$bg-panel",
+          "stroke": "$border",
+          "strokeWidth": 1,
+          "strokeAlignment": "inner",
+          "layout": "vertical",
+          "gap": 14,
+          "padding": [
+            20,
+            22
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "AOdsl",
+              "name": "evDrawerHead",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "BbVY2",
+                  "name": "evDrawerTitleWrap",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "CZ2KR",
+                      "name": "evDrawerTitle",
+                      "fill": "$text-primary",
+                      "content": "从材料提炼",
+                      "fontFamily": "Inter",
+                      "fontSize": 18,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "mc9PF",
+                      "name": "evDrawerSub",
+                      "fill": "$text-secondary",
+                      "content": "选择材料与原文片段，生成可审核的证据草稿；不直接写入候选池。",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "tCIWB",
+                  "name": "evDrawerClose",
+                  "width": 30,
+                  "height": 30,
+                  "cornerRadius": 8,
+                  "stroke": "$border-light",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "k1EoT",
+                      "name": "evDrawerCloseIcon",
+                      "width": 14,
+                      "height": 14,
+                      "icon": "x",
+                      "library": "lucide",
+                      "fill": "$text-secondary"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XDQvV",
+              "name": "evDrawerDivider",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$border-light"
+            },
+            {
+              "type": "text",
+              "id": "aer05",
+              "name": "evStepMaterial",
+              "fill": "$text-muted",
+              "content": "1 选择材料",
+              "fontFamily": "Inter",
+              "fontSize": 11,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "JmCIs",
+              "name": "evMaterialRow",
+              "width": "fill_container",
+              "height": 38,
+              "fill": "$bg-primary",
+              "cornerRadius": 8,
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "padding": [
+                0,
+                10
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "lfE7F",
+                  "name": "evMaterialText",
+                  "fill": "$text-primary",
+                  "content": "EC+ 工作日志 · 2023-03 周报",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "icon",
+                  "id": "bGyQT",
+                  "name": "evMaterialChevron",
+                  "width": 12,
+                  "height": 12,
+                  "icon": "chevron-down",
+                  "library": "lucide",
+                  "fill": "$text-muted"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "Nr4nT",
+              "name": "evStepSegment",
+              "fill": "$text-muted",
+              "content": "2 选择原文片段",
+              "fontFamily": "Inter",
+              "fontSize": 11,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "sVnw7",
+              "name": "evSegmentRow",
+              "width": "fill_container",
+              "height": 44,
+              "fill": "$bg-primary",
+              "cornerRadius": 8,
+              "stroke": "$border-light",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "padding": [
+                0,
+                10
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "CjVIl",
+                  "name": "evSegmentLeft",
+                  "layout": "vertical",
+                  "gap": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "IkdiL",
+                      "name": "evSegmentName",
+                      "fill": "$text-primary",
+                      "content": "2023-03-06.md",
+                      "fontFamily": "Inter",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "PkZJg",
+                      "name": "evSegmentMeta",
+                      "fill": "$text-muted",
+                      "content": "2,480 字 · 完整拆段",
+                      "fontFamily": "Inter",
+                      "fontSize": 9,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "icon",
+                  "id": "CONNV",
+                  "name": "evSegmentChevron",
+                  "width": 12,
+                  "height": 12,
+                  "icon": "chevron-down",
+                  "library": "lucide",
+                  "fill": "$text-muted"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Xnvi0",
+              "name": "evPreviewFold",
+              "width": "fill_container",
+              "fill": "$bg-inset",
+              "cornerRadius": 8,
+              "layout": "vertical",
+              "gap": 6,
+              "padding": [
+                10,
+                12
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "evIBb",
+                  "name": "evPreviewHead",
+                  "width": "fill_container",
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "JInuM",
+                      "name": "evPreviewTitle",
+                      "fill": "$text-secondary",
+                      "content": "原文预览",
+                      "fontFamily": "Inter",
+                      "fontSize": 10,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "icon",
+                      "id": "KFivh",
+                      "name": "evPreviewChevron",
+                      "width": 12,
+                      "height": 12,
+                      "icon": "chevron-up",
+                      "library": "lucide",
+                      "fill": "$text-muted"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "G6yQcG",
+                  "name": "evPreviewLine1",
+                  "fill": "$text-secondary",
+                  "content": "## 2023-03-06 会员活动链路改造周报",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "YQRSn",
+                  "name": "evPreviewLine2",
+                  "fill": "$text-secondary",
+                  "content": "本周我负责统一活动报名入口，推动报名状态聚合……",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "OxeDA",
+                  "name": "evPreviewLine3",
+                  "fill": "$text-secondary",
+                  "content": "报名转化率提升约两成，活动配置耗时从 2 天缩短到 4 小时。",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "xtEDT",
+              "name": "evStepHint",
+              "fill": "$text-muted",
+              "content": "长文按段落完整拆分，每段最多 24000 字符；目录/规则/模板文件不进入默认候选。",
+              "fontFamily": "Inter",
+              "fontSize": 10,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "UtsDi",
+              "name": "evDrawerActions",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "id": "Qq0hG",
+                  "type": "ref",
+                  "ref": "tBGQE",
+                  "name": "evManualDraft",
+                  "width": 140,
+                  "descendants": {
+                    "0wv8M": {
+                      "icon": "pencil-line"
+                    },
+                    "fkAZC": {
+                      "content": "手动整理证据"
+                    }
+                  }
+                },
+                {
+                  "id": "L07cn",
+                  "type": "ref",
+                  "ref": "xWWct",
+                  "name": "evExtract",
+                  "width": 104,
+                  "descendants": {
+                    "swaWw": {
+                      "icon": "sparkles"
+                    },
+                    "yG3EI": {
+                      "content": "提炼"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "YH1cO",
+              "name": "evDrawerSpacer",
+              "width": "fill_container",
+              "height": "fill_container"
+            },
+            {
+              "type": "frame",
+              "id": "CJxRi",
+              "name": "evDrawerDivider2",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "$border-light"
+            },
+            {
+              "type": "frame",
+              "id": "bX7S0",
+              "name": "evDrawerFooter",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 3,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "rSIrv",
+                  "name": "evDrawerFooterText",
+                  "fill": "$text-secondary",
+                  "content": "引用外部目录已移到 系统设置 → 材料来源",
+                  "fontFamily": "Inter",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "HxhkC",
+                  "name": "evDrawerFooterLink",
+                  "fill": "$accent",
+                  "content": "打开系统设置 · 材料来源 →",
+                  "fontFamily": "Inter",
+                  "fontSize": 10,
+                  "fontWeight": "600"
                 }
               ]
             }

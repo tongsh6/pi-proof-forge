@@ -29,6 +29,9 @@ export interface EvidenceListItem {
   score: number;
   status: string;
   updated_at: string;
+  time_range_level?: string;
+  role_scope_level?: string;
+  source_document_count?: number;
 }
 
 export interface EvidenceFilters {

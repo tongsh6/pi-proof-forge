@@ -16,7 +16,12 @@ def test_evidence_page_matches_product_card_contract():
     api_source = API_FILE.read_text(encoding="utf-8")
 
     for marker in (
-        "evidenceStats",
+        "evidence-summary",
+        "evidence-summary-counts",
+        "evidence-open-drawer",
+        "evidence-drawer",
+        "evidence-diagnosis",
+        "evidence-delete",
         "EvidenceImportMode",
         "listEvidence(evidenceFilters",
         "importEvidence",
@@ -34,6 +39,9 @@ def test_evidence_page_matches_product_card_contract():
         "pages.evidence.review.title",
     ):
         assert marker in source
+
+    for removed in ("evidence-material-fold", "evidence-reconcile-fold", "evidence-reconcile-list", "evidence-relation-hint", "evidence-reconcile-preview", "evidence-reconcile-view"):
+        assert removed not in source, removed
 
     assert "evidence.import" in api_source
     assert "evidence.listMaterialSources" in api_source

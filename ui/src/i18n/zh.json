@@ -369,12 +369,42 @@
     "evidence": {
       "title": "证据卡",
       "subtitle": "从工作材料中提炼可核实的经历与成果，作为简历内容的事实来源。",
-      "relationHint": "页面分三层：材料来源登记可引用的材料 → 材料对账只读检查证据卡与材料是否对得上 → 证据卡列表/详情维护字段与来源。对账里「查看」会在本行就地展开只读摘要，「打开完整详情」才进入下方编辑区。",
+      "summary": {
+        "title": "对账汇总与筛选",
+        "all": "全部",
+        "untraceable": "不可追溯",
+        "missingTime": "缺时间",
+        "duplicate": "疑似重复",
+        "inference": "待确认推断",
+        "needsFill": "值得补",
+        "triaged": "已分流",
+        "filterLabel": "问题筛选",
+        "running": "正在对账…",
+        "hint": "对账只读；列表问题标签与筛选来自最近一次对账结果。",
+        "tags": {
+          "untraceable": "不可追溯",
+          "missing_time": "缺时间",
+          "duplicate": "重复",
+          "inference": "待确认",
+          "needs_fill": "值得补",
+          "triaged": "已分流"
+        }
+      },
+      "emptyState": {
+        "title": "还没有证据卡",
+        "body": "从工作材料提炼第一张证据卡，或先新增一张空白卡，再补字段与来源。",
+        "uploadMaterial": "去简历中心上传材料"
+      },
+      "diagnosis": {
+        "title": "对账发现",
+        "hint": "只读诊断，不自动改卡"
+      },
       "listTitle": "证据列表",
       "listCount": "已加载 {{count}} 张证据卡",
       "artifactFallback": "附件",
       "actions": {
         "new": "新增",
+        "distill": "从材料提炼",
         "import": "导入",
         "refresh": "刷新",
         "apply": "应用",
@@ -436,7 +466,8 @@
         "stackTags": "技术栈与标签",
         "tags": "标签",
         "artifacts": "附件",
-        "sourceMaterials": "来源材料"
+        "sourceMaterials": "来源材料",
+        "sourceCount": "来源"
       },
       "artifacts": {
         "title": "附件",
@@ -456,6 +487,9 @@
         "count": "{{count}} 份可用于提炼证据的材料",
         "source": "来自简历中心",
         "empty": "暂无材料来源。请先在简历中心上传 Markdown 或文本工作材料。",
+        "segmentHint": "长文按段落完整拆分，每段最多 24000 字符；目录/规则/模板文件不进入默认候选。",
+        "referenceMoved": "引用外部目录已移到系统设置 → 材料来源。",
+        "referenceLink": "打开系统设置 · 材料来源 →",
         "noPreview": "暂无预览。",
         "selectPlaceholder": "选择 Markdown 材料",
         "select": "选择材料",
@@ -491,7 +525,8 @@
         "eligible": "成果和材料附件引用已完整。"
       },
       "empty": {
-        "list": "暂无证据卡。可以新增空白卡，或导入文件创建证据卡。"
+        "list": "暂无证据卡。可以新增空白卡，或导入文件创建证据卡。",
+        "filtered": "当前筛选下没有证据卡。"
       },
       "errors": {
         "titleRequired": "请填写标题。",
@@ -501,9 +536,7 @@
       },
       "reconcile": {
         "title": "材料对账",
-        "hint": "展开后检查每张卡的结果是否能在材料里逐字找到、缺什么、是否重复",
         "summaryLine": "可用 {{eligible}} · 待补 {{incomplete}} · 未入池 {{legacy}} · 结果不可追溯 {{untraceable}} · 缺时间 {{missingTime}} · 疑似重复 {{duplicates}}",
-        "scope": "只读检查，不改动任何卡；「查看」在本行就地展开只读摘要，「打开完整详情」进入下方编辑区修改后保存。",
         "run": "重新对账",
       "inference": {
         "run": "推断缺失字段",
@@ -525,8 +558,6 @@
         "showLow": "显示低置信候选（{{count}}）",
         "hideLow": "收起低置信候选"
       },
-        "view": "查看",
-        "hidePreview": "收起",
         "preview": {
           "title": "证据卡摘要（只读）",
           "close": "收起",
@@ -582,9 +613,7 @@
           "not_for_display": "不参与展示",
           "duplicate": "与 {{id}} 重复",
           "stale": "卡片已变化，之前的分流判断失效，请重新选择",
-          "summary": "值得补 {{needsFill}} · 已分流 {{out}} · 未分流 {{untriaged}}",
-          "showOut": "显示已分流的 {{count}} 张",
-          "hideOut": "收起已分流的卡"
+          "summary": "值得补 {{needsFill}} · 已分流 {{out}} · 未分流 {{untriaged}}"
         }
       }
     },

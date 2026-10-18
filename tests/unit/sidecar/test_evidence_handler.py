@@ -1151,3 +1151,34 @@ class EvidenceDeleteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EvidenceListProvenanceTests(unittest.TestCase):
+    @patch("tools.sidecar.handlers.evidence._load_evidence_cards")
+    def test_list_exposes_levels_and_source_document_count(self, mock_load: Any) -> None:
+        mock_load.return_value = [
+            {
+                "evidence_id": "ec-2026-002",
+                "title": "Member center",
+                "time_range": "2023-03 ~ 2023-08",
+                "role_scope": "负责人",
+                "score": 0,
+                "status": "saved_incomplete",
+                "candidate_pool_eligible": False,
+                "updated_at": "2026-03-07T10:00:00Z",
+                "time_range_level": "L3",
+                "role_scope_level": "L3",
+                "source_document_count": 2,
+            }
+        ]
+        result = handle_evidence_list({
+            "meta": {"correlation_id": "corr_002"},
+            "cursor": None,
+            "page_size": 20,
+            "sort": {"field": "updated_at", "order": "desc"},
+            "filters": {},
+        })
+        item = result["items"][0]
+        self.assertEqual(item["time_range_level"], "L3")
+        self.assertEqual(item["role_scope_level"], "L3")
+        self.assertEqual(item["source_document_count"], 2)

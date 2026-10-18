@@ -369,12 +369,42 @@
     "evidence": {
       "title": "Evidence",
       "subtitle": "Distill verifiable experience and results from your materials; every resume line traces back here.",
-      "relationHint": "Three layers: material sources register referenced materials → reconciliation checks cards against those materials read-only → evidence list/detail maintains fields and sources. In reconciliation, View expands a read-only summary in place; Open full detail jumps to the editor below.",
+      "summary": {
+        "title": "Reconcile summary & filters",
+        "all": "All",
+        "untraceable": "Untraceable",
+        "missingTime": "Missing time",
+        "duplicate": "Duplicates",
+        "inference": "Pending inference",
+        "needsFill": "Needs fill",
+        "triaged": "Triaged",
+        "filterLabel": "Problem filter",
+        "running": "Reconciling…",
+        "hint": "Reconciliation is read-only; list problem tags and filters come from the latest run.",
+        "tags": {
+          "untraceable": "Untraceable",
+          "missing_time": "Missing time",
+          "duplicate": "Duplicate",
+          "inference": "Pending",
+          "needs_fill": "Needs fill",
+          "triaged": "Triaged"
+        }
+      },
+      "emptyState": {
+        "title": "No evidence cards yet",
+        "body": "Distill the first card from your materials, or add a blank card and fill in fields and sources.",
+        "uploadMaterial": "Upload materials in Resumes"
+      },
+      "diagnosis": {
+        "title": "Reconciliation findings",
+        "hint": "Read-only diagnosis; cards are never changed automatically"
+      },
       "listTitle": "Evidence cards",
       "listCount": "{{count}} cards loaded",
       "artifactFallback": "Artifact",
       "actions": {
         "new": "New Card",
+        "distill": "Distill from materials",
         "import": "Import",
         "refresh": "Refresh",
         "apply": "Apply",
@@ -436,7 +466,8 @@
         "stackTags": "Stack & Tags",
         "tags": "Tags",
         "artifacts": "Artifacts",
-        "sourceMaterials": "Source materials"
+        "sourceMaterials": "Source materials",
+        "sourceCount": "Sources"
       },
       "artifacts": {
         "title": "Artifacts",
@@ -456,6 +487,9 @@
         "count": "{{count}} materials available for evidence extraction",
         "source": "From Resumes",
         "empty": "No material sources yet. Upload Markdown or text work materials from Resumes first.",
+        "segmentHint": "Long documents are split at paragraph boundaries, up to 24,000 characters per segment; folder/rule/template files are excluded from candidates.",
+        "referenceMoved": "Referenced folders moved to System Settings → Material sources.",
+        "referenceLink": "Open System Settings · Material sources →",
         "noPreview": "No preview available.",
         "selectPlaceholder": "Select Markdown material",
         "select": "Select material",
@@ -491,7 +525,8 @@
         "eligible": "Results and source artifact references are complete."
       },
       "empty": {
-        "list": "No evidence cards yet. Create a blank card or import a source file."
+        "list": "No evidence cards yet. Create a blank card or import a source file.",
+        "filtered": "No evidence cards match the current filter."
       },
       "errors": {
         "titleRequired": "Title is required.",
@@ -501,9 +536,7 @@
       },
       "reconcile": {
         "title": "Material reconciliation",
-        "hint": "Expand to check whether each card's results appear verbatim in the materials, what is missing and possible duplicates",
         "summaryLine": "Eligible {{eligible}} · Incomplete {{incomplete}} · Not pooled {{legacy}} · Untraceable results {{untraceable}} · Missing time {{missingTime}} · Possible duplicates {{duplicates}}",
-        "scope": "Read-only check; nothing is changed. View expands a read-only summary in place; Open full detail jumps to the editor below.",
         "run": "Re-run reconciliation",
         "inference": {
           "run": "Infer missing fields",
@@ -525,8 +558,6 @@
           "showLow": "Show low-confidence candidates ({{count}})",
           "hideLow": "Hide low-confidence candidates"
         },
-        "view": "View",
-        "hidePreview": "Hide",
         "preview": {
           "title": "Evidence card summary (read-only)",
           "close": "Hide",
@@ -582,9 +613,7 @@
           "not_for_display": "Not for display",
           "duplicate": "Duplicate of {{id}}",
           "stale": "Card changed; previous triage is stale, choose again",
-          "summary": "worth filling {{needsFill}} · triaged out {{out}} · untriaged {{untriaged}}",
-          "showOut": "Show {{count}} triaged-out cards",
-          "hideOut": "Hide triaged-out cards"
+          "summary": "worth filling {{needsFill}} · triaged out {{out}} · untriaged {{untriaged}}"
         }
       }
     },

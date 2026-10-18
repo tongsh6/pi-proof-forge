@@ -20,9 +20,15 @@ import { getErrorMessage } from "@/lib/errors";
 import { confirmAction, notify } from "@/lib/ui";
 import {
   checkLlmConnection,
+  checkMaterialReference,
+  createMaterialReference,
   getLiepinResume,
   getSettings,
+  listEvidenceMaterialSources,
   openLiepinAuthorization,
+  refreshMaterialReference,
+  removeMaterialReference,
+  scanMaterialReference,
   updateLiepinCredential,
   updateEvidenceInferenceSetting,
   updateLlmConfig,
@@ -31,6 +37,8 @@ import {
 import type {
   ChannelConfig,
   LiepinAuthState,
+  MaterialReferenceScanResult,
+  MaterialSourceItem,
   LlmConfig,
   LlmConnectionCheckResult,
   SettingsGetResult,
@@ -336,6 +344,15 @@ export function SystemSettingsPage() {
   const [rootsBusy, setRootsBusy] = useState(false);
   const [inferenceToggleBusy, setInferenceToggleBusy] = useState(false);
   const [rootsError, setRootsError] = useState("");
+  const [referencedItems, setReferencedItems] = useState<MaterialSourceItem[]>([]);
+  const [referencesLoading, setReferencesLoading] = useState(false);
+  const [referenceRootId, setReferenceRootId] = useState("");
+  const [referenceRelpath, setReferenceRelpath] = useState("");
+  const [referenceLabel, setReferenceLabel] = useState("");
+  const [referenceScan, setReferenceScan] = useState<MaterialReferenceScanResult | null>(null);
+  const [referenceBusy, setReferenceBusy] = useState(false);
+  const [referenceError, setReferenceError] = useState("");
+  const [referenceStatus, setReferenceStatus] = useState<Record<string, string>>({});
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
@@ -394,6 +411,113 @@ export function SystemSettingsPage() {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  const loadReferencedItems = useCallback(async () => {
+    setReferencesLoading(true);
+    try {
+      const result = await listEvidenceMaterialSources();
+      setReferencedItems(result.items.filter((item) => item.source_mode === "referenced"));
+    } catch (reason) {
+      setReferenceError(getErrorMessage(reason));
+    } finally {
+      setReferencesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== "materialSources") return;
+    void loadReferencedItems();
+  }, [activeSection, loadReferencedItems]);
+
+  useEffect(() => {
+    const roots = settings?.material_source_roots ?? [];
+    if (!referenceRootId && roots.length > 0) setReferenceRootId(roots[0].id);
+  }, [referenceRootId, settings]);
+
+  const handleReferenceScan = useCallback(async () => {
+    setReferenceBusy(true);
+    setReferenceError("");
+    setReferenceScan(null);
+    try {
+      setReferenceScan(await scanMaterialReference(referenceRootId, referenceRelpath.trim()));
+    } catch (reason) {
+      setReferenceError(getErrorMessage(reason));
+    } finally {
+      setReferenceBusy(false);
+    }
+  }, [referenceRelpath, referenceRootId]);
+
+  const handleReferenceCreate = useCallback(async () => {
+    if (!referenceScan || !referenceLabel.trim()) return;
+    setReferenceBusy(true);
+    setReferenceError("");
+    try {
+      await createMaterialReference(referenceRootId, referenceRelpath.trim(), referenceLabel.trim());
+      setReferenceScan(null);
+      setReferenceRelpath("");
+      setReferenceLabel("");
+      await loadReferencedItems();
+      notify("success", t("toasts.evidence.materialReferenced"));
+    } catch (reason) {
+      setReferenceError(getErrorMessage(reason));
+    } finally {
+      setReferenceBusy(false);
+    }
+  }, [loadReferencedItems, referenceLabel, referenceRelpath, referenceRootId, referenceScan, t]);
+
+  const handleReferenceCheck = useCallback(async (materialId: string) => {
+    try {
+      const result = await checkMaterialReference(materialId);
+      setReferenceStatus((current) => ({
+        ...current,
+        [materialId]: result.status === "ok"
+          ? t("pages.evidence.materialSources.referenceStatusOk")
+          : t("pages.evidence.materialSources.referenceStatusChanged", {
+              changed: result.changed.length, missing: result.missing.length, added: result.added.length,
+            }),
+      }));
+    } catch (reason) {
+      notify("error", getErrorMessage(reason));
+    }
+  }, [t]);
+
+  const handleReferenceRefresh = useCallback(async (materialId: string) => {
+    const approved = await confirmAction({
+      title: t("pages.evidence.materialSources.referenceRefresh"),
+      description: t("pages.evidence.materialSources.referenceRefreshConfirm"),
+      confirmLabel: t("common.confirm"),
+    });
+    if (!approved) return;
+    try {
+      await refreshMaterialReference(materialId);
+      await loadReferencedItems();
+      setReferenceStatus((current) => {
+        const next = { ...current };
+        delete next[materialId];
+        return next;
+      });
+      notify("success", t("toasts.evidence.materialRefreshed"));
+    } catch (reason) {
+      notify("error", getErrorMessage(reason));
+    }
+  }, [loadReferencedItems, t]);
+
+  const handleReferenceRemove = useCallback(async (materialId: string) => {
+    const approved = await confirmAction({
+      title: t("pages.evidence.materialSources.referenceRemove"),
+      description: t("pages.evidence.materialSources.referenceRemoveConfirm"),
+      confirmLabel: t("common.confirm"),
+      tone: "danger",
+    });
+    if (!approved) return;
+    try {
+      await removeMaterialReference(materialId);
+      await loadReferencedItems();
+      notify("success", t("toasts.evidence.materialReferenceRemoved"));
+    } catch (reason) {
+      notify("error", getErrorMessage(reason));
+    }
+  }, [loadReferencedItems, t]);
 
   const handleAddRoot = useCallback(async () => {
     if (!settings || !newRootPath.trim()) return;
@@ -895,6 +1019,114 @@ export function SystemSettingsPage() {
                   >
                     {t("pages.systemSettings.materialSources.add")}
                   </button>
+                </div>
+
+                <div className="space-y-3 rounded-card border border-border p-4" data-testid="material-reference-card">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-primary">{t("pages.evidence.materialSources.referenceOpen")}</h3>
+                    <p className="mt-1 text-xs text-text-secondary">{t("pages.evidence.materialSources.stepsHint")}</p>
+                  </div>
+                  {(settings.material_source_roots ?? []).length === 0 ? (
+                    <p className="text-sm text-warning">{t("pages.evidence.materialSources.referenceNoRoots")}</p>
+                  ) : (
+                    <>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="block text-sm text-text-primary">
+                          {t("pages.evidence.materialSources.referenceRoot")}
+                          <select
+                            className="mt-2 w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                            data-testid="material-reference-root"
+                            onChange={(event) => { setReferenceRootId(event.target.value); setReferenceScan(null); }}
+                            value={referenceRootId}
+                          >
+                            {(settings.material_source_roots ?? []).map((root) => (
+                              <option key={root.id} value={root.id}>{root.label} · {root.path}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block text-sm text-text-primary">
+                          {t("pages.evidence.materialSources.referenceRelpath")}
+                          <input
+                            className="mt-2 w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                            data-testid="material-reference-relpath"
+                            disabled={referenceBusy}
+                            onChange={(event) => { setReferenceRelpath(event.target.value); setReferenceScan(null); }}
+                            placeholder="worklog/2023-03.md"
+                            value={referenceRelpath}
+                          />
+                        </label>
+                      </div>
+                      <button
+                        className="rounded-card border border-accent px-3 py-2 text-sm text-accent disabled:opacity-50"
+                        data-testid="material-reference-scan"
+                        disabled={referenceBusy || !referenceRootId || !referenceRelpath.trim()}
+                        onClick={() => void handleReferenceScan()}
+                        type="button"
+                      >
+                        {referenceBusy ? t("pages.evidence.materialSources.referenceScanning") : t("pages.evidence.materialSources.referenceScan")}
+                      </button>
+                      {referenceScan ? (
+                        <div className="space-y-2 rounded-card border border-border bg-bg-primary/60 p-3">
+                          <p className="text-sm text-text-primary">{t("pages.evidence.materialSources.referencePreview", { count: referenceScan.file_count, bytes: referenceScan.total_bytes })}</p>
+                          {referenceScan.skipped_count > 0 ? (
+                            <p className="text-xs text-warning">{t("pages.evidence.materialSources.referenceSkipped", { count: referenceScan.skipped_count })}</p>
+                          ) : null}
+                          {referenceScan.existing_materials.length > 0 ? (
+                            <p className="text-xs text-warning">{t("pages.evidence.materialSources.referenceExisting")}</p>
+                          ) : null}
+                          <label className="block text-sm text-text-primary">
+                            {t("pages.evidence.materialSources.referenceLabel")}
+                            <input
+                              className="mt-1 w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                              data-testid="material-reference-label"
+                              disabled={referenceBusy}
+                              onChange={(event) => setReferenceLabel(event.target.value)}
+                              value={referenceLabel}
+                            />
+                          </label>
+                          <button
+                            className="rounded-card border border-accent bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                            data-testid="material-reference-create"
+                            disabled={referenceBusy || !referenceLabel.trim() || referenceScan.existing_materials.length > 0}
+                            onClick={() => void handleReferenceCreate()}
+                            type="button"
+                          >
+                            {referenceBusy ? t("pages.evidence.materialSources.referenceCreating") : t("pages.evidence.materialSources.referenceCreate")}
+                          </button>
+                        </div>
+                      ) : null}
+                      {referenceError ? <p className="text-sm text-error" role="alert">{referenceError}</p> : null}
+                    </>
+                  )}
+                  {referencesLoading ? <p className="text-sm text-text-secondary">{t("common.loading")}</p> : null}
+                  {referencedItems.length > 0 ? (
+                    <ul className="divide-y divide-border" data-testid="material-reference-list">
+                      {referencedItems.map((item) => (
+                        <li className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm" key={item.material_id}>
+                          <span className="min-w-0">
+                            <span className="text-text-primary">{item.label || item.filename}</span>
+                            <span className="ml-2 text-xs text-text-muted">
+                              {t("pages.evidence.materialSources.referenceBadge", { count: Number(item.file_count) || 0 })}
+                            </span>
+                          </span>
+                          <span className="flex shrink-0 gap-2 text-xs">
+                            <button className="text-accent underline" data-testid="material-reference-check" onClick={() => void handleReferenceCheck(item.material_id)} type="button">
+                              {t("pages.evidence.materialSources.referenceCheck")}
+                            </button>
+                            <button className="text-accent underline" data-testid="material-reference-refresh" onClick={() => void handleReferenceRefresh(item.material_id)} type="button">
+                              {t("pages.evidence.materialSources.referenceRefresh")}
+                            </button>
+                            <button className="text-error underline" data-testid="material-reference-remove" onClick={() => void handleReferenceRemove(item.material_id)} type="button">
+                              {t("pages.evidence.materialSources.referenceRemove")}
+                            </button>
+                          </span>
+                          {referenceStatus[item.material_id] ? (
+                            <p className="w-full text-xs text-text-muted">{referenceStatus[item.material_id]}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               </div>
             ) : activeSection === "evidenceInference" ? (

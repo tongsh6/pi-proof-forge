@@ -3,7 +3,7 @@ import { EvidenceSourceMerge } from "./source-merge-panel";
 import type { MaterialDocumentRef } from "@/lib/sidecar/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Save as SaveIcon } from "lucide-react";
 import {
   FileUp,
@@ -14,27 +14,22 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import { confirmAction, notify } from "@/lib/ui";
 import {
   confirmEvidenceInference,
   createEvidence,
-  createMaterialReference,
-  checkMaterialReference,
   deleteEvidence,
   generateEvidenceDraft,
   getEvidence,
-  getSettings,
   importEvidence,
   inferEvidenceFields,
   listEvidenceMaterialSources,
   listEvidence,
   reconcileEvidence,
-  refreshMaterialReference,
-  removeMaterialReference,
   saveEvidenceDraft,
-  scanMaterialReference,
   setEvidenceTriage,
   updateEvidence,
 } from "@/lib/sidecar/api";
@@ -49,14 +44,15 @@ import type {
   EvidenceReconcileItem,
   EvidenceReconcileResult,
   EvidenceTriageDecision,
-  MaterialReferenceScanResult,
   MaterialSourceItem,
-  MaterialSourceRoot,
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
 type SaveState = "idle" | "saving" | "saved";
 type EvidenceImportMode = "create" | "append" | "replace";
+type ProblemFilter =
+  | "all" | "eligible" | "incomplete" | "legacy" | "untraceable"
+  | "missing_time" | "duplicate" | "inference" | "needs_fill" | "triaged";
 
 type EvidenceForm = {
   title: string;
@@ -128,26 +124,15 @@ function statusTone(status: string): string {
   return "border-accent/40 bg-accent/10 text-accent";
 }
 
-function selectedArtifactCount(detail: EvidenceDetail | null): number {
-  return detail?.artifacts.length ?? 0;
-}
 
 export function EvidencePage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // 允许从总览等页面带 ?status=gap 直接进入已筛选列表。
   const initialStatus = searchParams.get("status") ?? "";
   const [items, setItems] = useState<EvidenceListItem[]>([]);
   const [materialSources, setMaterialSources] = useState<MaterialSourceItem[]>([]);
-  const [materialRoots, setMaterialRoots] = useState<MaterialSourceRoot[]>([]);
-  const [referenceOpen, setReferenceOpen] = useState(false);
-  const [referenceRootId, setReferenceRootId] = useState("");
-  const [referenceRelpath, setReferenceRelpath] = useState("");
-  const [referenceLabel, setReferenceLabel] = useState("");
-  const [referenceScan, setReferenceScan] = useState<MaterialReferenceScanResult | null>(null);
-  const [referenceBusy, setReferenceBusy] = useState(false);
-  const [referenceError, setReferenceError] = useState("");
-  const [referenceStatus, setReferenceStatus] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EvidenceDetail | null>(null);
   const [form, setForm] = useState<EvidenceForm>(() => toForm(null));
@@ -180,19 +165,6 @@ export function EvidencePage() {
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
-
-  const evidenceStats = useMemo(
-    () => ({
-      total: items.length,
-      ready: items.filter((item) => item.candidate_pool_eligible === true)
-        .length,
-      gaps: items.filter(
-        (item) => item.status === "gap" || item.status === "needs_review"
-      ).length,
-      artifacts: generatedDraft?.artifacts.length ?? selectedArtifactCount(detail),
-    }),
-    [detail, generatedDraft, items]
-  );
 
   const isBusy =
     saveState === "saving" ||
@@ -234,55 +206,6 @@ export function EvidencePage() {
       return null;
     }
   }, []);
-
-  const focusDetailPanel = useCallback(() => {
-    // Tauri/Vite 渲染层：对账列表在详情面板上方，点击“查看”后需要把右侧详情滚入视口，
-    // 否则在长列表下用户看不到任何变化（看起来像按钮无响应）。
-    if (typeof document === "undefined") return;
-    const panel = document.querySelector<HTMLElement>('[data-testid="evidence-detail-panel"]');
-    panel?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-  }, []);
-
-  const [previewId, setPreviewId] = useState<string | null>(null);
-  const [previewDetail, setPreviewDetail] = useState<EvidenceDetail | null>(null);
-  const [previewState, setPreviewState] = useState<"idle" | "loading" | "error">("idle");
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const previewIdRef = useRef<string | null>(null);
-  const toggleReconcilePreview = useCallback(async (item: EvidenceReconcileItem) => {
-    // 对账行“查看”就地展开只读摘要：数据出现在点击位置，避免用户以为没有响应。
-    if (previewIdRef.current === item.evidence_id) {
-      previewIdRef.current = null;
-      setPreviewId(null);
-      setPreviewDetail(null);
-      setPreviewState("idle");
-      setPreviewError(null);
-      return;
-    }
-    previewIdRef.current = item.evidence_id;
-    setPreviewId(item.evidence_id);
-    setPreviewDetail(null);
-    setPreviewState("loading");
-    setPreviewError(null);
-    try {
-      const result = await getEvidence(item.evidence_id);
-      if (previewIdRef.current !== item.evidence_id) return;
-      setPreviewDetail(result.evidence);
-      setPreviewState("idle");
-    } catch (reason) {
-      if (previewIdRef.current !== item.evidence_id) return;
-      setPreviewState("error");
-      setPreviewError(getErrorMessage(reason));
-    }
-  }, []);
-  const handleReconcileOpenFull = useCallback(async (item: EvidenceReconcileItem) => {
-    previewIdRef.current = null;
-    setPreviewId(null);
-    setPreviewDetail(null);
-    setPreviewState("idle");
-    setPreviewError(null);
-    const loaded = await loadDetail(item.evidence_id);
-    if (loaded) focusDetailPanel();
-  }, [focusDetailPanel, loadDetail]);
 
   const hasLoadedRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -383,66 +306,73 @@ export function EvidencePage() {
     }
   }, [inference, reconcile, runInference, runReconcile, t]);
 
-  const referencedSources = useMemo(
-    () => materialSources.filter((source) => source.source_mode === "referenced"),
-    [materialSources],
+  const [problemFilter, setProblemFilter] = useState<ProblemFilter>("all");
+  const [materialDrawerOpen, setMaterialDrawerOpen] = useState(false);
+  const reconcileItemByCard = useMemo(
+    () => new Map((reconcile?.items ?? []).map((item) => [item.evidence_id, item])),
+    [reconcile],
   );
-
-  const openReferencePanel = useCallback(async () => {
-    setReferenceOpen(true);
-    setReferenceError("");
-    try {
-      const settings = await getSettings();
-      const roots = settings.material_source_roots ?? [];
-      setMaterialRoots(roots);
-      setReferenceRootId((current) => (roots.some((root) => root.id === current) ? current : (roots[0]?.id ?? "")));
-    } catch (reason) {
-      setReferenceError(getErrorMessage(reason));
+  const problemTagsFor = useCallback((evidenceId: string): string[] => {
+    const tags: string[] = [];
+    const item = reconcileItemByCard.get(evidenceId);
+    if (item) {
+      if (item.untraceable_results.length > 0) tags.push("untraceable");
+      if (item.missing_fields.includes("time_range")) tags.push("missing_time");
+      if (item.possible_duplicates.length > 0) tags.push("duplicate");
+      if (item.triage && !item.triage.stale) tags.push(item.triage.decision === "needs_fill" ? "needs_fill" : "triaged");
     }
-  }, []);
+    if ((inferenceByCard.get(evidenceId)?.candidates ?? []).length > 0) tags.push("inference");
+    return tags;
+  }, [inferenceByCard, reconcileItemByCard]);
+  useEffect(() => {
+    if (loadState !== "ready" || reconcile || reconcileState === "running") return;
+    void runReconcile();
+  }, [loadState, reconcile, reconcileState, runReconcile]);
+  useEffect(() => {
+    if (!materialDrawerOpen || typeof window === "undefined") return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMaterialDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [materialDrawerOpen]);
+  const hasHighConfidenceCandidates = (inference?.cards ?? []).some(
+    (card) => card.candidates.some((candidate) => (candidate.confidence ?? 0) >= 0.5),
+  );
+  const summaryCounts = useMemo<{ key: ProblemFilter; label: string; count: number }[]>(() => {
+    const summary = reconcile?.summary;
+    return [
+      { key: "all", label: t("pages.evidence.summary.all"), count: summary?.total ?? items.length },
+      { key: "eligible", label: t("pages.evidence.reconcile.pool.eligible"), count: summary?.eligible ?? 0 },
+      { key: "incomplete", label: t("pages.evidence.reconcile.pool.incomplete"), count: summary?.incomplete ?? 0 },
+      { key: "legacy", label: t("pages.evidence.reconcile.pool.legacy"), count: summary?.legacy ?? 0 },
+      { key: "untraceable", label: t("pages.evidence.summary.untraceable"), count: summary?.untraceable_cards ?? 0 },
+      { key: "missing_time", label: t("pages.evidence.summary.missingTime"), count: summary?.missing_time_range ?? 0 },
+      { key: "duplicate", label: t("pages.evidence.summary.duplicate"), count: summary?.duplicate_cards ?? 0 },
+      { key: "inference", label: t("pages.evidence.summary.inference"), count: inference?.summary.candidates ?? 0 },
+      { key: "needs_fill", label: t("pages.evidence.summary.needsFill"), count: summary?.needs_fill ?? 0 },
+      { key: "triaged", label: t("pages.evidence.summary.triaged"), count: summary?.triaged_out ?? 0 },
+    ];
+  }, [inference, items.length, reconcile, t]);
+  const filteredItems = useMemo(() => {
+    if (problemFilter === "all") return items;
+    return items.filter((item) => {
+      const tags = problemTagsFor(item.evidence_id);
+      switch (problemFilter) {
+        case "eligible": return item.candidate_pool_eligible === true;
+        case "incomplete": return ["saved_incomplete", "needs_review"].includes(item.status);
+        case "legacy": return !["saved_eligible", "ready", "pass"].includes(item.status);
+        case "untraceable": return tags.includes("untraceable");
+        case "missing_time": return tags.includes("missing_time");
+        case "duplicate": return tags.includes("duplicate");
+        case "inference": return tags.includes("inference");
+        case "needs_fill": return tags.includes("needs_fill");
+        case "triaged": return tags.includes("triaged");
+        default: return true;
+      }
+    });
+  }, [items, problemFilter, problemTagsFor]);
 
-  const handleReferenceScan = useCallback(async () => {
-    setReferenceBusy(true);
-    setReferenceError("");
-    setReferenceScan(null);
-    try {
-      setReferenceScan(await scanMaterialReference(referenceRootId, referenceRelpath.trim()));
-    } catch (reason) {
-      setReferenceError(getErrorMessage(reason));
-    } finally {
-      setReferenceBusy(false);
-    }
-  }, [referenceRootId, referenceRelpath]);
-
-  const handleReferenceCheck = useCallback(async (materialId: string) => {
-    try {
-      const result = await checkMaterialReference(materialId);
-      setReferenceStatus((current) => ({
-        ...current,
-        [materialId]: result.status === "ok"
-          ? t("pages.evidence.materialSources.referenceStatusOk")
-          : t("pages.evidence.materialSources.referenceStatusChanged", {
-              changed: result.changed.length, missing: result.missing.length, added: result.added.length,
-            }),
-      }));
-    } catch (reason) {
-      notify("error", getErrorMessage(reason));
-    }
-  }, [t]);
-
-  const [showTriaged, setShowTriaged] = useState(false);
-  // 已分流且判断未过期的“不参与展示/重复”默认收起；“值得补”排最前。
-  const triagedOut = (item: EvidenceReconcileItem) => !!item.triage && !item.triage.stale && item.triage.decision !== "needs_fill";
-  const reconcileProblems = useMemo(() => {
-    const items = reconcile?.items ?? [];
-    const weight = (item: EvidenceReconcileItem) =>
-      (item.untraceable_results.length > 0 ? 4 : 0) + (!item.has_source ? 2 : 0) + item.missing_fields.length + (item.possible_duplicates.length > 0 ? 1 : 0);
-    const rank = (item: EvidenceReconcileItem) => (item.triage && !item.triage.stale && item.triage.decision === "needs_fill" ? 100 : 0) + weight(item);
-    return items
-      .filter((item) => weight(item) > 0 && (showTriaged || !triagedOut(item)))
-      .sort((a, b) => rank(b) - rank(a));
-  }, [reconcile, showTriaged]);
-  const hiddenTriaged = (reconcile?.items ?? []).filter(triagedOut).length;
   const changeTriage = useCallback(
     async (item: EvidenceReconcileItem, decision: EvidenceTriageDecision | "") => {
       try {
@@ -492,7 +422,7 @@ export function EvidencePage() {
       setError(null);
       try {
         const [result, materialResult] = await Promise.all([
-          listEvidence(evidenceFilters),
+          listEvidence(evidenceFilters, { pageSize: 100 }),
           listEvidenceMaterialSources(),
         ]);
         setItems(result.items);
@@ -551,67 +481,6 @@ export function EvidencePage() {
   useEffect(() => {
     void loadEvidence();
   }, [loadEvidence]);
-
-  const handleReferenceCreate = useCallback(async () => {
-    if (!referenceScan || !referenceLabel.trim()) return;
-    setReferenceBusy(true);
-    setReferenceError("");
-    try {
-      await createMaterialReference(referenceRootId, referenceRelpath.trim(), referenceLabel.trim());
-      setReferenceScan(null);
-      setReferenceRelpath("");
-      setReferenceLabel("");
-      await loadEvidence(selectedIdRef.current);
-      notify("success", t("toasts.evidence.materialReferenced"));
-    } catch (reason) {
-      setReferenceError(getErrorMessage(reason));
-    } finally {
-      setReferenceBusy(false);
-    }
-  }, [referenceRootId, referenceRelpath, referenceLabel, referenceScan, loadEvidence, t]);
-
-  const handleReferenceRefresh = useCallback(async (materialId: string) => {
-    const approved = await confirmAction({
-      title: t("pages.evidence.materialSources.referenceRefresh"),
-      description: t("pages.evidence.materialSources.referenceRefreshConfirm"),
-      confirmLabel: t("common.confirm"),
-    });
-    if (!approved) return;
-    try {
-      await refreshMaterialReference(materialId);
-      setReferenceStatus((current) => {
-        const next = { ...current };
-        delete next[materialId];
-        return next;
-      });
-      await loadEvidence(selectedIdRef.current);
-      notify("success", t("toasts.evidence.materialRefreshed"));
-    } catch (reason) {
-      notify("error", getErrorMessage(reason));
-    }
-  }, [t, loadEvidence]);
-
-  const handleReferenceRemove = useCallback(async (materialId: string) => {
-    const approved = await confirmAction({
-      title: t("pages.evidence.materialSources.referenceRemove"),
-      description: t("pages.evidence.materialSources.referenceRemoveConfirm"),
-      confirmLabel: t("common.confirm"),
-      tone: "danger",
-    });
-    if (!approved) return;
-    try {
-      await removeMaterialReference(materialId);
-      setReferenceStatus((current) => {
-        const next = { ...current };
-        delete next[materialId];
-        return next;
-      });
-      await loadEvidence(selectedIdRef.current);
-      notify("success", t("toasts.evidence.materialReferenceRemoved"));
-    } catch (reason) {
-      notify("error", getErrorMessage(reason));
-    }
-  }, [t, loadEvidence]);
 
   const applyFilters = useCallback(() => {
     setEvidenceFilters({
@@ -944,100 +813,6 @@ export function EvidencePage() {
     return () => window.removeEventListener("pipf:refresh", onRefresh);
   }, [loadEvidence]);
 
-  const renderReconcilePreview = (item: EvidenceReconcileItem) => {
-    const lines = (value?: string) => (value ?? "").split("\n").map((row) => row.trim()).filter(Boolean);
-    const chip = "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary";
-    const levelChip = (level?: string) => (level ? <span className={chip}>{level}</span> : null);
-    const detail = previewDetail;
-    return (
-      <div className="mt-2 rounded-card border border-accent/40 bg-bg-primary/60 p-3 text-xs" data-testid="evidence-reconcile-preview"
-        role="region" aria-label={t("pages.evidence.reconcile.preview.title")}>
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-sm font-medium text-text-primary">
-            {t("pages.evidence.reconcile.preview.title")} · {detail?.title || item.title || item.evidence_id}
-          </p>
-          <button className="shrink-0 text-text-muted underline" onClick={() => void toggleReconcilePreview(item)} type="button">
-            {t("pages.evidence.reconcile.preview.close")}
-          </button>
-        </div>
-        {previewState === "loading" ? <p className="mt-2 text-text-secondary">{t("pages.evidence.reconcile.preview.loading")}</p> : null}
-        {previewState === "error" ? <p className="mt-2 text-error" role="alert">{previewError || t("pages.evidence.reconcile.preview.error")}</p> : null}
-        {detail ? (
-          <>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className={chip}>{t(`pages.evidence.reconcile.pool.${item.pool_status}`, { defaultValue: item.pool_status })}</span>
-              <span className={chip}>{t("pages.evidence.reconcile.preview.review")}：{detail.review_decision || t("pages.evidence.reconcile.preview.pendingReview")}</span>
-              <span className={chip}>{detail.candidate_pool_eligible ? t("pages.evidence.reconcile.preview.inPool") : t("pages.evidence.reconcile.preview.notInPool")}</span>
-            </div>
-            <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
-              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.time")}</dt>
-                <dd className="mt-0.5 flex flex-wrap items-center gap-1 text-text-primary">{detail.time_range || "—"}{levelChip(detail.time_range_provenance?.level)}</dd></div>
-              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.role")}</dt>
-                <dd className="mt-0.5 flex flex-wrap items-center gap-1 text-text-primary">{detail.role_scope || "—"}{levelChip(detail.role_scope_provenance?.level)}</dd></div>
-              <div className="sm:col-span-2"><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.context")}</dt>
-                <dd className="mt-0.5 text-text-primary">{detail.context || "—"}</dd></div>
-              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.stack")}</dt>
-                <dd className="mt-0.5 text-text-primary">{detail.stack.length ? detail.stack.join(" · ") : "—"}</dd></div>
-              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.tags")}</dt>
-                <dd className="mt-0.5 text-text-primary">{detail.tags.length ? detail.tags.join(" · ") : "—"}</dd></div>
-              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.sources")}</dt>
-                <dd className="mt-0.5 text-text-primary">{t("pages.evidence.reconcile.preview.sourceDocs", { count: detail.source_documents?.length ?? 0 })}</dd></div>
-              <div><dt className="text-text-muted">{t("pages.evidence.reconcile.preview.artifacts")}</dt>
-                <dd className="mt-0.5 text-text-primary">{detail.artifacts.length}</dd></div>
-            </dl>
-            {lines(detail.actions).length ? (
-              <div className="mt-2"><p className="text-text-muted">{t("pages.evidence.reconcile.preview.actions")}</p>
-                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-text-primary">{lines(detail.actions).map((row, index) => <li key={index}>{row}</li>)}</ul></div>
-            ) : null}
-            {lines(detail.results).length ? (
-              <div className="mt-2"><p className="text-text-muted">{t("pages.evidence.reconcile.preview.results")}</p>
-                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-text-primary">{lines(detail.results).map((row, index) => <li key={index}>{row}</li>)}</ul></div>
-            ) : null}
-            {detail.missing_items?.length ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-text-muted">{t("pages.evidence.reconcile.preview.missing")}</span>
-                {detail.missing_items.map((missing) => <span className={chip} key={missing}>{missing}</span>)}
-              </div>
-            ) : null}
-            {item.untraceable_results.length || item.verbatim_candidates.length || item.date_hints.length || item.suggested_sources.length || item.possible_duplicates.length ? (
-              <div className="mt-2 rounded-card bg-bg-hover/40 px-2 py-1.5" data-testid="evidence-reconcile-diagnosis">
-                <p className="text-text-muted">{t("pages.evidence.reconcile.preview.diagnosis")}</p>
-                {item.untraceable_results.length ? <div className="mt-1">
-                  <span className="text-text-muted">{t("pages.evidence.reconcile.preview.untraceable")}</span>
-                  <ul className="mt-0.5 list-disc pl-5 text-text-primary">{item.untraceable_results.slice(0, 3).map((row) => <li key={row}>{row}</li>)}</ul>
-                </div> : null}
-                {item.verbatim_candidates.length ? <div className="mt-1">
-                  <span className="text-text-muted">{t("pages.evidence.reconcile.preview.verbatim")}</span>
-                  <ul className="mt-0.5 space-y-0.5 text-text-primary">{item.verbatim_candidates.slice(0, 3).map((row) => (
-                    <li key={row.result}>{t("pages.evidence.reconcile.preview.verbatimLine", { text: row.verbatim, similarity: row.similarity.toFixed(2) })}</li>
-                  ))}</ul>
-                </div> : null}
-                {item.date_hints.length ? <div className="mt-1 flex flex-wrap items-center gap-1">
-                  <span className="text-text-muted">{t("pages.evidence.reconcile.preview.dateHints")}</span>
-                  {item.date_hints.slice(0, 4).map((hint) => <span className={chip} key={hint}>{hint}</span>)}
-                </div> : null}
-                {item.suggested_sources.length ? <div className="mt-1">
-                  <span className="text-text-muted">{t("pages.evidence.reconcile.preview.suggested")}</span>
-                  <ul className="mt-0.5 space-y-0.5 text-text-primary">{item.suggested_sources.slice(0, 2).map((row) => (
-                    <li key={`${row.material_id}:${row.document}:${row.result}`}>{row.material_id} / {row.document} · {row.result}</li>
-                  ))}</ul>
-                </div> : null}
-                {item.possible_duplicates.length ? <p className="mt-1 text-text-primary">{t("pages.evidence.reconcile.preview.duplicates", { ids: item.possible_duplicates.join("、") })}</p> : null}
-              </div>
-            ) : null}
-            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-2">
-              <button className="rounded-card border border-accent px-3 py-1 text-xs text-accent" data-testid="evidence-reconcile-open-full"
-                onClick={() => void handleReconcileOpenFull(item)} type="button">
-                {t("pages.evidence.reconcile.preview.openFull")}
-              </button>
-              <span className="text-text-muted">{t("pages.evidence.reconcile.preview.hint")}</span>
-            </div>
-          </>
-        ) : null}
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-6">
       <header className="page-header">
@@ -1058,17 +833,13 @@ export function EvidencePage() {
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-border px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="evidence-open-drawer"
             disabled={isBusy}
-            onClick={() => {
-              setImportMode(selectedId ? "append" : "create");
-              void handleImport(selectedId ? "append" : "create");
-            }}
+            onClick={() => setMaterialDrawerOpen(true)}
             type="button"
           >
-            <Upload size={16} />
-            {importState === "importing"
-              ? t("pages.evidence.actions.importing")
-              : t("pages.evidence.actions.import")}
+            <Sparkles size={16} />
+            {t("pages.evidence.actions.distill")}
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1082,9 +853,6 @@ export function EvidencePage() {
         </div>
       </header>
 
-      <p className="rounded-card border border-border bg-bg-panel/60 px-3 py-2 text-xs text-text-muted" data-testid="evidence-relation-hint">
-        {t("pages.evidence.relationHint")}
-      </p>
 
       {loadState === "error" ? (
         <section className="rounded-panel border border-error/50 bg-bg-panel p-6 shadow-[var(--shadow-panel)]">
@@ -1099,388 +867,96 @@ export function EvidencePage() {
         </section>
       ) : null}
 
-      {loadState === "ready" ? (
-        <>
-          <section className="stat-strip" data-testid="evidence-stats">
-            {[
-              ["total", evidenceStats.total],
-              ["ready", evidenceStats.ready],
-              ["gaps", evidenceStats.gaps],
-              ["artifacts", evidenceStats.artifacts],
-            ].map(([key, value]) => (
-              <span key={key}>
-                <strong>{value}</strong>
-                {t(`pages.evidence.stats.${key}`)}
-              </span>
-            ))}
-          </section>
-
-
-          <details
-            className="fold-section rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]"
-            open={items.length === 0}
-            data-testid="evidence-material-fold"
-          >
-            <summary>
-              <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
-                <h2 className="text-base font-semibold text-text-primary">
-                  {t("pages.evidence.materialSources.title")}
-                </h2>
-                <span className="text-sm font-normal text-text-secondary">
-                  {t("pages.evidence.materialSources.count", { count: materialSources.length })} · {t("pages.evidence.materialSources.summaryHint")}
-                </span>
-              </span>
-            </summary>
-            <div className="px-5 pb-5">
+      {loadState === "ready" && items.length === 0 && !isDraft && !detail ? (
+        <section className="rounded-panel border border-border bg-bg-panel p-8 text-center shadow-[var(--shadow-panel)]" data-testid="evidence-empty-state">
+          <h2 className="text-base font-semibold text-text-primary">{t("pages.evidence.emptyState.title")}</h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm text-text-secondary">{t("pages.evidence.emptyState.body")}</p>
+          <div className="mt-4 flex items-center justify-center gap-2">
             {materialSources.length > 0 ? (
-            <>
-            <div className="flex flex-wrap items-center gap-3">
-              <select
-                className="min-w-[220px] rounded-card border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                disabled={isBusy || materialSources.length === 0}
-                onChange={(event) => setSelectedMaterialId(event.target.value)}
-                value={selectedMaterialId}
-              >
-                <option value="">
-                  {t("pages.evidence.materialSources.selectPlaceholder")}
-                </option>
-                {materialSources.map((source) => (
-                  <option
-                    key={source.material_id}
-                    disabled={![".md", ".txt"].includes(source.extension)}
-                    value={source.material_id}
-                  >
-                    {source.label || source.filename}
-                    {source.source_mode === "referenced"
-                      ? ` · ${t("pages.evidence.materialSources.referenceBadge", { count: Number(source.file_count) || 0 })}`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isBusy || !selectedMaterialId || !selectedDocument}
-                onClick={() => void handleGenerateDraft()}
-                type="button"
-              >
-                <Sparkles size={16} />
-                {draftState === "generating"
-                  ? t("pages.evidence.actions.generatingDraft")
-                  : t("pages.evidence.actions.generateDraft")}
+              <button className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white" onClick={() => setMaterialDrawerOpen(true)} type="button">
+                <Sparkles size={16} />{t("pages.evidence.actions.distill")}
               </button>
-              <button type="button" disabled={isBusy || !selectedMaterial || ![".md", ".txt"].includes(selectedMaterial.extension)}
-                className="rounded-card border border-border px-4 py-2 text-sm text-text-primary disabled:opacity-50"
-                onClick={handleManualDraft}>{t("pages.evidence.actions.manualDraft")}</button>
-            </div>
-            <MaterialDocumentPicker materialId={selectedMaterialId} onSelect={setSelectedDocument} disabled={isBusy}/>
-            </>
-            ) : null}
-            {materialSources.length === 0 ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-border bg-bg-primary/30 p-4 text-sm text-text-secondary">
-                <span>{t("pages.evidence.materialSources.empty")}</span>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-                  onClick={() => {
-                    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
-                      window.dispatchEvent(new CustomEvent("pipf:navigate", { detail: "/resumes" }));
-                    }
-                  }}
-                >
-                  {t("pages.evidence.materialSources.goUpload")}
-                </button>
-              </div>
-            ) : !selectedDocument ? (
-              <p className="mt-3 text-xs text-text-muted">{t("pages.evidence.materialSources.stepsHint")}</p>
-            ) : null}
-            <div className="mt-4 border-t border-border pt-3" data-testid="material-reference-section">
-              <button
-                className="text-sm text-accent underline"
-                data-testid="material-reference-open"
-                onClick={() => void openReferencePanel()}
-                type="button"
-              >
-                {t("pages.evidence.materialSources.referenceOpen")}
+            ) : (
+              <button className="inline-flex items-center gap-2 rounded-card border border-accent px-4 py-2 text-sm text-accent" onClick={() => navigate("/resumes?section=materials")} type="button">
+                {t("pages.evidence.emptyState.uploadMaterial")}
               </button>
-              {referenceOpen ? (
-                <div className="mt-3 space-y-3 rounded-card border border-border bg-bg-primary/30 p-3">
-                  <select
-                    aria-label={t("pages.evidence.materialSources.referenceRoot")}
-                    className="w-full rounded-card border border-border bg-bg-primary px-3 py-2 text-sm"
-                    data-testid="material-reference-root"
-                    disabled={referenceBusy}
-                    onChange={(event) => { setReferenceRootId(event.target.value); setReferenceScan(null); }}
-                    value={referenceRootId}
-                  >
-                    {materialRoots.map((root) => (
-                      <option key={root.id} value={root.id}>{root.label}（{root.path}）</option>
-                    ))}
-                  </select>
-                  {materialRoots.length === 0 ? (
-                    <p className="text-xs text-text-muted">{t("pages.evidence.materialSources.referenceNoRoots")}</p>
-                  ) : null}
-                  <input
-                    aria-label={t("pages.evidence.materialSources.referenceRelpath")}
-                    className="w-full rounded-card border border-border bg-bg-primary px-3 py-2 text-sm"
-                    data-testid="material-reference-relpath"
-                    disabled={referenceBusy}
-                    onChange={(event) => { setReferenceRelpath(event.target.value); setReferenceScan(null); }}
-                    placeholder={t("pages.evidence.materialSources.referenceRelpath")}
-                    value={referenceRelpath}
-                  />
+            )}
+            <button className="rounded-card border border-border px-4 py-2 text-sm text-text-primary" onClick={handleCreateDraft} type="button">
+              {t("pages.evidence.actions.new")}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {loadState === "ready" && !(items.length === 0 && !isDraft && !detail) ? (
+        <>
+          {items.length > 0 ? (
+          <section className="rounded-panel border border-border bg-bg-panel px-4 py-3 shadow-[var(--shadow-panel)]" data-testid="evidence-summary" aria-label={t("pages.evidence.summary.title")}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1" data-testid="evidence-summary-counts">
+                {summaryCounts.map((entry) => (
                   <button
-                    className="rounded-card border border-accent px-3 py-2 text-sm text-accent disabled:opacity-40"
-                    data-testid="material-reference-scan"
-                    disabled={referenceBusy || !referenceRootId || !referenceRelpath.trim()}
-                    onClick={() => void handleReferenceScan()}
+                    aria-pressed={problemFilter === entry.key}
+                    className={`rounded-card px-2 py-1 text-xs transition-colors ${problemFilter === entry.key ? "bg-bg-hover text-accent" : "text-text-secondary hover:bg-bg-hover"}`}
+                    data-testid={`evidence-summary-${entry.key}`}
+                    key={entry.key}
+                    onClick={() => setProblemFilter(entry.key)}
                     type="button"
                   >
-                    {referenceBusy && !referenceScan
-                      ? t("pages.evidence.materialSources.referenceScanning")
-                      : t("pages.evidence.materialSources.referenceScan")}
+                    {entry.label}
+                    <span className="ml-1 font-mono text-text-primary">{entry.count}</span>
                   </button>
-                  {referenceError ? <p className="text-sm text-error" role="alert">{referenceError}</p> : null}
-                  {referenceScan ? (
-                    <div className="space-y-2 text-xs text-text-secondary" data-testid="material-reference-preview">
-                      <p>
-                        {t("pages.evidence.materialSources.referencePreview", {
-                          count: referenceScan.file_count, bytes: formatBytes(referenceScan.total_bytes),
-                        })}
-                      </p>
-                      {referenceScan.sample_files.length > 0 ? (
-                        <p className="break-words text-text-muted">{referenceScan.sample_files.slice(0, 5).join("、")}</p>
-                      ) : null}
-                      {referenceScan.skipped_count > 0 ? (
-                        <p className="text-text-muted">
-                          {t("pages.evidence.materialSources.referenceSkipped", { count: referenceScan.skipped_count })}
-                        </p>
-                      ) : null}
-                      {referenceScan.existing_materials.length > 0 ? (
-                        <p className="text-warning">{t("pages.evidence.materialSources.referenceExisting")}</p>
-                      ) : null}
-                      <input
-                        aria-label={t("pages.evidence.materialSources.referenceLabel")}
-                        className="w-full rounded-card border border-border bg-bg-primary px-3 py-2 text-sm"
-                        data-testid="material-reference-label"
-                        disabled={referenceBusy}
-                        onChange={(event) => setReferenceLabel(event.target.value)}
-                        placeholder={t("pages.evidence.materialSources.referenceLabel")}
-                        value={referenceLabel}
-                      />
-                      <button
-                        className="rounded-card border border-accent bg-accent/10 px-3 py-2 text-sm text-accent disabled:opacity-40"
-                        data-testid="material-reference-create"
-                        disabled={referenceBusy || !referenceLabel.trim()}
-                        onClick={() => void handleReferenceCreate()}
-                        type="button"
-                      >
-                        {referenceBusy
-                          ? t("pages.evidence.materialSources.referenceCreating")
-                          : t("pages.evidence.materialSources.referenceCreate")}
-                      </button>
-                    </div>
-                  ) : null}
-                  {referencedSources.length > 0 ? (
-                    <ul className="divide-y divide-border border-t border-border pt-1" data-testid="material-reference-list">
-                      {referencedSources.map((source) => (
-                        <li className="py-2 text-xs" key={source.material_id}>
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="min-w-0 truncate text-text-primary">
-                              {source.label}
-                              <span className="ml-2 text-text-muted">
-                                {t("pages.evidence.materialSources.referenceBadge", { count: Number(source.file_count) || 0 })}
-                              </span>
-                            </span>
-                            <span className="flex gap-2">
-                              <button className="text-accent underline" data-testid="material-reference-check" type="button" onClick={() => void handleReferenceCheck(source.material_id)}>
-                                {t("pages.evidence.materialSources.referenceCheck")}
-                              </button>
-                              <button className="text-accent underline" data-testid="material-reference-refresh" type="button" onClick={() => void handleReferenceRefresh(source.material_id)}>
-                                {t("pages.evidence.materialSources.referenceRefresh")}
-                              </button>
-                              <button className="text-error underline" data-testid="material-reference-remove" type="button" onClick={() => void handleReferenceRemove(source.material_id)}>
-                                {t("pages.evidence.materialSources.referenceRemove")}
-                              </button>
-                            </span>
-                          </div>
-                          {referenceStatus[source.material_id] ? (
-                            <p className="mt-1 text-text-muted">{referenceStatus[source.material_id]}</p>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            </div>
-          </details>
-
-          <details
-            className="fold-section rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]"
-            data-testid="evidence-reconcile-fold"
-            onToggle={(event) => {
-              if ((event.currentTarget as HTMLDetailsElement).open && !reconcile && reconcileState !== "running") void runReconcile();
-            }}
-          >
-            <summary>
-              <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
-                <h2 className="text-base font-semibold text-text-primary">{t("pages.evidence.reconcile.title")}</h2>
-                <span className="text-sm font-normal text-text-secondary">
-                  {reconcile
-                    ? t("pages.evidence.reconcile.summaryLine", {
-                        eligible: reconcile.summary.eligible,
-                        incomplete: reconcile.summary.incomplete,
-                        legacy: reconcile.summary.legacy,
-                        untraceable: reconcile.summary.untraceable_cards,
-                        missingTime: reconcile.summary.missing_time_range,
-                        duplicates: reconcile.summary.duplicate_cards,
-                      }) +
-                      " · " +
-                      t("pages.evidence.reconcile.triage.summary", {
-                        needsFill: reconcile.summary.needs_fill ?? 0,
-                        out: reconcile.summary.triaged_out ?? 0,
-                        untriaged: reconcile.summary.untriaged ?? 0,
-                      })
-                    : t("pages.evidence.reconcile.hint")}
-                </span>
-              </span>
-            </summary>
-            <div className="space-y-3 px-5 pb-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-text-muted">{t("pages.evidence.reconcile.scope")}</p>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  aria-label={t("pages.evidence.reconcile.run")}
-                  className="page-icon-button"
+                  className="inline-flex items-center gap-1 rounded-card border border-border px-3 py-1.5 text-xs text-text-primary disabled:opacity-50"
                   data-testid="evidence-reconcile-run"
                   disabled={reconcileState === "running"}
                   onClick={() => void runReconcile()}
-                  title={t("pages.evidence.reconcile.run")}
                   type="button"
                 >
-                  <RefreshCw className={reconcileState === "running" ? "animate-spin" : ""} size={15} />
+                  <RefreshCw className={reconcileState === "running" ? "animate-spin" : ""} size={13} />
+                  {t("pages.evidence.reconcile.run")}
                 </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="evidence-inference-toolbar">
                 <button
-                  className="rounded-card border border-accent px-2 py-1 text-accent disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-card border border-border px-3 py-1.5 text-xs text-text-primary disabled:opacity-50"
                   data-testid="evidence-inference-run"
                   disabled={inferenceState === "running" || inferenceBusy}
                   onClick={() => void runInference()}
                   type="button"
                 >
+                  <Sparkles size={13} />
                   {t(inferenceState === "running" ? "pages.evidence.reconcile.inference.running" : "pages.evidence.reconcile.inference.run")}
                 </button>
-                {inference && inference.cards.some((card) => card.candidates.some((candidate) => (candidate.confidence ?? 0) >= 0.5)) ? (
-                  <button className="text-accent underline disabled:opacity-50" data-testid="evidence-inference-batch"
-                    disabled={inferenceBusy} onClick={() => void batchAcceptHighConfidence()} type="button">
+                {hasHighConfidenceCandidates ? (
+                  <button
+                    className="rounded-card border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    data-testid="evidence-inference-batch"
+                    disabled={inferenceBusy}
+                    onClick={() => void batchAcceptHighConfidence()}
+                    type="button"
+                  >
                     {t("pages.evidence.reconcile.inference.batchAccept")}
                   </button>
                 ) : null}
-                {inference && !inference.enabled ? <span className="text-warning">{t("pages.evidence.reconcile.inference.disabledHint")}</span> : null}
-                {inference?.summary ? <span className="text-text-muted">{t("pages.evidence.reconcile.inference.summary", {
-                  cards: inference.summary.requested, candidates: inference.summary.candidates,
-                })}</span> : null}
-                {inferenceNotice ? <span role="status" className="text-success">{inferenceNotice}</span> : null}
-                {inferenceError ? <span role="alert" className="text-error">{inferenceError}</span> : null}
               </div>
-              {reconcileState === "error" && reconcileError ? <p className="text-sm text-error">{reconcileError}</p> : null}
-              {reconcile && reconcileProblems.length === 0 ? (
-                <p className="text-sm text-text-secondary">{t("pages.evidence.reconcile.clean")}</p>
-              ) : null}
-              {reconcile && reconcileProblems.length > 0 ? (
-                <ul className="divide-y divide-border" data-testid="evidence-reconcile-list">
-                  {reconcileProblems.slice(0, 30).map((item) => (
-                    <li className="py-2" data-evidence-id={item.evidence_id} key={item.evidence_id}>
-                      <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm text-text-primary">
-                          {item.title || item.evidence_id}
-                          <span className="ml-2 text-xs text-text-muted">{t(`pages.evidence.reconcile.pool.${item.pool_status}`, { defaultValue: item.pool_status })}</span>
-                        </p>
-                        <p className="mt-0.5 text-xs text-text-muted">{reconcileReasons(item).join(" · ")}</p>
-                        {item.triage?.stale ? <p className="mt-0.5 text-xs text-warning">{t("pages.evidence.reconcile.triage.stale")}</p> : null}
-                        {(() => {
-                          const card = inferenceByCard.get(item.evidence_id);
-                          if (!card || card.candidates.length === 0) return null;
-                          const high = card.candidates.filter((candidate) => (candidate.confidence ?? 0) >= 0.5);
-                          const low = card.candidates.filter((candidate) => (candidate.confidence ?? 0) < 0.5);
-                          const renderCandidate = (candidate: EvidenceInferenceCandidate, lowConfidence = false) => {
-                            const key = candidateKey(item.evidence_id, candidate);
-                            return <div key={key} className="mt-1 rounded-card border border-border bg-bg-primary/60 px-2 py-1 text-xs" data-testid="evidence-inference-candidate" data-field={candidate.field}>
-                              <p className="text-text-primary">
-                                {t(candidate.field === "time_range" ? "pages.evidence.reconcile.inference.time" : "pages.evidence.reconcile.inference.role")}：{candidate.value}
-                                <span className="ml-2 text-text-muted">{candidate.level}{typeof candidate.confidence === "number" ? ` · ${candidate.confidence.toFixed(2)}` : ""}{lowConfidence ? ` · ${t("pages.evidence.reconcile.inference.lowConfidence")}` : ""}</span>
-                              </p>
-                              <p className="mt-0.5 truncate text-text-muted">{(candidate.evidence[0]?.excerpt || candidate.evidence[0]?.key || "").slice(0, 120)}</p>
-                              <div className="mt-1 flex flex-wrap items-center gap-2">
-                                <input aria-label={t("pages.evidence.reconcile.inference.editLabel")} className="w-40 rounded-card border border-border bg-bg-primary px-2 py-0.5 text-xs"
-                                  value={inferenceEdits[key] ?? candidate.value}
-                                  onChange={(event) => setInferenceEdits((current) => ({ ...current, [key]: event.target.value }))} />
-                                <button type="button" className="text-accent underline disabled:opacity-50" disabled={inferenceBusy}
-                                  onClick={() => void handleInferenceDecision(item, card.card_sha256, candidate, "accept")}>{t("pages.evidence.reconcile.inference.accept")}</button>
-                                <button type="button" className="text-accent underline disabled:opacity-50" disabled={inferenceBusy}
-                                  onClick={() => void handleInferenceDecision(item, card.card_sha256, candidate, "accept", inferenceEdits[key] ?? candidate.value)}>{t("pages.evidence.reconcile.inference.acceptEdited")}</button>
-                                <button type="button" className="text-warning underline disabled:opacity-50" disabled={inferenceBusy}
-                                  onClick={() => void handleInferenceDecision(item, card.card_sha256, candidate, "reject")}>{t("pages.evidence.reconcile.inference.reject")}</button>
-                              </div>
-                            </div>;
-                          };
-                          return <div className="mt-1 space-y-1" data-testid="evidence-inference-candidates">
-                            {high.map((candidate) => renderCandidate(candidate))}
-                            {low.length > 0 ? (showLowConfidence ? <>
-                              {low.map((candidate) => renderCandidate(candidate, true))}
-                              <button type="button" className="text-xs text-text-muted underline" onClick={() => setShowLowConfidence(false)}>{t("pages.evidence.reconcile.inference.hideLow")}</button>
-                            </> : <button type="button" className="text-xs text-text-muted underline" data-testid="evidence-inference-show-low" onClick={() => setShowLowConfidence(true)}>{t("pages.evidence.reconcile.inference.showLow", { count: low.length })}</button>) : null}
-                          </div>;
-                        })()}
-                      </div>
-                      <select
-                        aria-label={t("pages.evidence.reconcile.triage.label")}
-                        className="w-36 shrink-0 truncate rounded-card border border-border bg-bg-primary px-2 py-1 text-xs"
-                        data-testid="evidence-triage-select"
-                        onChange={(event) => void changeTriage(item, event.target.value as EvidenceTriageDecision | "")}
-                        value={item.triage && !item.triage.stale ? item.triage.decision : ""}
-                      >
-                        <option value="">{t("pages.evidence.reconcile.triage.none")}</option>
-                        <option value="needs_fill">{t("pages.evidence.reconcile.triage.needs_fill")}</option>
-                        <option value="not_for_display">{t("pages.evidence.reconcile.triage.not_for_display")}</option>
-                        {item.possible_duplicates.length > 0 ? (
-                          <option value="duplicate">{t("pages.evidence.reconcile.triage.duplicate", { id: item.possible_duplicates[0] })}</option>
-                        ) : null}
-                      </select>
-                      <button
-                        aria-expanded={previewId === item.evidence_id}
-                        className="shrink-0 rounded-card border border-border px-3 py-1 text-xs text-text-primary hover:bg-bg-hover"
-                        data-testid="evidence-reconcile-view"
-                        onClick={() => void toggleReconcilePreview(item)}
-                        type="button"
-                      >
-                        {t(previewId === item.evidence_id ? "pages.evidence.reconcile.hidePreview" : "pages.evidence.reconcile.view")}
-                      </button>
-                      </div>
-                      {previewId === item.evidence_id ? renderReconcilePreview(item) : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {reconcile && (hiddenTriaged > 0 || showTriaged) ? (
-                <button
-                  className="text-xs text-accent"
-                  data-testid="evidence-triage-show-hidden"
-                  onClick={() => setShowTriaged((value) => !value)}
-                  type="button"
-                >
-                  {showTriaged ? t("pages.evidence.reconcile.triage.hideOut") : t("pages.evidence.reconcile.triage.showOut", { count: hiddenTriaged })}
-                </button>
-              ) : null}
-              {reconcile && reconcileProblems.length > 30 ? (
-                <p className="text-xs text-text-muted">{t("pages.evidence.reconcile.more", { count: reconcileProblems.length - 30 })}</p>
-              ) : null}
             </div>
-          </details>
+            <p className="mt-2 text-xs text-text-muted" data-testid="evidence-summary-hint">
+              {reconcileState === "running"
+                ? t("pages.evidence.summary.running")
+                : reconcileState === "error" && reconcileError
+                  ? reconcileError
+                  : inference && !inference.enabled
+                    ? t("pages.evidence.reconcile.inference.disabledHint")
+                    : t("pages.evidence.summary.hint")}
+              {inferenceNotice ? <span className="ml-2 text-success" role="status">{inferenceNotice}</span> : null}
+              {inferenceError ? <span className="ml-2 text-error" role="alert">{inferenceError}</span> : null}
+            </p>
+          </section>
+          ) : null}
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
             <section className="overflow-hidden rounded-panel border border-border bg-bg-panel shadow-[var(--shadow-panel)]">
               <div className="border-b border-border px-5 py-4">
                 <div className="flex items-baseline gap-3">
@@ -1488,7 +964,7 @@ export function EvidencePage() {
                     {t("pages.evidence.listTitle")}
                   </h2>
                   <p className="text-sm text-text-secondary">
-                    {t("pages.evidence.listCount", { count: items.length })}
+                    {t("pages.evidence.listCount", { count: filteredItems.length })}
                   </p>
                 </div>
                 <form
@@ -1513,14 +989,14 @@ export function EvidencePage() {
                   </label>
                   <select
                     className="rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                    aria-label={t("pages.evidence.fields.status")}
-                    onChange={(event) => setStatusInput(event.target.value)}
-                    value={statusInput}
+                    aria-label={t("pages.evidence.summary.filterLabel")}
+                    data-testid="evidence-problem-filter"
+                    onChange={(event) => setProblemFilter(event.target.value as ProblemFilter)}
+                    value={problemFilter}
                   >
-                    <option value="">{t("pages.evidence.filters.allStatuses")}</option>
-                    <option value="ready">{t("pages.evidence.status.ready")}</option>
-                    <option value="draft">{t("pages.evidence.status.draft")}</option>
-                    <option value="gap">{t("pages.evidence.status.gap")}</option>
+                    {summaryCounts.map((entry) => (
+                      <option key={entry.key} value={entry.key}>{entry.label}</option>
+                    ))}
                   </select>
                   <input
                     className="w-36 rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
@@ -1552,35 +1028,36 @@ export function EvidencePage() {
                 </form>
               </div>
 
-              {items.length === 0 ? (
-                <div className="p-8 text-sm text-text-secondary">
-                  {t("pages.evidence.empty.list")}
+              {filteredItems.length === 0 ? (
+                <div className="p-8 text-sm text-text-secondary" data-testid="evidence-list-empty-filter">
+                  {t("pages.evidence.empty.filtered")}
                 </div>
               ) : (
                 <div className="max-h-[calc(100vh-20rem)] overflow-auto">
                   <table className="w-full min-w-[640px] table-fixed text-left">
                     <thead className="sticky top-0 z-10 bg-bg-panel text-xs uppercase tracking-[0.14em] text-text-muted">
                       <tr className="bg-bg-hover/70">
-                        <th className="w-[40%] px-5 py-3 font-semibold">
+                        <th className="w-[36%] px-5 py-3 font-semibold">
                           {t("pages.evidence.fields.title")}
                         </th>
-                        <th className="w-[16%] px-4 py-3 font-semibold">
+                        <th className="w-[17%] px-4 py-3 font-semibold">
                           {t("pages.evidence.fields.timeRange")}
                         </th>
-                        <th className="w-[20%] px-4 py-3 font-semibold">
+                        <th className="w-[19%] px-4 py-3 font-semibold">
                           {t("pages.evidence.fields.role")}
                         </th>
-                        <th className="w-[8%] px-4 py-3 font-semibold">
-                          {t("pages.evidence.score")}
+                        <th className="w-[8%] px-3 py-3 font-semibold">
+                          {t("pages.evidence.fields.sourceCount")}
                         </th>
-                        <th className="w-[16%] px-4 py-3 font-semibold">
+                        <th className="w-[20%] px-4 py-3 font-semibold">
                           {t("pages.evidence.fields.status")}
                         </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {items.map((item) => {
+                      {filteredItems.map((item) => {
                         const isSelected = item.evidence_id === selectedId;
+                        const tags = problemTagsFor(item.evidence_id);
                         return (
                           <tr
                             key={item.evidence_id}
@@ -1601,22 +1078,33 @@ export function EvidencePage() {
                               <p className="truncate text-sm font-medium text-text-primary" title={item.title}>
                                 {item.title}
                               </p>
-                              <p className="mt-1 truncate font-mono text-xs text-text-muted">
-                                {item.evidence_id}
-                              </p>
                             </td>
                             <td className="whitespace-nowrap px-4 py-4 text-sm text-text-secondary">
-                              {formatFallback(item.time_range)}
+                              <span className="inline-flex items-center gap-1.5">
+                                {formatFallback(item.time_range)}
+                                <span className="rounded bg-bg-hover px-1 py-0.5 font-mono text-[10px] text-text-muted">{item.time_range_level ?? "L1"}</span>
+                              </span>
                             </td>
                             <td className="px-4 py-4 text-sm text-text-secondary">
                               <p className="truncate" title={formatFallback(item.role_scope)}>
                                 {formatFallback(item.role_scope)}
                               </p>
+                              <span className="mt-0.5 inline-block rounded bg-bg-hover px-1 py-0.5 font-mono text-[10px] text-text-muted">{item.role_scope_level ?? "L1"}</span>
                             </td>
-                            <td className="px-4 py-4 text-sm font-semibold text-accent">
-                              {item.score}
+                            <td className="px-3 py-4 text-sm text-text-secondary">
+                              {item.source_document_count ? `${item.source_document_count} 份` : "—"}
                             </td>
-                            <td className="px-4 py-4">{renderStatus(item.candidate_pool_eligible===false&&["ready","pass"].includes(item.status)?"needs_review":item.status)}</td>
+                            <td className="px-4 py-4">
+                              <div className="flex flex-wrap items-center gap-1">
+                                {renderStatus(item.candidate_pool_eligible===false&&["ready","pass"].includes(item.status)?"needs_review":item.status)}
+                                {tags.slice(0, 3).map((tag) => (
+                                  <span key={tag} className="rounded border border-border px-1 py-0.5 text-[10px] text-text-muted">
+                                    {t(`pages.evidence.summary.tags.${tag}`, { defaultValue: tag })}
+                                  </span>
+                                ))}
+                                {tags.length > 3 ? <span className="text-[10px] text-text-muted">+{tags.length - 3}</span> : null}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -1679,16 +1167,6 @@ export function EvidencePage() {
                     <SaveIcon size={16} />
                   </button>
                   ) : null}
-                  <button
-                    className="rounded-card border border-error/50 p-2 text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!selectedId || isDraft || deleteState === "deleting"}
-                    onClick={() => void handleDelete()}
-                    title={t("pages.evidence.actions.delete")}
-                    aria-label={t("pages.evidence.actions.delete")}
-                    type="button"
-                  >
-                    <Trash2 size={16} />
-                  </button>
                 </div>
               </div>
 
@@ -1763,12 +1241,20 @@ export function EvidencePage() {
                   ) : null}
 
                   {generatedDraft&&reviewTargetId&&<EvidenceSourceMerge key={reviewTargetId} draft={draftFromForm(generatedDraft)} materials={materialSources} disabled={isBusy} onChange={draft=>{setGeneratedDraft(draft);updateFormFromDraft(draft);}}/>}
-                  {!editing&&!!detail?.field_sources?.length&&<details className="rounded-card border border-border p-3"><summary className="cursor-pointer text-sm text-accent">{t('sourceMerge.bound')}</summary>{detail.field_sources.map((s,i)=><p key={i} className="mt-2 whitespace-pre-wrap break-words text-xs text-text-secondary">{s.value}<br/>{detail.source_documents?.find(d=>d.document_id===s.document_id&&d.material_id===s.material_id)?.label}</p>)}</details>}
                   {!editing ? (
                     <div className="space-y-4" data-testid="evidence-detail-view">
                       <div>
                         <h3 className="text-lg font-semibold text-text-primary">{form.title || t("pages.evidence.fields.title")}</h3>
-                        <p className="mt-1 text-sm text-text-secondary">{[form.time_range, form.role_scope].filter(Boolean).join(" · ") || "--"}</p>
+                        <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-secondary">
+                          <span>{form.time_range || "—"}<span className="ml-1 rounded bg-bg-hover px-1 py-0.5 font-mono text-[10px] text-text-muted">{detail?.time_range_provenance?.level ?? "L1"}</span></span>
+                          <span>·</span>
+                          <span>{form.role_scope || "—"}<span className="ml-1 rounded bg-bg-hover px-1 py-0.5 font-mono text-[10px] text-text-muted">{detail?.role_scope_provenance?.level ?? "L1"}</span></span>
+                        </p>
+                        {detail?.source_documents?.length ? (
+                          <p className="mt-1 truncate text-xs text-text-muted">
+                            {t("pages.evidence.fields.sourceMaterials")}：{detail.source_documents.map((doc) => doc.label).join("、")}
+                          </p>
+                        ) : null}
                       </div>
                       {(
                         [
@@ -1910,6 +1396,103 @@ export function EvidencePage() {
                   </>
                   ) : null}
 
+                  {!editing && selectedId && reconcileItemByCard.has(selectedId) ? (() => {
+                    const item = reconcileItemByCard.get(selectedId)!;
+                    const card = inferenceByCard.get(selectedId);
+                    const candidates = card?.candidates ?? [];
+                    const cardSha = card?.card_sha256 ?? "";
+                    const high = candidates.filter((candidate) => (candidate.confidence ?? 0) >= 0.5);
+                    const low = candidates.filter((candidate) => (candidate.confidence ?? 0) < 0.5);
+                    const renderCandidate = (candidate: EvidenceInferenceCandidate, lowConfidence = false) => {
+                      const key = candidateKey(selectedId, candidate);
+                      return (
+                        <div className="mt-1 rounded-card border border-border bg-bg-primary/60 px-2 py-1 text-xs" data-testid="evidence-inference-candidate" data-field={candidate.field} key={key}>
+                          <p className="text-text-primary">
+                            {t(candidate.field === "time_range" ? "pages.evidence.reconcile.inference.time" : "pages.evidence.reconcile.inference.role")}：{candidate.value}
+                            <span className="ml-2 text-text-muted">{candidate.level}{typeof candidate.confidence === "number" ? ` · ${candidate.confidence.toFixed(2)}` : ""}{lowConfidence ? ` · ${t("pages.evidence.reconcile.inference.lowConfidence")}` : ""}</span>
+                          </p>
+                          <p className="mt-0.5 truncate text-text-muted">{(candidate.evidence[0]?.excerpt || candidate.evidence[0]?.key || "").slice(0, 120)}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <input aria-label={t("pages.evidence.reconcile.inference.editLabel")} className="w-40 rounded-card border border-border bg-bg-primary px-2 py-0.5 text-xs"
+                              value={inferenceEdits[key] ?? candidate.value}
+                              onChange={(event) => setInferenceEdits((current) => ({ ...current, [key]: event.target.value }))} />
+                            <button type="button" className="text-accent underline disabled:opacity-50" disabled={inferenceBusy}
+                              onClick={() => void handleInferenceDecision(item, cardSha, candidate, "accept")}>{t("pages.evidence.reconcile.inference.accept")}</button>
+                            <button type="button" className="text-accent underline disabled:opacity-50" disabled={inferenceBusy}
+                              onClick={() => void handleInferenceDecision(item, cardSha, candidate, "accept", inferenceEdits[key] ?? candidate.value)}>{t("pages.evidence.reconcile.inference.acceptEdited")}</button>
+                            <button type="button" className="text-warning underline disabled:opacity-50" disabled={inferenceBusy}
+                              onClick={() => void handleInferenceDecision(item, cardSha, candidate, "reject")}>{t("pages.evidence.reconcile.inference.reject")}</button>
+                          </div>
+                        </div>
+                      );
+                    };
+                    return (
+                      <section className="rounded-card border border-warning/40 bg-bg-hover/40 p-3" data-testid="evidence-diagnosis">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-sm font-semibold text-warning">{t("pages.evidence.diagnosis.title")}</h3>
+                          <span className="text-[10px] text-text-muted">{t("pages.evidence.diagnosis.hint")}</span>
+                        </div>
+                        <p className="mt-2 text-xs text-text-secondary">{reconcileReasons(item).join(" · ")}</p>
+                        {item.untraceable_results.length ? (
+                          <div className="mt-2">
+                            <p className="text-[10px] text-text-muted">{t("pages.evidence.reconcile.preview.untraceable")}</p>
+                            <ul className="mt-0.5 list-disc pl-4 text-xs text-text-primary">{item.untraceable_results.slice(0, 3).map((row) => <li key={row}>{row}</li>)}</ul>
+                          </div>
+                        ) : null}
+                        {item.verbatim_candidates.length ? (
+                          <div className="mt-2">
+                            <p className="text-[10px] text-text-muted">{t("pages.evidence.reconcile.preview.verbatim")}</p>
+                            <ul className="mt-0.5 space-y-0.5 text-xs text-text-primary">{item.verbatim_candidates.slice(0, 3).map((row) => (
+                              <li key={row.result}>{t("pages.evidence.reconcile.preview.verbatimLine", { text: row.verbatim, similarity: row.similarity.toFixed(2) })}</li>
+                            ))}</ul>
+                          </div>
+                        ) : null}
+                        {item.date_hints.length ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-1">
+                            <span className="text-[10px] text-text-muted">{t("pages.evidence.reconcile.preview.dateHints")}</span>
+                            {item.date_hints.slice(0, 4).map((hint) => <span className="rounded bg-bg-inset px-1 py-0.5 font-mono text-[10px] text-text-secondary" key={hint}>{hint}</span>)}
+                          </div>
+                        ) : null}
+                        {item.possible_duplicates.length ? (
+                          <p className="mt-2 text-xs text-text-secondary">{t("pages.evidence.reconcile.preview.duplicates", { ids: item.possible_duplicates.join("、") })}</p>
+                        ) : null}
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <label className="text-[10px] text-text-muted" htmlFor="evidence-triage-select">{t("pages.evidence.reconcile.triage.label")}</label>
+                          <select
+                            className="w-36 truncate rounded-card border border-border bg-bg-primary px-2 py-1 text-xs"
+                            data-testid="evidence-triage-select"
+                            id="evidence-triage-select"
+                            onChange={(event) => void changeTriage(item, event.target.value as EvidenceTriageDecision | "")}
+                            value={item.triage && !item.triage.stale ? item.triage.decision : ""}
+                          >
+                            <option value="">{t("pages.evidence.reconcile.triage.none")}</option>
+                            <option value="needs_fill">{t("pages.evidence.reconcile.triage.needs_fill")}</option>
+                            <option value="not_for_display">{t("pages.evidence.reconcile.triage.not_for_display")}</option>
+                            {item.possible_duplicates.length > 0 ? (
+                              <option value="duplicate">{t("pages.evidence.reconcile.triage.duplicate", { id: item.possible_duplicates[0] })}</option>
+                            ) : null}
+                          </select>
+                        </div>
+                        {card && candidates.length ? (
+                          <div className="mt-2" data-testid="evidence-inference-candidates">
+                            <p className="text-[10px] text-text-muted">{t("pages.evidence.reconcile.preview.diagnosis")} · {t("pages.evidence.reconcile.inference.time")} / {t("pages.evidence.reconcile.inference.role")}</p>
+                            {high.map((candidate) => renderCandidate(candidate))}
+                            {low.length > 0 ? (showLowConfidence ? (
+                              <>
+                                {low.map((candidate) => renderCandidate(candidate, true))}
+                                <button type="button" className="mt-1 text-xs text-text-muted underline" onClick={() => setShowLowConfidence(false)}>{t("pages.evidence.reconcile.inference.hideLow")}</button>
+                              </>
+                            ) : (
+                              <button type="button" className="mt-1 text-xs text-text-muted underline" data-testid="evidence-inference-show-low" onClick={() => setShowLowConfidence(true)}>
+                                {t("pages.evidence.reconcile.inference.showLow", { count: low.length })}
+                              </button>
+                            )) : null}
+                          </div>
+                        ) : null}
+                      </section>
+                    );
+                  })() : null}
+
                   <section className="rounded-card border border-border bg-bg-hover/50 p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -2024,11 +1607,119 @@ export function EvidencePage() {
                       {t("pages.evidence.actions.saved")}
                     </p>
                   ) : null}
+                  {selectedId && !isDraft ? (
+                    <div className="mt-4 border-t border-border pt-3">
+                      <button
+                        className="w-full rounded-card border border-error/60 px-3 py-2 text-sm text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        data-testid="evidence-delete"
+                        disabled={deleteState === "deleting"}
+                        onClick={() => void handleDelete()}
+                        type="button"
+                      >
+                        {deleteState === "deleting" ? t("pages.evidence.actions.deleting") : t("pages.evidence.actions.delete")}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </aside>
           </div>
         </>
+      ) : null}
+
+      {materialDrawerOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex justify-end bg-black/50"
+          data-testid="evidence-drawer-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setMaterialDrawerOpen(false);
+          }}
+          role="presentation"
+        >
+          <aside
+            aria-label={t("pages.evidence.materialSources.title")}
+            aria-modal="true"
+            className="flex h-full w-[560px] max-w-full flex-col gap-4 overflow-y-auto border-l border-border bg-bg-panel p-6 shadow-[var(--shadow-panel)]"
+            data-testid="evidence-drawer"
+            role="dialog"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">{t("pages.evidence.materialSources.title")}</h2>
+                <p className="mt-1 text-sm text-text-secondary">{t("pages.evidence.materialSources.summaryHint")}</p>
+              </div>
+              <button
+                aria-label={t("common.close")}
+                className="page-icon-button"
+                data-testid="evidence-drawer-close"
+                onClick={() => setMaterialDrawerOpen(false)}
+                type="button"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {materialSources.length === 0 ? (
+              <div className="rounded-card border border-border bg-bg-hover/50 p-4 text-sm text-text-secondary">
+                <p>{t("pages.evidence.materialSources.empty")}</p>
+                <button className="mt-3 text-sm text-accent underline" onClick={() => navigate("/resumes?section=materials")} type="button">
+                  {t("pages.evidence.emptyState.uploadMaterial")}
+                </button>
+              </div>
+            ) : (
+              <>
+                <label className="block text-sm text-text-primary">
+                  {t("pages.evidence.materialSources.select")}
+                  <select
+                    className="mt-2 w-full rounded-card border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                    data-testid="evidence-drawer-material"
+                    disabled={isBusy}
+                    onChange={(event) => setSelectedMaterialId(event.target.value)}
+                    value={selectedMaterialId}
+                  >
+                    {materialSources.map((source) => (
+                      <option key={source.material_id} value={source.material_id} disabled={![".md", ".txt"].includes(source.extension)}>
+                        {source.label || source.filename}{source.source_mode === "referenced" ? ` · ${t("pages.evidence.materialSources.referenceBadge", { count: Number(source.file_count) || 0 })}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <MaterialDocumentPicker materialId={selectedMaterialId} onSelect={setSelectedDocument} disabled={isBusy} />
+                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+                  <button
+                    className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    data-testid="evidence-drawer-generate"
+                    disabled={isBusy || !selectedMaterialId || !selectedDocument}
+                    onClick={() => {
+                      void handleGenerateDraft().then(() => setMaterialDrawerOpen(false));
+                    }}
+                    type="button"
+                  >
+                    <Sparkles size={16} />
+                    {draftState === "generating" ? t("pages.evidence.actions.generatingDraft") : t("pages.evidence.actions.generateDraft")}
+                  </button>
+                  <button
+                    className="rounded-card border border-border px-4 py-2 text-sm text-text-primary disabled:opacity-50"
+                    disabled={isBusy || !selectedMaterial || ![".md", ".txt"].includes(selectedMaterial.extension)}
+                    onClick={() => {
+                      handleManualDraft();
+                      setMaterialDrawerOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {t("pages.evidence.actions.manualDraft")}
+                  </button>
+                </div>
+                <p className="text-xs text-text-muted">{t("pages.evidence.materialSources.segmentHint")}</p>
+              </>
+            )}
+            <div className="mt-auto border-t border-border pt-4 text-xs text-text-secondary">
+              <p>{t("pages.evidence.materialSources.referenceMoved")}</p>
+              <button className="mt-1 text-accent underline" onClick={() => navigate("/system-settings?section=materialSources")} type="button">
+                {t("pages.evidence.materialSources.referenceLink")}
+              </button>
+            </div>
+          </aside>
+        </div>
       ) : null}
     </div>
   );

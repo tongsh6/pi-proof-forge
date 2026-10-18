@@ -330,6 +330,14 @@ def _find_evidence_path(evidence_id: str) -> Path | None:
     return None
 
 
+def _source_document_count(scalars: dict[str, Any]) -> int:
+    try:
+        documents = json.loads(str(scalars.get("source_documents_json") or "[]"))
+    except (TypeError, ValueError):
+        return 0
+    return len(documents) if isinstance(documents, list) else 0
+
+
 def _load_evidence_cards() -> list[dict[str, Any]]:
     cards: list[dict[str, Any]] = []
     if not _EVIDENCE_DIR.exists():
@@ -356,6 +364,7 @@ def _load_evidence_cards() -> list[dict[str, Any]]:
                 "tags": doc["lists"].get("tags", []),
                 "time_range_level": provenance.field_level(s, "time_range"),
                 "role_scope_level": provenance.field_level(s, "role_scope"),
+                "source_document_count": _source_document_count(s),
             }
         )
     return cards
@@ -1061,6 +1070,9 @@ def handle_evidence_list(params: dict[str, Any]) -> dict[str, Any]:
                 "status": item["status"],
                 "candidate_pool_eligible": item.get("candidate_pool_eligible",False),
                 "updated_at": item["updated_at"],
+                "time_range_level": item.get("time_range_level", "L1"),
+                "role_scope_level": item.get("role_scope_level", "L1"),
+                "source_document_count": item.get("source_document_count", 0),
             }
             for item in paginated
         ],
