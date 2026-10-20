@@ -942,6 +942,7 @@ def _persisted_llm_runtime_context() -> tuple[dict[str, Any], dict[str, str]]:
         },
         "configured_providers": list(config.get("configured_providers") or []),
         "thinking_enabled": bool(config.get("thinking_enabled")),
+        "thinking_effort": clean_str(config.get("thinking_effort")) or "high",
         "timeout": int(config.get("timeout") or 60),
         "temperature": float(config.get("temperature") or 0.2),
     }
@@ -956,6 +957,7 @@ def _persisted_llm_runtime_context() -> tuple[dict[str, Any], dict[str, str]]:
     if api_key_for_request:
         env["LLM_API_KEY"] = api_key_for_request
     env["LLM_THINKING"] = "on" if summary["thinking_enabled"] else "off"
+    env["LLM_THINKING_EFFORT"] = str(summary["thinking_effort"])
     # 系统设置里的超时同样作用于管线各 LLM 阶段；本地大模型通常需要远大于 120 秒。
     env["LLM_TIMEOUT"] = str(summary["timeout"])
     return summary, env

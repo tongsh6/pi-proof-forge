@@ -820,6 +820,7 @@ def handle_evidence_generate_draft(params: dict[str, Any]) -> dict[str, Any]:
             timeout=int(llm_config["timeout"]),
             provider=str(llm_config["provider"]),
             thinking_enabled=bool(llm_config.get("thinking_enabled", False)),
+            reasoning_effort=str(llm_config.get("thinking_effort", "high")),
         )
         response = client.post_json(client.chat_completions_url, payload)
         content = LLMClient.extract_content(response).strip()
@@ -1501,6 +1502,7 @@ def _inference_llm_call(prompt: str) -> str:
         timeout=int(llm_config["timeout"]),
         provider=str(llm_config["provider"]),
         thinking_enabled=bool(llm_config.get("thinking_enabled", False)),
+        reasoning_effort=str(llm_config.get("thinking_effort", "high")),
     )
     response = client.post_json(client.chat_completions_url, payload)
     content = LLMClient.extract_content(response).strip()

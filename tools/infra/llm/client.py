@@ -25,6 +25,14 @@ def _thinking_enabled_from_env() -> bool:
     return os.getenv("LLM_THINKING", "").strip().lower() in ("on", "1", "true", "yes")
 
 
+_THINKING_EFFORTS = ("low", "high", "max")
+
+
+def _normalize_thinking_effort(value: object) -> str:
+    effort = str(value or "").strip().lower()
+    return effort if effort in _THINKING_EFFORTS else "high"
+
+
 class LLMClient:
     def __init__(
         self,
@@ -34,6 +42,7 @@ class LLMClient:
         *,
         provider: str = "",
         thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         import os
 
@@ -45,6 +54,11 @@ class LLMClient:
             _thinking_enabled_from_env()
             if thinking_enabled is None
             else bool(thinking_enabled)
+        )
+        self._reasoning_effort = _normalize_thinking_effort(
+            reasoning_effort
+            if reasoning_effort is not None
+            else os.getenv("LLM_THINKING_EFFORT", "high")
         )
 
     @property
@@ -93,7 +107,7 @@ class LLMClient:
                 },
             }
             if self._thinking_enabled and "reasoning_effort" not in payload:
-                payload = {**payload, "reasoning_effort": "high"}
+                payload = {**payload, "reasoning_effort": self._reasoning_effort}
         if (
             self._provider == "lm_studio"
             and payload.get("response_format") == {"type": "json_object"}

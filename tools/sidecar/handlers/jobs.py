@@ -830,6 +830,7 @@ def handle_jobs_generate_profile_draft(params: dict[str, object]) -> dict[str, o
             timeout=int(llm_config["timeout"]),
             provider=str(llm_config["provider"]),
             thinking_enabled=bool(llm_config.get("thinking_enabled", False)),
+            reasoning_effort=str(llm_config.get("thinking_effort", "high")),
         )
         response = client.post_json(
             client.chat_completions_url, payload, response_schema=_JOB_DRAFT_RESPONSE_SCHEMA

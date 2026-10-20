@@ -790,6 +790,7 @@ def test_persisted_llm_runtime_context_propagates_thinking_mode() -> None:
         "api_key_updated_at": "2026-10-20T00:00:00Z",
         "api_key_for_request": "sk-test",
         "thinking_enabled": True,
+        "thinking_effort": "max",
         "timeout": 60,
         "temperature": 0.2,
     }
@@ -800,6 +801,8 @@ def test_persisted_llm_runtime_context_propagates_thinking_mode() -> None:
         summary, env = _persisted_llm_runtime_context()
 
     assert summary["thinking_enabled"] is True
+    assert summary["thinking_effort"] == "max"
     assert env["LLM_THINKING"] == "on"
+    assert env["LLM_THINKING_EFFORT"] == "max"
     assert env["LLM_PROVIDER"] == "deepseek"
     assert env["LLM_API_KEY"] == "sk-test"

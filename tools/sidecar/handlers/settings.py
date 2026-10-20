@@ -34,6 +34,7 @@ _SUPPORTED_LLM_CONFIG_UPDATE_FIELDS = {
     "timeout",
     "temperature",
     "thinking_enabled",
+    "thinking_effort",
 }
 
 
@@ -107,6 +108,7 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
             },
             "configured_providers": llm_config["configured_providers"],
             "thinking_enabled": llm_config["thinking_enabled"],
+            "thinking_effort": llm_config["thinking_effort"],
             "timeout": llm_config["timeout"],
             "temperature": llm_config["temperature"],
         },
@@ -218,6 +220,9 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
             timeout=int(config["timeout"]),
             provider=requested_provider,
             thinking_enabled=bool(config.get("thinking_enabled", False)),
+            reasoning_effort=_normalize_thinking_effort(
+                config.get("thinking_effort", "high")
+            ),
         )
         models = client.list_models()
         if not models:
@@ -395,6 +400,14 @@ def _valid_api_key(value: str) -> bool:
     )
 
 
+_THINKING_EFFORTS = ("low", "high", "max")
+
+
+def _normalize_thinking_effort(value: object) -> str:
+    effort = str(value or "").strip().lower()
+    return effort if effort in _THINKING_EFFORTS else "high"
+
+
 def _load_llm_config() -> dict[str, Any]:
     scalars, _ = _load_policy_doc()
     provider = str(
@@ -451,6 +464,9 @@ def _load_llm_config() -> dict[str, Any]:
         "api_key_source": api_key_source,
         "configured_providers": configured_providers,
         "thinking_enabled": _to_bool(scalars.get("llm_thinking_enabled", ""), False),
+        "thinking_effort": _normalize_thinking_effort(
+            scalars.get("llm_thinking_effort", "high")
+        ),
         "timeout": _to_int(scalars.get("llm_timeout", ""), 60),
         "temperature": _to_float(scalars.get("llm_temperature", ""), 0.2),
     }
@@ -469,6 +485,7 @@ def _merge_llm_config_payload(
             "timeout",
             "temperature",
             "thinking_enabled",
+            "thinking_effort",
         ):
             if key in payload:
                 merged[key] = payload[key]
@@ -504,6 +521,11 @@ def _save_llm_config(payload: dict[str, Any]) -> Path | None:
         if not isinstance(enabled, bool):
             raise ValueError("thinking_enabled must be a boolean")
         scalars["llm_thinking_enabled"] = "true" if enabled else "false"
+    if "thinking_effort" in payload:
+        effort = payload["thinking_effort"]
+        if not isinstance(effort, str) or effort.strip().lower() not in _THINKING_EFFORTS:
+            raise ValueError("thinking_effort must be low, high or max")
+        scalars["llm_thinking_effort"] = effort.strip().lower()
     if "api_key" in payload:
         api_key = _require_non_empty_str(payload["api_key"], "api_key")
         effective_provider = str(

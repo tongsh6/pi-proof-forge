@@ -406,6 +406,7 @@ class SettingsLlmCredentialTests(unittest.TestCase):
                         "base_url": "https://api.deepseek.com",
                         "api_key": key,
                         "thinking_enabled": True,
+                        "thinking_effort": "max",
                     }
                 )
                 stored = self._get()
@@ -427,6 +428,7 @@ class SettingsLlmCredentialTests(unittest.TestCase):
             self.assertEqual(stored["llm_config"]["api_key"]["source"], "saved")
             self.assertEqual(stored["llm_config"]["configured_providers"], ["deepseek"])
             self.assertTrue(stored["llm_config"]["thinking_enabled"])
+            self.assertEqual(stored["llm_config"]["thinking_effort"], "max")
             self.assertEqual(loaded["api_key_for_request"], key)
 
     def test_provider_keys_are_isolated_and_survive_switching(self) -> None:
@@ -598,6 +600,26 @@ class SettingsLlmCredentialTests(unittest.TestCase):
             with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
                 with self.assertRaises(ValueError):
                     self._update({"thinking_enabled": "true"})
+
+    def test_thinking_effort_defaults_to_high_and_rejects_invalid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update({"provider": "deepseek", "model": "deepseek-flash"})
+                stored = self._get()
+                with self.assertRaises(ValueError):
+                    self._update({"thinking_effort": "ultra"})
+
+        self.assertEqual(stored["llm_config"]["thinking_effort"], "high")
+
+    def test_thinking_effort_accepts_low_high_max(self) -> None:
+        for effort in ("low", "high", "max"):
+            with self.subTest(effort=effort), tempfile.TemporaryDirectory() as tmp:
+                policy = self._policy(tmp)
+                with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                    self._update({"thinking_effort": effort})
+                    stored = self._get()
+                self.assertEqual(stored["llm_config"]["thinking_effort"], effort)
 
     def test_invalid_provider_cannot_write_credential_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

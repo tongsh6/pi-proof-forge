@@ -102,6 +102,7 @@ class StructuredOutputTests(unittest.TestCase):
         *,
         response_schema: dict | None = None,
         thinking_enabled: bool | None = None,
+        thinking_effort: str | None = None,
     ) -> dict:
         response = Mock()
         response.read.return_value = b'{}'
@@ -110,6 +111,7 @@ class StructuredOutputTests(unittest.TestCase):
             api_key="lm-studio",
             provider=provider,
             thinking_enabled=thinking_enabled,
+            reasoning_effort=thinking_effort,
         )
         with patch("tools.infra.llm.client.request.urlopen", return_value=response) as urlopen:
             if response_schema is None:
@@ -324,6 +326,20 @@ class DeepSeekThinkingTests(unittest.TestCase):
         self.assertEqual(sent["thinking"], {"type": "enabled"})
         self.assertEqual(sent["reasoning_effort"], "high")
 
+    def test_enabled_thinking_accepts_low_and_max_effort(self) -> None:
+        for effort in ("low", "high", "max"):
+            with self.subTest(effort=effort):
+                sent = self._sent(
+                    {
+                        "model": "deepseek-flash",
+                        "messages": [{"role": "user", "content": "json"}],
+                    },
+                    provider="deepseek",
+                    thinking_enabled=True,
+                    thinking_effort=effort,
+                )
+                self.assertEqual(sent["reasoning_effort"], effort)
+
     def test_explicit_thinking_and_effort_are_not_overridden(self) -> None:
         sent = self._sent(
             {
@@ -352,7 +368,7 @@ class DeepSeekThinkingTests(unittest.TestCase):
     def test_environment_provider_and_thinking_are_used_when_not_explicit(self) -> None:
         with patch.dict(
             os.environ,
-            {"LLM_PROVIDER": "deepseek", "LLM_THINKING": "on"},
+            {"LLM_PROVIDER": "deepseek", "LLM_THINKING": "on", "LLM_THINKING_EFFORT": "max"},
             clear=False,
         ):
             sent = self._sent(
@@ -361,7 +377,7 @@ class DeepSeekThinkingTests(unittest.TestCase):
                 thinking_enabled=None,
             )
         self.assertEqual(sent["thinking"], {"type": "enabled"})
-        self.assertEqual(sent["reasoning_effort"], "high")
+        self.assertEqual(sent["reasoning_effort"], "max")
 
     def test_environment_thinking_defaults_off(self) -> None:
         sent = self._sent(
