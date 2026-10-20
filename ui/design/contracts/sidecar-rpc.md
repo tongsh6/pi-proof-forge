@@ -1,8 +1,14 @@
 # PiProofForge Sidecar RPC Contract
 
+2026-10-20 推断确认接续：`evidence.confirmInference` 接受成功返回的新 `card_sha256` 是同一卡下一字段确认的输入；保存一字段时保留另一字段已有 provenance，仍设为待审核、不可自动入池。客户端每次成功更新卡指纹、剩余候选及计数；部分失败不重放已成功项，确认后不隐式再次调用 `inferFields`。
+
+2026-10-20 用户修订职责取向：本人经历项目在缺少分工记录且无反向信息时，推断优先主导/负责人视角；仍按 L3 候选记录来源与确认状态。已采纳 L3 职责在角色行、行动和 trace 中保持原义，不机械降为参与；明确参与、协助及否定限定不被提升。R1.4 对有出处且已由用户确认的 L3 不因等级自动拒绝，未确认归因仍待核对。候选 value 只保存业务文本，等级及默认归因说明单独呈现。
+
 2026-10-18 四层质量报告（Phase A）：Scorecard JSON 增加 `quality_report`（`schema_version:1`，`evaluation_version: quality-v1`），结构为 `{resume_version, job_profile_id, thresholds_version, first_screen:{mode:explicit|fallback}, thresholds, tiers:{eligible,fit,strong,distinct}, auto_pass, llm_pending[], gap_tasks[], legacy_scores:{rule_total, llm_expression}}`；每层为 `{passed, failures:[{rule,target,reason}], metrics, matrix?, highlights?}`，failure 的 `target` 必须指向具体 bullet、经历条目或证据卡 id（`ec_*`）。`auto_pass = 四层 passed 且 llm_pending 为空`；Phase A 只实现规则判项，`R1.4/R2.1/R2.3/R3.1/R3.5/R4.1/R4.4` 仍在 `llm_pending`，因此 `auto_pass` 保持 false。规则总分与表达分只写入 `legacy_scores`，不再决定通过。评估阶段的 `pdf_check` 为空，`R1.5` 显式失败；PDF 导出后由 sidecar 用 `pdf_page_count` 回填页数并重算 `auto_pass`（裁切检查暂记 `clip_check:not_available`，真实两页无裁切由原生验收确认）。`run.quick.start` 返回顶层 `quality_report`；`resume_readiness` 增加 `auto_pass`、`quality_report`、`quality_failures[]`，删除 `evaluation_reference_score`。简历 Markdown 使用 `<!-- first-screen-end -->` 标记首屏，渲染层忽略该注释行。`NativePdfPreparation.quality` 增加 `auto_pass`、`quality_report`、`quality_failures[]`、`legacy_scores`，审批门禁改为消费 `quality_report.auto_pass`。
 
 2026-10-18 生成按等级降级（Phase D1–D4）：A/B 简历模板按字段 provenance 渲染——L1/L4 可写负责/主导，L3 动作/结果降级参与/推动且角色行标注「参与 / 推动」，L5 时间卡不进入正文，`precision=year` 只呈现起始年；证据卡按 JD 语义引用排序（引用优先，未引用最多 4/最少 2 条），首屏标记 `<!-- first-screen-end -->` 位于第一条经历之后。生成 trace 的 `claims[]` 对 `time_range`/`role_scope` 增加 `provenance`（level/evidence/confirmed_by_user/first_person_hits 等），trace 顶层增加 `field_provenance:{card_id:{time_range,role_scope,time_range_level,role_scope_level}}`；评估器读取卡内 `*_provenance_json` 使 R1.4 对真实卡生效。B4 突出点正文回填未在本阶段实现（评估发生在生成之后）。
+
+2026-10-20 DeepSeek Provider：`settings.get.llm_config` 增加 `thinking_enabled`、`api_key.source`（`saved|environment|legacy|none|storage_error`）与 `configured_providers[]`。`settings.update` 的 `llm_config` 支持 `thinking_enabled`，`api_key` 按 provider 写入本机凭据文件（0600），不写入 `policy.local.yaml`；`provider` 需匹配 `^[a-z][a-z0-9_]{0,31}$` 才能存取密钥。新增 RPC `settings.clearLlmApiKey`：params `{provider}`，返回 `{provider,cleared,configured_providers[]}`。`settings.checkLlmConnection` 使用 provider 名称；在线 provider 缺密钥返回 `BLOCKED_PROVIDER_CREDENTIAL`，LM Studio 既有 `BLOCKED_LOCAL_PROVIDER` 保持。`LLMClient` 对 `provider=deepseek` 注入 `thinking.disabled` 或 `thinking.enabled + reasoning_effort=high`，并支持 `LLM_THINKING=on/off` 环境变量；其他 provider 不受影响。
 
 2026-10-18 证据可信等级与推断（Phase C）：`evidence.get`/`evidence.list` 增加字段级 provenance（`time_range_provenance`/`role_scope_provenance`，卡 YAML 以 `*_provenance_json` 持久化；L1–L5、precision/evidence/confidence/confirmed_by_user/first_person_hits；缺省按 L1/L5 兼容）与 `time_range_level`/`role_scope_level`。新 RPC `evidence.inferFields`：params `{card_ids?}`（缺省=分流为 needs_fill 且缺时间/角色的卡），返回 `{status,enabled,cards:[{card_id,card_sha256,cache,status,candidates:[{field,value,level,precision?,confidence,evidence[],first_person_hits?,candidate_hash}],documents,windows}],summary}`；候选不写卡，结果存 `app-data/evidence_inference.json`（按卡 sha256+文档集合缓存，否决 hash 不再提名）；关闭推断时 status=rules_only 且只返回 L2 时间线索。新 RPC `evidence.confirmInference`：params `{evidence_id,card_sha256,field,action:accept|reject,value?}`；accept 保留候选等级并写 `confirmed_by_user/confirmed_at`，修改值后接受记 L4，reject 记 hash；卡片进入待审核。`settings.get` 增加 `evidence_inference:{enabled}`，`settings.update` 支持 section `evidence_inference`（持久化 policy.local.yaml）。
 
@@ -814,14 +820,17 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
   "excluded_legal_entities": [],
   "channels": [],
   "llm_config": {
-    "provider": "openai",
-    "model": "gpt-5",
-    "base_url": null,
+    "provider": "deepseek",
+    "model": "deepseek-flash",
+    "base_url": "https://api.deepseek.com",
     "api_key": {
       "configured": true,
       "masked": true,
-      "updated_at": "2026-03-07T10:00:00Z"
+      "updated_at": "2026-10-20T10:00:00Z",
+      "source": "saved"
     },
+    "configured_providers": ["deepseek"],
+    "thinking_enabled": false,
     "timeout": 60,
     "temperature": 0.2
   }
@@ -850,7 +859,10 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 - `section`: `gate_policy | exclusion_list | excluded_legal_entities | llm_config`
 - `gate_policy` payload 当前支持更新字段：`delivery_mode`、`batch_review`；为部分更新，未传字段保持原值
 - `delivery_mode` 枚举：`auto | manual`；`batch_review` 为布尔值，仅 `delivery_mode=manual` 时生效
-- `llm_config` payload 当前支持更新字段：`provider`、`model`、`base_url`、`api_key`、`timeout`、`temperature`；为部分更新，未传字段保持原值
+- `llm_config` payload 当前支持更新字段：`provider`、`model`、`base_url`、`api_key`、`timeout`、`temperature`、`thinking_enabled`；为部分更新，未传字段保持原值
+- `api_key` 按 provider 保存到本机凭据文件；payload 携带 `api_key` 时，`provider`（或当前已保存 provider）必须匹配 `^[a-z][a-z0-9_]{0,31}$`，否则拒绝
+- `provider=lm_studio` 且 `api_key="lm-studio"` 保持本地占位语义，不强制创建凭据文件
+- `thinking_enabled` 为布尔值，仅 `provider=deepseek` 时影响请求；写入 `policy.local.yaml` 的 `llm_thinking_enabled`
 - `channels` 当前为 `settings.get` 只读返回字段，不支持 `settings.update`
 - `settings.get` 永不返回 secret 明文
 
@@ -902,7 +914,39 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 - `status`: `pass | blocked`
 - 成功时 `code=OK` 且 `models` 返回最多 20 个模型 id
 - 本地端点不可达、返回空模型列表或未配置 base_url 时，返回 `code=BLOCKED_LOCAL_PROVIDER`
+- 在线 provider（OpenAI / DeepSeek / OpenAI Compatible）缺少密钥时返回 `code=BLOCKED_PROVIDER_CREDENTIAL`；其余不可达/空列表返回 `code=BLOCKED_PROVIDER`
 - 返回值不得包含 API key 明文
+
+### 6.22.1 settings.clearLlmApiKey
+
+用途：按 provider 删除本机保存的模型 API Key，不修改 model/base_url/timeout/temperature。
+
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "provider": "deepseek"
+}
+```
+
+`result`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "provider": "deepseek",
+  "cleared": true,
+  "configured_providers": ["lm_studio"]
+}
+```
+
+规则：
+
+- `provider` 必须匹配 `^[a-z][a-z0-9_]{0,31}$`
+- 未保存的 provider 删除为空操作，仍返回 `cleared=true`
+- 删除失败返回固定错误，不包含路径、密钥或底层异常
+- 清除当前 provider 后，`settings.get.llm_config.api_key.configured=false`（除非环境变量仍提供密钥）
 
 ### 6.23 evidence.create
 
