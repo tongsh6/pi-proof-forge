@@ -1367,7 +1367,15 @@
         "testConnection": "Check connection",
         "checking": "Checking...",
         "saving": "Saving...",
-        "saved": "Model configuration saved"
+        "saved": "Model configuration saved",
+        "keySaved": "Key saved to the local credential file",
+        "keyEnvironment": "Key comes from the LLM_API_KEY environment variable",
+        "keyLocalPlaceholder": "LM Studio uses a local placeholder key",
+        "keyStorageError": "Could not read the local credential file; check permissions",
+        "keyMissing": "No key is configured for this provider",
+        "clearKey": "Clear key",
+        "thinkingMode": "Thinking mode",
+        "thinkingModeHint": "Uses high effort when enabled; DeepSeek ignores temperature in thinking mode."
       },
       "secretStatus": {
         "title": "Secret Status",
@@ -1612,6 +1620,11 @@
         "title": "Delete the saved Liepin credential?",
         "description": "The official read-only connection stops working until you paste a token again.",
         "confirm": "Delete"
+      },
+      "clearLlmKey": {
+        "title": "Delete the saved model key?",
+        "description": "Deletes the local key for {{provider}}; the model, endpoint and other providers' keys are unchanged.",
+        "confirm": "Delete key"
       }
     },
     "agentRun": {
@@ -1736,7 +1749,8 @@
       "saved": "Model settings saved",
       "credentialSaved": "Liepin credential saved locally",
       "credentialCleared": "Liepin credential deleted",
-      "connectionOk": "Connection test passed"
+      "connectionOk": "Connection test passed",
+      "llmKeyCleared": "Model key deleted"
     },
     "settings": {
       "materialRootSaved": "Source root saved",
@@ -1897,7 +1911,7 @@
       "failed": "Not passed",
       "blockedBy": "(lower tier not passed; this tier is advisory only: {{tier}})",
       "noFailures": "No rule failures in this tier.",
-      "llmPending": "LLM judgements pending (Phase B): {{rules}}",
+      "llmPending": "LLM judgements incomplete or missing coverage: {{rules}}",
       "legacy": "Compare legacy scores (not used for pass judgement)",
       "legacyValue": "Rule total {{rule}} · expression reference {{expression}}",
       "openCard": "Open in Evidence",

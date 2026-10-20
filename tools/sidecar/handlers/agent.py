@@ -847,7 +847,7 @@ def _quick_run_result_details(
         pending_rules = quality_report.get("llm_pending") or []
         if pending_rules:
             quality_failures.append(
-                "LLM 判项未接入（Phase B）：" + "、".join(str(item) for item in pending_rules)
+                "LLM 判项未完成或覆盖不足：" + "、".join(str(item) for item in pending_rules)
             )
     auto_pass = bool(quality_report.get("auto_pass")) if isinstance(quality_report, dict) else False
     if not resume_traceable:
@@ -938,7 +938,10 @@ def _persisted_llm_runtime_context() -> tuple[dict[str, Any], dict[str, str]]:
             "configured": bool(config.get("api_key_configured")),
             "masked": True,
             "updated_at": clean_str(config.get("api_key_updated_at")),
+            "source": clean_str(config.get("api_key_source")),
         },
+        "configured_providers": list(config.get("configured_providers") or []),
+        "thinking_enabled": bool(config.get("thinking_enabled")),
         "timeout": int(config.get("timeout") or 60),
         "temperature": float(config.get("temperature") or 0.2),
     }
@@ -952,6 +955,7 @@ def _persisted_llm_runtime_context() -> tuple[dict[str, Any], dict[str, str]]:
     api_key_for_request = clean_str(config.get("api_key_for_request"))
     if api_key_for_request:
         env["LLM_API_KEY"] = api_key_for_request
+    env["LLM_THINKING"] = "on" if summary["thinking_enabled"] else "off"
     # 系统设置里的超时同样作用于管线各 LLM 阶段；本地大模型通常需要远大于 120 秒。
     env["LLM_TIMEOUT"] = str(summary["timeout"])
     return summary, env

@@ -34,6 +34,9 @@ assert.ok(rendered.includes('ec_1234')&&rendered.includes('证据卡 time_range 
 assert.ok(rendered.includes('quality.report.llmPending')&&rendered.includes('R1.4'));
 assert.ok(rendered.includes('quality.report.legacyValue')&&rendered.includes('52')&&rendered.includes('69'));
 assert.ok(rendered.includes('quality.report.blockedBy'));
+const stale=JSON.parse(JSON.stringify(sample));stale.tiers.eligible.passed=true;
+const refreshed=text(exports.QualityReportPanel({report:stale}));
+assert.ok(!refreshed.includes('quality.report.blockedBy'),'已通过的合格层不能继续显示旧阻断标记');
 assert.ok(rendered.includes('quality.report.highlights')&&rendered.includes('bullet#3')&&rendered.includes('规模、难度'));
 assert.ok(rendered.includes('quality.report.reject')&&rendered.includes('quality.report.select'));
 assert.ok(rendered.includes('quality.report.candidate'));

@@ -1367,7 +1367,15 @@
         "testConnection": "检查连接",
         "checking": "检查中...",
         "saving": "保存中...",
-        "saved": "模型配置已保存"
+        "saved": "模型配置已保存",
+        "keySaved": "密钥已保存到本机凭据文件",
+        "keyEnvironment": "当前密钥来自环境变量 LLM_API_KEY",
+        "keyLocalPlaceholder": "LM Studio 使用本地占位密钥",
+        "keyStorageError": "本机凭据文件读取失败，请检查权限",
+        "keyMissing": "尚未配置该提供方的密钥",
+        "clearKey": "清除密钥",
+        "thinkingMode": "思考模式",
+        "thinkingModeHint": "开启后使用 high effort；DeepSeek 在思考模式下会忽略温度参数。"
       },
       "secretStatus": {
         "title": "凭证状态",
@@ -1612,6 +1620,11 @@
         "title": "删除已保存的猎聘凭据？",
         "description": "删除后官方只读连接不可用，需要重新粘贴 Token。",
         "confirm": "删除"
+      },
+      "clearLlmKey": {
+        "title": "删除已保存的模型密钥？",
+        "description": "将删除 {{provider}} 的本机密钥；模型、地址与其他提供方的密钥不受影响。",
+        "confirm": "删除密钥"
       }
     },
     "agentRun": {
@@ -1736,7 +1749,8 @@
       "saved": "模型配置已保存",
       "credentialSaved": "猎聘凭据已保存到本机",
       "credentialCleared": "猎聘凭据已删除",
-      "connectionOk": "连接测试通过"
+      "connectionOk": "连接测试通过",
+      "llmKeyCleared": "模型密钥已删除"
     },
     "settings": {
       "materialRootSaved": "材料来源根已保存",
@@ -1897,7 +1911,7 @@
       "failed": "未通过",
       "blockedBy": "（下层未通过，本层结论仅供参考：{{tier}}）",
       "noFailures": "本层无规则缺口。",
-      "llmPending": "LLM 判项待接入（Phase B）：{{rules}}",
+      "llmPending": "LLM 判项未完成或覆盖不足：{{rules}}",
       "legacy": "对比旧版分数（不参与通过判定）",
       "legacyValue": "规则总分 {{rule}} · 表达参考 {{expression}}",
       "openCard": "在证据页查看",

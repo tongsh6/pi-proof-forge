@@ -250,6 +250,22 @@ export function EvidencePage() {
   }, []);
   const candidateKey = (evidenceId: string, candidate: EvidenceInferenceCandidate) =>
     `${evidenceId}:${candidate.field}:${candidate.candidate_hash}`;
+  const recordInferenceDecision = useCallback((evidenceId: string, candidateHash: string, cardSha?: string) => {
+    setInference((current) => {
+      if (!current) return current;
+      const cards = current.cards.map((card) => card.card_id === evidenceId
+        ? { ...card, card_sha256: cardSha ?? card.card_sha256,
+          candidates: card.candidates.filter((entry) => entry.candidate_hash !== candidateHash) }
+        : card);
+      const candidates = cards.flatMap((card) => card.candidates);
+      return { ...current, cards, summary: { ...current.summary,
+        candidates: candidates.length,
+        cards_with_candidates: cards.filter((card) => card.candidates.length > 0).length,
+        time_candidates: candidates.filter((candidate) => candidate.field === "time_range").length,
+        role_candidates: candidates.filter((candidate) => candidate.field === "role_scope").length,
+      } };
+    });
+  }, []);
   const handleInferenceDecision = useCallback(async (
     item: EvidenceReconcileItem,
     cardSha: string,
@@ -260,53 +276,54 @@ export function EvidencePage() {
     setInferenceBusy(true);
     setInferenceError(null);
     try {
-      await confirmEvidenceInference({
+      const result = await confirmEvidenceInference({
         evidence_id: item.evidence_id,
         card_sha256: cardSha,
         field: candidate.field,
         action,
         ...(value ? { value } : {}),
       });
-      setInference((current) => current && {
-        ...current,
-        cards: current.cards.map((card) => card.card_id === item.evidence_id
-          ? { ...card, candidates: card.candidates.filter((entry) => entry.candidate_hash !== candidate.candidate_hash) }
-          : card),
-      });
+      recordInferenceDecision(item.evidence_id, candidate.candidate_hash, result.card_sha256);
       setInferenceNotice(t(action === "accept" ? "pages.evidence.reconcile.inference.accepted" : "pages.evidence.reconcile.inference.rejected"));
       await runReconcile();
-      await loadDetail(item.evidence_id).catch(() => null);
+      if (selectedIdRef.current === item.evidence_id) await loadDetail(item.evidence_id).catch(() => null);
     } catch (reason) {
       setInferenceError(getErrorMessage(reason));
     } finally {
       setInferenceBusy(false);
     }
-  }, [loadDetail, runReconcile, t]);
+  }, [loadDetail, runReconcile, recordInferenceDecision, t]);
   const batchAcceptHighConfidence = useCallback(async () => {
     if (!inference) return;
     setInferenceBusy(true);
     setInferenceError(null);
     setInferenceNotice("");
+    const updatedIds = new Set<string>();
     try {
       for (const card of inference.cards) {
         const item = reconcile?.items.find((entry) => entry.evidence_id === card.card_id);
         if (!item) continue;
+        let cardSha = card.card_sha256;
         for (const candidate of card.candidates.filter((entry) => (entry.confidence ?? 0) >= 0.5)) {
-          await confirmEvidenceInference({
-            evidence_id: card.card_id, card_sha256: card.card_sha256,
+          const result = await confirmEvidenceInference({
+            evidence_id: card.card_id, card_sha256: cardSha,
             field: candidate.field, action: "accept",
           });
+          cardSha = result.card_sha256 ?? cardSha;
+          recordInferenceDecision(card.card_id, candidate.candidate_hash, cardSha);
+          updatedIds.add(card.card_id);
         }
       }
       setInferenceNotice(t("pages.evidence.reconcile.inference.batchAccepted"));
-      await runInference();
-      await runReconcile();
     } catch (reason) {
       setInferenceError(getErrorMessage(reason));
     } finally {
+      await runReconcile();
+      const currentId = selectedIdRef.current;
+      if (currentId && updatedIds.has(currentId)) await loadDetail(currentId).catch(() => null);
       setInferenceBusy(false);
     }
-  }, [inference, reconcile, runInference, runReconcile, t]);
+  }, [inference, reconcile, recordInferenceDecision, runReconcile, loadDetail, t]);
 
   const [problemFilter, setProblemFilter] = useState<ProblemFilter>("all");
   const [materialDrawerOpen, setMaterialDrawerOpen] = useState(false);

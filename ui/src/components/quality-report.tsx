@@ -41,11 +41,12 @@ export function QualityReportPanel({report,title,onHighlightDecision}:{report?:Q
       const tier: QualityTier | undefined = report.tiers?.[name];
       if(!tier)return null;
       const failures=tier.failures||[];
+      const dependency=TIERS.find(([key])=>key===tier.blocked_by);
       return <details key={name} open={!tier.passed} className="rounded-card border border-border bg-bg-primary/40 p-3">
         <summary className="cursor-pointer text-sm font-medium">
           {t(label)} · <span className={tier.passed?'text-success':'text-warning'}>{t(tier.passed?'quality.report.passed':'quality.report.failed')}</span>
           {!tier.passed&&<span className="text-text-muted"> ({failures.length})</span>}
-          {tier.blocked_by&&<span className="ml-2 text-xs text-text-muted">{t('quality.report.blockedBy',{tier:tier.blocked_by})}</span>}
+          {dependency&&report.tiers?.[dependency[0]]?.passed===false&&<span className="ml-2 text-xs text-text-muted">{t('quality.report.blockedBy',{tier:t(dependency[1])})}</span>}
         </summary>
         {failures.length>0?
           <ul className="mt-2 space-y-1 text-xs text-text-secondary">{failures.map((failure,index)=>{
