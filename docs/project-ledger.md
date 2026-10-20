@@ -6,11 +6,11 @@ Last updated: 2026-10-20
 
 - 定位与复用：现有系统设置已有 `lm_studio` / `openai` / `openai_compatible` 与唯一 `LLMClient`；DeepSeek 使用 OpenAI 兼容协议，不新增 SDK。实际缺口是 provider 预设、按 provider 的密钥持久化、页面状态与 DeepSeek thinking 适配。
 - 凭据：从猎聘 Token 文件抽取 `LocalCredentialFile`（0700 目录、0600 文件、原子替换、拒绝符号链接），新增 `LLMApiKeyStore` 按 `llm-<provider>-api-key` 保存；`tests/conftest.py` 将凭据根固定到临时目录，测试不触碰用户真实密钥。旧 `LLM_API_KEY` 环境变量保留回退，`lm_studio` 保留 `lm-studio` 占位。
-- 后端：`settings.get.llm_config` 增加 `thinking_enabled`、`api_key.source`、`configured_providers`；`settings.update` 支持 `thinking_enabled` 与按 provider 写入密钥；新增 `settings.clearLlmApiKey`；连接检查按 provider 命名，缺在线密钥返回 `BLOCKED_PROVIDER_CREDENTIAL`。未提供真实密钥的历史在线配置不再被误报为可用。
-- 请求：`LLMClient` 仅对 `provider=deepseek` 注入 `thinking.disabled` 或 `thinking.enabled + reasoning_effort=high`；显式参数不覆盖，其他 provider 不注入。sidecar 通过 `LLM_THINKING=on/off` 传给管线子进程。
-- 页面：Provider 下拉新增 DeepSeek；自动填充 `https://api.deepseek.com` / `deepseek-flash`；按 provider 显示密钥来源与清除按钮；DeepSeek 显示思考模式开关与温度提示；切换 provider 清空连接检查与模型列表；切换时清空未保存的密钥输入，避免串 provider。
-- 验证：相关测试与全量 `python3 -m pytest tests -q` **1557 passed、1 skipped、21 subtests passed**；`tsc --noEmit`、`check_execution_roadmap`、`check_v2_constraints`、`check_aief_l3` 通过。独立审查发现并修复：跨 provider 连接检查复用当前密钥、旧 LM Studio 占位污染在线 provider、切换 provider 未强制套用 DeepSeek 预设、连接失败仍提示成功、清除密钥后旧连接状态残留、非 LM Studio 本地端点误标、provider 未无条件校验、异常消息可能回显畸形密钥。真实 DeepSeek API 调用与真实 App 页面验收尚未执行，需用户在自己的 Key 下完成；`.pen` 因本机无 Pencil 工具待补。
-- 边界：未新增平台写入，不改变 P0-026 唯一 `next`；未实现思考强度选择与通用空正文重试。
+- 后端：`settings.get.llm_config` 增加 `thinking_enabled`、`thinking_effort`、`api_key.source`、`configured_providers`；`settings.update` 支持 `thinking_enabled`、`thinking_effort`（low / high / max，默认 high）与按 provider 写入密钥；新增 `settings.clearLlmApiKey`；连接检查按 provider 命名，缺在线密钥返回 `BLOCKED_PROVIDER_CREDENTIAL`。未提供真实密钥的历史在线配置不再被误报为可用。
+- 请求：`LLMClient` 仅对 `provider=deepseek` 注入 `thinking.disabled` 或 `thinking.enabled + reasoning_effort=low|high|max`；显式参数不覆盖，其他 provider 不注入。sidecar 通过 `LLM_THINKING=on/off` 与 `LLM_THINKING_EFFORT` 传给管线子进程。
+- 页面：Provider 改为四张分段选择卡（LM Studio / OpenAI / DeepSeek / OpenAI Compatible），DeepSeek 自动填充 `https://api.deepseek.com` / `deepseek-flash`；密钥状态与清除入口内联在 API Key 下；DeepSeek 思考开关与 low / high / max 分段控件同排；连接状态与检查按钮收进卡片底部；删除重复的 Secret Status / Connection Tests 卡片；切换 provider 清空连接检查与模型列表，并清空未保存的密钥输入。
+- 验证：相关测试与全量 `python3 -m pytest tests -q` **1560 passed、1 skipped、27 subtests passed**；`tsc --noEmit`、`check_execution_roadmap`、`check_v2_constraints`、`check_aief_l3` 通过。独立审查发现并修复：跨 provider 连接检查复用当前密钥、旧 LM Studio 占位污染在线 provider、切换 provider 未强制套用 DeepSeek 预设、连接失败仍提示成功、清除密钥后旧连接状态残留、非 LM Studio 本地端点误标、provider 未无条件校验、异常消息可能回显畸形密钥。真实 DeepSeek API 调用与真实 App 页面验收尚未执行，需用户在自己的 Key 下完成；`.pen` 画布已更新 DeepSeek 选项、密钥状态/清除、思考开关与强度选择，截图见 `outputs/pen-sync-20261021/system-settings-llm-screen.png`、`outputs/pen-sync-20261021/llm-config-compact.png` 与真实 React 渲染 `outputs/pen-sync-20261021/react-system-settings.png`（mock 数据，仅验证布局）；`.pen` 主文件已保存，新增紧凑 mockup 若需保留请在 Pencil 中 Cmd+S。
+- 边界：未新增平台写入，不改变 P0-026 唯一 `next`；未实现通用空正文重试。
 
 ## 2026-10-20 对位与优质层修复（P0-026 续）
 

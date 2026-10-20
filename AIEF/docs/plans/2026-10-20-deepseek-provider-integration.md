@@ -29,7 +29,7 @@ System Settings UI
 sidecar / pipeline ──────┴─→ _load_llm_config()
                               ├─ 文件（saved）→ 环境变量（environment）→ lm-studio 占位（legacy）
                               └─ LLMClient(provider, thinking_enabled)
-                                    └─ DeepSeek: thinking.enabled/disabled + reasoning_effort=high
+                                    └─ DeepSeek: thinking.enabled/disabled + reasoning_effort=low|high|max
 ```
 
 ## 3. 契约变更
@@ -41,6 +41,7 @@ sidecar / pipeline ──────┴─→ _load_llm_config()
 ```json
 {
   "thinking_enabled": false,
+  "thinking_effort": "high",
   "api_key": {
     "configured": true,
     "masked": true,
@@ -57,7 +58,7 @@ sidecar / pipeline ──────┴─→ _load_llm_config()
 
 ### 3.2 `settings.update`（section=`llm_config`）
 
-- 支持字段增加 `thinking_enabled`（布尔）
+- 支持字段增加 `thinking_enabled`（布尔）与 `thinking_effort`（`low|high|max`，默认 `high`）
 - `api_key` 写入当前/传入 provider 的凭据文件；provider 必须匹配 `^[a-z][a-z0-9_]{0,31}$`
 - `lm_studio` + `api_key="lm-studio"` 保持占位语义，不强制写文件
 - 其他 provider 的 key 不进入 `policy.local.yaml`
@@ -84,9 +85,10 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
 
 - `provider` 为空时回退 `LLM_PROVIDER` 环境变量
 - `thinking_enabled` 为 None 时回退 `LLM_THINKING=on/off`，默认 `off`
+- `reasoning_effort` 默认 `high`，可传 `low|high|max`，并回退 `LLM_THINKING_EFFORT`
 - `provider=deepseek` 且 payload 未显式带 `thinking` 时：
   - 关闭：`{"thinking": {"type": "disabled"}}`
-  - 开启：`{"thinking": {"type": "enabled"}, "reasoning_effort": "high"}`
+  - 开启：`{"thinking": {"type": "enabled"}, "reasoning_effort": "low|high|max"}`
 - 不修改其他 provider 的请求
 
 ## 4. 安全设计
@@ -163,10 +165,10 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
 **Steps**
 1. 先写失败测试：
    - `provider="deepseek"` + 默认 → payload 含 `thinking.disabled`。
-   - `thinking_enabled=True` → `thinking.enabled` + `reasoning_effort=high`。
+   - `thinking_enabled=True` → `thinking.enabled` + 所选 `reasoning_effort`。
    - 显式 `thinking` / `reasoning_effort` 不被覆盖。
    - 其他 provider 不受影响。
-   - `provider` 空时读取 `LLM_PROVIDER`，`thinking_enabled=None` 时读取 `LLM_THINKING`。
+   - `provider` 空时读取 `LLM_PROVIDER`，`thinking_enabled=None` 时读取 `LLM_THINKING`；`reasoning_effort=None` 时读取 `LLM_THINKING_EFFORT`。
 2. 运行 → 失败。
 3. 实现最小注入逻辑；不改变 LM Studio 分支。
 4. 运行通过。
@@ -181,9 +183,9 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
 - Test: `tests/unit/sidecar/test_agent_handler.py`
 
 **Steps**
-1. 先写失败测试：`_persisted_llm_runtime_context()` 返回 `thinking_enabled` 并设置 `LLM_THINKING=on/off`。
+1. 先写失败测试：`_persisted_llm_runtime_context()` 返回 `thinking_enabled` / `thinking_effort` 并设置 `LLM_THINKING=on/off`、`LLM_THINKING_EFFORT`。
 2. 运行 → 失败。
-3. 在 summary/env 中传递；4 处直接构造 `LLMClient` 的 handler 传入 `thinking_enabled`。
+3. 在 summary/env 中传递；4 处直接构造 `LLMClient` 的 handler 传入 `thinking_enabled` / `reasoning_effort`。
 4. 运行通过。
 
 ### Task 6：页面与 i18n
@@ -197,7 +199,7 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
 - Test: `tests/unit/gui/test_system_settings_page_contract.py`
 
 **Steps**
-1. 先写失败契约测试：DeepSeek 选项、默认 URL/模型、`thinking_enabled`、`clearLlmApiKey`、按 provider 密钥状态、切换时清空检测结果。
+1. 先写失败契约测试：DeepSeek 选项、默认 URL/模型、`thinking_enabled`、`thinking_effort`、`clearLlmApiKey`、按 provider 密钥状态、切换时清空检测结果。
 2. 运行 → 失败。
 3. 实现 UI 与 API/类型；补齐中英文文案。
 4. `tsc --noEmit` 与 GUI 契约测试通过。
@@ -213,7 +215,7 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
 
 **Steps**
 1. 按实际实现更新契约与设计说明。
-2. `.pen` 若本机 Pencil 工具不可用，明确记录待同步，不标为完成。
+2. `.pen` 画布已更新 System Settings 的 DeepSeek 预设、密钥状态/清除、思考开关与 low/high/max 强度选择；截图核对无裁切。Pencil 无保存 API，磁盘文件需在编辑器中 Cmd+S 落盘。
 
 ### Task 8：回归与真实 App 验收
 

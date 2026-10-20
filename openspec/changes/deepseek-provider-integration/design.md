@@ -67,8 +67,8 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
 - `provider` 为空时读取 `LLM_PROVIDER`；`thinking_enabled=None` 时读取 `LLM_THINKING`（默认 off）。
 - 仅 `provider=deepseek`：
   - 未显式传 `thinking` 时，关闭：`{"thinking": {"type": "disabled"}}`
-  - 开启：`{"thinking": {"type": "enabled"}, "reasoning_effort": "high"}`
-  - 调用方显式传 `thinking` 或 `reasoning_effort` 时不覆盖。
+  - 开启：`{"thinking": {"type": "enabled"}, "reasoning_effort": "low|high|max"}`
+  - `reasoning_effort` 由 `llm_thinking_effort` 决定，默认 `high`；调用方显式传 `thinking` 或 `reasoning_effort` 时不覆盖。
 - 其他 provider 的 payload 不变；LM Studio 的 `json_schema` / reasoning 兼容分支保持原顺序。
 - 思考模式下 DeepSeek 忽略 `temperature`；页面提示，不删除该字段，避免影响非思考模式。
 

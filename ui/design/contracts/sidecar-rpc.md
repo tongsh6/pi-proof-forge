@@ -8,7 +8,7 @@
 
 2026-10-18 生成按等级降级（Phase D1–D4）：A/B 简历模板按字段 provenance 渲染——L1/L4 可写负责/主导，L3 动作/结果降级参与/推动且角色行标注「参与 / 推动」，L5 时间卡不进入正文，`precision=year` 只呈现起始年；证据卡按 JD 语义引用排序（引用优先，未引用最多 4/最少 2 条），首屏标记 `<!-- first-screen-end -->` 位于第一条经历之后。生成 trace 的 `claims[]` 对 `time_range`/`role_scope` 增加 `provenance`（level/evidence/confirmed_by_user/first_person_hits 等），trace 顶层增加 `field_provenance:{card_id:{time_range,role_scope,time_range_level,role_scope_level}}`；评估器读取卡内 `*_provenance_json` 使 R1.4 对真实卡生效。B4 突出点正文回填未在本阶段实现（评估发生在生成之后）。
 
-2026-10-20 DeepSeek Provider：`settings.get.llm_config` 增加 `thinking_enabled`、`api_key.source`（`saved|environment|legacy|none|storage_error`）与 `configured_providers[]`。`settings.update` 的 `llm_config` 支持 `thinking_enabled`，`api_key` 按 provider 写入本机凭据文件（0600），不写入 `policy.local.yaml`；`provider` 需匹配 `^[a-z][a-z0-9_]{0,31}$` 才能存取密钥。新增 RPC `settings.clearLlmApiKey`：params `{provider}`，返回 `{provider,cleared,configured_providers[]}`。`settings.checkLlmConnection` 使用 provider 名称；在线 provider 缺密钥返回 `BLOCKED_PROVIDER_CREDENTIAL`，LM Studio 既有 `BLOCKED_LOCAL_PROVIDER` 保持。`LLMClient` 对 `provider=deepseek` 注入 `thinking.disabled` 或 `thinking.enabled + reasoning_effort=high`，并支持 `LLM_THINKING=on/off` 环境变量；其他 provider 不受影响。
+2026-10-20 DeepSeek Provider：`settings.get.llm_config` 增加 `thinking_enabled`、`thinking_effort`（`low|high|max`，默认 `high`）、`api_key.source`（`saved|environment|legacy|none|storage_error`）与 `configured_providers[]`。`settings.update` 的 `llm_config` 支持 `thinking_enabled`、`thinking_effort`，`api_key` 按 provider 写入本机凭据文件（0600），不写入 `policy.local.yaml`；`provider` 需匹配 `^[a-z][a-z0-9_]{0,31}$` 才能存取密钥。新增 RPC `settings.clearLlmApiKey`：params `{provider}`，返回 `{provider,cleared,configured_providers[]}`。`settings.checkLlmConnection` 使用 provider 名称；在线 provider 缺密钥返回 `BLOCKED_PROVIDER_CREDENTIAL`，LM Studio 既有 `BLOCKED_LOCAL_PROVIDER` 保持。`LLMClient` 对 `provider=deepseek` 注入 `thinking.disabled` 或 `thinking.enabled + reasoning_effort=low|high|max`，并支持 `LLM_THINKING=on/off`、`LLM_THINKING_EFFORT` 环境变量；其他 provider 不受影响。
 
 2026-10-18 证据可信等级与推断（Phase C）：`evidence.get`/`evidence.list` 增加字段级 provenance（`time_range_provenance`/`role_scope_provenance`，卡 YAML 以 `*_provenance_json` 持久化；L1–L5、precision/evidence/confidence/confirmed_by_user/first_person_hits；缺省按 L1/L5 兼容）与 `time_range_level`/`role_scope_level`。新 RPC `evidence.inferFields`：params `{card_ids?}`（缺省=分流为 needs_fill 且缺时间/角色的卡），返回 `{status,enabled,cards:[{card_id,card_sha256,cache,status,candidates:[{field,value,level,precision?,confidence,evidence[],first_person_hits?,candidate_hash}],documents,windows}],summary}`；候选不写卡，结果存 `app-data/evidence_inference.json`（按卡 sha256+文档集合缓存，否决 hash 不再提名）；关闭推断时 status=rules_only 且只返回 L2 时间线索。新 RPC `evidence.confirmInference`：params `{evidence_id,card_sha256,field,action:accept|reject,value?}`；accept 保留候选等级并写 `confirmed_by_user/confirmed_at`，修改值后接受记 L4，reject 记 hash；卡片进入待审核。`settings.get` 增加 `evidence_inference:{enabled}`，`settings.update` 支持 section `evidence_inference`（持久化 policy.local.yaml）。
 
@@ -831,6 +831,7 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
     },
     "configured_providers": ["deepseek"],
     "thinking_enabled": false,
+    "thinking_effort": "high",
     "timeout": 60,
     "temperature": 0.2
   }
@@ -859,10 +860,11 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 - `section`: `gate_policy | exclusion_list | excluded_legal_entities | llm_config`
 - `gate_policy` payload 当前支持更新字段：`delivery_mode`、`batch_review`；为部分更新，未传字段保持原值
 - `delivery_mode` 枚举：`auto | manual`；`batch_review` 为布尔值，仅 `delivery_mode=manual` 时生效
-- `llm_config` payload 当前支持更新字段：`provider`、`model`、`base_url`、`api_key`、`timeout`、`temperature`、`thinking_enabled`；为部分更新，未传字段保持原值
+- `llm_config` payload 当前支持更新字段：`provider`、`model`、`base_url`、`api_key`、`timeout`、`temperature`、`thinking_enabled`、`thinking_effort`；为部分更新，未传字段保持原值
 - `api_key` 按 provider 保存到本机凭据文件；payload 携带 `api_key` 时，`provider`（或当前已保存 provider）必须匹配 `^[a-z][a-z0-9_]{0,31}$`，否则拒绝
 - `provider=lm_studio` 且 `api_key="lm-studio"` 保持本地占位语义，不强制创建凭据文件
 - `thinking_enabled` 为布尔值，仅 `provider=deepseek` 时影响请求；写入 `policy.local.yaml` 的 `llm_thinking_enabled`
+- `thinking_effort` 枚举 `low | high | max`，默认 `high`；写入 `policy.local.yaml` 的 `llm_thinking_effort`，仅在思考开启时作为 `reasoning_effort` 发送
 - `channels` 当前为 `settings.get` 只读返回字段，不支持 `settings.update`
 - `settings.get` 永不返回 secret 明文
 

@@ -91,7 +91,8 @@ API Key 必须按 provider 分别保存到本机受限权限文件，目录 0700
 DeepSeek 默认关闭思考；页面提供开关，持久化到 `policy.local.yaml` 的 `llm_thinking_enabled`。仅 `provider=deepseek` 时生效。
 
 - 关闭：请求包含 `{"thinking": {"type": "disabled"}}`
-- 开启：请求包含 `{"thinking": {"type": "enabled"}}` 与 `reasoning_effort=high`
+- 开启：请求包含 `{"thinking": {"type": "enabled"}}` 与 `reasoning_effort=low|high|max`
+- 思考强度由页面选择，持久化到 `llm_thinking_effort`，默认 `high`
 - 调用方显式传入 `thinking` 或 `reasoning_effort` 时不得覆盖
 - 其他 provider 不得收到 `thinking`
 
@@ -104,9 +105,9 @@ DeepSeek 默认关闭思考；页面提供开关，持久化到 `policy.local.ya
 
 #### Scenario: 开启思考
 
-- Given 用户开启思考模式并保存
+- Given 用户开启思考模式、选择 `max` 并保存
 - When 管线子进程请求 DeepSeek
-- Then 请求体包含 `thinking.type=enabled` 与 `reasoning_effort=high`
+- Then 请求体包含 `thinking.type=enabled` 与 `reasoning_effort=max`
 
 ### R4.2 运行时传播
 

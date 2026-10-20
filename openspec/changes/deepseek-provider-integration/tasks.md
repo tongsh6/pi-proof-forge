@@ -33,6 +33,7 @@
 - [x] C3 `agent._persisted_llm_runtime_context`：summary 增加 `thinking_enabled`，env 增加 `LLM_THINKING`
 - [x] C4 `evidence.py` / `jobs.py` / `job_preferences.py`：构造 `LLMClient` 时传入 `thinking_enabled`
 - [x] C5 测试：默认关闭、开启、显式覆盖、环境回退、agent env
+- [x] C6 思考强度 `low|high|max`：policy、settings、agent env、LLMClient 与测试
 
 ## Phase D - 页面
 
@@ -40,12 +41,13 @@
 - [x] D2 设置页：DeepSeek provider 预设、密钥状态、清除按钮、思考开关、切换时清空检测结果
 - [x] D3 i18n：中英文新增密钥状态、清除确认、思考模式与提示
 - [x] D4 GUI 契约测试先失败后通过；`tsc --noEmit`
+- [x] D5 DeepSeek 思考开启时显示 low/high/max 强度选择；i18n 与契约测试
 
 ## Phase E - 文档与验收
 
 - [x] E1 `ui/design/contracts/sidecar-rpc.md`：新增字段、`settings.clearLlmApiKey`、DeepSeek 适配说明
 - [x] E2 `ui/design/DESIGN.md`：System Settings LLM 段补充 DeepSeek、按 provider 密钥与思考开关
 - [x] E3 `docs/execution-roadmap.md` / `docs/project-ledger.md`：记录本任务与真实 App 验收结果
-- [ ] E4 `.pen` 同步；工具不可用时明确标注待补
+- [x] E4 `.pen` 主画布已保存 DeepSeek 选项、密钥状态/清除、思考开关与强度选择；另生成紧凑单卡 mockup，若需保留请在 Pencil 中 Cmd+S
 - [x] E5 全量 pytest、`tsc`、项目门禁
 - [ ] E6 真实 App：用户用自己的 DeepSeek Key 完成“检查连接 → 保存 → 重启 → 运行一次实际任务”，记录观察与未完成项

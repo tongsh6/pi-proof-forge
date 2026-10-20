@@ -349,7 +349,7 @@ App 持续运行时每分钟检查到期批次；“执行今日批次”与自�
 
 **职责**: 通道配置、模型配置、凭证状态、连通性检查
 
-2026-10-20 DeepSeek Provider 接入：模型分组新增 DeepSeek 预设与 thinking 开关；API Key 改为按 provider 保存到本机 0600 权限文件，新增按 provider 的已配置状态、环境变量来源提示与清除入口；连接检查使用 provider 名称并在缺密钥时阻断。`.pen` 同步 DeepSeek 选项、密钥状态/清除与思考开关；Pencil 工具不可用时明确标注待补。
+2026-10-20 DeepSeek Provider 接入：模型分组新增 DeepSeek 预设、thinking 开关与 low/high/max 思考强度；API Key 改为按 provider 保存到本机 0600 权限文件，新增按 provider 的已配置状态、环境变量来源提示与清除入口；连接检查使用 provider 名称并在缺密钥时阻断。LLM 配置改为紧凑单卡：provider 分段选择、密钥状态内联、思考开关与强度同排；`.pen` 同步该布局，截图见 `outputs/pen-sync-20261021/system-settings-llm-screen.png`、`outputs/pen-sync-20261021/llm-config-compact.png` 与真实 React 渲染 `outputs/pen-sync-20261021/react-system-settings.png`；`.pen` 主文件已保存。
 
 **布局**:
 - 顶部: 页面标题 + "Save / 保存" 主按钮
@@ -370,7 +370,7 @@ App 持续运行时每分钟检查到期批次；“执行今日批次”与自�
     - LLM Config / 模型:
       - provider（LM Studio / OpenAI / DeepSeek / OpenAI Compatible）、model、base_url、api_key（掩码）、timeout、temperature
       - DeepSeek 预设：base_url `https://api.deepseek.com`、model `deepseek-flash`；支持 `/models` 发现与连接检查
-      - 思考模式开关仅对 DeepSeek 显示，默认关闭；开启时请求使用 high effort，思考模式下温度参数不生效
+      - 思考模式开关仅对 DeepSeek 显示，默认关闭；开启后按 low / high / max 选择思考强度，思考模式下温度参数不生效
       - `api_key` 按 provider 分别保存到本机权限文件（目录 `0700`、文件 `0600`），不进入 localStorage、日志或 `policy.local.yaml`；页面只显示已保存 / 来自环境变量 / 本地占位 / 未配置状态，并支持清除
       - 未提供真实密钥的在线 provider 不得显示为可用；LM Studio 保留本地 `lm-studio` 占位密钥
       - 支持校验、连通性测试、模型发现；切换 provider 时清空上一 provider 的检测结果
