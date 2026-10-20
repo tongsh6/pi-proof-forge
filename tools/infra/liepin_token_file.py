@@ -1,4 +1,4 @@
-"""按用户授权保存猎聘 Token；仅支持 POSIX 本地权限文件。"""
+"""本机凭据权限文件：0700 目录、0600 文件、原子替换、拒绝符号链接。"""
 
 from __future__ import annotations
 
@@ -18,12 +18,11 @@ class CredentialStorageError(Exception):
         super().__init__("本地凭据文件操作失败。")
 
 
-class LiepinTokenFile:
-    def __init__(self, path: Path | None = None) -> None:
-        selected = path if path is not None else (
-            Path.home() / "Library/Application Support/PiProofForge/credentials/liepin-token"
-        )
-        self._path = Path(os.path.abspath(selected))
+class LocalCredentialFile:
+    """通用本机凭据文件；调用方负责提供完整文件路径。"""
+
+    def __init__(self, path: Path) -> None:
+        self._path = Path(os.path.abspath(Path(path)))
 
     @property
     def path(self) -> Path:
@@ -157,7 +156,7 @@ class LiepinTokenFile:
         temporary = ""
         try:
             self._target_stat(directory)
-            candidate = f".liepin-token.{secrets.token_hex(16)}.tmp"
+            candidate = f".{self.path.name}.{secrets.token_hex(16)}.tmp"
             descriptor = os.open(
                 candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                 0o600, dir_fd=directory,
@@ -184,3 +183,13 @@ class LiepinTokenFile:
                 except OSError:
                     pass
             os.close(directory)
+
+
+class LiepinTokenFile(LocalCredentialFile):
+    """猎聘 Token 的默认路径与既有行为保持兼容。"""
+
+    def __init__(self, path: Path | None = None) -> None:
+        selected = path if path is not None else (
+            Path.home() / "Library/Application Support/PiProofForge/credentials/liepin-token"
+        )
+        super().__init__(selected)

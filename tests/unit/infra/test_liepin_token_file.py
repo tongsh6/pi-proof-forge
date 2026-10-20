@@ -31,6 +31,16 @@ def assert_storage_error(call):
     return error
 
 
+def test_local_credential_file_supports_arbitrary_file_names(tmp_path):
+    store = storage.LocalCredentialFile(tmp_path / "private" / "credentials" / "llm-deepseek-api-key")
+    store.save("sk-deepseek")
+    assert storage.LocalCredentialFile(store.path).load() == "sk-deepseek"
+    assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(store.path.parent.stat().st_mode) == 0o700
+    store.delete()
+    assert store.load() is None
+
+
 def test_constructor_and_missing_reads_do_not_create_directories(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     value = storage.LiepinTokenFile()
