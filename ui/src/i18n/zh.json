@@ -1750,6 +1750,7 @@
       "credentialSaved": "猎聘凭据已保存到本机",
       "credentialCleared": "猎聘凭据已删除",
       "connectionOk": "连接测试通过",
+      "connectionBlocked": "连接检查未通过",
       "llmKeyCleared": "模型密钥已删除"
     },
     "settings": {

@@ -1750,6 +1750,7 @@
       "credentialSaved": "Liepin credential saved locally",
       "credentialCleared": "Liepin credential deleted",
       "connectionOk": "Connection test passed",
+      "connectionBlocked": "Connection check did not pass",
       "llmKeyCleared": "Model key deleted"
     },
     "settings": {

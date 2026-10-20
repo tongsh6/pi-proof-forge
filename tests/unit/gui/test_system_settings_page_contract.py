@@ -28,6 +28,11 @@ def test_system_settings_page_renders_design_sections():
         "LLM_PROVIDER_DEFAULTS",
         "applyProviderDefaults",
         "detectedModels",
+        "deepseek",
+        "thinking_enabled",
+        "providerKeyConfigured",
+        "canClearProviderKey",
+        "clearLlmApiKey",
     ):
         assert marker in source
 
@@ -106,6 +111,14 @@ def test_system_settings_i18n_contract_is_complete():
         "checking",
         "saving",
         "saved",
+        "keySaved",
+        "keyEnvironment",
+        "keyLocalPlaceholder",
+        "keyStorageError",
+        "keyMissing",
+        "clearKey",
+        "thinkingMode",
+        "thinkingModeHint",
     }
 
     for i18n_file in I18N_FILES:
@@ -123,3 +136,33 @@ def test_system_settings_i18n_contract_is_complete():
         assert not missing_llm, (
             f"{i18n_file.name} missing LLM keys: {sorted(missing_llm)}"
         )
+
+
+def test_deepseek_provider_defaults_and_thinking_toggle_are_wired():
+    source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
+
+    assert 'deepseek: {' in source
+    assert '"https://api.deepseek.com"' in source
+    assert '"deepseek-flash"' in source
+    assert "model: nextDefaults.model" in source
+    assert "base_url: nextDefaults.base_url" in source
+    assert "thinking_enabled: current.thinking_enabled" in source
+    assert 'setLlmConnection(null)' in source
+    assert "thinking_enabled" in source
+    assert "clearLlmApiKey" in source
+    assert "canClearProviderKey" in source
+    assert 'result.status === "pass"' in source
+
+
+def test_llm_credential_contract_exposes_provider_scoped_status():
+    api_source = (ROOT / "ui" / "src" / "lib" / "sidecar" / "api.ts").read_text(
+        encoding="utf-8"
+    )
+    types_source = (
+        ROOT / "ui" / "src" / "lib" / "sidecar" / "types.ts"
+    ).read_text(encoding="utf-8")
+
+    assert "settings.clearLlmApiKey" in api_source
+    assert "configured_providers" in types_source
+    assert "thinking_enabled" in types_source
+    assert "source?:" in types_source

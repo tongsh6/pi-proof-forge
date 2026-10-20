@@ -328,11 +328,27 @@ export async function updateLlmConfig(payload: {
   api_key?: string;
   timeout?: number;
   temperature?: number;
+  thinking_enabled?: boolean;
 }): Promise<SettingsUpdateResult> {
   return client.call<SettingsUpdateResult>("settings.update", {
     section: "llm_config",
     payload,
   });
+}
+
+export async function clearLlmApiKey(
+  provider: string
+): Promise<{
+  provider: string;
+  cleared: boolean;
+  configured_providers: string[];
+}> {
+  return client.call<{
+    meta: { correlation_id: string };
+    provider: string;
+    cleared: boolean;
+    configured_providers: string[];
+  }>("settings.clearLlmApiKey", { provider });
 }
 
 export async function checkLlmConnection(payload: {
@@ -341,6 +357,7 @@ export async function checkLlmConnection(payload: {
   base_url?: string;
   api_key?: string;
   timeout?: number;
+  thinking_enabled?: boolean;
 } = {}): Promise<LlmConnectionCheckResult> {
   return client.call<LlmConnectionCheckResult>("settings.checkLlmConnection", {
     payload,

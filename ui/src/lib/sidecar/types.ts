@@ -428,6 +428,7 @@ export interface MaskedSecretStatus {
   configured: boolean;
   masked: boolean;
   updated_at: string;
+  source?: "saved" | "environment" | "legacy" | "none" | "storage_error" | string;
 }
 
 export interface LlmConfig {
@@ -435,6 +436,8 @@ export interface LlmConfig {
   model: string;
   base_url: string | null;
   api_key: MaskedSecretStatus;
+  configured_providers?: string[];
+  thinking_enabled?: boolean;
   timeout: number;
   temperature: number;
 }

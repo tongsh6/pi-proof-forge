@@ -21,6 +21,7 @@ import { confirmAction, notify } from "@/lib/ui";
 import {
   checkLlmConnection,
   checkMaterialReference,
+  clearLlmApiKey,
   createMaterialReference,
   getLiepinResume,
   getSettings,
@@ -56,6 +57,7 @@ type LlmForm = {
   api_key: string;
   timeout: string;
   temperature: string;
+  thinking_enabled: boolean;
 };
 
 type StatusTone = "success" | "warning" | "muted" | "error";
@@ -78,6 +80,11 @@ const LLM_PROVIDER_DEFAULTS: Record<
     base_url: "",
     api_key: "",
   },
+  deepseek: {
+    model: "deepseek-flash",
+    base_url: "https://api.deepseek.com",
+    api_key: "",
+  },
 };
 
 function formatNullable(value: string | null | undefined): string {
@@ -94,36 +101,24 @@ function toLlmForm(config: LlmConfig | null): LlmForm {
     api_key: "",
     timeout: String(config?.timeout ?? 60),
     temperature: String(config?.temperature ?? 0.2),
+    thinking_enabled: config?.thinking_enabled ?? false,
   };
 }
 
 function applyProviderDefaults(
   current: LlmForm,
-  nextProvider: string,
-  apiKeyConfigured: boolean
+  nextProvider: string
 ): LlmForm {
-  const previousDefaults =
-    LLM_PROVIDER_DEFAULTS[current.provider] ?? LLM_PROVIDER_DEFAULTS.lm_studio;
   const nextDefaults =
     LLM_PROVIDER_DEFAULTS[nextProvider] ?? LLM_PROVIDER_DEFAULTS.openai_compatible;
-  const currentModel = current.model.trim();
-  const currentBaseUrl = current.base_url.trim();
-  const currentApiKey = current.api_key.trim();
-  const shouldReplaceModel =
-    !currentModel || currentModel === previousDefaults.model;
-  const shouldReplaceBaseUrl =
-    !currentBaseUrl || currentBaseUrl === previousDefaults.base_url;
-  const nextApiKeyIsSafeLocalDefault = nextDefaults.api_key === "lm-studio";
-  const shouldReplaceApiKey =
-    (nextApiKeyIsSafeLocalDefault || !apiKeyConfigured) &&
-    (!currentApiKey || currentApiKey === previousDefaults.api_key);
 
   return {
     ...current,
     provider: nextProvider,
-    model: shouldReplaceModel ? nextDefaults.model : current.model,
-    base_url: shouldReplaceBaseUrl ? nextDefaults.base_url : current.base_url,
-    api_key: shouldReplaceApiKey ? nextDefaults.api_key : current.api_key,
+    model: nextDefaults.model,
+    base_url: nextDefaults.base_url,
+    api_key: nextProvider === current.provider ? current.api_key : "",
+    thinking_enabled: current.thinking_enabled,
   };
 }
 
@@ -134,6 +129,7 @@ function llmPayloadFromForm(form: LlmForm): {
   api_key?: string;
   timeout: number;
   temperature: number;
+  thinking_enabled?: boolean;
 } {
   const payload: {
     provider: string;
@@ -142,11 +138,15 @@ function llmPayloadFromForm(form: LlmForm): {
     api_key?: string;
     timeout: number;
     temperature: number;
+    thinking_enabled?: boolean;
   } = {
     provider: form.provider.trim(),
     timeout: Number(form.timeout),
     temperature: Number(form.temperature),
   };
+  if (form.provider === "deepseek") {
+    payload.thinking_enabled = form.thinking_enabled;
+  }
   const model = form.model.trim();
   if (model) {
     payload.model = model;
@@ -593,6 +593,49 @@ export function SystemSettingsPage() {
     return llmConnection?.models ?? [];
   }, [llmConnection]);
 
+  const configuredProviders = settings?.llm_config.configured_providers ?? [];
+  const providerKeyConfigured = (provider: string): boolean => {
+    if (provider === "lm_studio") {
+      return true;
+    }
+    if (configuredProviders.includes(provider)) {
+      return true;
+    }
+    return (
+      settings?.llm_config.provider === provider &&
+      Boolean(settings.llm_config.api_key.configured)
+    );
+  };
+  const providerKeySource = (provider: string): string => {
+    if (settings?.llm_config.provider === provider) {
+      return (
+        settings.llm_config.api_key.source ??
+        (settings.llm_config.api_key.configured ? "saved" : "none")
+      );
+    }
+    if (configuredProviders.includes(provider)) {
+      return "saved";
+    }
+    return provider === "lm_studio" ? "legacy" : "none";
+  };
+  const canClearProviderKey = configuredProviders.includes(llmForm.provider);
+  const keyStatusLabel = (provider: string): string => {
+    const source = providerKeySource(provider);
+    if (source === "saved") {
+      return t("pages.systemSettings.llm.keySaved");
+    }
+    if (source === "environment") {
+      return t("pages.systemSettings.llm.keyEnvironment");
+    }
+    if (source === "legacy") {
+      return t("pages.systemSettings.llm.keyLocalPlaceholder");
+    }
+    if (source === "storage_error") {
+      return t("pages.systemSettings.llm.keyStorageError");
+    }
+    return t("pages.systemSettings.llm.keyMissing");
+  };
+
   const llmDirty = settings
     ? JSON.stringify(llmForm) !== JSON.stringify(toLlmForm(settings.llm_config))
     : false;
@@ -619,6 +662,8 @@ export function SystemSettingsPage() {
       const nextSettings = await getSettings();
       setSettings(nextSettings);
       setLlmForm(toLlmForm(nextSettings.llm_config));
+      setLlmConnection(null);
+      setLlmCheckState("idle");
       setLlmSaveState("saved");
       notify("success", t("toasts.systemSettings.saved"));
     } catch (nextError) {
@@ -626,6 +671,30 @@ export function SystemSettingsPage() {
       setLlmError(getErrorMessage(nextError));
     }
   }, [llmForm]);
+
+  const handleClearLlmApiKey = useCallback(async () => {
+    const confirmed = await confirmAction({
+      title: t("confirmations.systemSettings.clearLlmKey.title"),
+      description: t("confirmations.systemSettings.clearLlmKey.description", {
+        provider: llmForm.provider,
+      }),
+      confirmLabel: t("confirmations.systemSettings.clearLlmKey.confirm"),
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    setLlmError(null);
+    try {
+      await clearLlmApiKey(llmForm.provider);
+      const nextSettings = await getSettings();
+      setSettings(nextSettings);
+      setLlmForm((current) => ({ ...current, api_key: "" }));
+      setLlmConnection(null);
+      setLlmCheckState("idle");
+      notify("success", t("toasts.systemSettings.llmKeyCleared"));
+    } catch (nextError) {
+      setLlmError(getErrorMessage(nextError));
+    }
+  }, [llmForm.provider, t]);
 
   const applyLiepinAuth = useCallback((auth: LiepinAuthState) => {
     setSettings((current) => current ? { ...current, liepin_api: auth } : current);
@@ -697,6 +766,7 @@ export function SystemSettingsPage() {
   const handleCheckLlmConnection = useCallback(async () => {
     setLlmCheckState("checking");
     setLlmError(null);
+    setLlmConnection(null);
     try {
       const result = await checkLlmConnection(llmPayloadFromForm(llmForm));
       setLlmConnection(result);
@@ -707,12 +777,21 @@ export function SystemSettingsPage() {
         }));
       }
       setLlmCheckState("checked");
-      notify("success", t("toasts.systemSettings.connectionOk"));
+      if (result.status === "pass") {
+        notify("success", t("toasts.systemSettings.connectionOk"));
+      } else {
+        notify(
+          "warning",
+          t("toasts.systemSettings.connectionBlocked"),
+          result.message
+        );
+      }
     } catch (nextError) {
       setLlmCheckState("idle");
+      setLlmConnection(null);
       setLlmError(getErrorMessage(nextError));
     }
-  }, [llmForm]);
+  }, [llmForm, t]);
 
   // ⌘R 重新加载（有草稿时先确认丢弃），⌘S 保存模型配置。
   useEffect(() => {
@@ -1167,7 +1246,7 @@ export function SystemSettingsPage() {
                   </div>
                   <StatusChip
                     value={
-                      settings.llm_config.api_key.configured
+                      providerKeyConfigured(llmForm.provider)
                         ? t("pages.systemSettings.secretConfigured")
                         : t("pages.systemSettings.secretMissing")
                     }
@@ -1192,19 +1271,19 @@ export function SystemSettingsPage() {
                     </span>
                     <select
                       className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const nextProvider = event.target.value;
+                        setLlmConnection(null);
+                        setLlmCheckState("idle");
                         setLlmForm((current) =>
-                          applyProviderDefaults(
-                            current,
-                            event.target.value,
-                            settings.llm_config.api_key.configured
-                          )
-                        )
-                      }
+                          applyProviderDefaults(current, nextProvider)
+                        );
+                      }}
                       value={llmForm.provider}
                     >
                       <option value="lm_studio">LM Studio</option>
                       <option value="openai">OpenAI</option>
+                      <option value="deepseek">DeepSeek</option>
                       <option value="openai_compatible">OpenAI Compatible</option>
                     </select>
                   </label>
@@ -1275,7 +1354,7 @@ export function SystemSettingsPage() {
                       value={llmForm.base_url}
                     />
                   </label>
-                  <label className="space-y-1.5">
+                  <div className="space-y-1.5">
                     <span className="text-xs font-medium text-text-secondary">
                       {t("pages.systemSettings.llm.apiKey")}
                     </span>
@@ -1288,7 +1367,7 @@ export function SystemSettingsPage() {
                         }))
                       }
                       placeholder={
-                        settings.llm_config.api_key.configured
+                        providerKeyConfigured(llmForm.provider)
                           ? t("pages.systemSettings.llm.keepExistingSecret")
                           : llmForm.provider === "lm_studio"
                             ? "lm-studio"
@@ -1297,7 +1376,19 @@ export function SystemSettingsPage() {
                       type="password"
                       value={llmForm.api_key}
                     />
-                  </label>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                      <span>{keyStatusLabel(llmForm.provider)}</span>
+                      {canClearProviderKey ? (
+                        <button
+                          className="rounded-chip border border-error/40 px-2 py-0.5 text-error hover:bg-error/10"
+                          onClick={() => void handleClearLlmApiKey()}
+                          type="button"
+                        >
+                          {t("pages.systemSettings.llm.clearKey")}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                   <label className="space-y-1.5">
                     <span className="text-xs font-medium text-text-secondary">
                       {t("pages.systemSettings.llm.timeout")}
@@ -1336,6 +1427,30 @@ export function SystemSettingsPage() {
                   </label>
                 </div>
 
+                {llmForm.provider === "deepseek" ? (
+                  <label className="flex items-start gap-3 rounded-card border border-border bg-bg-primary/70 p-4">
+                    <input
+                      checked={llmForm.thinking_enabled}
+                      className="mt-0.5 h-4 w-4"
+                      onChange={(event) =>
+                        setLlmForm((current) => ({
+                          ...current,
+                          thinking_enabled: event.target.checked,
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span className="space-y-1">
+                      <span className="block text-sm font-medium text-text-primary">
+                        {t("pages.systemSettings.llm.thinkingMode")}
+                      </span>
+                      <span className="block text-xs text-text-muted">
+                        {t("pages.systemSettings.llm.thinkingModeHint")}
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
+
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <div className="rounded-card border border-border bg-bg-primary/70 p-4">
                     <div className="flex items-center gap-2">
@@ -1352,7 +1467,7 @@ export function SystemSettingsPage() {
                         <dd>
                           <StatusChip
                             value={
-                              settings.llm_config.api_key.configured
+                              providerKeyConfigured(llmForm.provider)
                                 ? t("pages.systemSettings.secretConfigured")
                                 : t("pages.systemSettings.secretMissing")
                             }
@@ -1364,7 +1479,11 @@ export function SystemSettingsPage() {
                           {t("pages.systemSettings.secretStatus.updatedAt")}
                         </dt>
                         <dd className="font-mono text-sm text-text-primary">
-                          {formatNullable(settings.llm_config.api_key.updated_at)}
+                          {formatNullable(
+                            settings.llm_config.provider === llmForm.provider
+                              ? settings.llm_config.api_key.updated_at
+                              : ""
+                          )}
                         </dd>
                       </div>
                     </dl>
@@ -1399,7 +1518,9 @@ export function SystemSettingsPage() {
                       <StatusChip
                         value={
                           llmConnection?.status ??
-                          (settings.llm_config.api_key.configured ? "configured" : "missing")
+                          (providerKeyConfigured(llmForm.provider)
+                            ? "configured"
+                            : "missing")
                         }
                       />
                     </div>
