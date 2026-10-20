@@ -15,6 +15,7 @@ def synthetic_review_pdf(monkeypatch):
                         lambda source, destination: destination.write_bytes(b'%PDF-unit-test'))
 
 from tools.sidecar.handlers.agent import (
+    _persisted_llm_runtime_context,
     handle_agent_get,
     handle_agent_start,
     handle_create_review_candidates,
@@ -778,3 +779,27 @@ class TestAgentRunStart:
             assert "value" not in summary["api_key"]
             assert "secret" not in summary["api_key"]
             assert fetched["run"]["llm_config_summary"] == summary
+
+
+def test_persisted_llm_runtime_context_propagates_thinking_mode() -> None:
+    config = {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "base_url": "https://api.deepseek.com",
+        "api_key_configured": True,
+        "api_key_updated_at": "2026-10-20T00:00:00Z",
+        "api_key_for_request": "sk-test",
+        "thinking_enabled": True,
+        "timeout": 60,
+        "temperature": 0.2,
+    }
+    with patch(
+        "tools.sidecar.handlers.settings._load_llm_config",
+        return_value=config,
+    ):
+        summary, env = _persisted_llm_runtime_context()
+
+    assert summary["thinking_enabled"] is True
+    assert env["LLM_THINKING"] == "on"
+    assert env["LLM_PROVIDER"] == "deepseek"
+    assert env["LLM_API_KEY"] == "sk-test"

@@ -78,6 +78,7 @@ from tools.sidecar.handlers.agent import (
 )
 from tools.sidecar.handlers.settings import (
     handle_settings_check_llm_connection,
+    handle_settings_clear_llm_api_key,
     handle_settings_get,
     handle_settings_update,
     handle_settings_liepin_credential,
@@ -165,6 +166,7 @@ def _create_router() -> Router:
     router.register("settings.liepinResume", handle_settings_liepin_resume)
     router.register("settings.update", handle_settings_update)
     router.register("settings.checkLlmConnection", handle_settings_check_llm_connection)
+    router.register("settings.clearLlmApiKey", handle_settings_clear_llm_api_key)
     router.register("run.quick.start", handle_quick_start)
     router.register("run.quick.cancel", handle_quick_cancel)
     router.register("run.agent.start", handle_agent_start)

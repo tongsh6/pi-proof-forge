@@ -5,11 +5,15 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from tools.infra.llm_credentials import LLMApiKeyStore
 from tools.sidecar.handlers.settings import (
+    _load_llm_config,
     handle_settings_check_llm_connection,
+    handle_settings_clear_llm_api_key,
     handle_settings_get,
     handle_settings_update,
 )
+
 
 
 class SettingsGetTests(unittest.TestCase):
@@ -374,5 +378,467 @@ class SettingsCheckLlmConnectionTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:1234/v1/models", result["message"])
 
 
+class SettingsLlmCredentialTests(unittest.TestCase):
+    def _policy(self, tmp: str) -> Path:
+        return Path(tmp) / "policy.yaml"
+
+    def _update(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return handle_settings_update(
+            {
+                "meta": {"correlation_id": "corr_llm_credentials"},
+                "section": "llm_config",
+                "payload": payload,
+            }
+        )
+
+    def _get(self) -> dict[str, Any]:
+        return handle_settings_get({"meta": {"correlation_id": "corr_llm_get"}})
+
+    def test_deepseek_key_is_saved_to_provider_file_and_never_returned(self) -> None:
+        key = "sk-deepseek-test-only"
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                result = self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": key,
+                        "thinking_enabled": True,
+                    }
+                )
+                stored = self._get()
+                loaded = _load_llm_config()
+
+            from tools.infra.llm_credentials import LLMApiKeyStore
+            store = LLMApiKeyStore()
+            saved_path = store.path_for("deepseek")
+
+            self.assertTrue(result["saved"])
+            self.assertEqual(store.load("deepseek"), key)
+            self.assertEqual(saved_path.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn(key, policy.read_text(encoding="utf-8"))
+            self.assertNotIn(key, str(stored))
+            self.assertNotIn(key, repr(stored["llm_config"]))
+            self.assertEqual(stored["llm_config"]["provider"], "deepseek")
+            self.assertEqual(stored["llm_config"]["model"], "deepseek-flash")
+            self.assertTrue(stored["llm_config"]["api_key"]["configured"])
+            self.assertEqual(stored["llm_config"]["api_key"]["source"], "saved")
+            self.assertEqual(stored["llm_config"]["configured_providers"], ["deepseek"])
+            self.assertTrue(stored["llm_config"]["thinking_enabled"])
+            self.assertEqual(loaded["api_key_for_request"], key)
+
+    def test_provider_keys_are_isolated_and_survive_switching(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update({"provider": "openai", "model": "gpt-4", "api_key": "sk-openai"})
+                self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": "sk-deepseek",
+                    }
+                )
+                deepseek = self._get()
+                self._update({"provider": "openai"})
+                openai = self._get()
+                self._update({"provider": "deepseek"})
+                back = self._get()
+
+            self.assertEqual(deepseek["llm_config"]["configured_providers"], ["deepseek", "openai"])
+            self.assertTrue(openai["llm_config"]["api_key"]["configured"])
+            self.assertEqual(openai["llm_config"]["api_key"]["source"], "saved")
+            self.assertTrue(back["llm_config"]["api_key"]["configured"])
+            self.assertEqual(back["llm_config"]["api_key"]["source"], "saved")
+            self.assertNotEqual(openai["llm_config"]["api_key"]["updated_at"], "")
+
+    def test_clear_llm_api_key_only_removes_selected_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update({"provider": "openai", "model": "gpt-4", "api_key": "sk-openai"})
+                self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": "sk-deepseek",
+                    }
+                )
+                cleared = handle_settings_clear_llm_api_key(
+                    {
+                        "meta": {"correlation_id": "corr_clear"},
+                        "provider": "deepseek",
+                    }
+                )
+                stored = self._get()
+
+            self.assertTrue(cleared["cleared"])
+            self.assertNotIn("deepseek", cleared["configured_providers"])
+            self.assertIn("openai", cleared["configured_providers"])
+            self.assertEqual(stored["llm_config"]["provider"], "deepseek")
+            self.assertEqual(stored["llm_config"]["model"], "deepseek-flash")
+            self.assertFalse(stored["llm_config"]["api_key"]["configured"])
+            self.assertEqual(stored["llm_config"]["api_key"]["source"], "none")
+
+    def test_check_connection_blocks_deepseek_without_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                    }
+                )
+                result = handle_settings_check_llm_connection(
+                    {
+                        "meta": {"correlation_id": "corr_check_deepseek"},
+                        "payload": {"provider": "deepseek", "timeout": 1},
+                    }
+                )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BLOCKED_PROVIDER_CREDENTIAL")
+        self.assertIn("DeepSeek", result["message"])
+        self.assertNotIn("LM Studio", result["message"])
+
+    def test_check_connection_uses_saved_provider_key(self) -> None:
+        key = "sk-deepseek-test-only"
+        captured: list[dict[str, Any]] = []
+
+        class FakeClient:
+            def __init__(self, **kwargs: Any) -> None:
+                captured.append(kwargs)
+
+            def list_models(self) -> list[str]:
+                return ["deepseek-flash", "deepseek-v4-pro"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": key,
+                        "thinking_enabled": True,
+                    }
+                )
+                with patch("tools.sidecar.handlers.settings.LLMClient", FakeClient):
+                    result = handle_settings_check_llm_connection(
+                        {
+                            "meta": {"correlation_id": "corr_check_saved"},
+                            "payload": {"provider": "deepseek", "timeout": 1},
+                        }
+                    )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["model_count"], 2)
+        self.assertEqual(result["models"], ["deepseek-flash", "deepseek-v4-pro"])
+        self.assertEqual(captured[0]["api_key"], key)
+        self.assertEqual(captured[0]["provider"], "deepseek")
+        self.assertTrue(captured[0]["thinking_enabled"])
+        self.assertIn("DeepSeek", result["message"])
+
+    def test_legacy_lm_studio_placeholder_stays_usable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            policy.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "lm_studio"',
+                        'llm_model: "local-model"',
+                        'llm_base_url: "http://127.0.0.1:1234/v1"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_placeholder: "configured"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                loaded = _load_llm_config()
+
+        self.assertEqual(loaded["api_key_for_request"], "lm-studio")
+        self.assertTrue(loaded["api_key_configured"])
+        self.assertEqual(loaded["api_key_source"], "legacy")
+
+    def test_legacy_online_flag_without_key_is_not_reported_configured(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            policy.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "openai"',
+                        'llm_model: "gpt-4"',
+                        'llm_base_url: "https://api.openai.com/v1"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_placeholder: "configured"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                loaded = _load_llm_config()
+
+        self.assertEqual(loaded["api_key_for_request"], "")
+        self.assertFalse(loaded["api_key_configured"])
+        self.assertEqual(loaded["api_key_source"], "none")
+
+    def test_thinking_enabled_must_be_boolean(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                with self.assertRaises(ValueError):
+                    self._update({"thinking_enabled": "true"})
+
+    def test_invalid_provider_cannot_write_credential_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                with self.assertRaises(ValueError):
+                    self._update({"provider": "../evil", "api_key": "sk-test"})
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class SettingsLlmProviderIsolationTests(unittest.TestCase):
+    def _update(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return handle_settings_update(
+            {
+                "meta": {"correlation_id": "corr_llm_isolated"},
+                "section": "llm_config",
+                "payload": payload,
+            }
+        )
+
+    def _get(self) -> dict[str, Any]:
+        return handle_settings_get({"meta": {"correlation_id": "corr_llm_isolated_get"}})
+
+    def test_connection_check_uses_requested_provider_key_not_active_key(self) -> None:
+        captured: list[dict[str, Any]] = []
+
+        class FakeClient:
+            def __init__(self, **kwargs: Any) -> None:
+                captured.append(kwargs)
+
+            def list_models(self) -> list[str]:
+                return ["gpt-4"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = Path(tmp) / "policy.yaml"
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update({"provider": "openai", "model": "gpt-4", "api_key": "sk-openai"})
+                self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": "sk-deepseek",
+                    }
+                )
+                with patch("tools.sidecar.handlers.settings.LLMClient", FakeClient):
+                    result = handle_settings_check_llm_connection(
+                        {
+                            "meta": {"correlation_id": "corr_check_openai"},
+                            "payload": {
+                                "provider": "openai",
+                                "base_url": "https://api.openai.com/v1",
+                                "timeout": 1,
+                            },
+                        }
+                    )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(captured[0]["api_key"], "sk-openai")
+        self.assertEqual(captured[0]["provider"], "openai")
+        self.assertNotEqual(captured[0]["api_key"], "sk-deepseek")
+
+    def test_connection_check_blocks_when_requested_provider_has_no_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = Path(tmp) / "policy.yaml"
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": "sk-deepseek",
+                    }
+                )
+                result = handle_settings_check_llm_connection(
+                    {
+                        "meta": {"correlation_id": "corr_check_openai_missing"},
+                        "payload": {
+                            "provider": "openai",
+                            "base_url": "https://api.openai.com/v1",
+                            "timeout": 1,
+                        },
+                    }
+                )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BLOCKED_PROVIDER_CREDENTIAL")
+        self.assertNotIn("sk-deepseek", result["message"])
+
+    def test_legacy_lm_studio_placeholder_does_not_configure_online_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = Path(tmp) / "policy.yaml"
+            policy.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "deepseek"',
+                        'llm_model: "deepseek-flash"',
+                        'llm_base_url: "https://api.deepseek.com"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_placeholder: "lm-studio"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                loaded = _load_llm_config()
+
+        self.assertEqual(loaded["api_key_for_request"], "")
+        self.assertFalse(loaded["api_key_configured"])
+        self.assertEqual(loaded["api_key_source"], "none")
+
+    def test_switching_from_legacy_lm_studio_to_online_clears_placeholder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = Path(tmp) / "policy.yaml"
+            policy.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "lm_studio"',
+                        'llm_model: "local-model"',
+                        'llm_base_url: "http://127.0.0.1:1234/v1"',
+                        'llm_api_key_configured: "true"',
+                        'llm_api_key_placeholder: "lm-studio"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update({"provider": "deepseek"})
+                stored = self._get()
+
+        self.assertEqual(stored["llm_config"]["provider"], "deepseek")
+        self.assertFalse(stored["llm_config"]["api_key"]["configured"])
+        self.assertEqual(stored["llm_config"]["api_key"]["source"], "none")
+
+    def test_environment_key_is_used_and_saved_file_wins(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = Path(tmp) / "policy.yaml"
+            policy.write_text(
+                "\n".join(
+                    [
+                        'llm_provider: "openai"',
+                        'llm_model: "gpt-4"',
+                        'llm_base_url: "https://api.openai.com/v1"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"PPF_POLICY_PATH": str(policy), "LLM_API_KEY": "sk-env"},
+            ):
+                env_loaded = _load_llm_config()
+                store = LLMApiKeyStore()
+                store.save("openai", "sk-saved")
+                saved_loaded = _load_llm_config()
+
+        self.assertEqual(env_loaded["api_key_for_request"], "sk-env")
+        self.assertEqual(env_loaded["api_key_source"], "environment")
+        self.assertEqual(saved_loaded["api_key_for_request"], "sk-saved")
+        self.assertEqual(saved_loaded["api_key_source"], "saved")
+
+    def test_invalid_provider_is_rejected_without_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = Path(tmp) / "policy.yaml"
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                with self.assertRaises(ValueError):
+                    self._update({"provider": "../evil"})
+
+    def test_malformed_api_key_is_not_echoed_in_connection_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = Path(tmp) / "policy.yaml"
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                result = handle_settings_check_llm_connection(
+                    {
+                        "meta": {"correlation_id": "corr_bad_key"},
+                        "payload": {
+                            "provider": "deepseek",
+                            "base_url": "https://api.deepseek.com",
+                            "api_key": "sk-bad\nvalue",
+                            "timeout": 1,
+                        },
+                    }
+                )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BLOCKED_PROVIDER_CREDENTIAL")
+        self.assertNotIn("sk-bad", result["message"])
+
+    def test_local_non_lm_studio_endpoint_uses_its_own_label(self) -> None:
+        with patch(
+            "tools.sidecar.handlers.settings.LLMClient.list_models",
+            side_effect=OSError("connection refused"),
+        ):
+            result = handle_settings_check_llm_connection(
+                {
+                    "meta": {"correlation_id": "corr_local_compatible"},
+                    "payload": {
+                        "provider": "openai_compatible",
+                        "base_url": "http://127.0.0.1:8080/v1",
+                        "timeout": 1,
+                    },
+                }
+            )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BLOCKED_PROVIDER")
+        self.assertIn("OpenAI-compatible provider", result["message"])
+        self.assertNotIn("LM Studio", result["message"])
+
+
+def test_cross_provider_check_without_base_url_does_not_use_active_endpoint() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        policy = Path(tmp) / "policy.yaml"
+        with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+            handle_settings_update(
+                {
+                    "meta": {"correlation_id": "corr_cross_no_url"},
+                    "section": "llm_config",
+                    "payload": {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": "sk-deepseek",
+                    },
+                }
+            )
+            result = handle_settings_check_llm_connection(
+                {
+                    "meta": {"correlation_id": "corr_cross_no_url_check"},
+                    "payload": {"provider": "openai", "timeout": 1},
+                }
+            )
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "BLOCKED_PROVIDER"
+    assert result["base_url"] == ""
+    assert "deepseek.com" not in result["message"]

@@ -13,3 +13,14 @@ def isolated_liepin_credentials(tmp_path_factory, monkeypatch):
                         LiepinTokenFile(root / 'credentials' / 'liepin-token'))
     yield
     liepin_readonly.unload()
+
+
+@pytest.fixture(autouse=True)
+def isolated_llm_credentials(tmp_path_factory, monkeypatch):
+    """LLM 密钥测试只使用临时目录，不读取或写入用户真实凭据。"""
+    root = tmp_path_factory.mktemp('isolated-llm-credentials')
+    monkeypatch.setenv('PPF_CREDENTIAL_DIR', str(root / 'credentials'))
+    for name in ('LLM_API_KEY', 'LLM_THINKING', 'LLM_PROVIDER', 'LLM_MODEL', 'LLM_BASE_URL'):
+        monkeypatch.delenv(name, raising=False)
+    yield
+

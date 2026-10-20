@@ -26,7 +26,7 @@ def _source(material_id,document_id=None):
 def handle_generate(params):
     source,text=_source(params.get('material_id'),params.get('document_id'))
     config=settings_handler._load_llm_config()
-    client=LLMClient(config['base_url'],config['api_key_for_request'],timeout=config['timeout'],provider=config['provider'])
+    client=LLMClient(config['base_url'],config['api_key_for_request'],timeout=config['timeout'],provider=config['provider'],thinking_enabled=bool(config.get('thinking_enabled',False)))
     schema={'type':'object','properties':{'items':{'type':'array','maxItems':24,'items':{'type':'object','properties':{
         'kind':{'type':'string','enum':['primary','bridge','explore','avoid']},'text':{'type':'string'},'quote':{'type':'string'}},
         'required':['kind','text','quote'],'additionalProperties':False}}},'required':['items'],'additionalProperties':False}

@@ -4,9 +4,12 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from tools.infra.llm.client import LLMClient
+from tools.infra.llm_credentials import LLMApiKeyStore, normalize_provider
 from tools.infra.liepin_readonly import liepin_readonly
+from tools.infra.liepin_token_file import CredentialStorageError
 from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
 from tools.policy.exclusions import (
     resolve_policy_path,
@@ -30,6 +33,7 @@ _SUPPORTED_LLM_CONFIG_UPDATE_FIELDS = {
     "api_key",
     "timeout",
     "temperature",
+    "thinking_enabled",
 }
 
 
@@ -99,7 +103,10 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
                 "configured": llm_config["api_key_configured"],
                 "masked": True,
                 "updated_at": llm_config["api_key_updated_at"],
+                "source": llm_config["api_key_source"],
             },
+            "configured_providers": llm_config["configured_providers"],
+            "thinking_enabled": llm_config["thinking_enabled"],
             "timeout": llm_config["timeout"],
             "temperature": llm_config["temperature"],
         },
@@ -127,34 +134,99 @@ def handle_settings_liepin_resume(params: dict[str, Any]) -> dict[str, Any]:
 def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
     payload = params.get("payload")
-    config = _merge_llm_config_payload(_load_llm_config(), payload)
-    models_url = _models_url(str(config["base_url"] or ""))
+    active = _load_llm_config()
+    config = _merge_llm_config_payload(active, payload)
+    requested_provider = str(config.get("provider") or "").strip()
+    try:
+        requested_provider = normalize_provider(requested_provider)
+    except ValueError:
+        pass
+    label = _provider_label(requested_provider)
+    base_url = str(config["base_url"] or "").strip()
+    payload_provider = payload.get("provider") if isinstance(payload, dict) else None
+    payload_base_url = payload.get("base_url") if isinstance(payload, dict) else None
+    active_provider = str(active.get("provider") or "").strip().lower()
+    if (
+        isinstance(payload_provider, str)
+        and payload_provider.strip()
+        and requested_provider != active_provider
+        and not (isinstance(payload_base_url, str) and payload_base_url.strip())
+    ):
+        # 切换目标 provider 但未提供地址时，不能把该 provider 的密钥发往当前生效端点。
+        base_url = ""
+    payload_key = payload.get("api_key") if isinstance(payload, dict) else None
+    if isinstance(payload_key, str) and payload_key.strip():
+        api_key = payload_key.strip()
+    elif requested_provider == str(active.get("provider") or "").strip().lower():
+        api_key = str(active.get("api_key_for_request") or "").strip()
+    else:
+        # 不同 provider 之间不得复用当前生效的密钥；只读取该 provider 自己的文件。
+        api_key = _saved_api_key_for_provider(requested_provider)
+    if requested_provider == "lm_studio" and not api_key:
+        api_key = "lm-studio"
+
+    models_url = _models_url(base_url)
+    try:
+        host = (urlparse(base_url).hostname or "").lower()
+    except ValueError:
+        host = ""
+    local_host = host in ("127.0.0.1", "localhost", "::1")
+    lm_studio_compat = requested_provider == "lm_studio" or api_key == "lm-studio"
+    local_endpoint = local_host and (
+        requested_provider == "openai_compatible" or lm_studio_compat
+    )
+    display_label = "LM Studio" if lm_studio_compat else label
+    blocked_code = "BLOCKED_LOCAL_PROVIDER" if lm_studio_compat else "BLOCKED_PROVIDER"
+
+    if api_key and not _valid_api_key(api_key):
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "status": "blocked",
+            "code": "BLOCKED_PROVIDER_CREDENTIAL",
+            "message": f"{label} API key format is invalid.",
+            "base_url": base_url,
+            "model_count": 0,
+            "models": [],
+        }
 
     if not models_url:
         return {
             "meta": {"correlation_id": correlation_id},
             "status": "blocked",
-            "code": "BLOCKED_LOCAL_PROVIDER",
-            "message": "LM Studio base_url is not configured.",
-            "base_url": config["base_url"],
+            "code": blocked_code,
+            "message": f"{display_label} base_url is not configured.",
+            "base_url": base_url,
+            "model_count": 0,
+            "models": [],
+        }
+
+    if not api_key and not (lm_studio_compat or local_endpoint):
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "status": "blocked",
+            "code": "BLOCKED_PROVIDER_CREDENTIAL",
+            "message": f"{label} API key is not configured.",
+            "base_url": base_url,
             "model_count": 0,
             "models": [],
         }
 
     try:
         client = LLMClient(
-            base_url=str(config["base_url"]),
-            api_key=str(config["api_key_for_request"]),
+            base_url=base_url,
+            api_key=api_key,
             timeout=int(config["timeout"]),
+            provider=requested_provider,
+            thinking_enabled=bool(config.get("thinking_enabled", False)),
         )
         models = client.list_models()
         if not models:
             return {
                 "meta": {"correlation_id": correlation_id},
                 "status": "blocked",
-                "code": "BLOCKED_LOCAL_PROVIDER",
-                "message": f"LM Studio returned no models from {models_url}.",
-                "base_url": config["base_url"],
+                "code": blocked_code,
+                "message": f"{display_label} returned no models from {models_url}.",
+                "base_url": base_url,
                 "model_count": 0,
                 "models": [],
             }
@@ -162,18 +234,23 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
             "meta": {"correlation_id": correlation_id},
             "status": "pass",
             "code": "OK",
-            "message": f"LM Studio models endpoint is reachable at {models_url}.",
-            "base_url": config["base_url"],
+            "message": f"{display_label} models endpoint is reachable at {models_url}.",
+            "base_url": base_url,
             "model_count": len(models),
             "models": models[:20],
         }
     except Exception as exc:
+        message = str(exc)
+        if api_key:
+            message = message.replace(api_key, "***")
         return {
             "meta": {"correlation_id": correlation_id},
             "status": "blocked",
-            "code": "BLOCKED_LOCAL_PROVIDER",
-            "message": f"LM Studio models endpoint is unavailable at {models_url}: {exc}",
-            "base_url": config["base_url"],
+            "code": blocked_code,
+            "message": (
+                f"{display_label} models endpoint is unavailable at {models_url}: {message}"
+            ),
+            "base_url": base_url,
             "model_count": 0,
             "models": [],
         }
@@ -265,17 +342,115 @@ def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def handle_settings_clear_llm_api_key(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    provider_value = params.get("provider")
+    if not isinstance(provider_value, str) or not provider_value.strip():
+        provider_value = _load_llm_config()["provider"]
+    try:
+        provider = normalize_provider(provider_value)
+        store = LLMApiKeyStore()
+        store.delete(provider)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from None
+    except CredentialStorageError:
+        raise ValueError("本机凭据文件删除失败。") from None
+
+    scalars, lists = _load_policy_doc()
+    active = str(
+        scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai")
+    ).strip().lower()
+    if active == provider:
+        for key in (
+            "llm_api_key_configured",
+            "llm_api_key_updated_at",
+            "llm_api_key_placeholder",
+        ):
+            scalars.pop(key, None)
+        policy_path = _resolve_policy_path()
+        if policy_path is not None:
+            policy_path.parent.mkdir(parents=True, exist_ok=True)
+            policy_path.write_text(dump_yaml(scalars, lists), encoding="utf-8")
+
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "provider": provider,
+        "cleared": True,
+        "configured_providers": store.configured_providers(),
+    }
+
+
+def _saved_api_key_for_provider(provider: str) -> str:
+    try:
+        return LLMApiKeyStore().load(provider) or ""
+    except (ValueError, CredentialStorageError):
+        return ""
+
+
+def _valid_api_key(value: str) -> bool:
+    return (
+        bool(value.strip())
+        and len(value) <= 8192
+        and not any(ord(char) < 32 or ord(char) == 127 for char in value)
+    )
+
+
 def _load_llm_config() -> dict[str, Any]:
     scalars, _ = _load_policy_doc()
-    configured_raw = scalars.get("llm_api_key_configured", "")
-    env_api_key = os.environ.get("LLM_API_KEY", "")
+    provider = str(
+        scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai")
+    ).strip() or "openai"
+    try:
+        provider = normalize_provider(provider)
+    except ValueError:
+        pass
+    store = LLMApiKeyStore()
+    saved_key = ""
+    storage_failed = False
+    try:
+        saved_key = store.load(provider) or ""
+    except CredentialStorageError:
+        storage_failed = True
+    except ValueError:
+        # 旧配置可能使用不在白名单内的 provider 字符串；不读写其凭据文件。
+        storage_failed = False
+
+    env_api_key = os.environ.get("LLM_API_KEY", "").strip()
+
+    if saved_key:
+        api_key_for_request, api_key_source = saved_key, "saved"
+    elif env_api_key:
+        api_key_for_request, api_key_source = env_api_key, "environment"
+    elif provider == "lm_studio":
+        api_key_for_request, api_key_source = "lm-studio", "legacy"
+    else:
+        api_key_for_request, api_key_source = "", "none"
+
+    if storage_failed:
+        api_key_for_request, api_key_source = "", "storage_error"
+
+    if saved_key:
+        updated_at = str(store.status(provider).get("updated_at", ""))
+    elif api_key_source == "legacy":
+        updated_at = str(scalars.get("llm_api_key_updated_at", ""))
+    else:
+        updated_at = ""
+
+    try:
+        configured_providers = store.configured_providers()
+    except ValueError:
+        configured_providers = []
+
     return {
-        "provider": scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai"),
+        "provider": provider,
         "model": scalars.get("llm_model") or os.environ.get("LLM_MODEL", "gpt-4"),
         "base_url": scalars.get("llm_base_url") or os.environ.get("LLM_BASE_URL"),
-        "api_key_configured": _to_bool(configured_raw, bool(env_api_key)),
-        "api_key_updated_at": scalars.get("llm_api_key_updated_at", ""),
-        "api_key_for_request": env_api_key or scalars.get("llm_api_key_placeholder", "lm-studio"),
+        "api_key_configured": bool(api_key_for_request),
+        "api_key_updated_at": updated_at,
+        "api_key_for_request": api_key_for_request,
+        "api_key_source": api_key_source,
+        "configured_providers": configured_providers,
+        "thinking_enabled": _to_bool(scalars.get("llm_thinking_enabled", ""), False),
         "timeout": _to_int(scalars.get("llm_timeout", ""), 60),
         "temperature": _to_float(scalars.get("llm_temperature", ""), 0.2),
     }
@@ -287,7 +462,14 @@ def _merge_llm_config_payload(
 ) -> dict[str, Any]:
     merged = dict(config)
     if isinstance(payload, dict):
-        for key in ("provider", "model", "base_url", "timeout", "temperature"):
+        for key in (
+            "provider",
+            "model",
+            "base_url",
+            "timeout",
+            "temperature",
+            "thinking_enabled",
+        ):
             if key in payload:
                 merged[key] = payload[key]
         if isinstance(payload.get("api_key"), str) and payload["api_key"]:
@@ -300,6 +482,10 @@ def _save_llm_config(payload: dict[str, Any]) -> Path | None:
     scalars, lists = _load_policy_doc()
     if "provider" in payload:
         provider = _require_non_empty_str(payload["provider"], "provider")
+        try:
+            provider = normalize_provider(provider)
+        except ValueError:
+            raise ValueError("unsupported provider id") from None
         scalars["llm_provider"] = provider
     if "model" in payload:
         model = _require_non_empty_str(payload["model"], "model")
@@ -313,11 +499,51 @@ def _save_llm_config(payload: dict[str, Any]) -> Path | None:
         scalars["llm_temperature"] = str(
             _require_float_in_range(payload["temperature"], "temperature", 0.0, 2.0)
         )
+    if "thinking_enabled" in payload:
+        enabled = payload["thinking_enabled"]
+        if not isinstance(enabled, bool):
+            raise ValueError("thinking_enabled must be a boolean")
+        scalars["llm_thinking_enabled"] = "true" if enabled else "false"
     if "api_key" in payload:
         api_key = _require_non_empty_str(payload["api_key"], "api_key")
-        scalars["llm_api_key_configured"] = "true"
-        scalars["llm_api_key_updated_at"] = _utcnow()
-        scalars["llm_api_key_placeholder"] = api_key if api_key == "lm-studio" else "configured"
+        effective_provider = str(
+            scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai")
+        )
+        try:
+            normalized_provider = normalize_provider(effective_provider)
+        except ValueError:
+            raise ValueError("unsupported provider id") from None
+        if not (normalized_provider == "lm_studio" and api_key == "lm-studio"):
+            try:
+                LLMApiKeyStore().save(normalized_provider, api_key)
+            except CredentialStorageError:
+                raise ValueError("本机凭据文件保存失败。") from None
+            for legacy_key in (
+                "llm_api_key_configured",
+                "llm_api_key_updated_at",
+                "llm_api_key_placeholder",
+            ):
+                scalars.pop(legacy_key, None)
+        else:
+            scalars["llm_api_key_configured"] = "true"
+            scalars["llm_api_key_updated_at"] = _utcnow()
+            scalars["llm_api_key_placeholder"] = "lm-studio"
+
+    effective_provider = str(
+        scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai")
+    ).strip()
+    try:
+        normalized_effective = normalize_provider(effective_provider)
+    except ValueError:
+        normalized_effective = ""
+    if normalized_effective != "lm_studio":
+        # 旧版 LM Studio 占位不能继续为在线 provider 提供“已配置”假象。
+        for legacy_key in (
+            "llm_api_key_configured",
+            "llm_api_key_updated_at",
+            "llm_api_key_placeholder",
+        ):
+            scalars.pop(legacy_key, None)
 
     policy_path = _resolve_policy_path()
     if policy_path is None:
@@ -338,6 +564,15 @@ def _load_policy_doc() -> tuple[dict[str, str], dict[str, list[str]]]:
 def _resolve_policy_path() -> Path | None:
     # 与排除名单共用同一规则，避免设置页把本机配置写回仓库默认策略文件。
     return resolve_policy_path()
+
+
+def _provider_label(provider: str) -> str:
+    return {
+        "lm_studio": "LM Studio",
+        "openai": "OpenAI",
+        "deepseek": "DeepSeek",
+        "openai_compatible": "OpenAI-compatible provider",
+    }.get(provider, provider or "Provider")
 
 
 def _models_url(base_url: str) -> str:
