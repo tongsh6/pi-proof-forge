@@ -142,7 +142,9 @@ def test_required_llm_selection_uses_real_http_protocol(monkeypatch, generation_
         thread.join()
     assert len(requests) == 2
     for request in requests:
-        prompt = request["messages"][0]["content"]
+        assert request["messages"][0]["role"] == "system"
+        assert "PiProofForge" in request["messages"][0]["content"]
+        prompt = next(message["content"] for message in request["messages"] if message["role"] == "user")
         assert "目标公司" in prompt
         assert "负责交易服务开发与数据库优化" in prompt
         assert "后端工程师" in prompt
@@ -253,6 +255,41 @@ def test_generation_prioritizes_semantically_cited_action_over_literal_keyword_o
     assert '实现幂等去重与故障恢复' in text
     assert text.index('实现幂等去重与故障恢复') < text.index('Java接口开发')
     assert len([c for c in claims if c['field']=='actions']) == 3
+
+
+def test_targeted_resume_leads_with_core_project_without_inventing_action_result_links():
+    from tools.engines.evaluation.tiered_evaluator import inspect_bullet_trace
+    card = {'id': 'ec-1', 'title': '交易平台', 'time_range': '2024 ~ 2025', 'role_scope': '负责人',
+            'context': '多端交易交付。', 'actions': ['接口开发', '发布治理', '监控改进', '主导前后端方案设计'],
+            'results': ['完成 15 个系统', '服务 6 个品牌', '查询耗时从 2 秒降至 300 毫秒'],
+            'stack': ['Java'], 'artifacts': ['报告']}
+    refs = [{'source_id': 'ec-1', 'field': 'actions', 'text': a,
+             'requirement_id': f'r{i}', 'support_weight': 2} for i, a in enumerate(card['actions'][:3])]
+    refs.append({'source_id': 'ec-1', 'field': 'actions', 'text': card['actions'][3],
+                 'requirement_id': 'd1', 'support_weight': 1})
+    refs.append({'source_id': 'ec-1', 'field': 'results', 'text': card['results'][2],
+                 'requirement_id': 'd2', 'support_weight': 2})
+    profile = {'career': {'skills': [{'id': 's1', 'category': '技术', 'description': '后端开发'}]}}
+    claims = []
+    text = run_generation.build_template_resume('A', 'r', 50, 'now', [card],
+             personal_profile=profile, preferred_facts=refs, claims=claims)
+    assert text.index('## 项目经历') < text.index('## 核心能力')
+    first = text.split('<!-- first-screen-end -->')[0]
+    assert card['actions'][3] in first and card['results'][2] in first
+    bullets = [line for line in first.splitlines() if line.startswith('- ')]
+    assert any(card['results'][2] in line and not any(a in line for a in card['actions']) for line in bullets)
+    checked = inspect_bullet_trace(text, {'claims': claims})
+    assert checked['verified_bullets'] == checked['total_bullets']
+
+
+def test_targeted_generation_preserves_measured_improvement_over_repeated_scale():
+    card = {'id': 'ec-1', 'title': '平台', 'time_range': '2024', 'role_scope': '负责人', 'context': '多品牌',
+            'actions': ['开发工具'], 'results': ['交付 15 个系统', '服务 6 个品牌', '查询从 2 秒降至 300 毫秒'],
+            'stack': [], 'artifacts': ['报告']}
+    refs = [{'source_id': 'ec-1', 'field': 'results', 'text': r, 'requirement_id': 'r1', 'support_weight': 2}
+            for r in card['results'][:2]]
+    text = run_generation.build_template_resume('A', 'r', 50, 'now', [card], preferred_facts=refs)
+    assert card['results'][2] in text
 
 
 def test_thin_evidence_generates_explicit_missing_fields(monkeypatch,generation_inputs):

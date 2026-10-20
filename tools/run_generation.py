@@ -163,7 +163,8 @@ def semantic_preferred_facts(review: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def prioritize_project_facts(values: list[str], card_id: str, field: str,
-                             preferred_facts: list[dict[str, Any]]) -> list[str]:
+                             preferred_facts: list[dict[str, Any]],
+                             covered_requirements: dict[str, int] | None = None) -> list[str]:
     """在既有稳定顺序上优先增加要求覆盖，同一父项的重复引用只计一次。"""
     coverage: dict[str, dict[str, int]] = {}
     for ref in preferred_facts:
@@ -174,11 +175,15 @@ def prioritize_project_facts(values: list[str], card_id: str, field: str,
         weights[parent] = max(weights.get(parent, 0), ref.get('support_weight', 1))
     remaining = list(dict.fromkeys(values))
     ranked: list[str] = []
-    covered: dict[str, int] = {}
+    covered: dict[str, int] = dict(covered_requirements or {})
     while remaining:
         def priority(value):
             weights = coverage.get(value, {})
-            return (sum(max(0, weight - covered.get(parent, 0)) for parent, weight in weights.items()),
+            return (sum(max(0, weight - covered.get(parent, 0)) for parent, weight in weights.items()
+                        if parent in {'d1', 'd2', 'd3'}),
+                    int(field == 'results' and bool(re.search(r'\d', value))
+                        and bool(re.search(r'→|降低|降至|提升|缩短|减少|从.+(?:到|至)|由.+(?:到|至)', value))),
+                    sum(max(0, weight - covered.get(parent, 0)) for parent, weight in weights.items()),
                     sum(weights.values()))
         value = max(remaining, key=priority)
         ranked.append(value)
@@ -245,6 +250,7 @@ def build_template_resume(
     elif work and work[0].get('scope'):
         lines.extend(['','## 职业概述',personal(profile.get('current_position',''),'current_position')+'。'+personal(work[0]['scope'],f"career.work.{work[0]['id']}.scope")])
     groups=[item for item in career.get('skills',[]) if item.get('category') and item.get('description')]
+    skills_start = len(lines)
     if targeted:
         selected_ids={c['id'] for c in cards}
         groups.sort(key=lambda g:(not any(field.startswith(f"career.skills.{g['id']}.") for field in preferred_profile),not bool(selected_ids.intersection(g.get('evidence_ids',[])))))
@@ -270,6 +276,10 @@ def build_template_resume(
         for skill in stacks:
             sources=[card for card in cards if skill in card['stack']]
             for source in (sources if targeted else sources[:1]):fact(skill, "evidence", "stack", source["id"])
+    deferred_skills = lines[skills_start:] if targeted else []
+    if targeted:
+        del lines[skills_start:]
+        first_screen_fallback = len(lines)
     visible_work=[item for item in work if item.get('company') and item.get('title')]
     work_start=len(lines)
     if visible_work:
@@ -288,7 +298,6 @@ def build_template_resume(
             for contribution in item.get('contributions',[]):lines.append('- '+personal(contribution,base+'.contributions'))
     deferred_work=lines[work_start:] if targeted else []
     if targeted:del lines[work_start:]
-    project_start=len(lines)
     lines.extend(["", "## 项目经历"])
     marker_done = False
     for card in render_cards:
@@ -319,20 +328,26 @@ def build_template_resume(
         results = list(card['results'])
         if targeted:
             results = prioritize_project_facts(results, card['id'], 'results', preferred_facts)
+        rendered_fields = {"actions": [], "results": []}
         for field, values in (("actions", actions), ("results", results[:2])):
             for value in values:
                 if value:
                     rendered = fact(template_assembler.downgrade_wording(value, role_level), "evidence", field, card["id"])
                     if targeted and field == 'results' and rendered in ' '.join(card['context'].split()):
                         continue
-                    lines.append("- " + rendered)
+                    rendered_fields[field].append(rendered)
+        # 卡内仅有独立行动与成果列表，不足以断言逐项因果关系，保持各自原文。
+        for rows in rendered_fields.values():
+            lines.extend("- " + value for value in rows)
         lines.append("")
         if not marker_done:
             lines.extend(["", FIRST_SCREEN_MARKER, ""])
             marker_done = True
     if not marker_done:
         lines[first_screen_fallback:first_screen_fallback] = ["", FIRST_SCREEN_MARKER, ""]
+    project_end = len(lines)
     lines.extend(deferred_work)
+    lines.extend(deferred_skills)
     education=[item for item in career.get('education',[]) if item.get('school') and item.get('degree')]
     if career.get('education_visibility')=='show' and education:
         lines.extend(['','## 教育经历'])
@@ -344,7 +359,21 @@ def build_template_resume(
             lines.append('### '+personal(item['school'],base+'.school')+'（'+career_period(item,'education')+'）')
             lines.append(' · '.join(v for v in (personal(item.get('major',''),base+'.major'),personal(item['degree'],base+'.degree')) if v))
     extras=[item for item in career.get('extras',[]) if item.get('title') and item.get('description')]
-    if targeted:extras=[item for item in extras if any(field.startswith(f"career.extras.{item['id']}.") for field in preferred_profile)][:2]
+    if targeted:
+        extras = [item for item in extras if any(field.startswith(f"career.extras.{item['id']}.") for field in preferred_profile)]
+        extra_refs = [{**ref, 'field': 'extras', 'text': item['id']}
+                      for item in extras for ref in preferred_facts
+                      if ref['source_id'] == 'personal_profile' and ref['field'].startswith(f"career.extras.{item['id']}.")]
+        body_coverage: dict[str, int] = {}
+        for ref in preferred_facts:
+            if any(claim['text'] == ref['text'] and claim['field'] == ref['field']
+                   and (claim.get('evidence_id') or 'personal_profile') == ref['source_id'] for claim in claims):
+                parent = ref.get('requirement_id', '')
+                body_coverage[parent] = max(body_coverage.get(parent, 0), ref.get('support_weight', 1))
+        order = prioritize_project_facts([item['id'] for item in extras], 'personal_profile', 'extras',
+                                        extra_refs, covered_requirements=body_coverage)
+        extras.sort(key=lambda item: order.index(item['id']))
+        extras = extras[:2]
     extras_start=len(lines)
     if extras:
         lines.extend(['','## 补充成果'])
@@ -353,8 +382,9 @@ def build_template_resume(
             lines.append('- '+personal(item['title'],base+'.title')+'：'+personal(item['description'],base+'.description'))
             if item.get('url'):lines.append(personal(item['url'],base+'.url'))
     if targeted and extras:
-        extras_lines=lines[extras_start:];del lines[extras_start:]
-        lines[project_start:project_start]=extras_lines
+        extras_lines = lines[extras_start:]
+        del lines[extras_start:]
+        lines[project_end:project_end] = extras_lines
     return "\n".join(lines).rstrip() + "\n"
 
 

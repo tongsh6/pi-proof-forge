@@ -123,7 +123,7 @@ def test_cited_detail_does_not_displace_confirmed_primary_contribution_in_summar
     detail='开展接口联调与局部流程验收。';work['contributions'].append(detail)
     refs.append({'source_id':'personal_profile','field':'career.work.recent.contributions','text':detail})
     text=build_template_resume('A','r',58,'now',[c],personal_profile=p,preferred_facts=refs)
-    summary=text.split('## 核心能力')[0]
+    summary=text.split('## 职业概述\n', 1)[1].split('\n## ', 1)[0]
     assert work['contributions'][0] in summary
     assert detail not in summary
     assert detail in text.split('## 工作经历')[1]
@@ -136,3 +136,35 @@ def test_result_already_in_same_project_context_is_not_repeated_but_stays_traced
     assert text.count('减少业务开发成本')==1
     assert text.count('提高业务开发效率')==1
     assert {x['text'] for x in claims if x['field']=='results'}==set(c['results'])
+
+
+def test_extra_selection_prioritizes_new_requirement_coverage_over_profile_order():
+    p, c, _ = data()
+    p['career']['extras'] = [
+        {'id': 'ai1', 'title': '个人工具一', 'description': '模型调用与工具执行', 'url': ''},
+        {'id': 'ai2', 'title': '个人工具二', 'description': 'AI 工作流', 'url': ''},
+        {'id': 'python', 'title': 'Python 内容生成', 'description': 'Python 多平台内容生成已运行', 'url': ''},
+    ]
+    refs = [{'source_id': 'personal_profile', 'field': f"career.extras.{item['id']}.description",
+             'text': item['description'], 'requirement_id': req, 'support_weight': 1}
+            for item, req in zip(p['career']['extras'], ['r8', 'r8', 'r4'])]
+    text = build_template_resume('A', 'r', 50, 'now', [c], personal_profile=p, preferred_facts=refs)
+    assert 'Python 内容生成' in text
+    assert '个人工具一' in text and '个人工具二' not in text
+
+
+def test_extra_selection_accounts_for_requirements_already_in_project_body():
+    p, c, _ = data()
+    p['career']['extras'] = [
+        {'id': 'ai1', 'title': '个人工具一', 'description': '模型调用', 'url': ''},
+        {'id': 'ai2', 'title': '个人工具二', 'description': '重复的工具执行实践', 'url': ''},
+        {'id': 'python', 'title': 'Python 内容生成', 'description': 'Python 内容生成已运行', 'url': ''},
+    ]
+    refs = [{'source_id': 'personal_profile', 'field': f"career.extras.{item['id']}.description",
+             'text': item['description'], 'requirement_id': req, 'support_weight': 1}
+            for item, req in zip(p['career']['extras'], ['r8', 'd2', 'r4'])]
+    refs.append({'source_id': 'a', 'field': 'actions', 'text': c['actions'][0],
+                 'requirement_id': 'd2', 'support_weight': 1})
+    text = build_template_resume('A', 'r', 50, 'now', [c], personal_profile=p, preferred_facts=refs)
+    assert 'Python 内容生成' in text and '个人工具一' in text
+    assert '个人工具二' not in text

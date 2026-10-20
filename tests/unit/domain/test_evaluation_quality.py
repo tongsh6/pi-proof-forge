@@ -190,7 +190,7 @@ def test_cli_writes_four_tier_quality_report_and_legacy_scores(tmp_path, monkeyp
     assert result["legacy_scores"]["llm_expression"] == result["expression_score"]
     markdown = output.read_text()
     assert "## 质量报告（四层，规则部分）" in markdown
-    assert "LLM 判项待接入（Phase B）" in markdown
+    assert "LLM 判项未完成或覆盖不足" in markdown
     # 评估阶段还没有 PDF，R1.5 必须显式记录未校验，不能假装通过。
     rules = [failure["rule"] for failure in report["tiers"]["eligible"]["failures"]]
     assert "R1.5" in rules
@@ -215,6 +215,7 @@ class _FakeJudgeClient:
 
 def _judge_fixture(tmp_path, monkeypatch):
     monkeypatch.setenv("PPF_QUALITY_JUDGE_CACHE_DIR", str(tmp_path / "judge-cache"))
+    monkeypatch.setattr(run_evaluation, "_load_quality_cards", lambda trace: {"ec_1": {"title": "统一平台"}})
     resume = (
         "# 张三\n13800000000 | a@b.com | 上海\n当前定位：平台负责人\n\n"
         "## 职业概述\n负责平台架构与交付。\n\n<!-- first-screen-end -->\n\n"
@@ -276,7 +277,7 @@ def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path
         client_factory=lambda: client,
     )
     assert meta2["cache"] == "miss"
-    assert client.calls == 2, "无效结果不得写入缓存"
+    assert client.calls == 4, "每次最多纠错一次，无效结果不得写入缓存"
 
 
 def test_quality_judge_disabled_without_llm_or_semantic_review(tmp_path, monkeypatch):
@@ -308,3 +309,53 @@ def test_quality_judge_loads_user_highlight_decisions(tmp_path, monkeypatch):
         client_factory=lambda: _FakeJudgeClient(content),
     )
     assert decisions == {"rejected": ["hl_b1_d1"], "selected": []}
+
+
+def test_quality_cache_invalidates_when_same_job_content_changes(tmp_path, monkeypatch):
+    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    client = _FakeJudgeClient(content)
+    args = dict(resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+                use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+                client_factory=lambda: client)
+    run_evaluation._run_quality_judge(**args)
+    semantic["requirements"][0]["text"] = "负责数据平台交付"
+    run_evaluation._run_quality_judge(**args)
+    assert client.calls == 2
+
+
+def test_quality_missing_jd_coverage_repairs_once_and_does_not_cache_pending(tmp_path, monkeypatch):
+    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    payload = json.loads(content)
+    payload["r2_1"] = []
+    client = _FakeJudgeClient(json.dumps(payload))
+    args = dict(resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+                use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+                client_factory=lambda: client)
+    judgments, meta, _ = run_evaluation._run_quality_judge(**args)
+    assert client.calls == 2 and "r2_1" not in judgments["judged_sections"]
+    assert meta["repair_calls"] == 1
+    assert not list((tmp_path / "judge-cache").glob("*.json"))
+
+
+def test_quality_judge_uses_configured_provider_adapter(tmp_path, monkeypatch):
+    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    client = _FakeJudgeClient(content)
+    created = []
+    monkeypatch.setenv("LLM_PROVIDER", "lm_studio")
+    monkeypatch.setattr(run_evaluation, "LLMClient", lambda **kwargs: created.append(kwargs) or client)
+    run_evaluation._run_quality_judge(resume_text=resume, trace={}, semantic_review=semantic,
+        job_profile_path="job.yaml", use_llm=True, model="m", api_key="k", base_url="http://localhost/v1")
+    assert created[0]["provider"] == "lm_studio"
+
+
+def test_quality_judge_only_receives_evidence_used_in_actual_resume(tmp_path, monkeypatch):
+    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_evaluation, "_load_quality_cards",
+                        lambda _: {"ec_1": {"title": "统一平台"}, "unused": {"results": ["未呈现的百万级成果"]}})
+    client = _FakeJudgeClient(content)
+    run_evaluation._run_quality_judge(resume_text=resume,
+        trace={"claims": [{"evidence_id": "ec_1", "text": "负责完成平台抽象"}]},
+        semantic_review=semantic, job_profile_path="job.yaml", use_llm=True, model="m", api_key="k",
+        base_url="http://fake/v1", client_factory=lambda: client)
+    data = json.loads(client.last_prompt.split("INPUT JSON:\n", 1)[1])
+    assert [card["id"] for card in data["cards"]] == ["ec_1"]

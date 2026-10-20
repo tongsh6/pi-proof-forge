@@ -1,6 +1,7 @@
 """Phase A：四层简历质量标准、规则判项与质量报告结构。"""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -256,7 +257,7 @@ def test_r1_8_required_resume_sections():
     assert "R1.8" in rules(report, "eligible")
 
 
-def test_r1_4_role_wording_above_level_is_rejected():
+def test_r1_4_unconfirmed_l3_ownership_requires_confirmation():
     cards = {"ec_00000001": card(role_scope_provenance={"level": "L3", "evidence": []})}
     claims = claims_for_resume()
     claims = [
@@ -269,6 +270,21 @@ def test_r1_4_role_wording_above_level_is_rejected():
         claims=claims,
     )
     assert "R1.4" in rules(report, "eligible")
+
+
+@pytest.mark.parametrize("serialized", [False,True])
+def test_r1_4_confirmed_l3_ownership_is_not_rejected_only_for_its_level(serialized):
+    provenance={"level":"L3","confirmed_by_user":True,
+                "evidence":[{"material_id":"m","document_id":"d","excerpt":"承担平台建设相关职责"}]}
+    value=card(role_scope_provenance=provenance)
+    if serialized:
+        value.pop("role_scope_provenance")
+        value["role_scope_provenance_json"]=json.dumps(provenance)
+    claims=[{**claim,"text":"负责完成平台抽象"} if claim["text"]=="完成平台抽象" else claim
+            for claim in claims_for_resume()]
+    report=build(resume=RESUME.replace("- 完成平台抽象","- 负责完成平台抽象"),
+                 cards={"ec_00000001":value},claims=claims)
+    assert "R1.4" not in rules(report,"eligible")
 
 
 def test_fit_tier_matrix_marks_first_screen_and_top_three_requirements():
@@ -325,6 +341,13 @@ def test_apply_pdf_check_updates_r1_5_and_auto_pass():
     updated = te.apply_pdf_check(report, {"pages": 2, "clipped": False})
     assert "R1.5" not in [failure["rule"] for failure in updated["tiers"]["eligible"]["failures"]]
     assert updated["tiers"]["eligible"]["metrics"]["pdf_pages"] == 2
+    assert updated["tiers"]["eligible"]["passed"] is True
+    assert all(not updated["tiers"][tier].get("blocked_by") for tier in ("fit","strong","distinct"))
+    assert not any("R1.5" in task for task in updated["gap_tasks"])
+    again=te.apply_pdf_check(updated,{"pages":3,"clipped":False})
+    assert all(again["tiers"][tier].get("blocked_by")=="eligible" for tier in ("fit","strong","distinct"))
+    assert any("R1.5" in task for task in again["gap_tasks"])
+    assert "R1.5" in rules(report,"eligible"), "回填不得修改原始报告"
 
 
 def test_quality_config_loads_thresholds_and_filler_lexicon():
@@ -406,6 +429,71 @@ def test_judged_r2_1_overrides_matrix_status_and_top_responsibility():
     assert matrix[0]["status"] == "weak"
     assert matrix[0]["first_screen"] is False
     assert "R2.2" in rules(report, "fit")
+
+
+def test_project_relevance_uses_mapped_bullets_instead_of_title_words():
+    report = build()
+    assert "R2.4" not in rules(report, "fit")
+    resume = RESUME + "\n## 项目经历\n### 无关项目（2022 ~ 2023）\n- 制作宣传海报\n"
+    report = build(resume=resume)
+    failures = [f for f in report["tiers"]["fit"]["failures"] if f["rule"] == "R2.4"]
+    assert len(failures) == 1 and "无关项目" in failures[0]["target"]
+
+
+def test_quantification_requires_result_text_not_version_number_coincidence():
+    assert not te._has_verifiable_quant("采用 Java 8", ["响应延迟降至 80ms"])
+    assert not te._has_verifiable_quant("采用 Java 8", ["覆盖 8 个品牌"])
+    assert te._has_verifiable_quant("改造查询 · 响应延迟降至 80ms", ["响应延迟降至 80ms"])
+    assert not te._has_verifiable_quant("2023 年完成升级 Java 8", ["2023 年完成升级 Java 8"])
+
+
+def test_project_mapping_accepts_visible_context_line():
+    resume = "## 项目经历\n### 售后服务（2024 ~ 2025）\n场景：多品牌售后履约\n- 设计履约流程\n"
+    judged = judged_payload(r2_1=[{"jd_item_id": "d1", "status": "weak", "bullet_ref": "line#3",
+                                  "citations": ["line#3"], "reason": "相关业务场景"}])
+    result = build(resume=resume, judgments=judged)
+    assert "R2.4" not in rules(result, "fit")
+
+
+def test_resume_judge_cannot_upgrade_partial_pool_support_to_full_support():
+    semantic = semantic_review(statuses=("partial",))
+    report = build(semantic=semantic, judgments=judged_payload())
+    row = report["tiers"]["fit"]["matrix"][0]
+    assert row["status"] == "weak"
+
+
+def test_verified_result_text_is_an_outcome_without_numeric_metric():
+    resume = "## 项目经历\n### 接口对接（2024）\n- 实现用友 NC 接口集成\n"
+    claims = [{"text": "实现用友 NC 接口集成", "source_kind": "evidence", "evidence_id": "ec_1", "field": "results"}]
+    judged = judged_payload(r3_1=[{"bullet": 1, "scene": True, "action": True, "result": False,
+                                   "citations": ["ec_1"], "reason": "没有量化指标"}])
+    result = te.evaluate_strong(resume=resume, cards={"ec_1": {"results": ["实现用友 NC 接口集成"]}},
+        trace={"claims": claims}, config=te.load_quality_config(), judgments=judged)
+    assert not any(f.rule == "R3.1" for f in result.failures)
+    assert any(f.rule == "R3.2" for f in result.failures)
+
+
+def test_three_nominations_are_ranked_to_two_not_rejected_as_three_chosen():
+    candidates = [{"highlight_id": f"hl_{i}", "bullet": 1, "jd_item_id": f"d{i}",
+                   "exceeds": ["scale"], "level": "L1"} for i in range(3)]
+    result = te.evaluate_distinct(resume="- 完成平台\n<!-- first-screen-end -->",
+                                 candidates=candidates, config=te.load_quality_config())
+    assert result.passed and len(result.highlights) == 2
+
+
+def test_verbatim_confirmed_profile_role_does_not_need_duplicate_model_confirmation():
+    text = "承担开发负责人职责"
+    profile = career_profile()
+    profile["career"]["skills"][0]["description"] = text
+    claims = [{"text": text, "source_kind": "personal_profile",
+               "field": "career.skills.s1.description", "evidence_id": ""}]
+    report = build(resume="## 核心能力\n- " + text, claims=claims, profile=profile,
+                   judgments=judged_payload(r1_4=[]))
+    assert "R1.4" not in rules(report, "eligible")
+    profile["career"]["skills"][0]["description"] = "参与联调"
+    report = build(resume="## 核心能力\n- " + text, claims=claims, profile=profile,
+                   judgments=judged_payload(r1_4=[]))
+    assert "R1.4" in rules(report, "eligible")
 
 
 def test_highlight_decisions_reject_and_select_are_applied():

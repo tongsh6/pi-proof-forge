@@ -1,4 +1,4 @@
-"""D1/D2/D4：按可信等级降级措辞、首屏组织与 trace 字段等级。"""
+"""职责表达保留已采纳范围，来源等级与确认记录仍可追溯。"""
 from __future__ import annotations
 
 import json
@@ -48,16 +48,49 @@ def card(card_id, *, title, time_range, role_scope, time_level=None, role_level=
     return value
 
 
-def test_format_time_role_text_and_downgrade_rules():
+def test_time_precision_and_adopted_role_rendering():
     assert ta.format_time("2021-03 ~ 2024-03", "L1", "day") == "2021-03 ~ 2024-03"
     assert ta.format_time("2022-03 ~ 2022-09", "L3", "year") == "2022"
     assert ta.format_time("2022-03", "L5", "month") == ""
     assert ta.role_text("平台负责人", "L1") == "平台负责人"
-    assert ta.role_text("平台负责人", "L3") == "参与 / 推动 · 平台负责人"
+    assert ta.role_text("平台负责人", "L3") == "平台负责人"
     assert ta.role_text("平台负责人", "L5") == ""
-    assert ta.downgrade_wording("负责统一运动中心改造并主导上线", "L3") == "参与统一运动中心改造并推动上线"
+    assert ta.downgrade_wording("负责统一运动中心改造并主导上线", "L3") == "负责统一运动中心改造并主导上线"
     assert ta.downgrade_wording("负责统一运动中心改造", "L1") == "负责统一运动中心改造"
     assert ta.visible_in_resume(card("ec-2", title="无时间", time_range="", role_scope="", time_level="L5")) is False
+
+
+@pytest.mark.parametrize("text", ["非负责人，仅参与联调", "协助负责人完成上线", "不负责总体设计",
+                                  "参与接口联调，由平台组负责总体设计"])
+def test_l3_keeps_negation_and_other_peoples_responsibility(text):
+    assert ta.role_text(text,"L3")==text
+
+
+def test_l3_keeps_self_claim_and_exclusion_in_the_same_sentence():
+    assert ta.role_text("主导接口联调，但不负责总体设计","L3")=="主导接口联调，但不负责总体设计"
+
+
+@pytest.mark.parametrize("original,expected", [
+    ("协助联调并主导架构设计","协助联调并主导架构设计"),
+    ("协助负责人并独立负责上线","协助负责人并独立负责上线"),
+])
+def test_l3_keeps_mixed_assistance_and_ownership_scope(original,expected):
+    assert ta.role_text(original,"L3")==expected
+
+@pytest.mark.parametrize("version", ["A", "B"])
+def test_inferred_role_keeps_adopted_scope_in_resume_and_trace_without_changing_source(version):
+    original="主导或深度参与方案设计与核心开发"
+    inferred=card("ec-inferred",title="售后服务",time_range="2023",role_scope=original,role_level="L3")
+    claims=[]
+    content=build_template_resume(version,"mr",80,"now",[inferred],
+                                  personal_profile=PROFILE,job_context=JOB,claims=claims)
+    role=next(c for c in claims if c["field"]=="role_scope")
+    assert "角色：主导或深度参与方案设计与核心开发" in content
+    assert role["text"]==original
+    assert role["provenance"]["level"]=="L3"
+    assert inferred["role_scope"]==original
+    assert ta.role_text(original,"L1")==original
+    assert ta.role_text(original,"L4")==original
 
 
 def test_build_template_resume_applies_levels_first_screen_and_trace_provenance():
@@ -81,12 +114,11 @@ def test_build_template_resume_applies_levels_first_screen_and_trace_provenance(
     # JD 引用的 L3 卡优先，且 L5 卡不进入正文。
     assert "无时间项目" not in content
     assert content.index("统一运动中心") < content.index("交易服务重构")
-    # 年精度只呈现年；L3 角色与动作/结果降级。
+    # 时间按精度显示；L3 来源等级不改变已采纳职责和原文行动。
     assert "### 统一运动中心（2022）" in content
-    assert "角色：参与 / 推动 · 平台负责人" in content
+    assert "角色：平台负责人" in content
     segment = content[content.index("统一运动中心"):content.index("交易服务重构")]
-    assert "- 负责" not in segment and "主导" not in segment
-    assert "参与统一运动中心改造" in segment and "推动会员中心上线" in segment
+    assert "负责统一运动中心改造" in segment and "主导会员中心上线" in segment
     # 首屏标记位于第一条经历之后：第一条经历 bullet 在首屏内。
     first, rest = content.split(FIRST_SCREEN_MARKER)
     assert "统一运动中心" in first and "交易服务重构" in rest
@@ -130,7 +162,7 @@ class FakeClient:
 
 
 def test_rewriter_detects_role_strength_and_time_precision_violations():
-    original = "# 张三\n\n## 项目经历\n### 统一运动中心（2022）\n角色：参与 / 推动 · 平台负责人\n- 参与统一运动中心改造\n"
+    original = "# 张三\n\n## 项目经历\n### 统一运动中心（2022）\n角色：平台负责人\n- 参与统一运动中心改造\n"
     resume = ResumeOutput("A", "jp", original, "markdown")
     stronger = original.replace("参与统一运动中心改造", "负责统一运动中心改造")
     result = LLMRewriter(FakeClient(stronger), "m").rewrite(
@@ -159,7 +191,7 @@ def test_template_assembler_engine_uses_levels():
     report = MatchingReport("jp", ("ec-2",), {}, ())
     content = TemplateAssembler().generate(report, [with_provenance], "A").content
     assert "（2022）" in content and "2022-03" not in content
-    assert "参与 / 推动 · 平台负责人" in content
+    assert "平台负责人" in content
     assert "系统上线完成" in content
     # 显式 L5 时间卡不得进入正文；旧数据（无 provenance）保持兼容。
     empty_time = EvidenceCard(id="ec-3", title="无时间", raw_source="m", results=("结果",),

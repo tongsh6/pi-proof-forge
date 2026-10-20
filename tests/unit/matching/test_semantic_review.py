@@ -37,6 +37,19 @@ def test_semantic_card_can_match_without_literal_keyword():
     assert rows[0]['score'] == 90
 
 
+def test_missing_citation_diagnostic_identifies_all_positive_cards_and_requirements():
+    cards,facts,requirements=fixtures()
+    response=replies(cards)
+    for row in response["cards"]:
+        row.update(score=20,requirement_ids=["r1"],citations=[])
+    with pytest.raises(ValueError,match="semantic_support_requires_citation:cards=e1,e2"):
+        engine().validate_cards(response,cards,facts,requirements)
+    requirements.append({"id":"r2","text":"接口开发","kind":"must_have"})
+    assessments={"assessments":[{"requirement_id":r["id"],"status":"partial","reason":"部分相关","citations":[]}
+                                for r in requirements]}
+    with pytest.raises(ValueError,match="semantic_support_requires_citation:requirements=r1,r2"):
+        engine().validate_assessments(assessments,facts,requirements)
+
 @pytest.mark.parametrize('fault', ['missing', 'duplicate', 'unknown', 'wrong_card', 'fabricated_quote', 'unknown_requirement', 'bad_score'])
 def test_recall_rejects_invalid_or_incomplete_model_response(fault):
     cards, facts, requirements = fixtures()
@@ -114,7 +127,7 @@ def test_final_selection_does_not_fill_three_slots_with_uncited_projects():
     assert engine().select_cards(reviews,assessments,facts)==['current']
 
 
-def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path):
+def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path,monkeypatch):
     infra = importlib.import_module('tools.infra.semantic_matching')
     job = tmp_path / 'jp.yaml'
     job.write_text('target_role: "后端"\nmust_have:\n  - "Distributed system reliability"\nkeywords:\n  - "Distributed"\n')
@@ -127,9 +140,11 @@ def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path):
     class Client:
         chat_completions_url = 'http://localhost/v1/chat/completions'
         calls = []
+        requests = []
 
         def post_json(self, url, payload, **kwargs):
             data = json.loads(payload['messages'][1]['content'])
+            self.requests.append(payload)
             key = 'cards' if data['stage'] == 'recall' else 'assessments'
             expected_count = len(data['cards'] if key == 'cards' else data['requirements'])
             assert kwargs['response_schema']['properties'][key]['minItems'] == expected_count
@@ -142,11 +157,13 @@ def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path):
                     fact_id = next(k for k in card['facts'] if ':results:' in k)
                     response['cards'].append({'id': card['id'], 'score': 90, 'reason': '可靠性相关', 'requirement_ids': ['r1'],
                                               'citations': [{'fact_id': fact_id, 'quote': data['facts'][fact_id]['text']}]})
+                    if getattr(self, 'zero_ready', False) and card['id'] == 'e4':
+                        response['cards'][-1].update(score=0, reason='不满足其他岗位要求', requirement_ids=[], citations=[])
             else:
                 if getattr(self,'expected_preferred',None):
                     assert data['preferred_source_ids']==self.expected_preferred
                     assert data['facts']['e4:role_scope:0']['text']=='核心开发者'
-                fact_id = next(k for k in data['facts'] if ':results:' in k)
+                fact_id = 'e4:results:0' if getattr(self, 'zero_ready', False) else next(k for k in data['facts'] if ':results:' in k)
                 response = {'assessments': [{'requirement_id': 'r1', 'status': 'supported', 'reason': '存在恢复实践',
                                              'citations': [{'fact_id': fact_id, 'quote': data['facts'][fact_id]['text']}]}]}
             return {'choices': [{'message': {'content': json.dumps(response)}}]}
@@ -169,16 +186,26 @@ def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path):
     with pytest.raises(ValueError, match='semantic_report_changed'):
         infra.load_semantic_report(report)
     report.write_text(original_report)
+    # 已有全输入指纹缓存按相同旧输入校验后迁移，无需重新调用。
+    from tools.prompts.context import context_fingerprint
+    first_cache = next(p for p in (tmp_path / 'cache').glob('*.json')
+                       if json.loads(p.read_text()).get('cards', [{}])[0].get('id') == 'e0')
+    legacy_key = infra._sha(infra._json({'version': infra.VERSION, 'task_context': context_fingerprint(),
+        'url': client.chat_completions_url, 'request': client.requests[0],
+        'input_fingerprints': {key: value['sha256'] for key, value in result['inputs'].items()}}).encode())
+    (tmp_path / 'cache' / f'{legacy_key}.json').write_text(first_cache.read_text())
+    first_cache.unlink()
     repeated = infra.run_semantic_matching(**options)
     assert len(client.calls) == 4 and repeated['statistics']['cache_hits'] == 4
+    assert first_cache.exists()
     paths[0].write_text(paths[0].read_text().replace('报告', '新报告'))
     infra.run_semantic_matching(**options)
-    assert len(client.calls) == 8
+    assert len(client.calls) == 6  # 变更卡所在粗筛批次和逐项评审失效，其余两批复用。
     job.write_text(job.read_text().replace('reliability', 'reliability and scale'))
     with pytest.raises(ValueError, match='semantic_input_changed'):
         infra.load_semantic_report(report)
     infra.run_semantic_matching(**options)
-    assert len(client.calls) == 12
+    assert len(client.calls) == 10
 
     # App 使用已确认档案时仍评审全部卡，但只选可完整归属的代表项目。
     from tools.infra.career_profile import empty_career, inspect_career
@@ -197,6 +224,23 @@ def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path):
     assert len(app_result['reviewed_card_ids'])==5
     assert app_result['selected_card_ids']==['e4']
     assert '待补本人职责' in app_result['presentation_exclusions']['e0']
+    calls_before_profile_change = len(client.calls)
+    profile.write_text(profile.read_text() + '\n')
+    profile_updated = infra.run_semantic_matching(**{**options, 'personal_profile': profile,
+                                                     'evidence_files': sorted(pool.glob('*.yaml'))})
+    assert len(client.calls) - calls_before_profile_change == 1
+    assert profile_updated['statistics']['cache_hits'] == 3
+    from tools.prompts import context
+    monkeypatch.setattr(context,"JOB_SEARCH_CONTEXT",context.JOB_SEARCH_CONTEXT+"\n更新产品语境")
+    updated=infra.run_semantic_matching(**{**options,'personal_profile':profile,'evidence_files':sorted(pool.glob('*.yaml'))})
+    assert updated['statistics']['model_calls']==4
+    assert updated['statistics']['cache_hits']==0
+    client.zero_ready = True
+    client.expected_preferred = None
+    recovered = infra.run_semantic_matching(**{**options, 'model': 'zero-recall', 'personal_profile': profile,
+                                               'evidence_files': sorted(pool.glob('*.yaml'))})
+    assert recovered['selected_card_ids'] == ['e4']
+    assert next(row for row in recovered['card_reviews'] if row['id'] == 'e4')['score'] == 0
 
 
 def test_required_llm_invalid_semantic_output_does_not_publish_success(tmp_path, monkeypatch):
@@ -216,7 +260,8 @@ def test_required_llm_invalid_semantic_output_does_not_publish_success(tmp_path,
 
 
 @pytest.mark.parametrize('always_invalid', [False, True])
-def test_invalid_quote_gets_only_one_validated_repair(tmp_path, always_invalid):
+@pytest.mark.parametrize('fault', ['invalid_quote','missing_citations'])
+def test_invalid_quote_gets_only_one_validated_repair(tmp_path, always_invalid, fault):
     infra = importlib.import_module('tools.infra.semantic_matching')
     job = tmp_path/'job.yaml'
     job.write_text('target_role: "恢复能力"\nkeywords:\n  - "故障恢复"\n')
@@ -228,18 +273,24 @@ def test_invalid_quote_gets_only_one_validated_repair(tmp_path, always_invalid):
         def post_json(self, url, payload, **kwargs):
             self.calls += 1
             data = json.loads(payload['messages'][1]['content'])
-            cite = {'fact_id':'e1:results:0','quote': '不存在的结果' if always_invalid or self.calls == 1 else '实现多实例任务抢占与故障恢复'}
+            bad=always_invalid or self.calls==1
+            cite = {'fact_id':'e1:results:0','quote': '不存在的结果' if bad and fault=='invalid_quote' else '实现多实例任务抢占与故障恢复'}
+            citations=[] if bad and fault=='missing_citations' else [cite]
+            if self.calls==2 and fault=='missing_citations':
+                assert 'cards=e1' in payload['messages'][-1]['content']
+                assert 'score=0' in payload['messages'][-1]['content']
             if data['stage'] == 'recall':
-                response={'cards':[{'id':'e1','score':90,'reason':'故障恢复','requirement_ids':['r1'],'citations':[cite]}]}
+                response={'cards':[{'id':'e1','score':90,'reason':'故障恢复','requirement_ids':['r1'],'citations':citations}]}
             else:
-                response={'assessments':[{'requirement_id':'r1','status':'supported','reason':'故障恢复','citations':[cite]}]}
+                response={'assessments':[{'requirement_id':'r1','status':'supported','reason':'故障恢复','citations':citations}]}
             return {'choices':[{'message':{'content':json.dumps(response)}}]}
         @staticmethod
         def extract_content(response): return response['choices'][0]['message']['content']
     client=Client()
     options=dict(job_path=job,evidence_files=[evidence],personal_profile=None,client=client,model='test',cache_dir=tmp_path/'cache')
     if always_invalid:
-        with pytest.raises(ValueError, match='semantic_quote_not_in_source'):
+        code='semantic_quote_not_in_source' if fault=='invalid_quote' else 'semantic_support_requires_citation'
+        with pytest.raises(ValueError, match=code):
             infra.run_semantic_matching(**options)
         assert client.calls == 2
         assert not list((tmp_path/'cache').glob('*.json'))
@@ -258,6 +309,14 @@ def test_presentation_prefers_complete_facts_without_changing_pool_assessment():
     assert assessments[0]['status']=='supported'
     assert engine().resume_assessment({'facts':facts,'requirements':[{'id':'r1','text':'发布治理'}],
         'assessments':[{'requirement_id':'r1',**assessments[0]}]},[])['requirements'][0]['resume_status']=='not_present'
+
+
+def test_positive_requirement_evidence_can_recover_zero_recall_card():
+    facts = {'zero:results:0': {'source_id': 'zero', 'field': 'results', 'text': '已完成故障恢复'}}
+    reviews = [{'id': 'zero', 'score': 0}, {'id': 'irrelevant', 'score': 0}]
+    assessed = [{'status': 'partial', 'citations': [{'fact_id': 'zero:results:0', 'quote': '已完成故障恢复'}]}]
+    assert engine().select_cards(reviews, assessed, facts, eligible_ids={'zero', 'irrelevant'}) == ['zero']
+    assert engine().select_cards(reviews, assessed, facts, eligible_ids={'irrelevant'}) == []
 
 
 def test_confirmed_personal_achievements_are_facts_without_employer_attribution(tmp_path,monkeypatch):

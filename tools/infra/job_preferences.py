@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from tools.infra.material_documents import split_material_documents
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.prompts.context import context_fingerprint
 
 
 class CareerDirectionExcluded(ValueError):
@@ -68,7 +69,8 @@ def load_preferences(profile_path):
 
 def validate_direction(value,preferences,jd):
     if not isinstance(value,dict) or set(value)!={'status','reason','criterion_index','jd_quote'}:raise ValueError('career_direction_invalid_response')
-    if value['status'] not in {'aligned','needs_review','excluded'}:raise ValueError('career_direction_invalid_status')
+    if not isinstance(value['status'],str) or value['status'] not in {'aligned','needs_review','excluded'}:
+        raise ValueError('career_direction_invalid_status')
     index=value['criterion_index']
     if type(index) is not int or not 0<=index<len(preferences['items']):raise ValueError('career_direction_unknown_preference')
     if not isinstance(value['reason'],str) or not 1<=len(value['reason'])<=600:raise ValueError('career_direction_invalid_reason')
@@ -87,12 +89,31 @@ def assess_direction(preferences,jd,client,model,cache_dir):
         {'role':'system','content':prompt},{'role':'user','content':json.dumps({'preferences':preferences['items'],'jd':jd},ensure_ascii=False)}]}
     schema={'type':'object','properties':{'status':{'type':'string','enum':['aligned','needs_review','excluded']},'reason':{'type':'string'},
             'criterion_index':{'type':'integer'},'jd_quote':{'type':'string'}},'required':['status','reason','criterion_index','jd_quote'],'additionalProperties':False}
-    key=hashlib.sha256(json.dumps({'request':payload,'url':client.chat_completions_url,'revision':preferences['revision']},ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+    key=hashlib.sha256(json.dumps({'request':payload,'url':client.chat_completions_url,'revision':preferences['revision'],
+                                 'task_context':context_fingerprint()},ensure_ascii=False,sort_keys=True).encode()).hexdigest()
     cache=cache_dir/f'direction-{key}.json';cache_dir.mkdir(parents=True,exist_ok=True)
     if cache.is_file():
-        try:return {**validate_direction(json.loads(cache.read_text()),preferences,jd),'cache_hit':True}
+        try:return {**validate_direction(json.loads(cache.read_text()),preferences,jd),
+                    'cache_hit':True,'model_calls':0,'repair_calls':0}
         except (ValueError,TypeError,KeyError):pass
-    response=client.post_json(client.chat_completions_url,payload,response_schema=schema)
-    value=json.loads(client.extract_content(response));result=validate_direction(value,preferences,jd)
+    original_messages=payload['messages']
+    for attempt in range(2):
+        # 传输错误不属于内容纠错；保持向上抛出，避免自动重复网络请求。
+        response=client.post_json(client.chat_completions_url,payload,response_schema=schema)
+        content=client.extract_content(response)
+        try:
+            if not content.strip():raise ValueError('career_direction_empty_content')
+            try:value=json.loads(content)
+            except json.JSONDecodeError:raise ValueError('career_direction_invalid_json') from None
+            result=validate_direction(value,preferences,jd)
+            break
+        except ValueError as exc:
+            if attempt:raise
+            payload={**payload,'messages':[*original_messages,
+                {'role':'assistant','content':content},
+                {'role':'user','content':f'程序校验失败：{exc}。请仅返回完整 JSON 对象，'
+                 '包含 status、reason、criterion_index、jd_quote；'
+                 'criterion_index 必须是输入偏好的零基索引，jd_quote 必须逐字复制 JD 原文。'
+                 '按原始偏好和职责重新判断，不能为通过校验改变事实或默认方向符合。'}]}
     cache.write_text(json.dumps(value,ensure_ascii=False))
-    return {**result,'cache_hit':False}
+    return {**result,'cache_hit':False,'model_calls':attempt+1,'repair_calls':attempt}

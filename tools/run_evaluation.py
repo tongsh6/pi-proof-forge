@@ -324,15 +324,20 @@ def _run_quality_judge(
     base_url: str,
     client_factory: Any = None,
 ) -> tuple[dict | None, dict[str, Any], dict[str, list[str]]]:
-    """B1/B4：命中缓存或调用一次受控判项；任何失败都保留 pending，不伪造通过。"""
+    """复用完整缓存；内容缺项最多纠错一次，不缓存未完成判项。"""
     resume_sha256 = hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
     decisions = quality_judge_cache.load_decisions(Path.cwd(), resume_sha256)
     cards = _load_quality_cards(trace)
+    if isinstance(trace.get("claims"), list):
+        rendered_ids = {str(claim.get("evidence_id", "")) for claim in trace["claims"] if isinstance(claim, dict)}
+        cards = {key: card for key, card in cards.items() if key in rendered_ids}
     jd_items = _judge_jd_items(semantic_review)
     meta: dict[str, Any] = {"cache": "disabled", "reason": "llm_not_configured_or_no_jd_items"}
     if not (use_llm and model and api_key and jd_items):
         return None, meta, decisions
     bullets = tiered_evaluator.extract_bullets(resume_text)
+    prompt = llm_judge.build_judge_prompt(bullets=bullets, cards=cards, jd_items=jd_items,
+                                         resume_text=resume_text)
     job_profile_id = Path(job_profile_path).stem if job_profile_path else ""
     key = quality_judge_cache.judge_cache_key(
         resume_sha256=resume_sha256,
@@ -340,6 +345,7 @@ def _run_quality_judge(
         cards=cards,
         model=model,
         prompt_version=llm_judge.PROMPT_VERSION,
+        prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
     )
     meta = {"cache": "miss", "model": model, "prompt_version": llm_judge.PROMPT_VERSION, "key": key}
     cached = quality_judge_cache.load_judgment(_judge_cache_root(), key)
@@ -347,16 +353,17 @@ def _run_quality_judge(
         meta["cache"] = "hit"
         meta["judged_sections"] = cached.get("judged_sections")
         return cached, meta, decisions
-    prompt = llm_judge.build_judge_prompt(bullets=bullets, cards=cards, jd_items=jd_items)
     try:
         client = client_factory() if client_factory is not None else LLMClient(
-            base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env()
+            base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env(),
+            provider=os.getenv("LLM_PROVIDER", ""),
         )
         payload: dict[str, object] = {
             "model": model,
             "temperature": 0,
             "max_tokens": 6000,
             "stream": False,
+            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": "You are a strict judge. Return ONLY the JSON object."},
                 {"role": "user", "content": prompt},
@@ -366,10 +373,24 @@ def _run_quality_judge(
         # 只对本机 base_url 关闭推理输出，不改变远端模型请求语义。
         if "127.0.0.1" in base_url or "localhost" in base_url:
             payload["reasoning_effort"] = "none"
-        response = client.post_json(client.chat_completions_url, payload)
-        parsed = llm_judge.parse_judgments(
-            client.extract_content(response), bullets=bullets, jd_items=jd_items, cards=cards
-        )
+        meta.update(model_calls=0, repair_calls=0)
+        parsed = None
+        for attempt in range(2):
+            meta["model_calls"] += 1
+            response = client.post_json(client.chat_completions_url, payload)
+            parsed = llm_judge.parse_judgments(
+                client.extract_content(response), bullets=bullets, jd_items=jd_items, cards=cards,
+                resume_text=resume_text,
+            )
+            missing = sorted(set(("r1_4", "r2_1", "r3_1", "r3_5", "r4_1")) -
+                             set((parsed or {}).get("judged_sections", [])))
+            if not missing or attempt:
+                break
+            meta["repair_calls"] += 1
+            payload["messages"] = [*payload["messages"][:2], {
+                "role": "user", "content": "上次判项缺失或引用无效：" + "、".join(missing) +
+                "。请重新输出完整 JSON，覆盖所有 JD id 与经历 bullet；每项给出有效引用。"
+                "未呈现用 absent + citations=[\"resume\"]，个人成果可引用其 bullet；不要省略。"}]
     except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
         meta["error"] = str(exc)[:300]
         print(f"[evaluation] LLM 判项不可用，保留 pending：{exc}")
@@ -377,7 +398,8 @@ def _run_quality_judge(
     if parsed is None:
         meta["error"] = "invalid_judge_response"
         return None, meta, decisions
-    quality_judge_cache.save_judgment(_judge_cache_root(), key, parsed)
+    if not missing:
+        quality_judge_cache.save_judgment(_judge_cache_root(), key, parsed)
     meta["judged_sections"] = parsed.get("judged_sections")
     meta["rejected_items"] = parsed.get("rejected_items")
     return parsed, meta, decisions
@@ -408,7 +430,7 @@ def _quality_markdown(quality_report: dict | None) -> str:
             )
     pending = quality_report.get("llm_pending") or []
     if pending:
-        lines.append("- LLM 判项待接入（Phase B）：" + "、".join(str(item) for item in pending))
+        lines.append("- LLM 判项未完成或覆盖不足：" + "、".join(str(item) for item in pending))
     judge = quality_report.get("quality_judge")
     if isinstance(judge, dict) and judge.get("cache") in {"hit", "miss"}:
         lines.append(f"- LLM 判项缓存：{judge.get('cache')}（{judge.get('model', '')} / prompt v{judge.get('prompt_version', '')}）")

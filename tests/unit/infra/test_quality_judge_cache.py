@@ -21,6 +21,12 @@ def test_cards_fingerprint_is_deterministic_and_sensitive():
     changed = {"ec_1": {**CARDS["ec_1"], "results": ["延迟降低 30%"]}}
     assert cache.cards_fingerprint(changed) != first
     assert cache.cards_fingerprint({**CARDS, "ec_2": {"title": "另一个"}}) != first
+    limited={"ec_1":{**CARDS["ec_1"],"actions":["参与联调，由平台组负责总体设计"]}}
+    owner={"ec_1":{**CARDS["ec_1"],"actions":["独立负责总体架构设计"]}}
+    assert cache.cards_fingerprint(limited)!=cache.cards_fingerprint(owner)
+    pending={"ec_1":{**CARDS["ec_1"],"role_scope_provenance":{"level":"L3","confirmed_by_user":False}}}
+    confirmed={"ec_1":{**CARDS["ec_1"],"role_scope_provenance":{"level":"L3","confirmed_by_user":True}}}
+    assert cache.cards_fingerprint(pending)!=cache.cards_fingerprint(confirmed)
 
 
 def test_cache_key_changes_with_resume_job_model_and_prompt():
@@ -35,6 +41,14 @@ def test_cache_key_changes_with_resume_job_model_and_prompt():
                                          model="m2", prompt_version=1)
     assert base != cache.judge_cache_key(resume_sha256="a" * 64, job_profile_id="jp-1", cards=CARDS,
                                          model="m1", prompt_version=2)
+
+
+def test_shared_product_context_change_invalidates_quality_judgments(monkeypatch):
+    from tools.prompts import context
+    args=dict(resume_sha256="a"*64,job_profile_id="jp-1",cards=CARDS,model="m1",prompt_version=1)
+    before=cache.judge_cache_key(**args)
+    monkeypatch.setattr(context,"JOB_SEARCH_CONTEXT",context.JOB_SEARCH_CONTEXT+"\n更新产品语境")
+    assert cache.judge_cache_key(**args)!=before
 
 
 def test_judgment_cache_roundtrip_and_corruption(tmp_path):

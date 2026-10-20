@@ -6,6 +6,8 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from tools.prompts.context import context_fingerprint
+from tools.infra.evidence_provenance import parse_provenance
 
 JUDGE_CACHE_SCHEMA_VERSION = 1
 
@@ -17,7 +19,10 @@ def cards_fingerprint(cards: dict[str, dict]) -> str:
             "title": str((cards.get(card_id) or {}).get("title", "")),
             "time_range": str((cards.get(card_id) or {}).get("time_range", "")),
             "role_scope": str((cards.get(card_id) or {}).get("role_scope", "")),
+            "role_scope_provenance": parse_provenance((cards.get(card_id) or {}).get("role_scope_provenance")
+                                                     or (cards.get(card_id) or {}).get("role_scope_provenance_json")),
             "context": str((cards.get(card_id) or {}).get("context", "")),
+            "actions": [str(item) for item in ((cards.get(card_id) or {}).get("actions") or [])],
             "results": [str(item) for item in ((cards.get(card_id) or {}).get("results") or [])],
             "stack": [str(item) for item in ((cards.get(card_id) or {}).get("stack") or [])],
         }
@@ -34,6 +39,7 @@ def judge_cache_key(
     cards: dict[str, dict],
     model: str,
     prompt_version: int,
+    prompt_sha256: str = "",
 ) -> str:
     material = "|".join(
         [
@@ -42,6 +48,8 @@ def judge_cache_key(
             cards_fingerprint(cards),
             str(model),
             str(prompt_version),
+            context_fingerprint(),
+            prompt_sha256,
         ]
     )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()

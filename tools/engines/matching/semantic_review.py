@@ -47,6 +47,7 @@ def validate_citations(citations, facts, source_id=None):
 def validate_cards(response, cards, facts, requirements):
     rows = _rows(response, 'cards', 'id', [card['id'] for card in cards])
     allowed = {r['id'] for r in requirements}
+    missing_citations = []
     for row in rows:
         _reason(row)
         if type(row.get('score')) not in (int, float) or not 0 <= row['score'] <= 100:
@@ -56,7 +57,9 @@ def validate_cards(response, cards, facts, requirements):
             raise ValueError('semantic_unknown_requirement')
         validate_citations(row.get('citations'), facts, row['id'])
         if (row['score'] > 0 or refs) and not row['citations']:
-            raise ValueError('semantic_support_requires_citation')
+            missing_citations.append(row['id'])
+    if missing_citations:
+        raise ValueError('semantic_support_requires_citation:cards=' + ','.join(missing_citations))
     return rows
 
 
@@ -70,14 +73,21 @@ def _validate_assessment_reason(row, requirement):
         if not re.search(r'年|years?',requirement,re.I):
             raise ValueError(f'semantic_added_requirement:{identity}:year_threshold_not_in_requirement')
     if (row['status'] in {'partial','insufficient'}
-            and re.search(r'(?:缺乏|缺少|欠缺|没有|未见)[^。；，,;但而\n]{0,24}(?:企业级|生产|商用)',reason)
+            and re.search(r'(?:缺乏|缺少|欠缺|没有|未见|但非|并非)[^。；，,;但而\n]{0,24}(?:企业级|生产|商用)',reason)
             and not re.search(r'企业级|生产|商用|production|enterprise',requirement,re.I)):
         raise ValueError(f'semantic_added_requirement:{identity}:production_not_required')
+    if row['status'] in {'partial', 'insufficient'}:
+        for asserted in re.findall(r'JD\s*要求([^，。；,;\n]{1,100})', reason, re.I):
+            asserted = re.split(r'但|而|候选人|现有|已有', asserted, maxsplit=1)[0]
+            terms = re.findall(r'[A-Za-z][A-Za-z0-9.+#]*', asserted)
+            if terms and any(term.casefold() not in requirement.casefold() for term in terms):
+                raise ValueError(f'semantic_added_requirement:{identity}:technology_from_other_item')
 
 
 def validate_assessments(response, facts, requirements):
     rows = [dict(row) for row in _rows(response, 'assessments', 'requirement_id', [r['id'] for r in requirements])]
     by_id={r['id']:r for r in requirements}
+    missing_citations=[]
     for row in rows:
         _reason(row)
         if row.get('status') not in STATUSES:
@@ -85,7 +95,7 @@ def validate_assessments(response, facts, requirements):
         _validate_assessment_reason(row,by_id[row['requirement_id']]['text'])
         validate_citations(row.get('citations'), facts)
         if row['status'] != 'insufficient' and not row['citations']:
-            raise ValueError('semantic_support_requires_citation')
+            missing_citations.append(row['requirement_id'])
         cited=[facts[c['fact_id']] for c in row['citations']]
         quoted='；'.join([*(c['quote'] for c in row['citations']),*(q for f in cited for q in f.get('source_qualifiers',[]))])
         qualified=r'参与或负责|主导或深度参与|主导或参与'
@@ -102,6 +112,8 @@ def validate_assessments(response, facts, requirements):
                 cautions.append('引用项目的本人职责未确认，不能直接等同个人能力')
             if cautions:
                 row.update(status='partial',cautions=cautions,reason='；'.join(cautions))
+    if missing_citations:
+        raise ValueError('semantic_support_requires_citation:requirements=' + ','.join(missing_citations))
     return rows
 
 
@@ -132,7 +144,7 @@ def requirement_checks(requirements):
         source=re.sub(r'^\d+[.、)）]\s*','',text) if req.get('kind')=='responsibility' else text
         parts=[]
         # 跨逗号的备选关系保留整体，不能误作 AND。
-        alternative=r'或|任一|任意|之一|若干|至少.{0,8}(?:种|项|门|个)|\bor\b|\beither\b'
+        alternative=r'或|任一|任意|之一|若干|至少.{0,8}(?:种|项|门|个)|等[^，,；;\n]{0,12}(?:专业|工具|框架|技术)|\bor\b|\beither\b'
         if re.search(alternative,source,re.I):
             # 备选可横跨分号和换行；不确定关系留给带完整语境的语义判断。
             clauses=re.split(r'[，,；;\n](?=\s*(?:并且|并有|且|同时|其中|还需|能够|有真实))',source)
@@ -177,7 +189,11 @@ def support_score(statuses):
 
 def select_cards(reviews, assessments, facts, eligible_ids=None):
     """按逐项引用的新增事实覆盖选材，不用未引用的弱相关项目凑数。"""
-    candidates=[r for r in reviews if r['score']>0 and (eligible_ids is None or r['id'] in eligible_ids)]
+    positive_sources = {facts[c['fact_id']]['source_id']
+                        for parent in assessments for row in parent.get('checks', [parent])
+                        if row['status'] in {'supported', 'partial'} for c in row['citations']}
+    candidates=[r for r in reviews if (r['score']>0 or r['id'] in positive_sources)
+                and (eligible_ids is None or r['id'] in eligible_ids)]
     coverage={r['id']:{} for r in candidates}
     for index,row in enumerate(assessments):
         weight={'supported':2,'partial':1}.get(row['status'],0)

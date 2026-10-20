@@ -116,3 +116,37 @@ def test_responsibility_section_ends_before_qualification_and_bonus_aliases(head
     assert len(duties)==2
     assert duties[-1]['text']=='2. 完善发布验证与恢复流程。'
 
+def test_listed_related_majors_are_examples_not_three_required_degrees():
+    from tools.engines.matching.semantic_review import requirement_checks
+    text = "本科及以上学历，计算机、软件工程、数学、电子信息等相关专业"
+    checks = requirement_checks([{"id": "r1", "kind": "must_have", "text": text}])
+    assert len(checks) == 1
+    assert checks[0]["criterion"] == text
+
+
+def test_named_ai_tools_are_examples_with_spaces_and_qualifiers():
+    text = "经常使用 Codex、Claude Code、Cursor 等 AI 编程工具，能够理解和审查代码"
+    checks = engine.requirement_checks([{"id": "r1", "kind": "must_have", "text": text}])
+    assert checks[0]["criterion"] == "经常使用 Codex、Claude Code、Cursor 等 AI 编程工具"
+    assert len(checks) == 2
+
+
+@pytest.mark.parametrize("reason", [
+    "有个人开源AI项目，但非企业生产落地，属部分支撑。",
+    "全栈交付，但JD要求TypeScript/React/Next.js，技术栈不匹配。",
+])
+def test_assessment_rejects_explicit_extra_conditions_from_other_requirements(reason):
+    with pytest.raises(ValueError, match="semantic_added_requirement"):
+        engine._validate_assessment_reason(
+            {"requirement_id": "d1", "status": "partial", "reason": reason},
+            "有实际项目经历，能完成全栈交付与工具调用")
+
+
+@pytest.mark.parametrize("requirement,reason", [
+    ("熟悉React或Next.js", "JD要求React或Next.js而现有证据只有Vue开发经验，故部分支持。"),
+    ("熟悉TypeScript", "JD要求TypeScript但候选人主要使用Java，故部分支持。"),
+    ("熟悉PostgreSQL", "JD要求PostgreSQL而已有经验是MySQL，故部分支持。"),
+])
+def test_assessment_allows_comparing_required_and_existing_technologies(requirement, reason):
+    engine._validate_assessment_reason({"requirement_id": "r1", "status": "partial", "reason": reason}, requirement)
+

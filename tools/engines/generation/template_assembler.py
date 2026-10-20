@@ -1,6 +1,6 @@
-"""模板拼装与按证据可信等级降级措辞（D1）。
+"""模板拼装与证据来源等级的呈现。
 
-生成器以字段级 provenance 为输入：L1/L4 可写负责/主导；L3 只写参与/推动；
+已采纳的 L3 职责保留主导/负责及原责任限定，来源等级不等于责任强度；
 时间按推断精度呈现（年 / 年月）；L5 时间卡不进入正文。本模块只做确定性措辞
 与排版，不引入新事实。
 """
@@ -77,19 +77,17 @@ def format_time(value: str, level: str, precision: str) -> str:
 
 
 def role_text(role: str, level: str) -> str:
-    """角色措辞上限：L3 只写参与/推动；L5 不写角色。"""
+    """保留已采纳职责的原义；L5 无依据时不写角色。"""
     text = " ".join(str(role or "").split())
     if not text or level == "L5":
         return ""
-    if level == "L3":
-        return "参与 / 推动 · " + text
     return text
 
 
 def downgrade_wording(text: str, level: str) -> str:
-    """L3/L5 的动作与结果不得保留负责/主导等强措辞。"""
+    """保留已采纳的 L1/L3/L4 原文；无职责依据的旧路径保持兼容处理。"""
     value = " ".join(str(text or "").split())
-    if not value or level in {"L1", "L4"}:
+    if not value or level in {"L1", "L3", "L4"}:
         return value
     return _VERB_RE.sub(lambda match: WEAK_ROLE_WORDS.get(match.group(0), "参与"), value)
 

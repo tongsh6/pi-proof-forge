@@ -404,6 +404,8 @@ def _legacy_main() -> int:
                 return 2
             except (ValueError, OSError, RuntimeError, TypeError, KeyError) as exc:
                 messages = {'career_direction_jd_body_missing': '请先补齐并审核完整 JD，再评估求职方向',
+                            'career_direction_empty_content': '求职方向评估未返回正文，一次纠错后仍为空；请检查模型结构化输出与推理设置',
+                            'career_direction_invalid_json': '求职方向评估未返回有效 JSON，一次纠错后仍无效；请检查模型结构化输出设置',
                             'job_preferences_source_changed': '求职偏好的来源材料已变化，请到简历中心重新提炼并确认'}
                 code = str(exc)
                 detail = messages.get(code, code if code.startswith(('semantic_', 'career_direction_', 'job_preferences_')) else type(exc).__name__)

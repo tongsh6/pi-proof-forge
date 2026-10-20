@@ -15,6 +15,7 @@ from pathlib import Path
 from tools.domain.models import QualityFailure, TierResult
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.engines.evaluation.llm_judge import resume_lines
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -476,18 +477,31 @@ def evaluate_eligible(
                 _failure("R1.3", f"工作经历「{_short(entry['title'])}」", "经历缺少时间（至少到年）")
             )
 
-    # R1.4 角色措辞不得高于证据可信等级；LLM 判项必须带引用，缺失按失败处理。
+    # R1.4 核对职责是否已采纳；有出处且已确认的 L3 不因来源等级自动降低责任。
     strong_rows = [row for row in trace_result["bullets"] if _STRONG_ROLE_RE.search(str(row.get("text", "")))]
+    confirmed_profile_texts: set[str] = set()
+    if career_profile.get("career_status", {}).get("reviewed"):
+        career = career_profile.get("career", {})
+        for group, label in (("skills", "category"), ("extras", "title")):
+            for entry in career.get(group, []):
+                description = str(entry.get("description", ""))
+                confirmed_profile_texts.update((_normalize(description),
+                    _normalize(str(entry.get(label, "")) + "：" + description)))
+        confirmed_profile_texts.update(_normalize(text) for entry in career.get("work", [])
+                                       for text in entry.get("contributions", []))
     flagged_bullets: set[int] = set()
     for row in strong_rows:
         for evidence_id in row.get("evidence_ids", []):
-            level = _provenance_level(cards.get(evidence_id, {}), "role_scope")
-            if level in {"L3", "L5"}:
+            source = cards.get(evidence_id, {})
+            level = _provenance_level(source, "role_scope")
+            role = _provenance(source, "role_scope")
+            confirmed = role.get("confirmed_by_user") is True and bool(role.get("evidence"))
+            if level == "L5" or (level == "L3" and not confirmed):
                 failures.append(
                     _failure(
                         "R1.4",
                         f"bullet#{row['number']} / {evidence_id}",
-                        f"角色措辞“{_short(row['text'], 20)}”高于 {level} 允许强度",
+                        f"角色措辞“{_short(row['text'], 20)}”缺少已确认的职责依据（{level}）",
                     )
                 )
                 flagged_bullets.add(int(row["number"]))
@@ -501,6 +515,9 @@ def evaluate_eligible(
         for row in strong_rows:
             number = int(row["number"])
             if number in flagged_bullets:
+                continue
+            if (row.get("verified") and _normalize(row["text"]) in confirmed_profile_texts
+                    and all(source.get("source_kind") == "personal_profile" for source in row.get("sources", []))):
                 continue
             item = judged.get(number)
             if item is None:
@@ -541,16 +558,18 @@ def evaluate_eligible(
     return TierResult(passed=not failures, failures=tuple(failures), metrics=metrics)
 
 
-def _provenance_level(card: dict, field: str) -> str:
+def _provenance(card: dict, field: str) -> dict:
     from tools.infra import evidence_provenance as evidence_provenance
 
     raw = card.get(f"{field}_provenance")
     if not isinstance(raw, dict):
         raw = evidence_provenance.parse_provenance(card.get(f"{field}_provenance_json"))
-    if isinstance(raw, dict):
-        level = raw.get("level")
-    else:
-        level = card.get(f"{field}_provenance_level")
+    return raw if isinstance(raw, dict) else {}
+
+
+def _provenance_level(card: dict, field: str) -> str:
+    raw = _provenance(card, field)
+    level = raw.get("level") or card.get(f"{field}_provenance_level")
     return str(level or "L1")
 
 
@@ -647,26 +666,35 @@ def _fit_matrix(resume: str, semantic_review: dict | None, judgments: dict | Non
         }
         rows.append(row)
     if isinstance(judgments, dict) and "r2_1" in (judgments.get("judged_sections") or []):
+        pool = {str(item.get("requirement_id", "")): item for item in semantic_review.get("requirements", [])}
         judged = {
             str(item.get("jd_item_id", "")): item
             for item in judgments.get("r2_1", []) or []
             if isinstance(item, dict)
         }
         bullet_index = {f"bullet#{int(bullet['number'])}": bullet for bullet in bullets}
+        bullet_index.update({str(row["id"]): row for row in resume_lines(resume)})
         for row in rows:
             item = judged.get(str(row.get("jd_item_id", "")))
             if not item:
                 continue
             row["status"] = item.get("status", row["status"])
+            evidence = pool.get(str(row["jd_item_id"]), {})
+            evidence_status = evidence.get("status", "insufficient")
+            ceiling = "supported" if evidence_status == "supported" else "weak" if evidence_status == "partial" else "absent"
+            rank = {"absent": 0, "weak": 1, "supported": 2}
+            capped = rank.get(str(row["status"]), 0) > rank[ceiling]
+            if capped:
+                row["status"] = ceiling
             refs = [
-                ref for ref in re.findall(r"bullet#\d+", str(item.get("bullet_ref", "")))
+                ref for ref in re.findall(r"(?:bullet|line)#\d+", str(item.get("bullet_ref", "")))
                 if ref in bullet_index
             ]
             if refs:
                 row["bullet_ref"] = "、".join(dict.fromkeys(refs))
                 row["first_screen"] = any(bool(bullet_index[ref]["first_screen"]) for ref in refs)
             row["judged"] = True
-            row["reason"] = item.get("reason", "")
+            row["reason"] = (f"证据池支撑为 {evidence_status}：" + str(evidence.get("reason", ""))) if capped else item.get("reason", "")
     for row in rows:
         if row["status"] == "absent":
             gap_rows.append({"item": row["jd_item"], "reason": _short(row.get("reason", ""), 200)})
@@ -704,17 +732,14 @@ def evaluate_fit(
     project_entries = [
         entry for entry in _entries(resume).get("项目经历", []) if entry.get("title")
     ]
-    cited_cards = {
-        str(citation.get("source_id", ""))
-        for requirement in (semantic_review or {}).get("requirements", []) or []
-        if isinstance(requirement, dict)
-        for citation in (requirement.get("citations") or [])
-        if citation.get("source_id")
-    }
+    mapped_refs = {ref for row in matrix if row["status"] in {"supported", "weak"}
+                   for ref in re.findall(r"(?:bullet|line)#\d+", str(row.get("bullet_ref", "")))}
+    bullets, _ = _bullet_rows(resume)
+    mapped_entries = {str(row["entry"]) for row in bullets if f"bullet#{row['number']}" in mapped_refs}
+    mapped_entries.update(str(row["entry"]) for row in resume_lines(resume) if row["id"] in mapped_refs)
     for entry in project_entries:
         title = entry["title"]
-        if not any(_compact(title)[:8] in _compact(str(row.get("jd_item", ""))) for row in matrix) and cited_cards:
-            # 无法直接映射时，只有完全无 JD 支撑的额外项目才提示压缩。
+        if entry["raw"] not in mapped_entries:
             failures.append(
                 _failure("R2.4", f"项目经历「{_short(title)}」", "未映射到任何 JD 条目，考虑压缩或退出正文")
             )
@@ -748,12 +773,12 @@ def evaluate_fit(
     )
 
 
-def _has_verifiable_quant(body: str, results_pool: str) -> bool:
-    numbers = [token.replace(",", "") for token in re.findall(r"\d+(?:[.,]\d+)?", body)]
-    if not numbers:
-        return False
-    pool = results_pool.replace(",", "")
-    return any(number in pool for number in numbers)
+def _has_verifiable_quant(body: str, results: list[str]) -> bool:
+    # 数字必须属于实际呈现的成果片段，技术版本或年份恰好相同不算量化成果。
+    normalized = _compact(body)
+    metric = r"\d[\d,.]*\+?\s*(?:%|ms\b|s\b|毫秒|秒|分钟|小时|万?条|次|个|人|项|QPS\b|TPS\b|GB\b|TB\b)"
+    return any(re.search(metric, str(result).replace("*", ""), re.I) and _compact(result) in normalized
+               for result in results if str(result).strip())
 
 
 def evaluate_strong(
@@ -778,11 +803,11 @@ def evaluate_strong(
         for bullet in experience:
             row = verified_rows.get(int(bullet["number"]), {})
             evidence_ids = list(row.get("evidence_ids", []))
-            pool = " ".join(
+            pool = [
                 str(value)
                 for evidence_id in evidence_ids
                 for value in cards.get(evidence_id, {}).get("results", []) or []
-            )
+            ]
             quant_flags.append(_has_verifiable_quant(str(bullet["body"]), pool))
         quant_total = sum(quant_flags) / len(quant_flags)
         first_flags = [
@@ -842,6 +867,11 @@ def evaluate_strong(
             if item is None:
                 failures.append(_failure("R3.1", f"bullet#{bullet['number']}", "缺少带引用的三段判定"))
                 continue
+            verified = verified_rows.get(int(bullet["number"]), {})
+            if verified.get("verified") and any(source.get("field") == "results"
+                                                for source in verified.get("sources", [])):
+                # 直接呈现已核验成果原文即有结果段，非数值交付无需额外量化。
+                item = {**item, "result": True}
             missing = [label for label, key in (("场景", "scene"), ("动作", "action"), ("结果", "result")) if not item.get(key)]
             if missing:
                 failures.append(
@@ -936,7 +966,7 @@ def evaluate_distinct(
         reason = "无合格突出点" if candidates is not None else "无合格突出点（LLM 提名尚未运行或全部被否决）"
         failures.append(_failure("R4.2", "highlights", reason))
     chosen = items[:maximum] if len(items) > maximum else items
-    if len(items) > maximum:
+    if len(items) > maximum and candidates is None:
         failures.append(
             _failure("R4.2", "highlights", f"突出点 {len(items)} 条，超过 {maximum} 条上限")
         )
@@ -1102,5 +1132,16 @@ def apply_pdf_check(report: dict[str, object], pdf_check: dict) -> dict[str, obj
     metrics["clip_check"] = pdf_check.get("clipped")
     eligible["metrics"] = metrics
     eligible["passed"] = not eligible["failures"]
+    for name in ("fit", "strong", "distinct"):
+        tier = tiers.get(name)
+        if not isinstance(tier, dict):
+            continue
+        if eligible["passed"]:
+            if tier.get("blocked_by") == "eligible":
+                tier.pop("blocked_by", None)
+        else:
+            tier["blocked_by"] = "eligible"
+    fit = tiers.get("fit") or {}
+    updated["gap_tasks"] = _tier_gap_tasks(tiers, list(fit.get("highlights") or []))
     updated["auto_pass"] = recompute_auto_pass(updated)
     return updated

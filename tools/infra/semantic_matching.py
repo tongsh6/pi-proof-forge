@@ -12,6 +12,7 @@ from tools.engines.matching.semantic_review import (validate_cards, validate_ass
     job_requirements, requirement_checks, aggregate_assessments)
 from tools.infra.career_profile import load_career_profile, career_generation_issues
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.prompts.context import context_fingerprint
 
 VERSION = 'evidence-semantic-v3'
 
@@ -108,14 +109,17 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
     facts, cards = {}, []
     profile = load_career_profile(personal_profile) if personal_profile and personal_profile.is_file() else None
     presentation_issues = {}
+    card_input_keys = {}
     for path in evidence_files:
         card_doc = parse_simple_yaml(path.read_text())
         from tools.infra.evidence_sources import validated_source_inputs
         material_dir=(personal_profile.parent if personal_profile else path.parent.parent)/'materials'
-        inputs.update({key:_input(source) for key,source in validated_source_inputs(card_doc,material_dir).items()})
+        source_inputs = {key:_input(source) for key,source in validated_source_inputs(card_doc,material_dir).items()}
+        inputs.update(source_inputs)
         if not card_doc['lists'].get('results') or not card_doc['lists'].get('artifacts'):
             raise ValueError('semantic_ineligible_evidence')
         source_id = path.stem
+        card_input_keys[source_id] = {source_id, *source_inputs}
         card_facts = _facts(source_id, card_doc)
         facts.update(card_facts)
         cards.append({'id': source_id, 'facts': list(card_facts)})
@@ -126,8 +130,9 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
         raise ValueError('semantic_no_evidence')
     personal_facts = _profile_facts(personal_profile)
     facts.update(personal_facts)
-    statistics = {'model_calls': int(bool(direction_review and not direction_review['cache_hit'])),
-                  'cache_hits': int(bool(direction_review and direction_review['cache_hit'])), 'batches': 0, 'repair_calls': 0}
+    statistics = {'model_calls': direction_review['model_calls'] if direction_review else 0,
+                  'cache_hits': int(bool(direction_review and direction_review['cache_hit'])), 'batches': 0,
+                  'repair_calls': direction_review['repair_calls'] if direction_review else 0}
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     def request(stage, payload, validator):
@@ -137,7 +142,10 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                   '非证据不足结论至少引用一条原文。理由最多60字，禁止重复输出。')
         if stage == 'recall':
             system += ('对输入每张卡返回且仅返回一条，score 为0至100的岗位相关度；无相关证据用0和空引用。'
-                       '每卡只取最相关引用，requirement_ids列出有关的要求编号。不得遗漏低分卡。')
+                       '每卡只取最相关引用，requirement_ids列出有关的要求编号。不得遗漏低分卡。'
+                       '只要score大于0或关联任一要求，citations就必须至少有一个真实fact_id及逐字quote。'
+                       '引用表示卡内容相关，不等于认定本人承担全部职责；可引用现有context/actions/results/stack事实。'
+                       '无法给出有效引用时，必须令该卡score=0、requirement_ids=[]，仍保留该卡条目。')
         else:
             system += ('对每项要求返回且仅返回一条。supported=完整要求有直接支撑；partial=仅部分支撑或可迁移经验；'
                        'insufficient=未找到足够证据；conflict=原文存在明确相反事实。复合条件任一缺证据最多partial。'
@@ -163,13 +171,27 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
         request_body = {'model': model, 'temperature': 0, 'response_format': {'type': 'json_object'},
                         'max_tokens': 4096 if stage == 'recall' else 6144,
                         'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': _json(body)}]}
-        key = _sha(_json({'version': VERSION, 'url': client.chat_completions_url, 'request': request_body,
-                         'input_fingerprints': {key: value['sha256'] for key, value in inputs.items()}}).encode())
+        relevant_inputs = set(inputs)
+        if stage == 'recall':
+            relevant_inputs = {'job_profile', 'jd_source'} & inputs.keys()
+            for card in payload['cards']:
+                relevant_inputs.update(card_input_keys[card['id']])
+        key = _sha(_json({'version': VERSION, 'task_context': context_fingerprint(),
+                         'url': client.chat_completions_url, 'request': request_body,
+                         'input_fingerprints': {key: inputs[key]['sha256'] for key in relevant_inputs}}).encode())
         cached = cache_dir / f'{key}.json'
-        if cached.is_file():
+        readable_cache = cached
+        if stage == 'recall' and not cached.is_file():
+            legacy_key = _sha(_json({'version': VERSION, 'task_context': context_fingerprint(),
+                'url': client.chat_completions_url, 'request': request_body,
+                'input_fingerprints': {key: value['sha256'] for key, value in inputs.items()}}).encode())
+            readable_cache = cache_dir / f'{legacy_key}.json'
+        if readable_cache.is_file():
             try:
-                response = json.loads(cached.read_text())
+                response = json.loads(readable_cache.read_text())
                 validated = validator(response)
+                if readable_cache != cached:
+                    cached.write_text(_json(response))
                 statistics['cache_hits'] += 1
                 return validated
             except (ValueError, TypeError, KeyError):
@@ -191,7 +213,10 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                 code = str(exc) if str(exc).startswith('semantic_') else 'invalid_json'
                 request_body = {**request_body, 'messages': [*original_messages,
                     {'role': 'assistant', 'content': content},
-                    {'role': 'user', 'content': '程序校验失败：' + code + '。冒号后的标识定位错误项。unknown_fact 表示该事实编号不在输入 facts 中，必须从原输入复制真实编号及对应原文，不得猜测编号。wrong_source 表示引用串卡，expected后的卡只能引用属于该卡的facts，不能借用同批其他卡的事实。numeric_contradiction 表示年限比较自相矛盾；added_requirement 表示增加了当前JD没有的条件，必须按该项原要求重评。请修正对应结论或引用，完整保留逐卡/逐要求条目。引用必须逐字复制对应facts中至少8字的连续原文，短字段引用全部；不得改变空白标点或补写事实。'}]}
+                    {'role': 'user', 'content': '程序校验失败：' + code + '。冒号后的标识定位错误项。'
+                     'support_requires_citation 的 cards/requirements 列出所有缺引用项，必须逐项补齐真实 fact_id 和 quote；'
+                     '确实找不到引用的卡必须 score=0、requirement_ids=[]，要求则用 insufficient。不能保留正分或正向结论而引用为空。'
+                     'unknown_fact 表示该事实编号不在输入 facts 中，必须从原输入复制真实编号及对应原文，不得猜测编号。wrong_source 表示引用串卡，expected后的卡只能引用属于该卡的facts，不能借用同批其他卡的事实。numeric_contradiction 表示年限比较自相矛盾；added_requirement 表示增加了当前JD没有的条件，必须按该项原要求重评。请修正对应结论或引用，完整保留逐卡/逐要求条目。引用必须逐字复制对应facts中至少8字的连续原文，短字段引用全部；不得改变空白标点或补写事实。'}]}
         cached.write_text(_json(parsed))
         return validated
 
@@ -212,7 +237,8 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                                lambda response: validate_cards(response, batch, batch_facts, requirements)))
         statistics['batches'] += 1
     ranked = sorted(reviews, key=lambda row: (-row['score'], row['id']))
-    ready_ids = {row['id'] for row in ranked if row['score'] > 0 and row['id'] in presentation_issues and not presentation_issues[row['id']]}
+    # 粗筛衡量整岗相关性，不能阻断完整项目对单项职责的直接支撑。
+    ready_ids = {row['id'] for row in ranked if row['id'] in presentation_issues and not presentation_issues[row['id']]}
     preferred_ids = select_cards(ranked, [], facts, eligible_ids=ready_ids) if ready_ids else []
     # 汇总各要求最相关的三张卡的引用，避免再次塞入全部长文。
     shortlist = set()
