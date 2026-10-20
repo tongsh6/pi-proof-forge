@@ -1350,6 +1350,14 @@
         "title": "模型配置",
         "subtitle": "保存本地或兼容接口模型配置，密钥只回读掩码状态",
         "provider": "提供方",
+        "providerHint": "选择模型服务；密钥按 provider 分别保存",
+        "providerLmStudioHint": "本地运行",
+        "providerOpenAiHint": "云端",
+        "providerDeepSeekHint": "Flash / V4 Pro",
+        "providerCompatibleHint": "自定义端点",
+        "providerStatusLegend": "绿点：已保存密钥 · 灰点：未配置 · 黄点：当前密钥来自环境变量",
+        "unsaved": "有未保存修改",
+        "notChecked": "尚未检查连接",
         "model": "模型",
         "detectedModels": "检测到的模型",
         "baseUrl": "基础地址",
@@ -1375,7 +1383,12 @@
         "keyMissing": "尚未配置该提供方的密钥",
         "clearKey": "清除密钥",
         "thinkingMode": "思考模式",
-        "thinkingModeHint": "开启后使用 high effort；DeepSeek 在思考模式下会忽略温度参数。"
+        "thinkingModeHint": "开启后按所选强度推理；DeepSeek 在思考模式下会忽略温度参数。",
+        "thinkingEffort": "思考强度",
+        "thinkingEffortHint": "low 更快，high 均衡，max 更深",
+        "effortLow": "Low（低）",
+        "effortHigh": "High（高）",
+        "effortMax": "Max（最高）"
       },
       "secretStatus": {
         "title": "凭证状态",

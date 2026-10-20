@@ -15772,7 +15772,7 @@
                           "id": "b1I3B",
                           "name": "setField4Text",
                           "fill": "$text-primary",
-                          "content": "Credential Store / 凭证存储\nOS keychain connected",
+                          "content": "Credential Store / 凭证存储\nlocal permission file (0600) · per provider",
                           "fontFamily": "Inter",
                           "fontSize": 13,
                           "fontWeight": "normal"
@@ -15792,7 +15792,7 @@
                     {
                       "type": "frame",
                       "id": "ooA3X",
-                      "name": "setExclusionCard",
+                      "name": "setLlmConfigCard",
                       "width": "fill_container",
                       "height": 84,
                       "fill": "$bg-inset",
@@ -15807,9 +15807,11 @@
                         {
                           "type": "text",
                           "id": "PuLZy",
-                          "name": "setExclusionText",
+                          "name": "setLlmConfigText",
                           "fill": "$text-primary",
-                          "content": "provider=openai · model=gpt-5\nbase_url configured · timeout=60",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "provider: LM Studio / OpenAI / DeepSeek / OpenAI Compatible · model: deepseek-flash\nbase_url: https://api.deepseek.com\nthinking: off | on(low / high / max) · temperature ignored when on",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -15866,9 +15868,9 @@
                     {
                       "type": "frame",
                       "id": "4u5HW",
-                      "name": "setLlmCard",
+                      "name": "setSecretStatusCard",
                       "width": "fill_container",
-                      "height": 72,
+                      "height": 78,
                       "fill": "$bg-inset",
                       "cornerRadius": 12,
                       "layout": "vertical",
@@ -15881,9 +15883,35 @@
                         {
                           "type": "text",
                           "id": "lh3GJ",
-                          "name": "setLlmText",
+                          "name": "setSecretKeyText",
                           "fill": "$text-primary",
-                          "content": "api_key masked · update allowed · clear supported",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "api_key: per-provider local file (0600) · saved / environment / missing",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "dR7d2",
+                          "name": "setSecretActionsText",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "update / clear supported · masked status only",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "j6Ksxk",
+                          "name": "setSecretPathText",
+                          "fill": "$text-muted",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "path: ~/Library/Application Support/PiProofForge/credentials/llm-<provider>-api-key",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"

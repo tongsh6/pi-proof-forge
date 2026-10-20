@@ -1350,6 +1350,14 @@
         "title": "LLM config",
         "subtitle": "Save local or compatible model settings; secrets are only read back as masked status",
         "provider": "Provider",
+        "providerHint": "Choose a model service; keys are stored per provider",
+        "providerLmStudioHint": "Local runtime",
+        "providerOpenAiHint": "Cloud",
+        "providerDeepSeekHint": "Flash / V4 Pro",
+        "providerCompatibleHint": "Custom endpoint",
+        "providerStatusLegend": "Green: saved key · Gray: not configured · Amber: key comes from the environment",
+        "unsaved": "Unsaved changes",
+        "notChecked": "Connection not checked yet",
         "model": "Model",
         "detectedModels": "Detected models",
         "baseUrl": "Base URL",
@@ -1375,7 +1383,12 @@
         "keyMissing": "No key is configured for this provider",
         "clearKey": "Clear key",
         "thinkingMode": "Thinking mode",
-        "thinkingModeHint": "Uses high effort when enabled; DeepSeek ignores temperature in thinking mode."
+        "thinkingModeHint": "Uses the selected effort when enabled; DeepSeek ignores temperature in thinking mode.",
+        "thinkingEffort": "Thinking effort",
+        "thinkingEffortHint": "low is faster, high is balanced, max is deeper",
+        "effortLow": "Low",
+        "effortHigh": "High",
+        "effortMax": "Max"
       },
       "secretStatus": {
         "title": "Secret Status",

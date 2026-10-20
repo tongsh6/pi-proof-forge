@@ -329,6 +329,7 @@ export async function updateLlmConfig(payload: {
   timeout?: number;
   temperature?: number;
   thinking_enabled?: boolean;
+  thinking_effort?: string;
 }): Promise<SettingsUpdateResult> {
   return client.call<SettingsUpdateResult>("settings.update", {
     section: "llm_config",
@@ -358,6 +359,7 @@ export async function checkLlmConnection(payload: {
   api_key?: string;
   timeout?: number;
   thinking_enabled?: boolean;
+  thinking_effort?: string;
 } = {}): Promise<LlmConnectionCheckResult> {
   return client.call<LlmConnectionCheckResult>("settings.checkLlmConnection", {
     payload,

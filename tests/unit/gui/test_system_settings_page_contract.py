@@ -18,7 +18,8 @@ def test_system_settings_page_renders_design_sections():
         "ChannelCard",
         "fallbackOrder",
         "connectionSummary",
-        "secretStatus",
+        "LLM_PROVIDER_OPTIONS",
+        "llmConnectionSummary",
         "settings.llm_config.api_key.configured",
         "llmForm",
         "updateLlmConfig",
@@ -119,6 +120,11 @@ def test_system_settings_i18n_contract_is_complete():
         "clearKey",
         "thinkingMode",
         "thinkingModeHint",
+        "thinkingEffort",
+        "thinkingEffortHint",
+        "effortLow",
+        "effortHigh",
+        "effortMax",
     }
 
     for i18n_file in I18N_FILES:
@@ -149,6 +155,14 @@ def test_deepseek_provider_defaults_and_thinking_toggle_are_wired():
     assert "thinking_enabled: current.thinking_enabled" in source
     assert 'setLlmConnection(null)' in source
     assert "thinking_enabled" in source
+    assert "thinking_effort" in source
+    assert "thinking_effort: current.thinking_effort" in source
+    assert "payload.thinking_effort = form.thinking_effort" in source
+    assert "LLM_THINKING_EFFORTS" in source
+    assert "effort.value" in source
+    assert 'role="switch"' in source
+    assert "LLM_PROVIDER_OPTIONS" in source
+    assert "notChecked" in source
     assert "clearLlmApiKey" in source
     assert "canClearProviderKey" in source
     assert 'result.status === "pass"' in source

@@ -58,6 +58,7 @@ type LlmForm = {
   timeout: string;
   temperature: string;
   thinking_enabled: boolean;
+  thinking_effort: string;
 };
 
 type StatusTone = "success" | "warning" | "muted" | "error";
@@ -87,8 +88,35 @@ const LLM_PROVIDER_DEFAULTS: Record<
   },
 };
 
+const LLM_PROVIDER_OPTIONS = [
+  { id: "lm_studio", label: "LM Studio", hintKey: "providerLmStudioHint" },
+  { id: "openai", label: "OpenAI", hintKey: "providerOpenAiHint" },
+  { id: "deepseek", label: "DeepSeek", hintKey: "providerDeepSeekHint" },
+  {
+    id: "openai_compatible",
+    label: "OpenAI Compatible",
+    hintKey: "providerCompatibleHint",
+  },
+] as const;
+
+const LLM_THINKING_EFFORTS = [
+  { value: "low", labelKey: "effortLow" },
+  { value: "high", labelKey: "effortHigh" },
+  { value: "max", labelKey: "effortMax" },
+] as const;
+
+const LLM_FIELD_INPUT_CLASS =
+  "w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent";
+
+const LLM_FIELD_LABEL_CLASS = "text-xs font-medium text-text-secondary";
+
 function formatNullable(value: string | null | undefined): string {
   return value && value.trim() ? value : "--";
+}
+
+function formatShortTimestamp(value: string | null | undefined): string {
+  if (!value || !value.trim()) return "";
+  return value.replace("T", " ").replace("Z", "").slice(0, 16);
 }
 
 function toLlmForm(config: LlmConfig | null): LlmForm {
@@ -102,6 +130,7 @@ function toLlmForm(config: LlmConfig | null): LlmForm {
     timeout: String(config?.timeout ?? 60),
     temperature: String(config?.temperature ?? 0.2),
     thinking_enabled: config?.thinking_enabled ?? false,
+    thinking_effort: config?.thinking_effort ?? "high",
   };
 }
 
@@ -119,6 +148,7 @@ function applyProviderDefaults(
     base_url: nextDefaults.base_url,
     api_key: nextProvider === current.provider ? current.api_key : "",
     thinking_enabled: current.thinking_enabled,
+    thinking_effort: current.thinking_effort,
   };
 }
 
@@ -130,6 +160,7 @@ function llmPayloadFromForm(form: LlmForm): {
   timeout: number;
   temperature: number;
   thinking_enabled?: boolean;
+  thinking_effort?: string;
 } {
   const payload: {
     provider: string;
@@ -139,6 +170,7 @@ function llmPayloadFromForm(form: LlmForm): {
     timeout: number;
     temperature: number;
     thinking_enabled?: boolean;
+    thinking_effort?: string;
   } = {
     provider: form.provider.trim(),
     timeout: Number(form.timeout),
@@ -146,6 +178,7 @@ function llmPayloadFromForm(form: LlmForm): {
   };
   if (form.provider === "deepseek") {
     payload.thinking_enabled = form.thinking_enabled;
+    payload.thinking_effort = form.thinking_effort;
   }
   const model = form.model.trim();
   if (model) {
@@ -635,6 +668,28 @@ export function SystemSettingsPage() {
     }
     return t("pages.systemSettings.llm.keyMissing");
   };
+  const providerStatusDot = (provider: string): string => {
+    if (!providerKeyConfigured(provider)) {
+      return "bg-text-muted/40";
+    }
+    return providerKeySource(provider) === "environment" ? "bg-warning" : "bg-success";
+  };
+  const keyStatusDot = (): string => {
+    if (!providerKeyConfigured(llmForm.provider)) {
+      return "bg-text-muted/40";
+    }
+    return providerKeySource(llmForm.provider) === "environment"
+      ? "bg-warning"
+      : "bg-success";
+  };
+  const llmConnectionSummary =
+    llmCheckState === "checking"
+      ? t("pages.systemSettings.llm.checking")
+      : llmConnection
+        ? `${llmConnection.message} · ${t("pages.systemSettings.llm.modelCount", {
+            count: llmConnection.model_count,
+          })}`
+        : t("pages.systemSettings.llm.notChecked");
 
   const llmDirty = settings
     ? JSON.stringify(llmForm) !== JSON.stringify(toLlmForm(settings.llm_config))
@@ -671,6 +726,16 @@ export function SystemSettingsPage() {
       setLlmError(getErrorMessage(nextError));
     }
   }, [llmForm]);
+
+  const handleProviderChange = useCallback(
+    (nextProvider: string) => {
+      if (nextProvider === llmForm.provider) return;
+      setLlmConnection(null);
+      setLlmCheckState("idle");
+      setLlmForm((current) => applyProviderDefaults(current, nextProvider));
+    },
+    [llmForm.provider]
+  );
 
   const handleClearLlmApiKey = useCallback(async () => {
     const confirmed = await confirmAction({
@@ -1244,13 +1309,11 @@ export function SystemSettingsPage() {
                       {t("pages.systemSettings.llm.subtitle")}
                     </p>
                   </div>
-                  <StatusChip
-                    value={
-                      providerKeyConfigured(llmForm.provider)
-                        ? t("pages.systemSettings.secretConfigured")
-                        : t("pages.systemSettings.secretMissing")
-                    }
-                  />
+                  {llmDirty ? (
+                    <span className="rounded-chip border border-warning/40 bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning">
+                      {t("pages.systemSettings.llm.unsaved")}
+                    </span>
+                  ) : null}
                 </div>
 
                 {llmError ? (
@@ -1264,35 +1327,66 @@ export function SystemSettingsPage() {
                   </div>
                 ) : null}
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  <label className="space-y-1.5">
-                    <span className="text-xs font-medium text-text-secondary">
-                      {t("pages.systemSettings.llm.provider")}
-                    </span>
-                    <select
-                      className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                      onChange={(event) => {
-                        const nextProvider = event.target.value;
-                        setLlmConnection(null);
-                        setLlmCheckState("idle");
-                        setLlmForm((current) =>
-                          applyProviderDefaults(current, nextProvider)
+                <div className="overflow-hidden rounded-card border border-border bg-bg-panel/50">
+                  <div className="border-b border-border px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className={LLM_FIELD_LABEL_CLASS}>
+                        {t("pages.systemSettings.llm.provider")}
+                      </span>
+                      <span className="text-xs text-text-muted">
+                        {t("pages.systemSettings.llm.providerHint")}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      {LLM_PROVIDER_OPTIONS.map((option) => {
+                        const active = llmForm.provider === option.id;
+                        return (
+                          <button
+                            aria-pressed={active}
+                            className={`flex items-center justify-between gap-2 rounded-card border px-3 py-2.5 text-left transition-colors ${
+                              active
+                                ? "border-accent bg-accent/10 text-text-primary"
+                                : "border-border bg-bg-hover text-text-secondary hover:border-accent/40 hover:text-text-primary"
+                            }`}
+                            key={option.id}
+                            onClick={() => handleProviderChange(option.id)}
+                            type="button"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium">
+                                {option.label}
+                              </span>
+                              <span className="mt-0.5 block truncate text-[11px] text-text-muted">
+                                {t(`pages.systemSettings.llm.${option.hintKey}`)}
+                              </span>
+                            </span>
+                            <span
+                              aria-label={
+                                providerKeyConfigured(option.id)
+                                  ? t("pages.systemSettings.secretConfigured")
+                                  : t("pages.systemSettings.secretMissing")
+                              }
+                              className={`h-2 w-2 shrink-0 rounded-full ${providerStatusDot(option.id)}`}
+                              role="img"
+                              title={
+                                providerKeyConfigured(option.id)
+                                  ? t("pages.systemSettings.secretConfigured")
+                                  : t("pages.systemSettings.secretMissing")
+                              }
+                            />
+                          </button>
                         );
-                      }}
-                      value={llmForm.provider}
-                    >
-                      <option value="lm_studio">LM Studio</option>
-                      <option value="openai">OpenAI</option>
-                      <option value="deepseek">DeepSeek</option>
-                      <option value="openai_compatible">OpenAI Compatible</option>
-                    </select>
-                  </label>
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 px-4 py-4 md:grid-cols-2">
                   <label className="space-y-1.5">
-                    <span className="text-xs font-medium text-text-secondary">
+                    <span className={LLM_FIELD_LABEL_CLASS}>
                       {t("pages.systemSettings.llm.model")}
                     </span>
                     <input
-                      className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                      className={LLM_FIELD_INPUT_CLASS}
                       onChange={(event) =>
                         setLlmForm((current) => ({
                           ...current,
@@ -1305,11 +1399,11 @@ export function SystemSettingsPage() {
                     />
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-xs font-medium text-text-secondary">
+                    <span className={LLM_FIELD_LABEL_CLASS}>
                       {t("pages.systemSettings.llm.detectedModels")}
                     </span>
                     <select
-                      className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                      className={`${LLM_FIELD_INPUT_CLASS} disabled:cursor-not-allowed disabled:opacity-60`}
                       disabled={detectedModels.length === 0}
                       onChange={(event) => {
                         const model = event.target.value;
@@ -1337,29 +1431,43 @@ export function SystemSettingsPage() {
                       ))}
                     </select>
                   </label>
-                  <label className="space-y-1.5">
-                    <span className="text-xs font-medium text-text-secondary">
+                  <label className="space-y-1.5 md:col-span-2">
+                    <span className={LLM_FIELD_LABEL_CLASS}>
                       {t("pages.systemSettings.llm.baseUrl")}
                     </span>
                     <input
-                      className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 font-mono text-sm text-text-primary outline-none focus:border-accent"
+                      className={`${LLM_FIELD_INPUT_CLASS} font-mono`}
                       onChange={(event) =>
                         setLlmForm((current) => ({
                           ...current,
                           base_url: event.target.value,
                         }))
                       }
-                      placeholder="http://127.0.0.1:1234/v1"
+                      placeholder={
+                        LLM_PROVIDER_DEFAULTS[llmForm.provider]?.base_url ||
+                        "http://127.0.0.1:1234/v1"
+                      }
                       type="url"
                       value={llmForm.base_url}
                     />
                   </label>
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-medium text-text-secondary">
-                      {t("pages.systemSettings.llm.apiKey")}
-                    </span>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className={LLM_FIELD_LABEL_CLASS}>
+                        {t("pages.systemSettings.llm.apiKey")}
+                      </span>
+                      {canClearProviderKey ? (
+                        <button
+                          className="text-xs font-medium text-error/90 transition-colors hover:text-error"
+                          onClick={() => void handleClearLlmApiKey()}
+                          type="button"
+                        >
+                          {t("pages.systemSettings.llm.clearKey")}
+                        </button>
+                      ) : null}
+                    </div>
                     <input
-                      className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 font-mono text-sm text-text-primary outline-none focus:border-accent"
+                      className={`${LLM_FIELD_INPUT_CLASS} font-mono`}
                       onChange={(event) =>
                         setLlmForm((current) => ({
                           ...current,
@@ -1377,24 +1485,22 @@ export function SystemSettingsPage() {
                       value={llmForm.api_key}
                     />
                     <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                      <span className={`h-1.5 w-1.5 rounded-full ${keyStatusDot()}`} />
                       <span>{keyStatusLabel(llmForm.provider)}</span>
-                      {canClearProviderKey ? (
-                        <button
-                          className="rounded-chip border border-error/40 px-2 py-0.5 text-error hover:bg-error/10"
-                          onClick={() => void handleClearLlmApiKey()}
-                          type="button"
-                        >
-                          {t("pages.systemSettings.llm.clearKey")}
-                        </button>
+                      {settings.llm_config.provider === llmForm.provider &&
+                      settings.llm_config.api_key.updated_at ? (
+                        <span className="text-text-muted">
+                          · {formatShortTimestamp(settings.llm_config.api_key.updated_at)}
+                        </span>
                       ) : null}
                     </div>
                   </div>
                   <label className="space-y-1.5">
-                    <span className="text-xs font-medium text-text-secondary">
+                    <span className={LLM_FIELD_LABEL_CLASS}>
                       {t("pages.systemSettings.llm.timeout")}
                     </span>
                     <input
-                      className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                      className={LLM_FIELD_INPUT_CLASS}
                       min={1}
                       onChange={(event) =>
                         setLlmForm((current) => ({
@@ -1407,11 +1513,11 @@ export function SystemSettingsPage() {
                     />
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-xs font-medium text-text-secondary">
+                    <span className={LLM_FIELD_LABEL_CLASS}>
                       {t("pages.systemSettings.llm.temperature")}
                     </span>
                     <input
-                      className="w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                      className={LLM_FIELD_INPUT_CLASS}
                       max={2}
                       min={0}
                       onChange={(event) =>
@@ -1428,127 +1534,110 @@ export function SystemSettingsPage() {
                 </div>
 
                 {llmForm.provider === "deepseek" ? (
-                  <label className="flex items-start gap-3 rounded-card border border-border bg-bg-primary/70 p-4">
-                    <input
-                      checked={llmForm.thinking_enabled}
-                      className="mt-0.5 h-4 w-4"
-                      onChange={(event) =>
-                        setLlmForm((current) => ({
-                          ...current,
-                          thinking_enabled: event.target.checked,
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    <span className="space-y-1">
-                      <span className="block text-sm font-medium text-text-primary">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-3">
+                    <div className="min-w-0">
+                      <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-text-primary">
                         {t("pages.systemSettings.llm.thinkingMode")}
                       </span>
-                      <span className="block text-xs text-text-muted">
+                      <p className="mt-1 text-xs text-text-muted">
                         {t("pages.systemSettings.llm.thinkingModeHint")}
-                      </span>
-                    </span>
-                  </label>
-                ) : null}
-
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                  <div className="rounded-card border border-border bg-bg-primary/70 p-4">
-                    <div className="flex items-center gap-2">
-                      <KeyRound className="h-4 w-4 text-accent" aria-hidden="true" />
-                      <h3 className="text-sm font-semibold text-text-primary">
-                        {t("pages.systemSettings.secretStatus.title")}
-                      </h3>
+                      </p>
                     </div>
-                    <dl className="mt-4 grid gap-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <dt className="text-sm text-text-secondary">
-                          {t("pages.systemSettings.llm.apiKey")}
-                        </dt>
-                        <dd>
-                          <StatusChip
-                            value={
-                              providerKeyConfigured(llmForm.provider)
-                                ? t("pages.systemSettings.secretConfigured")
-                                : t("pages.systemSettings.secretMissing")
-                            }
-                          />
-                        </dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <dt className="text-sm text-text-secondary">
-                          {t("pages.systemSettings.secretStatus.updatedAt")}
-                        </dt>
-                        <dd className="font-mono text-sm text-text-primary">
-                          {formatNullable(
-                            settings.llm_config.provider === llmForm.provider
-                              ? settings.llm_config.api_key.updated_at
-                              : ""
-                          )}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-
-                  <div className="rounded-card border border-border bg-bg-primary/70 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Wifi className="h-4 w-4 text-accent" aria-hidden="true" />
-                        <h3 className="text-sm font-semibold text-text-primary">
-                          {t("pages.systemSettings.llm.connectionTest")}
-                        </h3>
-                      </div>
+                    <div className="flex flex-wrap items-center gap-3">
                       <button
-                        className="inline-flex items-center gap-2 rounded-card border border-border px-3 py-2 text-xs font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={llmCheckState === "checking"}
-                        onClick={() => void handleCheckLlmConnection()}
+                        aria-checked={llmForm.thinking_enabled}
+                        aria-label={t("pages.systemSettings.llm.thinkingMode")}
+                        className={`relative h-6 w-11 rounded-full transition-colors ${
+                          llmForm.thinking_enabled ? "bg-accent" : "bg-bg-hover"
+                        }`}
+                        onClick={() =>
+                          setLlmForm((current) => ({
+                            ...current,
+                            thinking_enabled: !current.thinking_enabled,
+                          }))
+                        }
+                        role="switch"
                         type="button"
                       >
-                        <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
-                        {llmCheckState === "checking"
-                          ? t("pages.systemSettings.llm.checking")
-                          : t("pages.systemSettings.llm.testConnection")}
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-all ${
+                            llmForm.thinking_enabled ? "left-[22px]" : "left-0.5"
+                          }`}
+                        />
                       </button>
-                    </div>
-                    <p className="mt-4 break-all font-mono text-sm text-text-primary">
-                      {llmForm.base_url
-                        ? llmForm.base_url
-                        : t("pages.systemSettings.llm.defaultEndpoint")}
-                    </p>
-                    <div className="mt-3">
-                      <StatusChip
-                        value={
-                          llmConnection?.status ??
-                          (providerKeyConfigured(llmForm.provider)
-                            ? "configured"
-                            : "missing")
-                        }
-                      />
-                    </div>
-                    {llmConnection ? (
-                      <div className="mt-3 space-y-2 text-sm text-text-secondary">
-                        <p className="break-words">{llmConnection.message}</p>
-                        <p className="font-mono text-xs text-text-muted">
-                          {llmConnection.code} ·{" "}
-                          {t("pages.systemSettings.llm.modelCount", {
-                            count: llmConnection.model_count,
-                          })}
-                        </p>
-                        {detectedModels.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {detectedModels.map((model) => (
-                              <span
-                                className="rounded-chip border border-border bg-bg-hover px-2 py-1 font-mono text-xs text-text-primary"
-                                key={model}
+                      {llmForm.thinking_enabled ? (
+                        <div
+                          aria-label={t("pages.systemSettings.llm.thinkingEffort")}
+                          className="inline-flex rounded-card border border-border bg-bg-hover p-0.5"
+                          role="group"
+                          title={t("pages.systemSettings.llm.thinkingEffortHint")}
+                        >
+                          {LLM_THINKING_EFFORTS.map((effort) => {
+                            const active =
+                              llmForm.thinking_effort === effort.value;
+                            return (
+                              <button
+                                aria-pressed={active}
+                                className={`rounded-[7px] px-2.5 py-1 text-xs font-medium transition-colors ${
+                                  active
+                                    ? "bg-accent text-white"
+                                    : "text-text-secondary hover:text-text-primary"
+                                }`}
+                                key={effort.value}
+                                onClick={() =>
+                                  setLlmForm((current) => ({
+                                    ...current,
+                                    thinking_effort: effort.value,
+                                  }))
+                                }
+                                type="button"
                               >
-                                {model}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
+                                {t(`pages.systemSettings.llm.${effort.labelKey}`)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
+                ) : null}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-bg-primary/40 px-4 py-3">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    {llmConnection ? (
+                      <StatusChip value={llmConnection.status} />
+                    ) : (
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          llmCheckState === "checking"
+                            ? "bg-warning"
+                            : "bg-text-muted/40"
+                        }`}
+                      />
+                    )}
+                    <span
+                      className="min-w-0 truncate text-xs text-text-muted"
+                      title={llmConnectionSummary}
+                    >
+                      {llmConnectionSummary}
+                    </span>
+                  </div>
+                  <button
+                    className="inline-flex items-center gap-2 rounded-card border border-border px-3 py-2 text-xs font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={llmCheckState === "checking"}
+                    onClick={() => void handleCheckLlmConnection()}
+                    type="button"
+                  >
+                    <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
+                    {llmCheckState === "checking"
+                      ? t("pages.systemSettings.llm.checking")
+                      : t("pages.systemSettings.llm.testConnection")}
+                  </button>
                 </div>
+                </div>
+                <p className="text-xs text-text-muted">
+                  {t("pages.systemSettings.llm.providerStatusLegend")}
+                </p>
               </div>
             )}
           </section>
