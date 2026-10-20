@@ -4,6 +4,7 @@ import json
 from typing import Any, Mapping, cast
 from urllib import request
 from http.client import HTTPResponse
+from tools.prompts.context import with_job_search_context
 
 
 def llm_timeout_from_env(default: int = 120) -> int:
@@ -18,14 +19,33 @@ def llm_timeout_from_env(default: int = 120) -> int:
     return value if value > 0 else default
 
 
+def _thinking_enabled_from_env() -> bool:
+    import os
+
+    return os.getenv("LLM_THINKING", "").strip().lower() in ("on", "1", "true", "yes")
+
+
 class LLMClient:
     def __init__(
-        self, base_url: str, api_key: str, timeout: int = 120, *, provider: str = ""
+        self,
+        base_url: str,
+        api_key: str,
+        timeout: int = 120,
+        *,
+        provider: str = "",
+        thinking_enabled: bool | None = None,
     ) -> None:
+        import os
+
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
-        self._provider = provider
+        self._provider = (provider or os.getenv("LLM_PROVIDER", "")).strip().lower()
+        self._thinking_enabled = (
+            _thinking_enabled_from_env()
+            if thinking_enabled is None
+            else bool(thinking_enabled)
+        )
 
     @property
     def chat_completions_url(self) -> str:
@@ -64,6 +84,16 @@ class LLMClient:
         *,
         response_schema: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
+        payload = with_job_search_context(payload)
+        if self._provider == "deepseek" and "thinking" not in payload:
+            payload = {
+                **payload,
+                "thinking": {
+                    "type": "enabled" if self._thinking_enabled else "disabled"
+                },
+            }
+            if self._thinking_enabled and "reasoning_effort" not in payload:
+                payload = {**payload, "reasoning_effort": "high"}
         if (
             self._provider == "lm_studio"
             and payload.get("response_format") == {"type": "json_object"}
@@ -80,10 +110,10 @@ class LLMClient:
                 },
             }
             if (
-                payload.get("model") == "qwen/qwen3.8-27b"
+                payload.get("model") in ("qwen/qwen3.8-27b", "qwen3.8-flash-next@q2_k")
                 and "reasoning_effort" not in payload
             ):
-                # 该模型结构化提取已实测需关闭推理，仅设置本次请求，不改变 LM Studio 全局配置。
+                # 已定位这些型号会把结构化输出预算耗在推理中；仅调整本次请求。
                 payload = {**payload, "reasoning_effort": "none"}
         data = json.dumps(payload).encode("utf-8")
         req = request.Request(url, data=data, headers=self.build_headers(), method="POST")
