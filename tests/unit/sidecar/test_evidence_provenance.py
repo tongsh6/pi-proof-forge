@@ -81,7 +81,7 @@ def test_prompt_injects_metadata_and_level_rules():
     assert "Document metadata" in prompt
     assert "time_range_provenance" in prompt and "role_scope_provenance" in prompt
     assert "L1" in prompt and "L2" in prompt and "excerpt" in prompt
-    assert "Never infer ownership" in prompt
+    assert "不能仅凭职务名称、标签或需求目标认定本人主导" in prompt
 
 
 def test_write_and_load_roundtrip_keeps_provenance(tmp_path):

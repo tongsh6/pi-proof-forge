@@ -120,6 +120,27 @@ def test_confirm_rejects_stale_card_and_invalid_field(tmp_path, monkeypatch):
             "field": "results", "action": "accept"})
 
 
+@pytest.mark.parametrize("order", [("time_range","role_scope"),("role_scope","time_range")])
+def test_sequential_field_confirmation_preserves_both_provenance_records(tmp_path,monkeypatch,order):
+    path=_setup(tmp_path,monkeypatch)
+    monkeypatch.setattr(evidence,"_inference_llm_call",_fake_llm)
+    monkeypatch.setattr(evidence,"load_evidence_inference_enabled",lambda:True)
+    evidence.handle_evidence_infer_fields({"meta":{"correlation_id":"c"},"card_ids":["ec_1"]})
+    sha=hashlib.sha256(path.read_bytes()).hexdigest()
+    for field in order:
+        result=evidence.handle_evidence_confirm_inference({
+            "meta":{"correlation_id":"c"},"evidence_id":"ec_1","card_sha256":sha,"field":field,"action":"accept"})
+        assert result["card_sha256"]!=sha
+        sha=result["card_sha256"]
+    detail=evidence._load_evidence_detail("ec_1")
+    for field in order:
+        assert detail[field+"_provenance"]["level"]=="L3"
+        assert detail[field+"_provenance"]["confirmed_by_user"] is True
+        assert detail[field+"_provenance"]["evidence"]
+    assert detail["review_decision"]=="pending"
+    assert detail["candidate_pool_eligible"] is False
+
+
 def test_inference_disabled_returns_rules_only_l2(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     monkeypatch.setattr(evidence, "load_evidence_inference_enabled", lambda: False)

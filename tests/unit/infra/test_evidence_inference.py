@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from tools.infra import evidence_inference as inference
 
 
@@ -38,11 +40,115 @@ CARD_FIELDS = {"title": "统一运动中心", "context": "会员中心活动报�
 CARD_LISTS = {"tags": ["会员"], "stack": ["Java"]}
 
 
+@pytest.mark.parametrize("raw,expected", [
+    ("主导或深度参与方案设计与核心开发（L3 默认归因候选）","主导或深度参与方案设计与核心开发"),
+    ("L3 技术负责人","L3 技术负责人"),
+])
+def test_role_value_separates_work_description_from_candidate_annotation(raw,expected):
+    text="主导或深度参与方案设计与核心开发"
+    aggregates=[{"material_id":"m","document_id":"d","sha256":"s","owner_hits":0,"participant_hits":0}]
+    content=json.dumps({"role_scope":{"value":raw,"confidence":0.8,
+                                    "evidence":[{"document_id":"d","excerpt":text}]}})
+    candidates=inference.parse_inference_candidates(content,aggregates=aggregates,texts={"d":text},windows=[])
+    assert candidates[0]["value"]==expected
+    assert candidates[0]["level"]=="L3"
+    assert candidates[0]["evidence"][0]["excerpt"]==text
+
+
 def test_select_documents_ranks_matches_and_excludes_design_and_fixture():
     documents = inference.select_documents(make_index(), CARD_FIELDS, CARD_LISTS)
     ids = [document["document_id"] for document in documents]
     assert ids[:2] == ["doc_1", "doc_2"]
     assert "doc_design" not in ids and "doc_fixture" not in ids
+
+
+def test_bound_source_and_project_title_precede_generic_context_matches():
+    index=make_index()
+    index["materials"]["mat_work"]["documents"]=[
+        {"document_id":"source","label":"原始记录","title":"原始记录","sha256":"bound"},
+        {"document_id":"related","label":"售后服务上线复盘","title":"售后服务","sha256":"related"},
+        {"document_id":"noise","label":"会员消息优惠券订单聚合装配鉴权事务补偿",
+         "title":"会员消息优惠券订单聚合装配鉴权事务补偿","sha256":"noise"},
+    ]
+    fields={"title":"售后服务","context":"会员消息优惠券订单聚合装配鉴权事务补偿",
+            "source_documents_json":json.dumps([{"material_id":"mat_work","document_id":"source","sha256":"bound"}])}
+    docs=inference.select_documents(index,fields,{},limit=2)
+    assert [d["document_id"] for d in docs]==["source","related"]
+    fields["source_documents_json"]=json.dumps([{"material_id":"mat_work","document_id":"source","sha256":"stale"}])
+    assert inference.select_documents(index,fields,{},limit=1)[0]["document_id"]=="related"
+
+
+def test_bound_sources_do_not_override_design_or_fixture_exclusion():
+    fields={**CARD_FIELDS,"source_documents_json":json.dumps([
+        {"material_id":"mat_design","document_id":"doc_design","sha256":"sd"},
+        {"material_id":"mat_fixture","document_id":"doc_fixture","sha256":"sf"},
+    ])}
+    ids=[d["document_id"] for d in inference.select_documents(make_index(),fields,CARD_LISTS)]
+    assert "doc_design" not in ids and "doc_fixture" not in ids
+
+
+def test_participation_signals_require_a_first_person_subject():
+    docs=[{"material_id":"mat_work","document_id":"doc_1","label":"售后记录","title":"售后记录"}]
+    texts={"doc_1":"未知计划量不能参与确定性比例计算。系统支持物流回调和协同回写。"
+                   "我参与售后服务接口联调。本人配合售后维修流程验收。"}
+    result=inference.aggregate_documents(docs,texts)[0]
+    assert result["participant_hits"]==2
+    assert result["snippets"]==["我参与售后服务接口联调","本人配合售后维修流程验收"]
+
+
+def test_context_without_first_person_is_available_to_the_model_and_bounded():
+    text="个人工作汇总\n角色：后端负责人\n2023 年负责售后服务状态机设计与上线。\n"+"背景说明"*600
+    docs=[{"material_id":"mat_work","document_id":"doc_1","label":"个人工作汇总","title":"售后服务"}]
+    aggregates=inference.aggregate_documents(docs,{"doc_1":text})
+    prompt=inference.build_inference_prompt(CARD_FIELDS,CARD_LISTS,aggregates,[],[])
+    payload=json.loads(prompt.split("INPUT JSON:\n",1)[1])
+    document=payload["documents"][0]
+    assert "角色：后端负责人" in document["context_excerpt"]
+    assert "2023 年负责售后服务状态机设计与上线" in document["context_excerpt"]
+    assert document["context_excerpt"] in text
+    assert len(document["context_excerpt"])<=1000
+    assert document["excerpt_truncated"] is True
+    assert document["owner_hits"]==0
+
+
+def test_bound_material_personal_summary_is_not_lost_to_generic_documents():
+    index=make_index()
+    documents=index["materials"]["mat_work"]["documents"]
+    documents.append({"document_id":"summary","title":"个人工作总结","label":"工作汇总",
+                      "sha256":"summary","person_doc":True})
+    fields={**CARD_FIELDS,"source_documents_json":json.dumps([
+        {"material_id":"mat_work","document_id":"doc_1","sha256":"s1"}])}
+    selected=inference.select_documents(index,fields,CARD_LISTS,limit=2)
+    assert [d["document_id"] for d in selected]==["doc_1","summary"]
+
+
+def test_inference_receives_only_linked_confirmed_work_context_and_invalidates_cache(tmp_path,monkeypatch):
+    from tools.prompts import context
+    profile={"career_status":{"reviewed":True},"career":{"work":[
+        {"id":"work1","company":"公司甲","title":"后端负责人","start":"2021-03","current":True,
+         "scope":"售后服务与订单系统","contributions":["负责售后服务状态机设计"],"evidence_ids":["ec1"]},
+        {"id":"work2","company":"无关公司","title":"研究员","evidence_ids":["other"]},
+    ]}}
+    monkeypatch.setattr(inference,"load_career_profile",lambda _:profile)
+    monkeypatch.setattr(inference,"select_documents",lambda *a,**k:[])
+    monkeypatch.setattr(inference,"read_document_texts",lambda *a,**k:{})
+    calls=[]
+    def llm(prompt):
+        calls.append(json.loads(prompt.split("INPUT JSON:\n",1)[1]))
+        return '{"time_range":{},"role_scope":{}}'
+    args=dict(root=tmp_path,index={},card_id="ec1",card_sha256="same",
+              card_fields=CARD_FIELDS,card_lists={},enabled=True,llm_call=llm)
+    inference.infer_card(**args)
+    assert calls[0]["confirmed_work_context"][0]["scope"]=="售后服务与订单系统"
+    assert len(calls[0]["confirmed_work_context"])==1
+    assert inference.infer_card(**args)["cache"]=="hit"
+    profile["career"]["work"][0]["contributions"]=["参与售后服务改造"]
+    assert inference.infer_card(**args)["cache"]=="miss"
+    monkeypatch.setattr(context,"JOB_SEARCH_CONTEXT",context.JOB_SEARCH_CONTEXT+"\n更新产品语境")
+    assert inference.infer_card(**args)["cache"]=="miss"
+    profile["career_status"]["reviewed"]=False
+    assert inference.infer_card(**args)["cache"]=="miss"
+    assert calls[-1]["confirmed_work_context"]==[]
 
 
 def test_aggregate_documents_extracts_dates_and_first_person_statements():

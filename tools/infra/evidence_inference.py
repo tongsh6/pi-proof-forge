@@ -15,8 +15,9 @@ from typing import Any, Callable
 from tools.infra import evidence_provenance as provenance
 from tools.infra.career_profile import load_career_profile
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.prompts.context import context_fingerprint
 
-INFERENCE_PROMPT_VERSION = 1
+INFERENCE_PROMPT_VERSION = 5
 INFERENCE_STATE_SCHEMA_VERSION = 1
 MAX_DOCUMENTS = 20
 MAX_EXCERPTS = 5
@@ -24,7 +25,7 @@ MAX_EXCERPTS = 5
 _DATE = re.compile(r"((?:19|20)\d{2})(?:[-./年](\d{1,2}))?(?:[-./月](\d{1,2}))?")
 _DESIGN_SOURCE_MARKERS = ("设计", "实施计划", "非完成证明", "方案")
 _OWNER = re.compile(r"我(?:负责|主导|设计|决策|推动|牵头|完成|搭建|重构)")
-_PARTICIPANT = re.compile(r"参与|协同|配合|支持")
+_PARTICIPANT = re.compile(r"(?:我|本人)(?:参与|协同|配合|支持)")
 
 
 def load_index(root: Path) -> dict | None:
@@ -73,7 +74,7 @@ def _dates_in(text: str, limit: int = 8) -> list[str]:
 
 
 def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit: int = MAX_DOCUMENTS) -> list[dict[str, Any]]:
-    """按卡标题/标签/技术栈的 bigram 检索文档；排除设计资料与合成夹具。"""
+    """直接来源和卡标题优先，背景/技术栈辅助；排除设计资料与合成夹具。"""
     materials = index.get("materials") if isinstance(index.get("materials"), dict) else {}
     nonfact = {
         str(item.get("material_id", ""))
@@ -89,7 +90,19 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
     query_grams = _bigrams(query)
     if not query_grams:
         return []
-    scored: list[tuple[float, dict[str, Any]]] = []
+    title_grams = _bigrams(str(card_fields.get("title", "")))
+    try:
+        references = json.loads(card_fields.get("source_documents_json") or "[]")
+    except (ValueError, TypeError):
+        references = []
+    bound = {
+        (ref["material_id"], ref["document_id"], ref["sha256"])
+        for ref in (references if isinstance(references, list) else [])
+        if isinstance(ref, dict)
+        and all(isinstance(ref.get(key), str) and ref[key] for key in ("material_id", "document_id", "sha256"))
+    }
+    bound_materials = {ref[0] for ref in bound}
+    scored: list[tuple[bool, bool, int, int, dict[str, Any]]] = []
     for material_id, material in materials.items():
         if not isinstance(material, dict) or material_id in nonfact:
             continue
@@ -110,9 +123,11 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
             overlap = len(query_grams & doc_grams)
             label_overlap = len(query_grams & material_grams)
             score = overlap * 2 + label_overlap
-            if score <= 0:
+            is_bound = (material_id, document_id, str(document.get("sha256", ""))) in bound
+            is_summary = material_id in bound_materials and document.get("person_doc") is True
+            if score <= 0 and not (is_bound or is_summary):
                 continue
-            scored.append((score, {
+            scored.append((is_bound, is_summary, len(title_grams & doc_grams), score, {
                 "material_id": material_id,
                 "document_id": document_id,
                 "label": str(document.get("label", "")),
@@ -121,9 +136,11 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
                 "material_label": label,
                 "material_filename": str(material.get("filename", "")),
                 "document_dates": document.get("dates") or {},
+                "source_kind": "career_summary" if document.get("person_doc") else "work_material",
             }))
-    scored.sort(key=lambda item: (-item[0], item[1]["document_id"]))
-    return [item[1] for item in scored[:limit]]
+    scored.sort(key=lambda item: (-item[0], -item[1], -item[2], -item[3],
+                                  item[4]["material_id"], item[4]["document_id"]))
+    return [item[4] for item in scored[:limit]]
 
 
 def read_document_texts(root: Path, documents: list[dict[str, Any]]) -> dict[str, str]:
@@ -186,6 +203,9 @@ def aggregate_documents(
             "owner_hits": len(owner),
             "participant_hits": len(participant),
             "snippets": list(dict.fromkeys([*owner, *participant]))[:max_excerpts],
+            "context_excerpt": text[:1000],
+            "excerpt_truncated": len(text) > 1000,
+            "source_kind": document.get("source_kind", "work_material"),
         })
     return aggregates
 
@@ -218,12 +238,33 @@ def _document_pool(aggregates: list[dict[str, Any]], texts: dict[str, str]) -> d
     return {item["document_id"]: texts.get(item["document_id"], "") for item in aggregates}
 
 
+def confirmed_work_context(root: Path, card_id: str) -> list[dict[str, Any]]:
+    """只传该卡关联且已确认的任职职责，不传联系方式及无关经历。"""
+    try:
+        profile = load_career_profile(Path(root) / "personal_profile.yaml")
+    except (OSError, ValueError):
+        return []
+    if not (profile.get("career_status") or {}).get("reviewed"):
+        return []
+    context = []
+    for row in (profile.get("career") or {}).get("work") or []:
+        if card_id not in (row.get("evidence_ids") or []):
+            continue
+        context.append({
+            **{key: str(row.get(key) or "")[:500] for key in ("id", "company", "title", "start", "end", "scope")},
+            "current": bool(row.get("current")),
+            "contributions": [str(value)[:500] for value in (row.get("contributions") or [])[:6]],
+        })
+    return context
+
+
 def build_inference_prompt(
     card_fields: dict,
     card_lists: dict,
     aggregates: list[dict[str, Any]],
     windows: list[tuple[int, int]],
     window_labels: list[str],
+    work_context: list[dict[str, Any]] | None = None,
 ) -> str:
     payload = {
         "card": {
@@ -237,12 +278,21 @@ def build_inference_prompt(
         "documents": aggregates,
         "employment_window": window_labels,
         "window_bounds_months": [list(item) for item in windows],
+        "confirmed_work_context": work_context or [],
     }
     return (
-        "You infer missing time_range / role_scope for ONE evidence card from the provided documents. "
-        "This is not summarization: only use explicit dates and first-person statements in the documents. "
-        "Never use the employment window itself as the project period; it is only an upper bound. "
-        "Prefer periods where the project co-occurs across multiple documents; if evidence is weak, return empty objects. "
+        "任务：为一张求职证据卡补充缺失的项目时间和本人职责，输出待确认的 L3 候选。"
+        "先结合原文语境、工作汇总和已确认任职职责判断人物与项目关联，再归纳具体贡献。"
+        "context_excerpt 是原文有界片段，snippets 是辅助关键句；第一人称命中数为零不代表没有个人职责。"
+        "允许从角色章节或省略主语的工作记录识别职责；跨文档归属需引用共同支撑的原文，"
+        "对于已归属于用户任职的项目，未明示分工且没有反向信息时，优先提名主导/负责人职责，"
+        "按 L3 默认归因候选保留依据和不确定性；明确参与、协助或他人负责时按原范围表达，"
+        "不能扩成独立完成或全权负责所有成果。"
+        "confirmed_work_context 用于理解角色与关联，不能代替具体项目的原文依据。"
+        "value 只填写职责短语或时间，不附带 L3、默认归因候选、置信度或审核说明；这些信息由 App 单独展示。"
+        "区分项目发生时间、资料整理时间和示例日期；任职区间只作上限约束，"
+        "不得将接口样例、需求目标或文件更新时间直接填为项目期间。"
+        "只能引用实际提供的原文片段；截断内容不可自行补全，仍无依据时返回空对象。"
         "Return ONLY JSON: {\"time_range\":{\"value\":\"YYYY-MM ~ YYYY-MM or YYYY\",\"precision\":\"year|month\","
         "\"confidence\":0.0-1.0,\"evidence\":[{\"material_id\":\"...\",\"document_id\":\"...\",\"excerpt\":\"<verbatim sentence>\"}]},"
         "\"role_scope\":{\"value\":\"<role>\",\"confidence\":0.0-1.0,"
@@ -313,9 +363,11 @@ def parse_inference_candidates(
             })
     role_raw = payload.get("role_scope")
     if isinstance(role_raw, dict) and str(role_raw.get("value", "")).strip():
-        value = str(role_raw["value"]).strip()[:80]
+        # 等级/候选身份是独立元数据，去掉模型误附的格式注记，不改职责与引用。
+        value = re.sub(r"\s*[（(]L[1-5]\s*(?:默认归因|跨文档推断|推断)?候选[）)]\s*$",
+                       "", str(role_raw["value"]).strip()).strip()[:80]
         evidence = _evidence_entries(role_raw.get("evidence"), aggregates, texts)
-        if evidence:
+        if value and evidence:
             cited = {entry["document_id"] for entry in evidence}
             hits = {
                 "owner": sum(by_doc[document_id]["owner_hits"] for document_id in cited if document_id in by_doc),
@@ -368,13 +420,16 @@ def rules_only_candidates(
     return candidates[:limit]
 
 
-def attempt_fingerprint(card_sha256: str, aggregates: list[dict[str, Any]], windows: list[tuple[int, int]]) -> str:
+def attempt_fingerprint(card_sha256: str, aggregates: list[dict[str, Any]], windows: list[tuple[int, int]],
+                        work_context: list[dict[str, Any]] | None = None) -> str:
     canonical = json.dumps(
         {
             "card": card_sha256,
             "documents": sorted((item["document_id"], item.get("sha256", "")) for item in aggregates),
             "windows": [list(item) for item in windows],
             "prompt": INFERENCE_PROMPT_VERSION,
+            "task_context": context_fingerprint(),
+            "confirmed_work_context": work_context or [],
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -421,10 +476,11 @@ def infer_card(
     llm_call: Callable[[str], str] | None,
 ) -> dict[str, Any]:
     windows, window_labels = employment_windows(root, card_id)
+    work_context = confirmed_work_context(root, card_id)
     documents = select_documents(index, card_fields, card_lists)
     texts = read_document_texts(root, documents)
     aggregates = aggregate_documents(documents, texts)
-    fingerprint = attempt_fingerprint(card_sha256, aggregates, windows)
+    fingerprint = attempt_fingerprint(card_sha256, aggregates, windows, work_context)
     state = load_state(root)
     stored = state["cards"].get(card_id)
     rejected = set((stored or {}).get("rejected") or [])
@@ -446,7 +502,7 @@ def infer_card(
         error = ""
     else:
         try:
-            content = llm_call(build_inference_prompt(card_fields, card_lists, aggregates, windows, window_labels))
+            content = llm_call(build_inference_prompt(card_fields, card_lists, aggregates, windows, window_labels, work_context))
             candidates = parse_inference_candidates(content, aggregates=aggregates, texts=texts, windows=windows)
             status = "ok"
             error = ""

@@ -768,9 +768,10 @@ def _llm_draft_prompt(material_text: str, metadata: str = "") -> str:
         "otherwise, if the metadata below supports a period, set time_range and "
         'time_range_provenance={level:"L2", precision:"year|month", evidence:[{key:"<metadata key>"}], confidence:0-1}. '
         "Never infer dates from requirements or generic ranges; when neither applies leave time_range empty.\n"
-        "Role inference rules: role_scope is allowed only when the document explicitly states the person's role in first person; "
+        "职责提炼：结合文档标题、人物/角色章节与上下文确定主体；原文明示的职责不要求每句出现“我”。"
+        "归属明确时才按 L1 提取；仅靠跨文档关联才能确定的职责留给后续推断候选，不能把系统能力写为本人独立成果。"
         'then set role_scope and role_scope_provenance={level:"L1", evidence:[{excerpt:"<verbatim quote>"}], confidence:0-1}. '
-        "Never infer ownership from job titles, tags or requirements.\n"
+        "不能仅凭职务名称、标签或需求目标认定本人主导整个项目。\n"
         f"{meta_block}\n"
         "Write title, context, actions, stack and tags in the document's own language (Chinese when the document is Chinese); never translate them.\n\n"
         f"{material_text}"
@@ -818,6 +819,7 @@ def handle_evidence_generate_draft(params: dict[str, Any]) -> dict[str, Any]:
             api_key=str(llm_config["api_key_for_request"]),
             timeout=int(llm_config["timeout"]),
             provider=str(llm_config["provider"]),
+            thinking_enabled=bool(llm_config.get("thinking_enabled", False)),
         )
         response = client.post_json(client.chat_completions_url, payload)
         content = LLMClient.extract_content(response).strip()
@@ -1498,6 +1500,7 @@ def _inference_llm_call(prompt: str) -> str:
         api_key=str(llm_config["api_key_for_request"]),
         timeout=int(llm_config["timeout"]),
         provider=str(llm_config["provider"]),
+        thinking_enabled=bool(llm_config.get("thinking_enabled", False)),
     )
     response = client.post_json(client.chat_completions_url, payload)
     content = LLMClient.extract_content(response).strip()
@@ -1659,7 +1662,8 @@ def handle_evidence_confirm_inference(params: dict[str, Any]) -> dict[str, Any]:
         "candidate_pool_eligible": False,
     }
     for key in ('raw_source', 'source_documents_json', 'field_sources_json', 'source_material_fingerprints_json',
-                'reviewed_facts_json', 'source_whole_material_ids_json'):
+                'reviewed_facts_json', 'source_whole_material_ids_json',
+                'time_range_provenance_json', 'role_scope_provenance_json'):
         if key in s:
             fields[key] = s[key]
     for key in ('source_material_ids', 'missing_items'):
