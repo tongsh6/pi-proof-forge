@@ -913,8 +913,11 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 
 - `status`: `pass | blocked`
 - 成功时 `code=OK` 且 `models` 返回最多 20 个模型 id
-- 本地端点不可达、返回空模型列表或未配置 base_url 时，返回 `code=BLOCKED_LOCAL_PROVIDER`
+- `provider=lm_studio` 的本地端点不可达、返回空模型列表或未配置 base_url 时，返回 `code=BLOCKED_LOCAL_PROVIDER`
+- `openai_compatible` 的 localhost 端点允许不带密钥，但失败时返回 `code=BLOCKED_PROVIDER` 且消息使用 provider 名称，不冒用 LM Studio
 - 在线 provider（OpenAI / DeepSeek / OpenAI Compatible）缺少密钥时返回 `code=BLOCKED_PROVIDER_CREDENTIAL`；其余不可达/空列表返回 `code=BLOCKED_PROVIDER`
+- 请求的 provider 与当前生效 provider 不同时，只读取该 provider 自己的凭据文件；不得复用当前生效密钥
+- 请求的 provider 与当前生效 provider 不同且 payload 未提供 `base_url` 时，返回 blocked，不得把目标 provider 的密钥发往当前生效端点
 - 返回值不得包含 API key 明文
 
 ### 6.22.1 settings.clearLlmApiKey

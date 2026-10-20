@@ -9,7 +9,7 @@ Last updated: 2026-10-20
 - 后端：`settings.get.llm_config` 增加 `thinking_enabled`、`api_key.source`、`configured_providers`；`settings.update` 支持 `thinking_enabled` 与按 provider 写入密钥；新增 `settings.clearLlmApiKey`；连接检查按 provider 命名，缺在线密钥返回 `BLOCKED_PROVIDER_CREDENTIAL`。未提供真实密钥的历史在线配置不再被误报为可用。
 - 请求：`LLMClient` 仅对 `provider=deepseek` 注入 `thinking.disabled` 或 `thinking.enabled + reasoning_effort=high`；显式参数不覆盖，其他 provider 不注入。sidecar 通过 `LLM_THINKING=on/off` 传给管线子进程。
 - 页面：Provider 下拉新增 DeepSeek；自动填充 `https://api.deepseek.com` / `deepseek-flash`；按 provider 显示密钥来源与清除按钮；DeepSeek 显示思考模式开关与温度提示；切换 provider 清空连接检查与模型列表；切换时清空未保存的密钥输入，避免串 provider。
-- 验证：相关测试与全量 `python3 -m pytest tests -q` **1548 passed、1 skipped、21 subtests passed**；`tsc --noEmit`、`check_execution_roadmap`、`check_v2_constraints`、`check_aief_l3` 通过。真实 DeepSeek API 调用与真实 App 页面验收尚未执行，需用户在自己的 Key 下完成；`.pen` 因本机无 Pencil 工具待补。
+- 验证：相关测试与全量 `python3 -m pytest tests -q` **1557 passed、1 skipped、21 subtests passed**；`tsc --noEmit`、`check_execution_roadmap`、`check_v2_constraints`、`check_aief_l3` 通过。独立审查发现并修复：跨 provider 连接检查复用当前密钥、旧 LM Studio 占位污染在线 provider、切换 provider 未强制套用 DeepSeek 预设、连接失败仍提示成功、清除密钥后旧连接状态残留、非 LM Studio 本地端点误标、provider 未无条件校验、异常消息可能回显畸形密钥。真实 DeepSeek API 调用与真实 App 页面验收尚未执行，需用户在自己的 Key 下完成；`.pen` 因本机无 Pencil 工具待补。
 - 边界：未新增平台写入，不改变 P0-026 唯一 `next`；未实现思考强度选择与通用空正文重试。
 
 ## 2026-10-20 对位与优质层修复（P0-026 续）

@@ -45,7 +45,7 @@ PiProofForge 的主线不是“把页面做完”，而是完成可追溯的 evi
 
 `small_company_high_match_delivery`
 
-2026-10-20 DeepSeek Provider 接入（独立任务，不改变 P0-026）：系统设置新增 DeepSeek 预设（`https://api.deepseek.com` / `deepseek-flash`）、按 provider 分别保存 API Key 到本机 0600 权限文件、按 provider 的密钥状态与清除入口、DeepSeek 思考模式开关（默认关，开启 high）。`settings.get/update/checkLlmConnection` 增加 provider-scoped 字段，新增 `settings.clearLlmApiKey`；`LLMClient` 仅对 DeepSeek 注入 `thinking`，其他 provider 与 LM Studio 既有分支不变。相关后端/GUI 回归通过，真实 App 需用户用自己的 Key 完成“检查连接 → 保存 → 重启 → 实际任务”验收；`.pen` 因本机无 Pencil 工具待补。P0-026 仍唯一 `next`。
+2026-10-20 DeepSeek Provider 接入（独立任务，不改变 P0-026）：系统设置新增 DeepSeek 预设（`https://api.deepseek.com` / `deepseek-flash`）、按 provider 分别保存 API Key 到本机 0600 权限文件、按 provider 的密钥状态与清除入口、DeepSeek 思考模式开关（默认关，开启 high）。`settings.get/update/checkLlmConnection` 增加 provider-scoped 字段，新增 `settings.clearLlmApiKey`；`LLMClient` 仅对 DeepSeek 注入 `thinking`，其他 provider 与 LM Studio 既有分支不变。相关后端/GUI 回归与全量 **1557 项通过、1 跳过、21 subtests** 通过；独立审查发现的跨 provider 密钥复用、旧占位污染在线 provider、预设未强制套用等阻断已修复。真实 App 需用户用自己的 Key 完成“检查连接 → 保存 → 重启 → 实际任务”验收；`.pen` 因本机无 Pencil 工具待补。P0-026 仍唯一 `next`。
 
 2026-10-20 对位/优质与耗时接续：修复正文判项输入缺失、项目标题误判、专业/工具示例误拆、粗筛零分排除完整项目、无关上下文及缓存过度失效；核心项目与性能成果重新进入正文。用户确认的 ai-content-forge Python 个人项目已在真实 App 增补并确认，其余职业事实不变。带新档案的真实管线 11 分 53 秒（复用 13 批粗筛），随后同输入复跑 0 模型调用；这不代表冷启动耗时结论。最终两页 PDF 无裁切重叠，全部判项覆盖且合格层通过，但对位/优质/突出仍未通过，用户已确认的技能差距不能靠评分修复消除；行动与成果关联、首屏量化及突出点位置仍待完善。P0-026 保持唯一 `next`，详情见同日台账和本机验收记录。
 

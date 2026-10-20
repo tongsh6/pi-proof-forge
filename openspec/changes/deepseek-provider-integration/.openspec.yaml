@@ -1,0 +1,19 @@
+change: deepseek-provider-integration
+title: 接入 DeepSeek Provider，按 provider 保存凭据并支持思考模式
+status: proposed
+owner: pi-proof-forge team
+created_at: 2026-10-20
+updated_at: 2026-10-20
+relates_to: 系统设置 / LLM Config
+artifacts:
+  - proposal.md
+  - design.md
+  - tasks.md
+  - specs/llm-provider-config/spec.md
+notes: |
+  来源：2026-10-20 用户请求。用户确认：
+  1) 需要完整可用，不只是加一个 provider 选项；
+  2) API Key 保存在本机权限文件，不使用系统钥匙串；
+  3) OpenAI 与 DeepSeek 的 Key 按 provider 分别保存；
+  4) 默认 deepseek-flash 非思考，页面提供思考模式开关。
+  本变更不改变 P0-026 唯一 next，不新增平台写入。
