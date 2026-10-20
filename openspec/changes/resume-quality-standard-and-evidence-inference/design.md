@@ -17,6 +17,8 @@
 
 ## 2. 现有能力与复用点
 
+2026-10-20 提示词接续：公共产品语境集中在 `tools/prompts/context.py`，由现有 `LLMClient` 统一加入 system 消息；不复制用户口语，不让资料正文成为指令。职责归属结合上下文主动分析，不以字面第一人称作为唯一门槛；待确认推断、已审核事实和岗位要求保持各自用途。公共语境内容指纹参与四类已有缓存，质量判项有界接收 actions 并将完整行动字段纳入缓存指纹。
+
 | 需要 | 现状 | 处理 |
 | --- | --- | --- |
 | JD 条目 × 证据支撑矩阵 | `tools/engines/matching/semantic_review.py` 已产出 11/8/85 子项与 `all_requirements_supported` | 复用；只增加"正文是否呈现 / 位置"两列 |
@@ -80,7 +82,7 @@ modified_at: 2023-08-16
 employment_window: 2022-06 ~ 2024-03   # 来自已确认档案，按材料所属公司
 ```
 
-提示词改为：时间若原文明示 → `time_range` + `provenance.level=L1` + 引用句；否则若元数据可推 → `level=L2` + 引用元数据键；否则留空。角色同理但只允许 L1（第一人称明示），L3 由 4.2 负责。
+提示词改为：时间若原文明示 → `time_range` + `provenance.level=L1` + 引用句；否则若元数据可推 → `level=L2` + 引用元数据键；否则留空。角色同理但只允许 L1（上下文主体明确，包括人物/角色章节，不要求逐句出现“我”），跨文档归属的 L3 由 4.2 负责。
 
 ### 4.2 跨文档推断（L3）
 
@@ -89,18 +91,18 @@ employment_window: 2022-06 ~ 2024-03   # 来自已确认档案，按材料所属
 ```
 输入: card_ids[]（默认 = 分流为"值得补"且缺字段的卡）
 步骤:
-  1. kb find/grep：按卡 title bigram、tags、stack 检索文档（限 20 篇，排除设计资料类来源）
-  2. 规则聚合：每篇文档的日期（路径/标题/正文年月）、第一人称句（"我负责|我主导|我设计|我推动|参与|配合"分类计数）
-  3. LLM 一次调用：输入聚合结果 + 卡摘要 + 任职区间，输出 time_range/role_scope 候选、等级 L3、置信度、每条依据的 document_id+excerpt
+  1. kb 索引检索：已绑定且指纹一致的原文、绑定材料中的职业汇总优先，再按卡标题/背景相关性排序（限 20 篇，排除设计资料类来源）
+  2. 聚合：保留每篇前 1000 字符及截断标记、日期线索、第一人称关键句与计数；计数只是辅助，不裁掉省略主语的原文语境
+  3. LLM 一次调用：输入聚合结果 + 卡摘要 + 关联的已确认任职职责 + 任职区间，输出 time_range/role_scope 候选、等级 L3、置信度、每条依据的 document_id+excerpt
   4. 校验：时间在任职区间内；依据 excerpt 可在文档原文回读；否则丢弃该候选
-输出: candidates[] 写入 app-data/evidence_inference.json（按卡指纹 + 文档集合指纹）
+输出: candidates[] 写入 app-data/evidence_inference.json（按卡指纹 + 文档集合指纹 + 已确认任职上下文 + 公共指令指纹 + 任务版本）
 ```
 
 不写卡。对账面板新增"待确认推断"列：接受 → `evidence.update` 写字段与 provenance；修改后接受 → L4；否决 → 记录 `(card_fp, candidate_hash)`。
 
 ### 4.3 生成器消费等级
 
-`template_assembler.py`：bullet 模板按 `role_scope_provenance.level` 选动词组；时间按 `precision` 格式化。`llm_rewriter.py` 约束增加"不得提高角色强度、不得增加时间精度"，并在改写后用规则比对动词组校验。
+`template_assembler.py`：按 2026-10-20 用户修订，已采纳的 L3 职责、行动和限定保持原义，来源等级不再机械决定“负责人/参与者”；时间继续按 `precision` 格式化。`llm_rewriter.py` 保留不得超出原职责范围与时间精度的约束。当前 Quick Run 使用锁定字段的模板链；自由改写组件的词数检查不能证明所有责任限定均已受到保护。
 
 ## 5. 实施顺序
 

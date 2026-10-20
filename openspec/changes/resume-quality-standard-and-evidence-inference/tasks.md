@@ -62,8 +62,8 @@
 
 ## Phase D - 生成按等级降级与首屏重排
 
-- [x] D1 `template_assembler.py`：按 `role_scope_provenance.level` 选动词组；按 `time_range_provenance.precision` 格式化时间；L5 时间卡不进正文
-  - 实现：`tools/engines/generation/template_assembler.py` 增加字段级渲染（L1/L4 保留负责/主导；L3 动作/结果降级参与/推动；L5 时间卡不进入正文；年精度只呈现起始年），并接入真实 `tools/run_generation.py` 的 A/B 模板拼装。
+- [x] D1 `template_assembler.py`：呈现字段来源等级并保留已采纳职责；按 `time_range_provenance.precision` 格式化时间；L5 时间卡不进正文
+  - 实现：真实 `tools/run_generation.py` A/B 模板已消费字段 provenance。2026-10-20 用户修订后，L3 职责和行动保留主导/负责人及明确的参与/协助限定，不按来源等级机械降级；时间规则与 trace 保持。
 - [x] D2 `llm_rewriter.py`：约束"不得提高角色强度、不得增加时间精度"；改写后规则比对动词组，违规回退模板句
   - 实现：`llm_rewriter.py` 增加 `level_context` 约束；改写后规则复核强措辞与月份精度，发现提升则回退模板原文；测试覆盖“变强/变精细被拒、合规改写通过”。
 - [x] D3 首屏组织：突出点（B4）置于摘要或第一条经历；JD 前三职责对应 bullet 进入首屏；无关经历压缩规则（R2.4）
