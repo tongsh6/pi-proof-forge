@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.infra import quality_judge_cache
-from tools.infra.llm.client import LLMClient, llm_timeout_from_env
+from tools.infra.llm.client import LLMClient, llm_request_available, llm_timeout_from_env
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.infra.persistence.review_snapshot import read_generation_trace
 from tools.engines.evaluation import llm_judge, tiered_evaluator
@@ -333,7 +333,10 @@ def _run_quality_judge(
         cards = {key: card for key, card in cards.items() if key in rendered_ids}
     jd_items = _judge_jd_items(semantic_review)
     meta: dict[str, Any] = {"cache": "disabled", "reason": "llm_not_configured_or_no_jd_items"}
-    if not (use_llm and model and api_key and jd_items):
+    llm_available = llm_request_available(
+        provider=os.getenv("LLM_PROVIDER", ""), api_key=api_key, model=model
+    )
+    if not (use_llm and llm_available and jd_items):
         return None, meta, decisions
     bullets = tiered_evaluator.extract_bullets(resume_text)
     prompt = llm_judge.build_judge_prompt(bullets=bullets, cards=cards, jd_items=jd_items,
@@ -572,7 +575,10 @@ def _legacy_main() -> int:
             print('[evaluation] 语义结果或输入追溯已变化，请重新生成。')
             return 1
 
-    if use_llm and model and api_key and semantic_review is None:
+    llm_available = llm_request_available(
+        provider=os.getenv("LLM_PROVIDER", ""), api_key=api_key, model=model
+    )
+    if use_llm and llm_available and semantic_review is None:
         prompt = load_prompt(prompt_path, resume_text, rule_result["markdown"])
         payload: dict[str, object] = {
             "model": model,

@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
+import { isLlmConfigured } from "@/lib/llmConfig";
 import { getMaterialReadiness, getOverview, getSettings, listJobProfiles } from "@/lib/sidecar/api";
 import { buttonClass, notify } from "@/lib/ui";
 import type {
@@ -185,8 +186,8 @@ export function OverviewPage() {
       setSetup(
         settings && readiness && profiles
           ? {
-              // 后端在未配置时也会给出默认 provider/model，只有密钥（或本地占位）保存过才算配置完成。
-              llm: Boolean(settings.llm_config?.api_key?.configured),
+              // 后端在未配置时也会给出默认 provider/model；keyless 本地 provider 有模型即可用。
+              llm: isLlmConfigured(settings.llm_config),
               resumes: readiness.status === "ready",
               evidence: result.metrics.evidence_count > 0,
               jobs: profiles.items.length > 0,

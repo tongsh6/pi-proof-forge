@@ -808,3 +808,30 @@ def test_persisted_llm_runtime_context_propagates_thinking_mode() -> None:
     assert env["LLM_THINKING_EFFORT"] == "max"
     assert env["LLM_PROVIDER"] == "deepseek"
     assert env["LLM_API_KEY"] == "sk-test"
+
+
+def test_persisted_llm_runtime_context_keeps_keyless_strata_keyless() -> None:
+    # keyless Strata 不注入伪 placeholder Key：请求头保持无 Authorization。
+    config = {
+        "provider": "strata",
+        "model": "qwen3.8-flash-next-q2_0",
+        "base_url": "http://127.0.0.1:8081/v1",
+        "api_key_configured": False,
+        "api_key_updated_at": "",
+        "api_key_for_request": "",
+        "thinking_enabled": False,
+        "thinking_effort": "high",
+        "timeout": 60,
+        "temperature": 0.2,
+    }
+    with patch(
+        "tools.sidecar.handlers.settings._load_llm_config",
+        return_value=config,
+    ):
+        summary, env = _persisted_llm_runtime_context()
+
+    assert summary["provider"] == "strata"
+    assert summary["api_key"]["configured"] is False
+    assert "LLM_API_KEY" not in env
+    assert env["LLM_PROVIDER"] == "strata"
+    assert env["LLM_MODEL"] == "qwen3.8-flash-next-q2_0"

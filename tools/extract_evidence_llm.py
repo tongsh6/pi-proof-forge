@@ -9,7 +9,12 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.infra.llm.client import LLMClient, llm_timeout_from_env
+from tools.infra.llm.client import (
+    LLMClient,
+    llm_request_available,
+    llm_timeout_from_env,
+    provider_is_keyless,
+)
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -41,7 +46,7 @@ def main() -> int:
     )
     _ = parser.add_argument(
         "--base-url",
-        default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
+        default=os.getenv("LLM_BASE_URL", ""),
         help="OpenAI-compatible base URL",
     )
     _ = parser.add_argument(
@@ -51,18 +56,28 @@ def main() -> int:
     args = parser.parse_args()
 
     model = cast(str, args.model)
-    base_url = cast(str, args.base_url)
+    base_url = cast(str, args.base_url).strip()
     api_key = cast(str, args.api_key)
     prompt_path = cast(str, args.prompt)
     input_path = cast(str, args.input)
     output_path = cast(str | None, args.output)
+    provider = os.getenv("LLM_PROVIDER", "")
 
     if not model:
         print("Missing model. Set --model or LLM_MODEL.", file=sys.stderr)
         return 1
-    if not api_key:
+    if not llm_request_available(provider=provider, api_key=api_key, model=model):
         print("Missing API key. Set --api-key or LLM_API_KEY.", file=sys.stderr)
         return 1
+    if not base_url:
+        if provider_is_keyless(provider):
+            # keyless 本地 provider 缺少地址时不能悄悄落到 OpenAI 默认地址。
+            print(
+                "Missing base URL for keyless local provider. Set --base-url or LLM_BASE_URL.",
+                file=sys.stderr,
+            )
+            return 1
+        base_url = DEFAULT_BASE_URL
 
     raw_text = read_text(input_path)
     prompt = load_prompt_template(prompt_path, raw_text)

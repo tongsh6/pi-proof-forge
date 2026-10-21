@@ -25,6 +25,8 @@ def test_agent_run_page_uses_run_control_rpc_contract():
     assert "agentStateLabel" in source
     assert "runStatusLabel" in source
     assert "pages.agentRun.providerSummary" in source
+    assert "isLlmSecretConfigured" in source
+    assert "keyLocalOptional" in source
     assert "api_key.value" not in source
     assert "api_key.secret" not in source
 

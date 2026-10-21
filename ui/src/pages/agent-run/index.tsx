@@ -13,6 +13,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
+import { isLlmSecretConfigured } from "@/lib/llmConfig";
 import { confirmAction, notify } from "@/lib/ui";
 import {
   getAgentRun,
@@ -289,7 +290,9 @@ export function AgentRunPage() {
       label: t("pages.agentRun.secretStatus"),
       value: llmConfig?.api_key.configured
         ? t("pages.systemSettings.secretConfigured")
-        : t("pages.systemSettings.secretMissing"),
+        : isLlmSecretConfigured(llmConfig)
+          ? t("pages.systemSettings.llm.keyLocalOptional")
+          : t("pages.systemSettings.secretMissing"),
     },
   ];
   const activeIndex = latestStateIndex(events, run?.status ?? "");

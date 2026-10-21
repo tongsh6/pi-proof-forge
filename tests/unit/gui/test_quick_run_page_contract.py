@@ -33,6 +33,8 @@ def test_quick_run_page_renders_product_pipeline_contract():
         assert marker in source
 
     assert "Agent (multi-round with gate)" not in source
+    assert "isLlmSecretConfigured" in source
+    assert "keyLocalOptional" in source
     assert "api_key.value" not in source
     assert "api_key.secret" not in source
 

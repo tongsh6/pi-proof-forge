@@ -125,6 +125,10 @@ def test_system_settings_i18n_contract_is_complete():
         "effortLow",
         "effortHigh",
         "effortMax",
+        "providerStrataHint",
+        "keyLocalOptional",
+        "keyOptionalPlaceholder",
+        "thinkingModeHintStrata",
     }
 
     for i18n_file in I18N_FILES:
@@ -180,3 +184,56 @@ def test_llm_credential_contract_exposes_provider_scoped_status():
     assert "configured_providers" in types_source
     assert "thinking_enabled" in types_source
     assert "source?:" in types_source
+
+
+def test_strata_provider_defaults_and_option_are_wired():
+    source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
+
+    assert 'strata: {' in source
+    assert '"http://127.0.0.1:8081/v1"' in source
+    assert '"qwen3.8-flash-next-q2_0"' in source
+    assert (
+        '{ id: "strata", label: "Strata", hintKey: "providerStrataHint" }' in source
+    )
+    # Provider 顺序：LM Studio / Strata / OpenAI / DeepSeek / OpenAI Compatible。
+    assert source.index('{ id: "lm_studio"') < source.index('{ id: "strata"')
+    assert source.index('{ id: "strata"') < source.index('{ id: "openai"')
+    assert "mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5" in source
+
+
+def test_strata_thinking_toggle_and_payload_are_wired():
+    source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
+
+    # 思考开关对 DeepSeek 与 Strata 显示，Strata 使用独立提示文案。
+    assert 'llmForm.provider === "deepseek" || llmForm.provider === "strata"' in source
+    assert "thinkingModeHintStrata" in source
+    # Strata 只渲染 low/high；max 在切换 provider 时归一到 high。
+    assert 'effort.value !== "max"' in source
+    assert "thinkingEffortsForProvider(llmForm.provider).map" in source
+    assert "function normalizeThinkingEffort" in source
+    assert (
+        'return provider === "strata" && effort === "max" ? "high" : effort;'
+        in source
+    )
+    assert "normalizeThinkingEffort(nextProvider," in source
+    # Strata 保存/检查连接同样提交思考字段。
+    assert 'form.provider === "deepseek" || form.provider === "strata"' in source
+    assert "payload.thinking_enabled = form.thinking_enabled" in source
+    assert "payload.thinking_effort = form.thinking_effort" in source
+
+
+def test_strata_keyless_credential_status_is_wired():
+    source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
+
+    # LM Studio 与 Strata 的 keyless 判定收敛在共享 helper。
+    assert 'import { KEYLESS_PROVIDERS } from "@/lib/llmConfig";' in source
+    assert "KEYLESS_PROVIDERS.has(provider)" in source
+    # 卡片状态点：Strata 无已保存/环境变量 Key 时按“本地服务，无需密钥（可选）”展示。
+    assert "providerKeyStatusLabel" in source
+    assert 'provider === "strata" && providerKeySource(provider) === "none"' in source
+    assert "providerKeyStatusLabel(option.id)" in source
+    assert "keyLocalOptional" in source
+    # 无已保存/环境变量 Key 时 placeholder 不再误示“留空则保留已有密钥”。
+    assert "keyOptionalPlaceholder" in source
+    # 清除入口仍只在本机确有凭据文件时显示。
+    assert "const canClearProviderKey = configuredProviders.includes(llmForm.provider);" in source

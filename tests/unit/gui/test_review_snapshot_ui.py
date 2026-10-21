@@ -7,6 +7,8 @@ def test_review_restores_snapshot_and_shows_result_without_claiming_submission()
     script = r'''
 const assert = require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm');
 const ts=require('./ui/node_modules/typescript');
+const llmConfig={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/lib/llmConfig.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021}}).outputText,{exports:llmConfig});
 const hooks=[]; let cursor=0, effects=[], tree;
 const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>v===b[i]);
 const react={
@@ -36,6 +38,7 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/agent-run/in
   if(name==='react-i18next')return{useTranslation:()=>({t:k=>k,i18n:{language:'zh'}})};
   if(name==='lucide-react')return new Proxy({}, {get:(_,key)=>key});
   if(name==='@/lib/errors')return{getErrorMessage:e=>e.message};
+  if(name==='@/lib/llmConfig')return llmConfig;
   if(name==='@/lib/sidecar/api')return api;
   if(name==='@/lib/ui')return {notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};
   throw Error(name);

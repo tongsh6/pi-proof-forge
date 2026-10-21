@@ -7,6 +7,31 @@ from http.client import HTTPResponse
 from tools.prompts.context import with_job_search_context
 
 
+KEYLESS_PROVIDERS = frozenset({"lm_studio", "strata"})
+
+
+def provider_is_keyless(provider: str = "") -> bool:
+    """本地 OpenAI 兼容 provider 默认无鉴权；未显式传 provider 时读 LLM_PROVIDER。"""
+    import os
+
+    value = (provider or os.getenv("LLM_PROVIDER", "")).strip().lower()
+    return value in KEYLESS_PROVIDERS
+
+
+def llm_request_available(
+    *,
+    provider: str = "",
+    api_key: str = "",
+    model: str = "",
+) -> bool:
+    """判断当前配置能否发起 LLM 请求：必须有 model；keyless 本地 provider 无需 API Key。"""
+    if not str(model or "").strip():
+        return False
+    if str(api_key or "").strip():
+        return True
+    return provider_is_keyless(provider)
+
+
 def llm_timeout_from_env(default: int = 120) -> int:
     """管线子进程从 `LLM_TIMEOUT`（App 系统设置的超时秒数，由 sidecar 注入）读取；缺失或非法时回退默认值。"""
     import os
@@ -70,10 +95,10 @@ class LLMClient:
         return f"{self._base_url}/models"
 
     def build_headers(self) -> dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        return headers
 
     @staticmethod
     def extract_content(response: dict[str, Any]) -> str:
@@ -137,6 +162,19 @@ class LLMClient:
             ):
                 # 已定位这些型号会把结构化输出预算耗在推理中；仅调整本次请求。
                 payload = {**payload, "reasoning_effort": "none"}
+        if self._provider == "strata" and "reasoning_effort" not in payload:
+            # Strata（Qwen3.8 本地 OpenAI 兼容服务）用请求顶层 reasoning_effort 控制思考，
+            # 不识别 DeepSeek 风格 thinking 对象；结构化 JSON 请求把输出预算留给正文。
+            if (
+                payload.get("response_format") == {"type": "json_object"}
+                or not self._thinking_enabled
+            ):
+                reasoning_effort = "none"
+            else:
+                reasoning_effort = (
+                    "high" if self._reasoning_effort == "max" else self._reasoning_effort
+                )
+            payload = {**payload, "reasoning_effort": reasoning_effort}
         data = json.dumps(payload).encode("utf-8")
         req = request.Request(url, data=data, headers=self.build_headers(), method="POST")
         resp = cast(HTTPResponse, request.urlopen(req, timeout=self._timeout))

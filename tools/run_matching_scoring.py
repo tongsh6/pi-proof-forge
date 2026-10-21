@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 from tools.domain.result import Err
 from tools.domain.value_objects import Candidate
-from tools.infra.llm.client import LLMClient, llm_timeout_from_env
+from tools.infra.llm.client import LLMClient, llm_request_available, llm_timeout_from_env
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.policy.audit import write_exclusion_audit
 from tools.policy.exclusions import (
@@ -379,7 +379,9 @@ def _legacy_main() -> int:
         return 2
 
     if use_llm:
-        if not model or not api_key:
+        if not llm_request_available(
+            provider=os.getenv("LLM_PROVIDER", ""), api_key=api_key, model=model
+        ):
             if require_llm:
                 print("LLM mode required but model/api_key is missing")
                 return 1

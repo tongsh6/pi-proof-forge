@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.generation import template_assembler
 from tools.infra import evidence_provenance as provenance
-from tools.infra.llm.client import LLMClient, llm_timeout_from_env
+from tools.infra.llm.client import LLMClient, llm_request_available, llm_timeout_from_env
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 
@@ -511,7 +511,11 @@ def _legacy_main() -> int:
             strategy = "semantic_selection_locked_evidence_fields" if semantic else "locked_evidence_fields"
             if use_llm and not semantic:
                 try:
-                    if not model or not api_key:
+                    if not llm_request_available(
+                        provider=os.getenv("LLM_PROVIDER", ""),
+                        api_key=api_key,
+                        model=model,
+                    ):
                         raise ValueError("llm_configuration_missing")
                     evidence_text = json.dumps([
                         {key: card[key] for key in ("id", "title", "context", "actions", "results", "stack")}

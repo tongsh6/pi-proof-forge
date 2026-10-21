@@ -864,3 +864,157 @@ def test_cross_provider_check_without_base_url_does_not_use_active_endpoint() ->
     assert result["code"] == "BLOCKED_PROVIDER"
     assert result["base_url"] == ""
     assert "deepseek.com" not in result["message"]
+
+
+class SettingsStrataProviderTests(unittest.TestCase):
+    """Strata 本地 OpenAI 兼容服务：可选密钥 + keyless 连接检查。"""
+
+    _STRATA_DEFAULTS: dict[str, Any] = {
+        "provider": "strata",
+        "model": "qwen3.8-flash-next-q2_0",
+        "base_url": "http://127.0.0.1:8081/v1",
+    }
+
+    def _policy(self, tmp: str) -> Path:
+        return Path(tmp) / "policy.yaml"
+
+    def _update(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return handle_settings_update(
+            {
+                "meta": {"correlation_id": "corr_strata_update"},
+                "section": "llm_config",
+                "payload": payload,
+            }
+        )
+
+    def _get(self) -> dict[str, Any]:
+        return handle_settings_get({"meta": {"correlation_id": "corr_strata_get"}})
+
+    def _check(self) -> dict[str, Any]:
+        return handle_settings_check_llm_connection(
+            {
+                "meta": {"correlation_id": "corr_strata_check"},
+                "payload": {"provider": "strata", "timeout": 1},
+            }
+        )
+
+    def test_keyless_strata_connection_check_passes_with_empty_api_key(self) -> None:
+        captured: list[dict[str, Any]] = []
+
+        class FakeClient:
+            def __init__(self, **kwargs: Any) -> None:
+                captured.append(kwargs)
+
+            def list_models(self) -> list[str]:
+                return ["qwen3.8-flash-next-q2_0"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(dict(self._STRATA_DEFAULTS))
+                with patch("tools.sidecar.handlers.settings.LLMClient", FakeClient):
+                    result = self._check()
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["code"], "OK")
+        self.assertIn("Strata", result["message"])
+        self.assertEqual(result["models"], ["qwen3.8-flash-next-q2_0"])
+        self.assertEqual(captured[0]["api_key"], "")
+        self.assertEqual(captured[0]["provider"], "strata")
+
+    def test_strata_unavailable_or_empty_reports_local_provider_block(self) -> None:
+        class EmptyModelsClient:
+            def __init__(self, **kwargs: Any) -> None:
+                pass
+
+            def list_models(self) -> list[str]:
+                return []
+
+        class UnreachableClient:
+            def __init__(self, **kwargs: Any) -> None:
+                pass
+
+            def list_models(self) -> list[str]:
+                raise RuntimeError("connection refused")
+
+        for label, client_class in (
+            ("empty_models", EmptyModelsClient),
+            ("unreachable", UnreachableClient),
+        ):
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as tmp:
+                policy = self._policy(tmp)
+                with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                    self._update(dict(self._STRATA_DEFAULTS))
+                    with patch(
+                        "tools.sidecar.handlers.settings.LLMClient", client_class
+                    ):
+                        result = self._check()
+
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["code"], "BLOCKED_LOCAL_PROVIDER")
+                self.assertIn("Strata", result["message"])
+                self.assertNotIn("LM Studio", result["message"])
+
+    def test_optional_strata_key_is_saved_isolated_and_used(self) -> None:
+        key = "sk-strata-test-only"
+        captured: list[dict[str, Any]] = []
+
+        class FakeClient:
+            def __init__(self, **kwargs: Any) -> None:
+                captured.append(kwargs)
+
+            def list_models(self) -> list[str]:
+                return ["qwen3.8-flash-next-q2_0"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update({**self._STRATA_DEFAULTS, "api_key": key})
+                stored = self._get()
+                store = LLMApiKeyStore()
+                saved_key = store.load("strata")
+                saved_mode = store.path_for("strata").stat().st_mode & 0o777
+                policy_text = policy.read_text(encoding="utf-8")
+                with patch("tools.sidecar.handlers.settings.LLMClient", FakeClient):
+                    result = self._check()
+
+        self.assertEqual(saved_key, key)
+        self.assertEqual(saved_mode, 0o600)
+        self.assertNotIn(key, policy_text)
+        self.assertNotIn(key, str(stored))
+        llm = stored["llm_config"]
+        self.assertEqual(llm["provider"], "strata")
+        self.assertTrue(llm["api_key"]["configured"])
+        self.assertEqual(llm["api_key"]["source"], "saved")
+        self.assertIn("strata", llm["configured_providers"])
+        self.assertEqual(captured[0]["api_key"], key)
+        self.assertEqual(captured[0]["provider"], "strata")
+        self.assertEqual(result["status"], "pass")
+
+    def test_strata_without_key_reports_none_and_empty_request_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(dict(self._STRATA_DEFAULTS))
+                stored = self._get()
+                loaded = _load_llm_config()
+
+        llm = stored["llm_config"]
+        self.assertEqual(llm["provider"], "strata")
+        self.assertFalse(llm["api_key"]["configured"])
+        self.assertEqual(llm["api_key"]["source"], "none")
+        self.assertEqual(loaded["api_key_for_request"], "")
+
+    def test_strata_key_is_isolated_from_other_providers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(
+                    {"provider": "openai", "model": "gpt-4", "api_key": "sk-openai"}
+                )
+                self._update({**self._STRATA_DEFAULTS, "api_key": "sk-strata-test-only"})
+                stored = self._get()
+
+        self.assertIn("strata", stored["llm_config"]["configured_providers"])
+        self.assertIn("openai", stored["llm_config"]["configured_providers"])
+

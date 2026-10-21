@@ -16,6 +16,7 @@ from tools.discovery.filters import filter_candidates_by_policy
 from tools.domain.events import RunEvent
 from tools.domain.result import Err
 from tools.domain.value_objects import Candidate
+from tools.infra.llm.client import llm_request_available
 from tools.infra.persistence.file_run_store import FileRunStore
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.policy.audit import write_exclusion_audit
@@ -29,7 +30,11 @@ from tools.policy.gate import evaluate_candidate_exclusion
 
 
 def has_llm_env() -> bool:
-    return bool(os.getenv("LLM_API_KEY")) and bool(os.getenv("LLM_MODEL"))
+    return llm_request_available(
+        provider=os.getenv("LLM_PROVIDER", ""),
+        api_key=os.getenv("LLM_API_KEY", ""),
+        model=os.getenv("LLM_MODEL", ""),
+    )
 
 
 def _now_utc() -> str:
@@ -358,7 +363,7 @@ def _legacy_main() -> int:
                     failed_step="evidence-extraction-llm",
                 )
         elif require_llm:
-            print("[pipeline] LLM required but env is missing (LLM_API_KEY/LLM_MODEL)")
+            print("[pipeline] LLM required but env is missing (LLM_MODEL; keyless local providers need no LLM_API_KEY)")
             return _finish_pipeline_run(
                 run_store,
                 run_id,

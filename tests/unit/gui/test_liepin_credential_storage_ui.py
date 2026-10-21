@@ -53,6 +53,10 @@ const api = {
   },
 };
 const exports = {};
+const llmConfig = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/lib/llmConfig.ts', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2021 }
+}).outputText, { exports: llmConfig });
 const code = ts.transpileModule(fs.readFileSync('ui/src/pages/system-settings/index.tsx', 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2021, jsx: ts.JsxEmit.ReactJSX }
 }).outputText;
@@ -63,6 +67,7 @@ vm.runInNewContext(code, { exports, require: name => {
   if (name === 'react-i18next') return { useTranslation: () => ({ t, i18n: { language: 'zh' } }) };
   if (name === 'lucide-react') return new Proxy({}, { get: (_, key) => key });
   if (name === '@/lib/errors') return { getErrorMessage: error => error.message };
+  if (name === '@/lib/llmConfig') return llmConfig;
   if (name === '@/lib/sidecar/api') return api;
   if (name === '@/lib/ui') return {notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};
   throw new Error(`Unexpected import ${name}`);

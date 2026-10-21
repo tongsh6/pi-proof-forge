@@ -6,6 +6,8 @@ from pathlib import Path
 def test_overview_renders_feedback_funnel_from_metrics():
     script=r'''
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('./ui/node_modules/typescript');
+const llmConfig={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/lib/llmConfig.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021}}).outputText,{exports:llmConfig});
 const hooks=[];let index=0,effects=[],tree;const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>v===b[i]);
 const react={useState(v){const i=index++;if(!hooks[i])hooks[i]={v:typeof v==='function'?v():v};return[hooks[i].v,n=>{hooks[i].v=typeof n==='function'?n(hooks[i].v):n}]},
 useMemo(fn,deps){const i=index++;if(!hooks[i]||!same(hooks[i].deps,deps))hooks[i]={v:fn(),deps};return hooks[i].v},useCallback(fn,deps){return react.useMemo(()=>fn,deps)},useRef(v){return react.useMemo(()=>({current:v}),[])},
@@ -15,7 +17,7 @@ let funnel={delivered:2,viewed:8,interested:0,interview:0,rejected:4,closed:2,un
 const api={getOverview:async()=>({metrics:{evidence_count:1,matched_jobs_count:1,resume_count:1,submission_count:16,feedback_funnel:funnel},recent_activities:[],match_trend:[],gaps:[]})};
 const exports={},jsx=(type,props)=>({type,props:props||{}});
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/overview/index.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText,
-{exports,console,Math,Intl,Date,Map,Set,Promise,require:n=>{if(n==='react-router-dom')return{useNavigate:()=>url=>navigations.push(url)};if(n==='react')return react;if(n==='react/jsx-runtime')return{jsx,jsxs:jsx,Fragment:'fragment'};if(n==='react-i18next')return{useTranslation:()=>({t:(k,o)=>o&&o.count!==undefined?k+':'+o.count:k})};if(n==='lucide-react')return new Proxy({},{get:(_,k)=>k});if(n==='@/lib/errors')return{getErrorMessage:e=>String(e)};if(n==='@/lib/sidecar/api')return api;if(n==='@/lib/ui')return{notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};throw Error(n)}});
+{exports,console,Math,Intl,Date,Map,Set,Promise,require:n=>{if(n==='react-router-dom')return{useNavigate:()=>url=>navigations.push(url)};if(n==='react')return react;if(n==='react/jsx-runtime')return{jsx,jsxs:jsx,Fragment:'fragment'};if(n==='react-i18next')return{useTranslation:()=>({t:(k,o)=>o&&o.count!==undefined?k+':'+o.count:k})};if(n==='lucide-react')return new Proxy({},{get:(_,k)=>k});if(n==='@/lib/errors')return{getErrorMessage:e=>String(e)};if(n==='@/lib/llmConfig')return llmConfig;if(n==='@/lib/sidecar/api')return api;if(n==='@/lib/ui')return{notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};throw Error(n)}});
 const nodes=v=>Array.isArray(v)?v.flatMap(nodes):v&&typeof v==='object'?[v,...nodes(v.props.children)]:[];
 const text=v=>Array.isArray(v)?v.map(text).join(' '):v&&typeof v==='object'?text(v.props.children):String(v??'');
 async function settle(){for(let i=0;i<8;i++){index=0;tree=exports.OverviewPage();const pending=effects;effects=[];for(const fn of pending)fn();await Promise.resolve();await Promise.resolve()}}

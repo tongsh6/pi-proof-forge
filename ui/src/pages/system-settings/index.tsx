@@ -17,6 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
+import { KEYLESS_PROVIDERS } from "@/lib/llmConfig";
 import { confirmAction, notify } from "@/lib/ui";
 import {
   checkLlmConnection,
@@ -71,6 +72,11 @@ const LLM_PROVIDER_DEFAULTS: Record<
     base_url: "http://127.0.0.1:1234/v1",
     api_key: "lm-studio",
   },
+  strata: {
+    model: "qwen3.8-flash-next-q2_0",
+    base_url: "http://127.0.0.1:8081/v1",
+    api_key: "",
+  },
   openai: {
     model: "gpt-4",
     base_url: "https://api.openai.com/v1",
@@ -90,6 +96,7 @@ const LLM_PROVIDER_DEFAULTS: Record<
 
 const LLM_PROVIDER_OPTIONS = [
   { id: "lm_studio", label: "LM Studio", hintKey: "providerLmStudioHint" },
+  { id: "strata", label: "Strata", hintKey: "providerStrataHint" },
   { id: "openai", label: "OpenAI", hintKey: "providerOpenAiHint" },
   { id: "deepseek", label: "DeepSeek", hintKey: "providerDeepSeekHint" },
   {
@@ -104,6 +111,18 @@ const LLM_THINKING_EFFORTS = [
   { value: "high", labelKey: "effortHigh" },
   { value: "max", labelKey: "effortMax" },
 ] as const;
+
+// Strata 的 Qwen3.8 仅支持 low/high，历史/其他 provider 的 max 归一到 high。
+function normalizeThinkingEffort(provider: string, effort: string): string {
+  return provider === "strata" && effort === "max" ? "high" : effort;
+}
+
+function thinkingEffortsForProvider(provider: string) {
+  if (provider === "strata") {
+    return LLM_THINKING_EFFORTS.filter((effort) => effort.value !== "max");
+  }
+  return LLM_THINKING_EFFORTS;
+}
 
 const LLM_FIELD_INPUT_CLASS =
   "w-full rounded-card border border-border bg-bg-hover px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent";
@@ -130,7 +149,7 @@ function toLlmForm(config: LlmConfig | null): LlmForm {
     timeout: String(config?.timeout ?? 60),
     temperature: String(config?.temperature ?? 0.2),
     thinking_enabled: config?.thinking_enabled ?? false,
-    thinking_effort: config?.thinking_effort ?? "high",
+    thinking_effort: normalizeThinkingEffort(provider, config?.thinking_effort ?? "high"),
   };
 }
 
@@ -176,7 +195,7 @@ function llmPayloadFromForm(form: LlmForm): {
     timeout: Number(form.timeout),
     temperature: Number(form.temperature),
   };
-  if (form.provider === "deepseek") {
+  if (form.provider === "deepseek" || form.provider === "strata") {
     payload.thinking_enabled = form.thinking_enabled;
     payload.thinking_effort = form.thinking_effort;
   }
@@ -628,7 +647,7 @@ export function SystemSettingsPage() {
 
   const configuredProviders = settings?.llm_config.configured_providers ?? [];
   const providerKeyConfigured = (provider: string): boolean => {
-    if (provider === "lm_studio") {
+    if (KEYLESS_PROVIDERS.has(provider)) {
       return true;
     }
     if (configuredProviders.includes(provider)) {
@@ -666,7 +685,20 @@ export function SystemSettingsPage() {
     if (source === "storage_error") {
       return t("pages.systemSettings.llm.keyStorageError");
     }
+    // 本地 provider 无密钥是正常可用状态，不显示为“未配置”。
+    if (provider === "strata") {
+      return t("pages.systemSettings.llm.keyLocalOptional");
+    }
     return t("pages.systemSettings.llm.keyMissing");
+  };
+  // Provider 卡片状态点文案：Strata 无已保存/环境变量 Key 时显示为可选而非缺失。
+  const providerKeyStatusLabel = (provider: string): string => {
+    if (provider === "strata" && providerKeySource(provider) === "none") {
+      return t("pages.systemSettings.llm.keyLocalOptional");
+    }
+    return providerKeyConfigured(provider)
+      ? t("pages.systemSettings.secretConfigured")
+      : t("pages.systemSettings.secretMissing");
   };
   const providerStatusDot = (provider: string): string => {
     if (!providerKeyConfigured(provider)) {
@@ -732,7 +764,14 @@ export function SystemSettingsPage() {
       if (nextProvider === llmForm.provider) return;
       setLlmConnection(null);
       setLlmCheckState("idle");
-      setLlmForm((current) => applyProviderDefaults(current, nextProvider));
+      setLlmForm((current) => {
+        const next = applyProviderDefaults(current, nextProvider);
+        // 切换到 Strata 时，把其不支持的 max 强度归一到 high。
+        return {
+          ...next,
+          thinking_effort: normalizeThinkingEffort(nextProvider, next.thinking_effort),
+        };
+      });
     },
     [llmForm.provider]
   );
@@ -1337,7 +1376,7 @@ export function SystemSettingsPage() {
                         {t("pages.systemSettings.llm.providerHint")}
                       </span>
                     </div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                       {LLM_PROVIDER_OPTIONS.map((option) => {
                         const active = llmForm.provider === option.id;
                         return (
@@ -1361,18 +1400,10 @@ export function SystemSettingsPage() {
                               </span>
                             </span>
                             <span
-                              aria-label={
-                                providerKeyConfigured(option.id)
-                                  ? t("pages.systemSettings.secretConfigured")
-                                  : t("pages.systemSettings.secretMissing")
-                              }
+                              aria-label={providerKeyStatusLabel(option.id)}
                               className={`h-2 w-2 shrink-0 rounded-full ${providerStatusDot(option.id)}`}
                               role="img"
-                              title={
-                                providerKeyConfigured(option.id)
-                                  ? t("pages.systemSettings.secretConfigured")
-                                  : t("pages.systemSettings.secretMissing")
-                              }
+                              title={providerKeyStatusLabel(option.id)}
                             />
                           </button>
                         );
@@ -1475,11 +1506,14 @@ export function SystemSettingsPage() {
                         }))
                       }
                       placeholder={
-                        providerKeyConfigured(llmForm.provider)
-                          ? t("pages.systemSettings.llm.keepExistingSecret")
-                          : llmForm.provider === "lm_studio"
-                            ? "lm-studio"
-                            : ""
+                        llmForm.provider === "strata" &&
+                        providerKeySource("strata") === "none"
+                          ? t("pages.systemSettings.llm.keyOptionalPlaceholder")
+                          : providerKeyConfigured(llmForm.provider)
+                            ? t("pages.systemSettings.llm.keepExistingSecret")
+                            : llmForm.provider === "lm_studio"
+                              ? "lm-studio"
+                              : ""
                       }
                       type="password"
                       value={llmForm.api_key}
@@ -1533,14 +1567,16 @@ export function SystemSettingsPage() {
                   </label>
                 </div>
 
-                {llmForm.provider === "deepseek" ? (
+                {llmForm.provider === "deepseek" || llmForm.provider === "strata" ? (
                   <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-3">
                     <div className="min-w-0">
                       <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-text-primary">
                         {t("pages.systemSettings.llm.thinkingMode")}
                       </span>
                       <p className="mt-1 text-xs text-text-muted">
-                        {t("pages.systemSettings.llm.thinkingModeHint")}
+                        {llmForm.provider === "strata"
+                          ? t("pages.systemSettings.llm.thinkingModeHintStrata")
+                          : t("pages.systemSettings.llm.thinkingModeHint")}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -1572,7 +1608,7 @@ export function SystemSettingsPage() {
                           role="group"
                           title={t("pages.systemSettings.llm.thinkingEffortHint")}
                         >
-                          {LLM_THINKING_EFFORTS.map((effort) => {
+                          {thinkingEffortsForProvider(llmForm.provider).map((effort) => {
                             const active =
                               llmForm.thinking_effort === effort.value;
                             return (

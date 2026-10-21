@@ -13,6 +13,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
+import { isLlmSecretConfigured } from "@/lib/llmConfig";
 import { useTaskStore, type BackgroundTask } from "@/state/task-store";
 import { notify } from "@/lib/ui";
 import {
@@ -288,7 +289,9 @@ export function QuickRunPage() {
       label: t("pages.quickRun.secretStatus"),
       value: llmConfig?.api_key.configured
         ? t("pages.systemSettings.secretConfigured")
-        : t("pages.systemSettings.secretMissing"),
+        : isLlmSecretConfigured(llmConfig)
+          ? t("pages.systemSettings.llm.keyLocalOptional")
+          : t("pages.systemSettings.secretMissing"),
     },
   ];
   // 不能启动时列出全部原因，供页头提示与按钮 title 使用。

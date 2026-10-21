@@ -4,7 +4,12 @@ import os
 import unittest
 from unittest.mock import Mock, patch
 
-from tools.infra.llm.client import LLMClient
+from tools.infra.llm.client import (
+    KEYLESS_PROVIDERS,
+    LLMClient,
+    llm_request_available,
+    provider_is_keyless,
+)
 
 
 class ExtractContentTests(unittest.TestCase):
@@ -67,6 +72,24 @@ class AuthHeaderTests(unittest.TestCase):
         client = LLMClient(base_url="https://api.example.com", api_key="sk-abc123")
         headers = client.build_headers()
         self.assertEqual(headers["Content-Type"], "application/json")
+
+    def test_empty_api_key_omits_authorization_header(self) -> None:
+        client = LLMClient(
+            base_url="http://127.0.0.1:8081/v1", api_key="", provider="strata"
+        )
+        headers = client.build_headers()
+        self.assertNotIn("Authorization", headers)
+        self.assertEqual(headers["Content-Type"], "application/json")
+
+    def test_optional_api_key_keeps_bearer_authorization(self) -> None:
+        client = LLMClient(
+            base_url="http://127.0.0.1:8081/v1",
+            api_key="sk-strata-test-only",
+            provider="strata",
+        )
+        self.assertEqual(
+            client.build_headers()["Authorization"], "Bearer sk-strata-test-only"
+        )
 
 
 class ListModelsTests(unittest.TestCase):
@@ -400,6 +423,120 @@ class DeepSeekThinkingTests(unittest.TestCase):
             thinking_enabled=None,
         )
         self.assertEqual(sent["thinking"], {"type": "disabled"})
+
+
+class StrataReasoningTests(unittest.TestCase):
+    """Strata（Qwen3.8 本地 OpenAI 兼容服务）用顶层 reasoning_effort 控制思考。"""
+
+    def _sent(self, payload: dict, **kwargs) -> dict:
+        return StructuredOutputTests()._sent_payload(payload, provider="strata", **kwargs)
+
+    def test_defaults_to_reasoning_effort_none_without_thinking_object(self) -> None:
+        sent = self._sent(
+            {
+                "model": "qwen3.8-flash-next-q2_0",
+                "messages": [{"role": "user", "content": "hello"}],
+            }
+        )
+        self.assertEqual(sent["reasoning_effort"], "none")
+        self.assertNotIn("thinking", sent)
+
+    def test_enabled_thinking_sends_low_high_and_maps_max_to_high(self) -> None:
+        for effort, expected in (("low", "low"), ("high", "high"), ("max", "high")):
+            with self.subTest(effort=effort):
+                sent = self._sent(
+                    {
+                        "model": "qwen3.8-flash-next-q2_0",
+                        "messages": [{"role": "user", "content": "hello"}],
+                    },
+                    thinking_enabled=True,
+                    thinking_effort=effort,
+                )
+                self.assertEqual(sent["reasoning_effort"], expected)
+                self.assertNotIn("thinking", sent)
+
+    def test_json_object_disables_reasoning_even_when_thinking_enabled(self) -> None:
+        payload = {
+            "model": "qwen3.8-flash-next-q2_0",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_object"},
+        }
+        original = copy.deepcopy(payload)
+        sent = self._sent(payload, thinking_enabled=True, thinking_effort="max")
+        self.assertEqual(sent["reasoning_effort"], "none")
+        self.assertNotIn("thinking", sent)
+        self.assertEqual(sent["response_format"], {"type": "json_object"})
+        self.assertEqual(payload, original)
+
+    def test_explicit_reasoning_effort_is_not_overridden(self) -> None:
+        for effort in ("low", "high"):
+            with self.subTest(effort=effort):
+                sent = self._sent(
+                    {
+                        "model": "qwen3.8-flash-next-q2_0",
+                        "messages": [{"role": "user", "content": "hello"}],
+                        "reasoning_effort": effort,
+                    },
+                    thinking_enabled=False,
+                )
+                self.assertEqual(sent["reasoning_effort"], effort)
+                self.assertNotIn("thinking", sent)
+
+
+class KeylessProviderTests(unittest.TestCase):
+    """keyless 本地 provider 的共享判定：管线 credential gates 统一复用。"""
+
+    def test_keyless_provider_catalog_covers_local_providers(self) -> None:
+        self.assertEqual(KEYLESS_PROVIDERS, frozenset({"lm_studio", "strata"}))
+
+    def test_local_providers_are_keyless(self) -> None:
+        for provider in ("strata", "lm_studio", " Strata ", "LM_STUDIO"):
+            with self.subTest(provider=provider):
+                self.assertTrue(provider_is_keyless(provider))
+
+    def test_online_or_empty_provider_is_not_keyless(self) -> None:
+        for provider in ("openai", "deepseek", "openai_compatible", ""):
+            with self.subTest(provider=provider):
+                self.assertFalse(provider_is_keyless(provider))
+
+    def test_provider_falls_back_to_environment(self) -> None:
+        with patch.dict(os.environ, {"LLM_PROVIDER": "STRATA"}):
+            self.assertTrue(provider_is_keyless())
+            self.assertTrue(provider_is_keyless(""))
+
+    def test_keyless_local_provider_needs_only_model(self) -> None:
+        for provider in ("strata", "lm_studio"):
+            with self.subTest(provider=provider):
+                self.assertTrue(
+                    llm_request_available(
+                        provider=provider, model="qwen3.8-flash-next-q2_0"
+                    )
+                )
+
+    def test_online_provider_without_api_key_is_unavailable(self) -> None:
+        for provider in ("openai", "deepseek", "openai_compatible", ""):
+            with self.subTest(provider=provider):
+                self.assertFalse(
+                    llm_request_available(provider=provider, model="gpt-4")
+                )
+
+    def test_model_is_required_even_for_keyless_or_explicit_key(self) -> None:
+        self.assertFalse(llm_request_available(provider="strata", model=""))
+        self.assertFalse(
+            llm_request_available(provider="strata", model=" ", api_key="")
+        )
+        self.assertFalse(
+            llm_request_available(provider="openai", model="", api_key="sk-test")
+        )
+
+    def test_explicit_api_key_makes_online_request_available(self) -> None:
+        self.assertTrue(
+            llm_request_available(provider="openai", api_key="sk-test", model="gpt-4")
+        )
+
+    def test_request_availability_uses_environment_provider(self) -> None:
+        with patch.dict(os.environ, {"LLM_PROVIDER": "strata"}):
+            self.assertTrue(llm_request_available(model="qwen3.8-flash-next-q2_0"))
 
 
 if __name__ == "__main__":

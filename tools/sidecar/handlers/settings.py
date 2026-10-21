@@ -173,12 +173,15 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
     except ValueError:
         host = ""
     local_host = host in ("127.0.0.1", "localhost", "::1")
+    strata_local = requested_provider == "strata"
     lm_studio_compat = requested_provider == "lm_studio" or api_key == "lm-studio"
     local_endpoint = local_host and (
         requested_provider == "openai_compatible" or lm_studio_compat
     )
-    display_label = "LM Studio" if lm_studio_compat else label
-    blocked_code = "BLOCKED_LOCAL_PROVIDER" if lm_studio_compat else "BLOCKED_PROVIDER"
+    # Strata 与 LM Studio 同为本地服务：无 Key 时正常探测 /models，不报凭证缺失。
+    keyless_local = strata_local or lm_studio_compat
+    display_label = "LM Studio" if lm_studio_compat and not strata_local else label
+    blocked_code = "BLOCKED_LOCAL_PROVIDER" if keyless_local else "BLOCKED_PROVIDER"
 
     if api_key and not _valid_api_key(api_key):
         return {
@@ -202,7 +205,7 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
             "models": [],
         }
 
-    if not api_key and not (lm_studio_compat or local_endpoint):
+    if not api_key and not (keyless_local or local_endpoint):
         return {
             "meta": {"correlation_id": correlation_id},
             "status": "blocked",
@@ -591,6 +594,7 @@ def _resolve_policy_path() -> Path | None:
 def _provider_label(provider: str) -> str:
     return {
         "lm_studio": "LM Studio",
+        "strata": "Strata",
         "openai": "OpenAI",
         "deepseek": "DeepSeek",
         "openai_compatible": "OpenAI-compatible provider",

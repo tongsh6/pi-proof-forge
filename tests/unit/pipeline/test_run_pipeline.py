@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
-from tools.run_pipeline import main
+from tools.run_pipeline import has_llm_env, main
 
 
 class RunPipelineExclusionTests(unittest.TestCase):
@@ -170,6 +170,44 @@ class RunPipelineExclusionTests(unittest.TestCase):
                     finally:
                         os.chdir(cwd)
         self.assertEqual(code, 2)
+
+
+class HasLlmEnvKeylessTests(unittest.TestCase):
+    """无 Key 的本地 provider（Strata / LM Studio）也视为 LLM 可用。"""
+
+    def _has_llm_env(self, **env: str) -> bool:
+        with mock.patch.dict(os.environ, env, clear=True):
+            return has_llm_env()
+
+    def test_keyless_strata_with_model_is_available(self) -> None:
+        self.assertTrue(
+            self._has_llm_env(
+                LLM_PROVIDER="strata", LLM_MODEL="qwen3.8-flash-next-q2_0"
+            )
+        )
+
+    def test_keyless_lm_studio_with_model_is_available(self) -> None:
+        self.assertTrue(
+            self._has_llm_env(LLM_PROVIDER="lm_studio", LLM_MODEL="local-model")
+        )
+
+    def test_online_provider_without_api_key_is_unavailable(self) -> None:
+        self.assertFalse(
+            self._has_llm_env(LLM_PROVIDER="openai", LLM_MODEL="gpt-4")
+        )
+
+    def test_missing_model_is_unavailable(self) -> None:
+        self.assertFalse(self._has_llm_env(LLM_PROVIDER="strata", LLM_MODEL=""))
+        self.assertFalse(
+            self._has_llm_env(LLM_PROVIDER="openai", LLM_MODEL="", LLM_API_KEY="sk-test")
+        )
+
+    def test_online_provider_with_api_key_is_available(self) -> None:
+        self.assertTrue(
+            self._has_llm_env(
+                LLM_PROVIDER="openai", LLM_MODEL="gpt-4", LLM_API_KEY="sk-test"
+            )
+        )
 
 
 if __name__ == "__main__":
