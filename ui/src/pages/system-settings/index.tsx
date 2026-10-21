@@ -33,6 +33,7 @@ import {
   scanMaterialReference,
   updateLiepinCredential,
   updateEvidenceInferenceSetting,
+  updateAiDisclosureSetting,
   updateLlmConfig,
   updateMaterialSourceRoots,
 } from "@/lib/sidecar/api";
@@ -47,7 +48,7 @@ import type {
 } from "@/lib/sidecar/types";
 
 type LoadState = "loading" | "ready" | "error";
-type SectionId = "channels" | "materialSources" | "evidenceInference" | "llm";
+type SectionId = "channels" | "materialSources" | "evidenceInference" | "aiDisclosure" | "llm";
 type LlmSaveState = "idle" | "saving" | "saved";
 type LlmCheckState = "idle" | "checking" | "checked";
 
@@ -395,6 +396,7 @@ export function SystemSettingsPage() {
   const [newRootLabel, setNewRootLabel] = useState("");
   const [rootsBusy, setRootsBusy] = useState(false);
   const [inferenceToggleBusy, setInferenceToggleBusy] = useState(false);
+  const [aiDisclosureToggleBusy, setAiDisclosureToggleBusy] = useState(false);
   const [rootsError, setRootsError] = useState("");
   const [referencedItems, setReferencedItems] = useState<MaterialSourceItem[]>([]);
   const [referencesLoading, setReferencesLoading] = useState(false);
@@ -416,7 +418,9 @@ export function SystemSettingsPage() {
         ? "materialSources"
         : searchParams.get("section") === "evidenceInference"
           ? "evidenceInference"
-          : "channels");
+          : searchParams.get("section") === "aiDisclosure"
+            ? "aiDisclosure"
+            : "channels");
   const [llmForm, setLlmForm] = useState<LlmForm>(() => toLlmForm(null));
   const [llmSaveState, setLlmSaveState] = useState<LlmSaveState>("idle");
   const [llmCheckState, setLlmCheckState] = useState<LlmCheckState>("idle");
@@ -457,6 +461,19 @@ export function SystemSettingsPage() {
       notify("error", getErrorMessage(reason));
     } finally {
       setInferenceToggleBusy(false);
+    }
+  }, [loadSettings, t]);
+
+  const handleAiDisclosureToggle = useCallback(async (enabled: boolean) => {
+    setAiDisclosureToggleBusy(true);
+    try {
+      await updateAiDisclosureSetting(enabled);
+      await loadSettings();
+      notify("success", t("toasts.settings.aiDisclosureSaved"));
+    } catch (reason) {
+      notify("error", getErrorMessage(reason));
+    } finally {
+      setAiDisclosureToggleBusy(false);
     }
   }, [loadSettings, t]);
 
@@ -960,8 +977,8 @@ export function SystemSettingsPage() {
         <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
           <aside className="rounded-panel border border-border bg-bg-panel p-4 shadow-[var(--shadow-panel)]">
             <nav className="space-y-2" aria-label={t("pages.systemSettings.title")}>
-              {(["channels", "materialSources", "evidenceInference", "llm"] as SectionId[]).map((section) => {
-                const Icon = section === "channels" ? Wifi : section === "materialSources" ? FolderOpen : section === "evidenceInference" ? Sparkles : Settings2;
+              {(["channels", "materialSources", "evidenceInference", "aiDisclosure", "llm"] as SectionId[]).map((section) => {
+                const Icon = section === "channels" ? Wifi : section === "materialSources" ? FolderOpen : section === "evidenceInference" ? Sparkles : section === "aiDisclosure" ? ShieldCheck : Settings2;
                 const isActive = section === activeSection;
                 return (
                   <button
@@ -1336,6 +1353,37 @@ export function SystemSettingsPage() {
                   </span>
                 </label>
                 <p className="text-xs text-text-muted">{t("pages.systemSettings.evidenceInference.note")}</p>
+              </div>
+            ) : activeSection === "aiDisclosure" ? (
+              <div className="space-y-5" data-testid="settings-ai-disclosure">
+                <div className="border-b border-border pb-4">
+                  <h2 className="text-lg font-semibold text-text-primary">
+                    {t("pages.systemSettings.aiDisclosure.title")}
+                  </h2>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {t("pages.systemSettings.aiDisclosure.subtitle")}
+                  </p>
+                </div>
+                <label className="flex items-start gap-3 rounded-card border border-border bg-bg-primary/70 p-4 text-sm">
+                  <input
+                    checked={settings.ai_disclosure?.enabled === true}
+                    data-testid="ai-disclosure-toggle"
+                    disabled={aiDisclosureToggleBusy}
+                    onChange={(event) => void handleAiDisclosureToggle(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <span className="block font-medium text-text-primary">{t("pages.systemSettings.aiDisclosure.enabled")}</span>
+                    <span className="mt-1 block text-text-secondary">{t("pages.systemSettings.aiDisclosure.enabledHint")}</span>
+                  </span>
+                </label>
+                <div className="rounded-card border border-border bg-bg-primary/70 p-4">
+                  <p className="text-xs font-medium text-text-secondary">{t("pages.systemSettings.aiDisclosure.previewLabel")}</p>
+                  <p className="mt-2 text-sm text-text-primary" data-testid="ai-disclosure-preview">
+                    {settings.ai_disclosure?.text || t("pages.systemSettings.aiDisclosure.previewFallback")}
+                  </p>
+                </div>
+                <p className="text-xs text-text-muted">{t("pages.systemSettings.aiDisclosure.note")}</p>
               </div>
             ) : (
               <div className="space-y-5">

@@ -13,10 +13,18 @@
   const leaves=()=>Array.from(document.querySelectorAll('*')).filter(e=>visible(e)
     && e.textContent.trim().length<180 && !Array.from(e.children).some(c=>c.textContent.trim()===e.textContent.trim()));
   const panels=Array.from(document.querySelectorAll('.im-ui-chat-container,.im-ui-contact-list,[class*="im-ui-chat"],[class*="im-ui-drawer"],[class*="ant-im"]')).filter(visible).slice(0,5);
+  const pickComposer=e=>({tag:e.tagName,class_name:brief(e.className,160),placeholder:brief(e.getAttribute&&e.getAttribute('placeholder'),80),
+    contenteditable:brief(e.getAttribute&&e.getAttribute('contenteditable'),20),role:brief(e.getAttribute&&e.getAttribute('role'),20),
+    disabled:Boolean(e.disabled),text:brief(e.textContent,40),parent_class:brief(e.parentElement?e.parentElement.className:'',160)});
+  const composer={
+    inputs:Array.from(document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')).filter(visible).slice(0,8).map(pickComposer),
+    send_buttons:Array.from(document.querySelectorAll('.im-ui-basic-send-btn,button,[role="button"]')).filter(visible)
+      .filter(e=>e.textContent.trim()==='发送').slice(0,6).map(pickComposer)
+  };
   const detail={probe:'chat_ready',url:clean(location.href),url_match:clean(location.href)===clean(payload.job_url),
     company_present:normalize(document.body?document.body.innerText:'').includes(normalize(payload.company)),
     position_present:normalize(document.body?document.body.innerText:'').includes(normalize(payload.position)),
-    frames,in_iframe:docs.length>1,
+    frames,in_iframe:docs.length>1,composer,
     im_panels:panels.map(e=>({class_name:brief(e.className,160),text:brief(e.innerText,700)})),
     resume_entries:leaves().filter(e=>/^(发简历|发送简历)$/.test(e.textContent.trim())).slice(0,6)
       .map(e=>({tag:e.tagName,class_name:brief(e.className,160),parent_class:brief(e.parentElement?e.parentElement.className:'',160),

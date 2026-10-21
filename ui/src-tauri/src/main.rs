@@ -480,6 +480,7 @@ fn main() {
                             ("probeChatOpen", Some(window)) => liepin_webview::probe_chat_open_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("probeSnapshot", Some(window)) => liepin_webview::probe_snapshot_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("probeResumeDialog", Some(window)) => liepin_webview::probe_resume_dialog_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
+                            ("probeAiDisclosureDryRun", Some(window)) => liepin_webview::probe_ai_disclosure_dry_run_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("upload", Some(window)) => liepin_webview::auto_upload_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send" | "receipt", Some(window)) =>
                                 liepin_webview::followup_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default(), action.clone()).await,

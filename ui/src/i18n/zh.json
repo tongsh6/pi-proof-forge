@@ -87,6 +87,14 @@
         "title": "最近活动",
         "subtitle": "最近的证据、简历和投递事件"
       },
+      "activityDetail": {
+        "resumeVariant": "{{target}} · {{variant}} 版",
+        "resumeFallbackVariant": "已生成 {{variant}} 版简历",
+        "resumeFallback": "已生成简历",
+        "submission": "{{target}} · {{platform}} · {{status}}",
+        "submissionNoPlatform": "{{target}} · {{status}}",
+        "submissionFallback": "{{platform}} · {{status}}"
+      },
       "matchTrend": {
         "title": "匹配趋势",
         "subtitle": "最近匹配报告分数走势",
@@ -1084,7 +1092,8 @@
         "blocked": "已阻断",
         "queued": "已排队",
         "unknown": "未知",
-        "manual_recorded": "手动记录"
+        "manual_recorded": "手动记录",
+        "check_mode_success_submit_skipped": "检查完成（未投递）"
       },
       "fields": {
         "company": "公司",
@@ -1127,6 +1136,8 @@
           "not_submitted": "已核实文件名在上传前被拒绝，可用短文件名继续同一份 PDF",
           "unknown": "上传结果未确认，禁止自动重传"
         },
+        "aiDisclosureSent": "AI 自动化声明：已发送给招聘方",
+        "aiDisclosurePending": "AI 自动化声明：将在发送简历前由 App 发送",
         "platformFile": "平台附件",
         "removeBoundary": "仅移除这份平台附件；本地 PDF、批准快照和投递回执保留。",
         "removeConsent": "我确认移除上述平台附件",
@@ -1308,7 +1319,8 @@
         "channels": "通道",
         "llm": "模型",
         "materialSources": "材料来源",
-      "evidenceInference": "证据推断"
+      "evidenceInference": "证据推断",
+        "aiDisclosure": "投递声明"
       },
       "exclusionList": {
         "title": "企业例外清单",
@@ -1457,6 +1469,15 @@
         "enabled": "允许 LLM 跨文档推断",
         "enabledHint": "关闭后只显示规则可得的 L2 时间线索，不调用模型；接受/否决仍然有效。",
         "note": "推断候选不写卡；接受后字段进入待审核，来源与置信度记录在卡片 provenance 中。"
+      },
+      "aiDisclosure": {
+        "title": "AI 投递声明",
+        "subtitle": "开启后，每次真实投递前由 App 在目标沟通会话中向招聘方发送一条 AI 自动化声明。",
+        "enabled": "每次投递前发送 AI 自动化声明",
+        "enabledHint": "投递流程会先发送固定声明，确认送达后才继续发简历；声明未确认时本次投递会被阻断。",
+        "previewLabel": "将发送给招聘方的声明",
+        "previewFallback": "声明文案由产品固定提供",
+        "note": "声明只披露自动化事实，不包含模型、提示词、简历细节或本机信息；关闭时投递行为与之前一致。"
       },
       "materialSources": {
         "title": "材料来源",
@@ -1783,7 +1804,8 @@
     "settings": {
       "materialRootSaved": "材料来源根已保存",
       "materialRootRemoved": "材料来源根已移除",
-      "evidenceInferenceSaved": "证据推断设置已保存"
+      "evidenceInferenceSaved": "证据推断设置已保存",
+      "aiDisclosureSaved": "AI 投递声明设置已保存"
     }
   },
   "reasons": {

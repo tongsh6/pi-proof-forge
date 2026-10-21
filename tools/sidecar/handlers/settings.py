@@ -8,16 +8,19 @@ from urllib.parse import urlparse
 
 from tools.infra.llm.client import LLMClient
 from tools.infra.llm_credentials import LLMApiKeyStore, normalize_provider
+from tools.infra.ai_disclosure import AI_DISCLOSURE_TEXT
 from tools.infra.liepin_readonly import liepin_readonly
 from tools.infra.liepin_token_file import CredentialStorageError
 from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
 from tools.policy.exclusions import (
     resolve_policy_path,
+    load_ai_disclosure_enabled,
     load_delivery_settings,
     load_evidence_inference_enabled,
     load_exclusion_list,
     load_legal_entity_exclusion_list,
     load_material_source_roots,
+    save_ai_disclosure_enabled,
     save_delivery_settings,
     save_evidence_inference_enabled,
     save_exclusion_list,
@@ -66,6 +69,10 @@ def handle_settings_get(params: dict[str, Any]) -> dict[str, Any]:
         "excluded_legal_entities": legal_entity_exclusion_list,
         "material_source_roots": load_material_source_roots(),
         "evidence_inference": {"enabled": load_evidence_inference_enabled()},
+        "ai_disclosure": {
+            "enabled": load_ai_disclosure_enabled(),
+            "text": AI_DISCLOSURE_TEXT,
+        },
         "channels": [
             {
                 "id": "liepin",
@@ -311,6 +318,16 @@ def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
             raise ValueError("evidence_inference payload must be {enabled: bool}")
         _ = save_evidence_inference_enabled(payload["enabled"])
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "section": section,
+            "saved": True,
+        }
+
+    if section == "ai_disclosure":
+        if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
+            raise ValueError("ai_disclosure payload must be {enabled: bool}")
+        _ = save_ai_disclosure_enabled(payload["enabled"])
         return {
             "meta": {"correlation_id": correlation_id},
             "section": section,

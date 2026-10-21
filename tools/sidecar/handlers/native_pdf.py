@@ -10,6 +10,7 @@ from uuid import uuid4
 from urllib.parse import urlsplit
 
 from tools.sidecar.handlers import agent, jobs
+from tools.infra.ai_disclosure import AI_DISCLOSURE_TEXT, disclosure_sha256
 from tools.infra.persistence.review_queue import locked_review_queue, atomic_write_json
 from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
 from tools.infra.persistence.job_lead_binding import reviewed_official_profile
@@ -118,6 +119,39 @@ def _quality_snapshot(saved,markdown,pdf):
         raise ValueError('quality_scorecard_missing_or_changed') from exc
 
 
+def _ai_disclosure_enabled():
+    from tools.policy.exclusions import load_ai_disclosure_enabled
+    return load_ai_disclosure_enabled()
+
+
+def _disclosure_recorded(q):
+    """返回已记录且与当前固定文案一致的投递声明；开关关闭或文案变化时视为未发送。"""
+    record=q.get('pdf_delivery',{}).get('ai_disclosure')
+    if not isinstance(record,dict):return None
+    if record.get('text')!=AI_DISCLOSURE_TEXT or record.get('text_sha256')!=disclosure_sha256():return None
+    return record
+
+
+def _disclosure_observation_matches(detail,candidate):
+    """只认真实聊天页里目标会话中已发出、且带发送证据的声明；不把点击或草稿当成功。"""
+    try:
+        if detail.get('action')!={'click_issued':True,'reason':'approved_ai_disclosure_send'}:return False
+        context=detail.get('context') or {}
+        if 'im-ui-chat-container' not in str(context.get('class_name','')).split():return False
+        normalize=lambda s:''.join(unicodedata.normalize('NFKC',str(s)).split()).lower()
+        if any(normalize(candidate[k]) not in normalize(context.get('text','')) for k in ['company','position']):return False
+        sent=detail.get('ai_disclosure') or {}
+        if sent.get('text')!=AI_DISCLOSURE_TEXT or sent.get('confirmed') is not True:return False
+        evidence=sent.get('evidence')
+        if evidence=='network':
+            items=sent.get('network') or []
+            return any(isinstance(item,dict) and item.get('http_status')==200
+                and AI_DISCLOSURE_TEXT in str(item.get('request','')) for item in items)
+        if evidence=='dom':return sent.get('dom_confirmed') is True
+        return False
+    except (KeyError,TypeError,AttributeError):return False
+
+
 def _public(queue):
     c=queue['candidates'][0]
     sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(queue['run_id'],c)
@@ -137,6 +171,9 @@ def _public(queue):
             'phase':queue.get('pdf_delivery',{}).get('state') or ('attachment_verified' if queue.get('attachment_binding') else queue.get('pdf_upload',{}).get('state','prepared')),
             'can_confirm_send':not recovery_only and _confirmation_matches(queue),'recovery_only':recovery_only,
             'platform_filename':queue.get('attachment_binding',{}).get('filename',''),
+            'ai_disclosure_enabled':_ai_disclosure_enabled(),
+            'ai_disclosure_text':AI_DISCLOSURE_TEXT,
+            'ai_disclosure_sent':_disclosure_recorded(queue) is not None,
             'platform_attachment_state':queue.get('platform_attachment',{}).get('state',''),
             'platform_attachment_checked_at':queue.get('platform_attachment',{}).get('observed_at',''),
             'attachment_removal_state':queue.get('pdf_attachment_removal',{}).get('state','')}
@@ -385,8 +422,16 @@ def _confirmation_matches(q):
     try:
         d=q['pdf_delivery']
         if d.get('state')!='resume_interaction_pending' or d.get('final_send_started'):return False
-        raw=d['interaction_history'][-1]['observation']['responses'][0]['payload']
-        detail=json.loads(raw);dialogs=detail.get('confirmation',[])
+        # AI 声明是独立聊天写入，会插在 prepare 与 send 之间；确认框事实取最近一次非声明观察，
+        # 仍要求该观察自带 context/确认框/唯一目标附件与原按钮，不因跳过声明而放宽。
+        detail=None
+        for event in reversed(d.get('interaction_history',[])):
+            if event.get('action')=='ai_disclosure':continue
+            responses=event.get('observation',{}).get('responses') or []
+            if not responses:return False
+            detail=json.loads(responses[0].get('payload') or '{}');break
+        if detail is None:return False
+        dialogs=detail.get('confirmation',[])
         if len(dialogs)!=1:return False
         dialog=dialogs[0];binding=q['attachment_binding'];c=q['candidates'][0]
         normalize=lambda s:''.join(unicodedata.normalize('NFKC',str(s)).split()).lower()
@@ -413,6 +458,14 @@ def _dialog_captured(q):
     return False
 
 
+def _ai_disclosure_requirement(params,action,d,binding,c):
+    return {'meta':params['meta'],'action':action,'delivery_ref':d['attempt_id'],'filename':binding['filename'],
+            'attachment_id':binding['attachment_id'],'file_id':binding.get('file_id',''),
+            'job_url':c['job_url'],'company':c['company'],'position':c['position'],
+            'requires_ai_disclosure':True,
+            'ai_disclosure':{'text':AI_DISCLOSURE_TEXT,'sha256':disclosure_sha256()}}
+
+
 def handle_pdf_interaction_packet(params):
     run_id=_id(params.get('run_id'));action=params.get('action');path=agent._get_queue_file(run_id)
     if action not in {'inspect','prepare','send'}:raise ValueError('unsupported_pdf_interaction')
@@ -424,14 +477,20 @@ def handle_pdf_interaction_packet(params):
             raise ValueError('pdf_delivery_not_pending')
         if action=='prepare':
             if q.get('daily_interruption'):raise ValueError('daily_recovery_required')
+            # 开关开启时，准备前必须先发出 AI 声明；声明本身是独立、可核对的一次聊天写入。
+            if (not d.get('final_send_started') and _ai_disclosure_enabled() and _disclosure_recorded(q) is None):
+                return _ai_disclosure_requirement(params,action,d,binding,c)
             # 首次 prepare 的点击可能未生效（入口未打开/目标未核验）；确认框抓取成功前允许重试，避免一次失败锁死投递。
             if d.get('resume_interaction_started') and _dialog_captured(q):raise ValueError('resume_interaction_already_started')
             d.update(state='resume_interaction_pending',resume_interaction_started=True)
             agent._save_queue(path,q)
         if action=='send':
             from tools.sidecar.handlers.daily_delivery import check_queue_write
+            # 每日中断/恢复、内容与额度门禁先于声明写入，避免恢复态借助声明步骤产生新的平台写入。
             check_queue_write(q,sealed['pdf_sha256'])
             if d.get('final_send_started'):raise ValueError('pdf_final_send_already_started')
+            if _ai_disclosure_enabled() and _disclosure_recorded(q) is None:
+                return _ai_disclosure_requirement(params,action,d,binding,c)
             if not _confirmation_matches(q):raise ValueError('pdf_confirmation_not_verified')
             d.update(state='final_send_pending',final_send_started=True,final_send_started_at=agent._utcnow_iso())
             agent._save_queue(path,q)
@@ -445,7 +504,17 @@ def handle_record_pdf_interaction(params):
     with locked_review_queue(path):
         q=agent._load_queue(path);d=q.get('pdf_delivery',{})
         if d.get('attempt_id')!=params.get('delivery_ref'):raise ValueError('pdf_delivery_not_pending')
-        d.setdefault('interaction_history',[]).append({'action':params.get('action'),'observed_at':agent._utcnow_iso(),'observation':_sanitize_observation(observation)})
+        sanitized=_sanitize_observation(observation)
+        d.setdefault('interaction_history',[]).append({'action':params.get('action'),'observed_at':agent._utcnow_iso(),'observation':sanitized})
+        if params.get('action')=='ai_disclosure':
+            detail={}
+            try:
+                for response in sanitized.get('responses',[]):
+                    if response.get('method')=='OBSERVE':detail=json.loads(response['payload'])
+            except (ValueError,TypeError):detail={}
+            if _disclosure_observation_matches(detail,q['candidates'][0]):
+                d['ai_disclosure']={'text':AI_DISCLOSURE_TEXT,'text_sha256':disclosure_sha256(),
+                    'observed_at':agent._utcnow_iso()}
         agent._save_queue(path,q)
         return {'meta':params['meta'],**_public(q)}
 
@@ -496,6 +565,8 @@ def handle_verify_pdf_receipt(params):
             recorder.record.input_artifacts.update(native_receipt_sha256=archive_sha,receipt_source='app_browser',
                 receipt_business_flag=1,native_receipt_source_observed_at=source_time)
             recorder.add_step('login_check','success','App 原生登录会话成功读取、上传并回读指定附件')
+            if d.get('ai_disclosure'):
+                recorder.add_step('ai_disclosure','success','投递前已向招聘方发送 AI 自动化声明')
             recorder.add_step('chat_send_resume','success','确认框所选平台附件 ID 与已批准 PDF 一致；发送请求携带同一附件 ID')
             recorder.add_step('submit','success','send-resume 业务响应 HTTP 200 / flag 1 / data {}，无再次发送')
             recorder.add_step('receipt','success',json.dumps({'parser_version':1,'http_status':200,'business_flag':1,'receipt_sha256':archive_sha}))

@@ -122,6 +122,7 @@ export async function diagnoseLiepinNativeAttachments(): Promise<NativeLiepinObs
 
 export type NativePdfPreparation = {quality?:import('./types').PdfQuality;single_delivery_authorized?: boolean; verification_error?: string; meta: {correlation_id: string}; run_id: string; company: string; position: string; matching_score?: number; can_confirm_send?: boolean; account_effects_accepted?: boolean; recovery_only?: boolean;
   job_lead_id: string; pdf_sha256: string; pdf_path: string; pdf_filename?: string; phase: string; platform_filename?: string; attachment_removal_state?: string;
+  ai_disclosure_enabled?: boolean; ai_disclosure_text?: string; ai_disclosure_sent?: boolean;
   platform_attachment_state?: string; platform_attachment_checked_at?: string};
 export async function prepareLiepinPdf(quickRunId: string): Promise<NativePdfPreparation> {
   return client.call<NativePdfPreparation>("run.agent.prepareLiepinPdf", {quick_run_id:quickRunId});
@@ -549,6 +550,10 @@ export async function confirmEvidenceInference(input:{
 
 export async function updateEvidenceInferenceSetting(enabled:boolean):Promise<import('./types').SettingsUpdateResult> {
   return client.call("settings.update", {section:"evidence_inference", payload:{enabled}});
+}
+
+export async function updateAiDisclosureSetting(enabled:boolean):Promise<import('./types').SettingsUpdateResult> {
+  return client.call("settings.update", {section:"ai_disclosure", payload:{enabled}});
 }
 
 export async function setEvidenceTriage(

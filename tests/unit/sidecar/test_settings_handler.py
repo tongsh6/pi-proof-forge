@@ -1018,3 +1018,62 @@ class SettingsStrataProviderTests(unittest.TestCase):
         self.assertIn("strata", stored["llm_config"]["configured_providers"])
         self.assertIn("openai", stored["llm_config"]["configured_providers"])
 
+
+class SettingsAiDisclosureTests(unittest.TestCase):
+    def _policy(self, tmp: str) -> Path:
+        policy = Path(tmp) / "policy.local.yaml"
+        policy.write_text('delivery_mode: "auto"\nbatch_review: "false"\n', encoding="utf-8")
+        return policy
+
+    def _get(self) -> dict[str, Any]:
+        return handle_settings_get({"meta": {"correlation_id": "ai-disclosure"}})
+
+    def _update(self, enabled: Any) -> dict[str, Any]:
+        return handle_settings_update({
+            "meta": {"correlation_id": "ai-disclosure"},
+            "section": "ai_disclosure",
+            "payload": {"enabled": enabled},
+        })
+
+    def test_default_off_with_fixed_statement(self) -> None:
+        from tools.infra.ai_disclosure import AI_DISCLOSURE_TEXT
+
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                result = self._get()
+
+        self.assertEqual(result["ai_disclosure"]["enabled"], False)
+        self.assertEqual(result["ai_disclosure"]["text"], AI_DISCLOSURE_TEXT)
+        self.assertIn("AI 自动化", result["ai_disclosure"]["text"])
+        self.assertLessEqual(len(result["ai_disclosure"]["text"]), 200)
+
+    def test_toggle_persists_and_keeps_other_policy_scalars(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                saved = self._update(True)
+                enabled = self._get()["ai_disclosure"]["enabled"]
+                text = policy.read_text(encoding="utf-8")
+                disabled = self._update(False)
+                reloaded = self._get()["ai_disclosure"]["enabled"]
+
+        self.assertTrue(saved["saved"])
+        self.assertTrue(disabled["saved"])
+        self.assertEqual(enabled, True)
+        self.assertEqual(reloaded, False)
+        self.assertIn("delivery_mode", text)
+
+    def test_rejects_non_boolean_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                with self.assertRaises(ValueError):
+                    self._update("yes")
+                with self.assertRaises(ValueError):
+                    handle_settings_update({
+                        "meta": {"correlation_id": "ai-disclosure"},
+                        "section": "ai_disclosure",
+                        "payload": {},
+                    })
+

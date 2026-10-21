@@ -431,6 +431,14 @@ async fn ensure_target_chat_open(browser:&WebviewWindow,packet:&Value)->Result<(
     Ok(())
 }
 
+async fn send_ai_disclosure(app:&AppHandle,browser:&WebviewWindow,packet:&Value,run_id:&str)->Result<Value,String>{
+    // 独立声明步骤：在目标会话里真实发出一条 AI 自动化声明；确认后由后端记录证据，未确认则阻断投递。
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let observation=run_pdf_script(app,browser,include_str!("liepin_native_ai_disclosure.js"),packet,&nonce).await?;
+    pdf_rpc(app.clone(),"run.agent.recordPdfInteraction",json!({"run_id":run_id,"action":"ai_disclosure",
+        "delivery_ref":packet["delivery_ref"],"observation":observation})).await
+}
+
 async fn continue_liepin_pdf_delivery_inner(app:AppHandle,window:WebviewWindow,run_id:String,action:String) -> Result<Value,String> {
     require_local_command(&window)?;
     if !matches!(action.as_str(),"inspect"|"prepare"|"send"){return Err("INVALID_PDF_ACTION".into());}
@@ -445,6 +453,15 @@ async fn continue_liepin_pdf_delivery_inner(app:AppHandle,window:WebviewWindow,r
     }
     // 打开聊天与点击「发简历」拆成两步；只有准备/检查阶段需要确保抽屉已打开，发送阶段沿用已核验的确认框。
     if matches!(action.as_str(),"inspect"|"prepare"){ensure_target_chat_open(&browser,&packet).await?;}
+    // AI 声明与发简历是两次独立写入：先确认声明已送达，再获取发简历/发送许可；声明未确认时代码不会继续。
+    if packet["requires_ai_disclosure"]==true && action=="send" {ensure_target_chat_open(&browser,&packet).await?;}
+    for _ in 0..2 {
+        if packet["requires_ai_disclosure"]!=true {break;}
+        let recorded=send_ai_disclosure(&app,&browser,&packet,&run_id).await?;
+        if recorded["ai_disclosure_sent"]!=true {return Err("ai_disclosure_not_confirmed".into());}
+        packet=pdf_rpc(app.clone(),"run.agent.pdfInteractionPacket",json!({"run_id":run_id,"action":action})).await?;
+    }
+    if packet["requires_ai_disclosure"]==true {return Err("ai_disclosure_not_confirmed".into());}
     // 导航/等待后重验，页面再以截止时间及取消标志约束真正点击和网络写入。
     if action=="send" {
         let permit=pdf_rpc(app.clone(),"daily.permit",json!({"run_id":run_id})).await?;
@@ -728,6 +745,26 @@ pub async fn probe_resume_dialog_from_trigger(app:AppHandle,window:WebviewWindow
     let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
     let observation=run_pdf_script(&app,&browser,include_str!("liepin_native_resume_dialog_probe.js"),&packet,&nonce).await?;
     Ok(json!({"page_url":page_url,"observation":observation}))
+}
+
+pub async fn probe_ai_disclosure_dry_run_from_trigger(app:AppHandle,window:WebviewWindow,run_id:String)->Result<Value,String>{
+    // 只读探测：向真实输入框填入 AI 声明并确认发送按钮可用，随后清空；不点击发送、不产生平台写入。
+    let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    ensure_probe_session(&app,&window).await?;
+    let packet=pdf_rpc(app.clone(),"run.agent.pdfTargetPacket",json!({"run_id":run_id})).await?;
+    let settings=pdf_rpc(app.clone(),"settings.get",json!({})).await?;
+    let text=settings["ai_disclosure"]["text"].as_str().ok_or("AI_DISCLOSURE_TEXT_MISSING")?.to_string();
+    let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+    let target:Url=packet["job_url"].as_str().ok_or("INVALID_PDF_TARGET")?.parse().map_err(|_|"INVALID_PDF_TARGET")?;
+    if !allowed_navigation(&target){return Err("INVALID_PDF_TARGET".into());}
+    browser.navigate(target).map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED")?;
+    probe_sleep_ms(3500).await?;
+    let mut chat_payload=packet.clone();
+    chat_payload["ai_disclosure"]=json!({"text":text});
+    ensure_target_chat_open(&browser,&chat_payload).await?;
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let observation=run_pdf_script(&app,&browser,include_str!("liepin_native_ai_disclosure_dry_run.js"),&chat_payload,&nonce).await?;
+    Ok(json!({"observation":observation}))
 }
 
 pub async fn diagnose_from_trigger(app: AppHandle, window: WebviewWindow) -> Result<Value,String> {

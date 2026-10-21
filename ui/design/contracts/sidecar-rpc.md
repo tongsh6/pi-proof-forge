@@ -873,6 +873,8 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 
 2026-10-21 Strata 本地兼容：`provider=strata` 复用 OpenAI 兼容路径，默认 base_url `http://127.0.0.1:8081/v1`、model `qwen3.8-flash-next-q2_0`。本地回环默认免鉴权：`LLMClient.build_headers()` 在 `api_key` 为空时不发送 `Authorization`（这是所有 provider 的通用行为；在线 provider 缺 Key 仍会在服务端 401），有可选 Key 时仍为 Bearer。请求未显式指定 `reasoning_effort` 时，结构化 `json_object` 与思考关闭均发送顶层 `reasoning_effort=none`，思考开启时 `low|high`（`max→high`）；不发送 `thinking` 对象，其他 provider 不受影响。keyless 判定按 provider（`lm_studio` / `strata`）而非 base_url 是否回环；子进程管线以同一 provider 语义判断 LLM 是否可用，不注入伪造 Key。
 
+2026-10-21 AI 投递声明：`settings.get` 增加 `ai_disclosure:{enabled,text}`；`settings.update` 新增 `section=ai_disclosure`（payload `{enabled:bool}`，持久化 policy.local.yaml，默认 false）。原生 PDF 投递的 `run.agent.pdfInteractionPacket` 在开关开启且尚无有效声明记录时，对 prepare/send 返回 `requires_ai_disclosure:true` 与 `ai_disclosure:{text,sha256}` 且不推进投递状态；App 在目标沟通会话真实发送声明后，以 `run.agent.recordPdfInteraction`（action `ai_disclosure`）提交观察，后端校验目标会话与发送证据并写入 `pdf_delivery.ai_disclosure`，之后 prepare/send 才放行。`NativePdfPreparation` 增加 `ai_disclosure_enabled/ai_disclosure_text/ai_disclosure_sent`。
+
 `result`
 
 ```json

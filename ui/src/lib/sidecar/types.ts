@@ -490,6 +490,7 @@ export interface SettingsGetResult extends RpcResultBase {
   excluded_legal_entities: string[];
   material_source_roots: MaterialSourceRoot[];
   evidence_inference?: { enabled: boolean };
+  ai_disclosure?: { enabled: boolean; text: string };
   channels: ChannelConfig[];
   liepin_api: LiepinAuthState;
   llm_config: LlmConfig;
@@ -501,6 +502,7 @@ export type SettingsUpdateSection =
   | "excluded_legal_entities"
   | "material_source_roots"
   | "evidence_inference"
+  | "ai_disclosure"
   | "llm_config";
 
 export interface SettingsUpdateResult extends RpcResultBase {
@@ -546,6 +548,13 @@ export interface OverviewActivity {
     | "agent_run_completed";
   description: string;
   timestamp: string;
+  /** 可读展示字段：优先本地化这些字段，description 只作回退。 */
+  target_role?: string;
+  company?: string;
+  variant?: string;
+  platform?: string;
+  status?: string;
+  title?: string;
 }
 
 export interface OverviewTrendPoint {

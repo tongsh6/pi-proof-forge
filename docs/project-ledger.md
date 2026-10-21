@@ -2,6 +2,16 @@
 
 Last updated: 2026-10-21
 
+## 2026-10-21 投递 AI 自动化声明开关（系统设置）
+
+- 需求：用户要求新增一个动作——每次投递都让招聘方看到“本次投递所使用简历和投递行为为 AI 自动执行”的信息；做成系统开关，开启后每次投递自动附带，文案由产品确定（不强制原句）。
+- 文案与存储：固定声明「您好，本次投递所使用的简历和投递操作均由 AI 自动化执行；如对简历内容有疑问，欢迎直接与我沟通。」（`tools/infra/ai_disclosure.py`，附 SHA256）；开关 `ai_disclosure_enabled` 保存在本机 `policy.local.yaml`，默认关闭；`settings.get` 返回 `ai_disclosure {enabled,text}`，`settings.update` 新增 `ai_disclosure` section，拒绝非布尔载荷。
+- 投递链：`run.agent.pdfInteractionPacket` 在开关开启且尚无有效声明记录时，对 prepare/send 返回 `requires_ai_disclosure` 而不推进投递状态；每日中断/恢复、内容与额度门禁先于声明写入。Tauri 执行独立声明步骤（`liepin_native_ai_disclosure.js`）：目标 URL 匹配 + `im-ui-chat-container` 上下文含公司/岗位，向 `textarea.ant-im-input.im-ui-textarea` 填入固定文案，点击 `.im-ui-basic-send-btn`；捕获 POST 发送证据并回读聊天 DOM，后端校验 action/context/confirmed/network 后记录 `pdf_delivery.ai_disclosure`；确认后才允许 prepare 打开「发简历」、send 点击「立即投递」。声明未确认时 Rust 返回 `ai_disclosure_not_confirmed`，不继续投递；重试时若会话已出现同一声明原文则幂等跳过，不重复发送。
+- 页面：系统设置新增「AI 投递声明」分组（默认关闭开关、固定文案预览、边界说明）；Submissions 的 PDF 投递卡片显示声明「已发送给招聘方 / 将在发送简历前由 App 发送」与实际文案；中英文 i18n 与 `ui/design/DESIGN.md` 同步，`.pen` 待补（本机无 Pencil 工具）。发送成功后 submission_log 增加 `ai_disclosure` 步骤（在 login_check 之后、chat_send_resume 之前）。
+- 真实页面预检（无平台写入）：dev 探测 `probeAiDisclosureDryRun` 在真实猎聘沟通页确认 `im-ui-chat-container` 上下文含目标公司与岗位，把 49 字声明填入 `textarea.ant-im-input.im-ui-textarea`，「发送」按钮由 disabled 变为 enabled，随后清空草稿；未点击发送、未产生投递/附件/回执写入。
+- 测试：新增 `tests/unit/sidecar/test_native_pdf_ai_disclosure.py`（开关默认值、要求→记录→prepare/send 放行、确认框场景、关闭时回归）、`test_settings_handler.py` 声明开关用例、`tests/unit/gui/test_native_pdf_ai_disclosure_script.py`（成功发送/幂等/错目标/缺输入框/过期权限）、`tests/unit/gui/test_ai_disclosure_ui.py`（开关页、接线、i18n、固定文案）。全量 1629 项通过、1 跳过、48 subtests。
+- 边界：开关默认关闭；真实“声明+发简历”同链尚未在真实投递中执行（需要用户授权新目标），本轮只验证真实输入框可填与按钮可用；不改变既有质量/匹配/回执规则；“被接收者看到”依赖投递时招聘方会话正常接收该聊天消息。
+
 ## 2026-10-21 猎聘确认弹窗真实字段核验与真实投递回执
 
 - 目标与授权：沿用既有官方猎聘小公司岗位「某上海专业技术服务公司 · 高级全栈工程师」（`jl_liepin_4ba2781f552c26d6cb52`，职位 URL `https://www.liepin.com/a/80594047.shtml`），run `ar_20261021134024153666`；平台附件 `童双龙-某上-全栈-20261021.8.PDF`（SHA256 `462b31be…`）file_id `…/QHotN7e3RZOJwu4UPFet9g.PDF`、attachment_id `287e8a2787M348b993290a8`，单笔授权已存在。

@@ -87,6 +87,14 @@
         "title": "Recent activity",
         "subtitle": "Latest local evidence, resume, and submission events"
       },
+      "activityDetail": {
+        "resumeVariant": "{{target}} · Variant {{variant}}",
+        "resumeFallbackVariant": "Resume generated · Variant {{variant}}",
+        "resumeFallback": "Resume generated",
+        "submission": "{{target}} · {{platform}} · {{status}}",
+        "submissionNoPlatform": "{{target}} · {{status}}",
+        "submissionFallback": "{{platform}} · {{status}}"
+      },
       "matchTrend": {
         "title": "Match trend",
         "subtitle": "Recent matching report scores",
@@ -1084,7 +1092,8 @@
         "blocked": "Blocked",
         "queued": "Queued",
         "unknown": "Unknown",
-        "manual_recorded": "Manual record"
+        "manual_recorded": "Manual record",
+        "check_mode_success_submit_skipped": "Check completed (not submitted)"
       },
       "fields": {
         "company": "Company",
@@ -1127,6 +1136,8 @@
           "not_submitted": "Filename rejected before upload; resume with a shorter name and the same PDF",
           "unknown": "Upload outcome unknown; automatic retry blocked"
         },
+        "aiDisclosureSent": "AI disclosure: sent to the recruiter",
+        "aiDisclosurePending": "AI disclosure: the App will send it before the resume",
         "platformFile": "Platform attachment",
         "removeBoundary": "Remove only this platform attachment. Keep the local PDF, approved snapshot, and delivery receipt.",
         "removeConsent": "I confirm removing the platform attachment shown above",
@@ -1308,7 +1319,8 @@
         "channels": "Channels",
         "llm": "LLM Config",
         "materialSources": "Material sources",
-      "evidenceInference": "Evidence inference"
+      "evidenceInference": "Evidence inference",
+        "aiDisclosure": "AI disclosure"
       },
       "exclusionList": {
         "title": "Company exclusion list",
@@ -1457,6 +1469,15 @@
         "enabled": "Allow LLM cross-document inference",
         "enabledHint": "When off, only rule-based L2 time hints are shown without model calls; accept/reject still applies.",
         "note": "Candidates never write cards directly; accepted fields enter review and keep provenance/confidence."
+      },
+      "aiDisclosure": {
+        "title": "AI delivery disclosure",
+        "subtitle": "When enabled, the App sends an AI-automation disclosure to the recruiter in the target conversation before every real delivery.",
+        "enabled": "Send an AI disclosure before each delivery",
+        "enabledHint": "The flow first sends the fixed statement and continues to the resume only after it is confirmed; if unconfirmed, this delivery is blocked.",
+        "previewLabel": "Statement sent to the recruiter",
+        "previewFallback": "The statement text is fixed by the product",
+        "note": "The statement discloses automation only; it contains no model, prompt, resume detail, or local information. When off, delivery behavior is unchanged."
       },
       "materialSources": {
         "title": "Material sources",
@@ -1783,7 +1804,8 @@
     "settings": {
       "materialRootSaved": "Source root saved",
       "materialRootRemoved": "Source root removed",
-      "evidenceInferenceSaved": "Evidence inference settings saved"
+      "evidenceInferenceSaved": "Evidence inference settings saved",
+      "aiDisclosureSaved": "AI disclosure setting saved"
     }
   },
   "reasons": {

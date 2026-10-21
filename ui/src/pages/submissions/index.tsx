@@ -747,6 +747,12 @@ export function SubmissionsPage() {
                 {nativePdf.pdf_filename&&<p className="break-all">PDF: {nativePdf.pdf_filename}</p>}
                 <p className="font-mono text-xs text-text-muted" title={nativePdf.pdf_sha256}>{t("pages.submissions.pdfFingerprint")}: {nativePdf.pdf_sha256?.slice(0, 12)}…</p>
                 <p role="status">{t(`pages.submissions.nativePdf.phase.${nativePdf.phase}`, {defaultValue:nativePdf.phase})}</p>
+                {nativePdf.ai_disclosure_enabled&&<p className="text-xs text-text-secondary" data-testid="native-pdf-ai-disclosure">
+                  {nativePdf.ai_disclosure_sent
+                    ? t("pages.submissions.nativePdf.aiDisclosureSent")
+                    : t("pages.submissions.nativePdf.aiDisclosurePending")}
+                  {nativePdf.ai_disclosure_text&&<span className="mt-1 block text-text-muted" title={nativePdf.ai_disclosure_text}>{nativePdf.ai_disclosure_text}</span>}
+                </p>}
                 {nativePdf.phase === "attachment_verified" && !nativePdf.single_delivery_authorized && !nativePdf.recovery_only &&
                   <button type="button" disabled={nativeSessionBusy} className={buttonClass.secondary} onClick={()=>void handleNativePdf("authorizeSingle")}>{t("pages.submissions.nativePdf.authorizeSingle")}</button>}
                 {nativePdf.single_delivery_authorized&&<p>{t("pages.submissions.nativePdf.singleAuthorized")}</p>}
