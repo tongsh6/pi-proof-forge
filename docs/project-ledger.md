@@ -2,6 +2,13 @@
 
 Last updated: 2026-10-21
 
+## 2026-10-21 总览最近活动可读化
+
+- 问题与定位：用户反馈 Overview「最近活动」显示无法理解的编号（生成简历事件直接展示文件名 `resume_mr-qr_20261021133955495233_B.md`）。定位 `tools/sidecar/handlers/overview.py::_list_recent_activity` 把 `path.name` 与英文状态句当作 `description`，违反 `ui/design/contracts/sidecar-rpc.md` 6.26 中 description 应为人类可读文案的约定；`ui/src/pages/overview/index.tsx` 原样渲染。
+- 复用与实现：复用生成简历文件名约定 `resume_<matching_report_id>_<variant>.md`、`matching_reports/*.yaml` 的 `job_profile_id`、`job_profiles/*.yaml` 的 `target_role/company`，以及 submission_log `input_artifacts.company/position`（与 `submission._submission_item` 同源）。`ActivityItem` 增加可选 `target_role/company/variant/platform/status/title`；`description` 保留人类可读回退且不含运行编号/文件名。GUI 新增 `activityDescription()`：优先用结构化字段 + 既有 `codes.platform.*` 与 `pages.submissions.status.*` 文案本地化；证据事件显示标题；缺字段回退 description。补充 `check_mode_success_submit_skipped` 状态文案，新增 `data-testid="overview-activity"` 便于页面验收。契约 6.26 同步字段与“description 不得包含运行编号/文件名”规则。
+- 验证：新增 `tests/unit/sidecar/test_overview_handler.py` 6 项活动流用例（简历目标/版本、无匹配报告时回退不含文件名、投递岗位/平台/状态、非成功投递回退不宣称已投递、非 A/B 后缀不当版本、证据标题）与 `tests/unit/gui/test_overview_activity_ui.py`（读取真实 `zh.json`，断言不出现运行编号/文件名并出现岗位/公司/版本/平台/状态）。全量 **1631 项通过、1 跳过、48 subtests**；`tsc --noEmit`、`pnpm --dir ui build` 通过。真实数据页面验收（只读桥接 + Playwright Chromium，非 Tauri WebView）：Overview 6 条活动渲染为「高级全栈工程师 · 某上海专业技术服务公司 · A/B 版」「高级全栈工程师 · 某上海专业技术服务公司 · 猎聘 · 成功」，无页面错误；截图与驱动脚本在 `outputs/acceptance/overview-activity-20261021/`。独立审查通过（非阻断改进已采纳：非成功投递回退文案、严格版本后缀、契约回退措辞；按现有体量接受每次解析目标画像的开销）。
+- 边界：未改活动排序/条数与统计口径，未改 Resumes 页版本名（同类可读性缺口，后续按需处理），未触发任何平台写入；已重启桌面 App 并用真实 Tauri 窗口截图确认新文案（`tauri-app-activity.png`）；本轮新增文案/类型随共享工作区的并行提交 `340433a` 一并落库，其余改动单独提交。
+
 ## 2026-10-21 投递 AI 自动化声明开关（系统设置）
 
 - 需求：用户要求新增一个动作——每次投递都让招聘方看到“本次投递所使用简历和投递行为为 AI 自动执行”的信息；做成系统开关，开启后每次投递自动附带，文案由产品确定（不强制原句）。

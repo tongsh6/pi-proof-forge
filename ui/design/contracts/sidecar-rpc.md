@@ -1092,14 +1092,21 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
     {
       "activity_id": "act_001",
       "type": "resume_generated",
-      "description": "Resume v3 generated for Acme",
-      "timestamp": "2026-03-07T09:50:00Z"
+      "description": "Resume generated for 高级全栈工程师 · 某上海专业技术服务公司 (variant A)",
+      "timestamp": "2026-03-07T09:50:00Z",
+      "target_role": "高级全栈工程师",
+      "company": "某上海专业技术服务公司",
+      "variant": "A"
     },
     {
       "activity_id": "act_002",
       "type": "submission_sent",
-      "description": "Submitted to Acme via liepin",
-      "timestamp": "2026-03-07T09:30:00Z"
+      "description": "Submitted to 高级全栈工程师 · 某上海专业技术服务公司 via liepin",
+      "timestamp": "2026-03-07T09:30:00Z",
+      "target_role": "高级全栈工程师",
+      "company": "某上海专业技术服务公司",
+      "platform": "liepin",
+      "status": "success"
     }
   ],
   "match_trend": [
@@ -1121,6 +1128,8 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 规则：
 
 - `recent_activities[].type` 枚举：`resume_generated | submission_sent | evidence_imported | agent_run_completed`
+- `recent_activities[].description` 必须是人类可读文案，不得包含运行编号、简历文件名或内部 ID；GUI 优先按结构化字段本地化展示，字段缺失时回退本地化通用文案或 `description`
+- 可选结构化字段：`target_role`（目标岗位）、`company`（公司）、`variant`（生成简历版本，如 `A` / `B`）、`platform`（投递平台，如 `liepin`）、`status`（投递状态，取值同 submission 日志 `status`）、`title`（证据标题）
 - `match_trend` 按 `date` 升序排列，最多返回最近 30 个数据点
 - `gaps[].severity` 枚举：`high | medium | low`
 - 任一聚合子请求失败时，整体返回 `INTERNAL_ERROR`，不做部分成功

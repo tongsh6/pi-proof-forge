@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import type { TFunction } from "i18next";
 import {
   Activity,
   AlertTriangle,
@@ -106,6 +107,51 @@ const activityIconMap: Record<OverviewActivity["type"], LucideIcon> = {
   evidence_imported: FolderSearch,
   agent_run_completed: Bot,
 };
+
+/**
+ * 活动流只展示可读的目标岗位、公司、平台与状态，不回显运行编号或文件名；
+ * 缺少结构化字段时回退到后端已解析的 description。
+ */
+function activityDescription(activity: OverviewActivity, t: TFunction): string {
+  const target = [activity.target_role, activity.company].filter(Boolean).join(" · ");
+  if (activity.type === "resume_generated") {
+    if (!target) {
+      return activity.variant
+        ? t("pages.overview.activityDetail.resumeFallbackVariant", {
+            variant: activity.variant,
+          })
+        : t("pages.overview.activityDetail.resumeFallback");
+    }
+    return activity.variant
+      ? t("pages.overview.activityDetail.resumeVariant", {
+          target,
+          variant: activity.variant,
+        })
+      : target;
+  }
+  if (activity.type === "submission_sent") {
+    const platform = activity.platform
+      ? t(`codes.platform.${activity.platform}`, { defaultValue: activity.platform })
+      : "";
+    const status = t(`pages.submissions.status.${activity.status || "unknown"}`, {
+      defaultValue: activity.status || "unknown",
+    });
+    if (target && platform) {
+      return t("pages.overview.activityDetail.submission", { target, platform, status });
+    }
+    if (target) {
+      return t("pages.overview.activityDetail.submissionNoPlatform", { target, status });
+    }
+    if (platform) {
+      return t("pages.overview.activityDetail.submissionFallback", { platform, status });
+    }
+    return activity.description;
+  }
+  if (activity.type === "evidence_imported" && activity.title) {
+    return activity.title;
+  }
+  return activity.description;
+}
 
 function buildTrendPath(
   trend: OverviewTrendPoint[],
@@ -367,7 +413,10 @@ export function OverviewPage() {
           </section>
 
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
-            <article className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]">
+            <article
+              className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)]"
+              data-testid="overview-activity"
+            >
               <div className="border-b border-border pb-4">
                 <h2 className="text-lg font-semibold text-text-primary">
                   {t("pages.overview.recentActivity.title")}
@@ -381,6 +430,8 @@ export function OverviewPage() {
                   activities.map((activity) => (
                     <div
                       key={activity.activity_id}
+                      data-activity-id={activity.activity_id}
+                      data-activity-type={activity.type}
                       className="flex gap-3 rounded-card border border-border bg-bg-primary px-4 py-3"
                     >
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card border border-accent/30 bg-accent/10 text-accent">
@@ -399,7 +450,7 @@ export function OverviewPage() {
                           </span>
                         </div>
                         <p className="mt-2 text-sm text-text-primary">
-                          {activity.description}
+                          {activityDescription(activity, t)}
                         </p>
                       </div>
                     </div>

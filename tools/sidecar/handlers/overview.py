@@ -13,6 +13,7 @@ _EVIDENCE_DIR = _ROOT_DIR / "evidence_cards"
 _MATCHING_REPORT_DIR = _ROOT_DIR / "matching_reports"
 _OUTPUTS_DIR = _ROOT_DIR / "outputs"
 _SUBMISSIONS_DIR = _OUTPUTS_DIR / "submissions"
+_JOB_PROFILE_DIR = _ROOT_DIR / "job_profiles"
 
 
 class SubmissionPayload(TypedDict, total=False):
@@ -20,14 +21,29 @@ class SubmissionPayload(TypedDict, total=False):
     platform: str
     status: str
     ended_at: str
+    input_artifacts: dict[str, object]
+    company: str
+    position: str
+    job_company: str
+    job_title: str
 
 
-class ActivityItem(TypedDict):
+class ActivityItemBase(TypedDict):
     activity_id: str
     type: str
     description: str
     timestamp: str
     sort_key: float
+
+
+class ActivityItem(ActivityItemBase, total=False):
+    # 可读展示字段：GUI 按语言本地化这些字段，description 仅作人类可读回退。
+    target_role: str
+    company: str
+    variant: str
+    platform: str
+    status: str
+    title: str
 
 
 def _glob_files(directory: Path, pattern: str) -> list[Path]:
@@ -81,6 +97,86 @@ def _safe_parse_iso_date(value: str) -> datetime | None:
 def _read_yaml_doc(path: Path) -> ParsedDoc:
     text = path.read_text(encoding="utf-8")
     return parse_simple_yaml(text)
+
+
+def _read_yaml_scalars(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+    try:
+        return _read_yaml_doc(path)["scalars"]
+    except (OSError, ValueError):
+        return {}
+
+
+def _target_label(target: dict[str, str]) -> str:
+    return " · ".join(
+        value for value in (target.get("target_role", ""), target.get("company", "")) if value
+    )
+
+
+def _resume_activity_target(path: Path) -> dict[str, str]:
+    """按生成简历文件名里的匹配报告编号回查岗位画像，避免活动流显示原始运行编号。"""
+    stem = path.stem
+    if not stem.startswith("resume_"):
+        return {}
+    report_id, separator, variant = stem.removeprefix("resume_").rpartition("_")
+    if not separator or not report_id.startswith("mr-") or not re.fullmatch(r"[A-Za-z]{1,2}", variant):
+        return {}
+    report = _read_yaml_scalars(_MATCHING_REPORT_DIR / f"{report_id}.yaml")
+    job_profile_id = report.get("job_profile_id", "").strip()
+    profile = (
+        _read_yaml_scalars(_JOB_PROFILE_DIR / f"{job_profile_id}.yaml")
+        if job_profile_id
+        else {}
+    )
+    target: dict[str, str] = {}
+    for key, value in (
+        ("target_role", profile.get("target_role", "")),
+        ("company", profile.get("company", "")),
+        ("variant", variant),
+    ):
+        cleaned = value.strip()
+        if cleaned:
+            target[key] = cleaned
+    return target
+
+
+def _resume_activity_description(target: dict[str, str]) -> str:
+    label = _target_label(target)
+    variant = target.get("variant", "")
+    if label and variant:
+        return f"Resume generated for {label} (variant {variant})"
+    if label:
+        return f"Resume generated for {label}"
+    if variant:
+        return f"Resume generated (variant {variant})"
+    return "Resume generated"
+
+
+def _submission_activity_target(payload: SubmissionPayload) -> dict[str, str]:
+    inputs = payload.get("input_artifacts")
+    inputs = inputs if isinstance(inputs, dict) else {}
+    company = str(
+        inputs.get("company") or payload.get("company") or payload.get("job_company") or ""
+    ).strip()
+    position = str(
+        inputs.get("position") or payload.get("position") or payload.get("job_title") or ""
+    ).strip()
+    target: dict[str, str] = {}
+    if position:
+        target["target_role"] = position
+    if company:
+        target["company"] = company
+    return target
+
+
+def _submission_activity_description(target: dict[str, str], platform: str, status: str) -> str:
+    label = _target_label(target)
+    if not label:
+        return f"Submission {status} via {platform}"
+    if status == "success":
+        return f"Submitted to {label} via {platform}"
+    return f"Submission {status} for {label} via {platform}"
 
 
 def _score_from_text(text: str) -> int:
@@ -188,27 +284,29 @@ def _list_recent_activity() -> list[dict[str, str]]:
 
     for path in _glob_files(_EVIDENCE_DIR, "*.yaml"):
         doc = _read_yaml_doc(path)
-        title = doc["scalars"].get("title", path.stem)
-        activity_items.append(
-            {
-                "activity_id": f"evidence_{path.stem}",
-                "type": "evidence_imported",
-                "description": f"Evidence updated: {title}",
-                "timestamp": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
-                "sort_key": path.stat().st_mtime,
-            }
-        )
+        title = doc["scalars"].get("title", "").strip()
+        item: ActivityItem = {
+            "activity_id": f"evidence_{path.stem}",
+            "type": "evidence_imported",
+            "description": f"Evidence updated: {title}" if title else "Evidence updated",
+            "timestamp": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
+            "sort_key": path.stat().st_mtime,
+        }
+        if title:
+            item["title"] = title
+        activity_items.append(item)
 
     for path in _glob_files_recursive(_OUTPUTS_DIR, "resume_*.md"):
-        activity_items.append(
-            {
-                "activity_id": f"resume_{path.stem}",
-                "type": "resume_generated",
-                "description": f"Generated {path.name}",
-                "timestamp": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
-                "sort_key": path.stat().st_mtime,
-            }
-        )
+        target = _resume_activity_target(path)
+        item = {
+            "activity_id": f"resume_{path.stem}",
+            "type": "resume_generated",
+            "description": _resume_activity_description(target),
+            "timestamp": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
+            "sort_key": path.stat().st_mtime,
+            **target,
+        }
+        activity_items.append(cast(ActivityItem, item))
 
     for path in _glob_files_recursive(_SUBMISSIONS_DIR, "submission_log.json"):
         payload = cast(SubmissionPayload, json.loads(path.read_text(encoding="utf-8")))
@@ -221,26 +319,34 @@ def _list_recent_activity() -> list[dict[str, str]]:
         timestamp = (
             ended_at if ended_at else datetime.fromtimestamp(sort_key).isoformat()
         )
-        activity_items.append(
-            {
-                "activity_id": f"submission_{run_id}",
-                "type": "submission_sent",
-                "description": f"Submission {status} via {platform}",
-                "timestamp": timestamp,
-                "sort_key": sort_key,
-            }
-        )
+        target = _submission_activity_target(payload)
+        item = {
+            "activity_id": f"submission_{run_id}",
+            "type": "submission_sent",
+            "description": _submission_activity_description(target, platform, status),
+            "timestamp": timestamp,
+            "sort_key": sort_key,
+            "platform": platform,
+            "status": status,
+            **target,
+        }
+        activity_items.append(cast(ActivityItem, item))
 
     activity_items.sort(key=lambda item: item["sort_key"], reverse=True)
-    return [
-        {
+    recent: list[dict[str, str]] = []
+    for item in activity_items[:6]:
+        entry: dict[str, str] = {
             "activity_id": item["activity_id"],
             "type": item["type"],
             "description": item["description"],
             "timestamp": item["timestamp"],
         }
-        for item in activity_items[:6]
-    ]
+        for key in ("target_role", "company", "variant", "platform", "status", "title"):
+            value = item.get(key)
+            if value:
+                entry[key] = value
+        recent.append(entry)
+    return recent
 
 
 def _feedback_funnel() -> dict[str, int]:
