@@ -24,6 +24,10 @@
     const pdfInputs=()=>Array.from(document.querySelectorAll('input[type="file"]')).filter(e => !e.disabled && /pdf/i.test(e.accept));
     const visible=e=>Boolean(e && e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
     window.scrollTo({top: document.body.scrollHeight, behavior: 'instant'});
+    // 简历编辑页可能使用内层滚动容器，不能只滚 window。
+    for (const el of Array.from(document.querySelectorAll('div,main,section')).slice(0,400)) {
+      try { if (el.scrollHeight > el.clientHeight + 200) el.scrollTop = el.scrollHeight; } catch {}
+    }
     let allInputs = [];
     for (let i=0;i<4;i++) { await waitInput(350); allInputs=pdfInputs(); if(allInputs.length) break; }
     if (!allInputs.length) {

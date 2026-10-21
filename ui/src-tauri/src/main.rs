@@ -453,6 +453,39 @@ fn main() {
         .manage(SidecarManager::default())
         .manage(liepin_webview::NativeLiepinSession::default())
         .setup(|app| {
+            #[cfg(debug_assertions)]
+            {
+                // 开发用文件触发器：App 内自动上传不必依赖窗口前台点击。
+                let app_handle = app.handle().clone();
+                let root = resolve_repo_root(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let request_path = root.join("app-data/auto_upload_request.json");
+                    if !request_path.is_file() { continue; }
+                    let raw = std::fs::read_to_string(&request_path).unwrap_or_default();
+                    let _ = std::fs::remove_file(&request_path);
+                    let run_id = serde_json::from_str::<serde_json::Value>(&raw).ok()
+                        .and_then(|value| value.get("run_id").and_then(|v| v.as_str()).map(str::to_string));
+                    let Some(run_id) = run_id else {
+                        let _ = std::fs::write(root.join("app-data/auto_upload_result.json"), json!({"ok":false,"error":"missing_run_id"}).to_string());
+                        continue;
+                    };
+                    let handle = app_handle.clone();
+                    let root2 = root.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let outcome = match handle.get_webview_window("main") {
+                            Some(window) => liepin_webview::auto_upload_from_trigger(handle.clone(), window, run_id.clone()).await,
+                            None => Err("MAIN_WINDOW_MISSING".to_string()),
+                        };
+                        let payload = match outcome {
+                            Ok(value) => json!({"ok":true,"run_id":run_id,"result":value}),
+                            Err(error) => json!({"ok":false,"run_id":run_id,"error":error}),
+                        };
+                        let _ = std::fs::write(root2.join("app-data/auto_upload_result.json"), payload.to_string());
+                    });
+                });
+            }
             if smoke_test_requested() {
                 let app_handle = app.handle().clone();
                 let manager = app.state::<SidecarManager>();
