@@ -19,8 +19,25 @@
     }
     if(payload.filename.length>24){finish('not_submitted',['附件名称超过平台上限']);return;}
     const stem=payload.filename.replace(/\.pdf$/i,'');
-    const inputs = Array.from(document.querySelectorAll('input[type="file"]')).filter(e => !e.disabled && /pdf/i.test(e.accept));
-    if (inputs.length !== 1) { finish('not_submitted',['附件控件不唯一']); return; }
+    // 附件区在简历页底部且懒加载；先滚到底部并等待控件出现。
+    window.scrollTo({top: document.body.scrollHeight, behavior: 'instant'});
+    let allInputs = [];
+    for (let i=0;i<8;i++) {
+      await new Promise(r=>setTimeout(r,350));
+      allInputs = Array.from(document.querySelectorAll('input[type="file"]')).filter(e => !e.disabled && /pdf/i.test(e.accept));
+      if (allInputs.length) break;
+    }
+    const candidates = allInputs.map(e => {
+      let text='', node=e;
+      for(let i=0;node && i<6;i++,node=node.parentElement) text += ' ' + (node.innerText || '');
+      const score = /附件简历|上传附件|附件简历/.test(text) ? 3 : /附件/.test(text) ? 2 : 1;
+      const visible = Boolean(e.getClientRects().length);
+      return {input:e, score, visible, text:text.replace(/\s+/g,' ').slice(0,120)};
+    });
+    const bestScore = candidates.length ? Math.max(...candidates.map(c=>c.score)) : 0;
+    const best = candidates.filter(c=>c.score===bestScore && (bestScore>1 || c.visible));
+    if (best.length !== 1) { finish('not_submitted',['附件控件不唯一:共'+allInputs.length+'个，候选:'+candidates.map(c=>c.score).join(',')]); return; }
+    const inputs = [best[0].input];
     const bytes = new Uint8Array(payload.pdf_bytes);
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
     if (digest !== payload.pdf_sha256) { finish('not_submitted',['PDF 指纹不一致']); return; }
