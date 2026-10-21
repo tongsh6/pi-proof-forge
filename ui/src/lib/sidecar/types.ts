@@ -978,7 +978,13 @@ export interface ReviewCandidateItem {
   job_url?: string;
 }
 
-export type QualityFailure = {rule:string;target?:string;reason?:string};
+export type QualityFailure = {rule:string;target?:string;reason?:string;gap_kind?:string};
+export type QualityDeliveryAdvice = {
+  recommendation?:'apply'|'strengthen'|'reconsider'|'fix_facts'|string;
+  label?:string;advisory_only?:boolean;
+  gap_counts?:{evidence_missing?:number;not_expressed?:number};
+  summary?:string;reasons?:string[];next_actions?:string[];
+};
 export type QualityTier = {
   passed:boolean;failures:QualityFailure[];metrics?:Record<string,unknown>;
   matrix?:Array<Record<string,unknown>>;highlights?:Array<Record<string,unknown>>;blocked_by?:string;
@@ -986,6 +992,7 @@ export type QualityTier = {
 export type QualityReport = {
   schema_version?:number;resume_version?:string;job_profile_id?:string;thresholds_version?:number;
   auto_pass?:boolean;llm_pending?:string[];gap_tasks?:string[];
+  delivery_advice?:QualityDeliveryAdvice|null;
   legacy_scores?:{rule_total?:number|null;llm_expression?:number|null};
   tiers?:{eligible?:QualityTier;fit?:QualityTier;strong?:QualityTier;distinct?:QualityTier};
 };

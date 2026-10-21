@@ -28,6 +28,9 @@ export function QualityReportPanel({report,title,onHighlightDecision}:{report?:Q
   if(!report||!report.tiers)return <p className="rounded-card border border-border p-3 text-xs text-text-muted">{t('quality.report.missing')}</p>;
   const pending=report.llm_pending||[];
   const legacy=report.legacy_scores;
+  const advice=report.delivery_advice;
+  const recommendation=String(advice?.recommendation||'');
+  const gapCounts=advice?.gap_counts||{};
   const distinct=report.tiers.distinct;
   const highlights=(distinct?.highlights||[]) as Array<Record<string, unknown>>;
   const candidates=(((distinct?.metrics||{}) as Record<string, unknown>).candidates||[]) as CandidateDetail[];
@@ -37,6 +40,23 @@ export function QualityReportPanel({report,title,onHighlightDecision}:{report?:Q
       <p className="font-medium">{title||t('quality.report.title')}</p>
       <span className={report.auto_pass?'text-success':'text-warning'}>{t(report.auto_pass?'quality.passed':'quality.failed')}</span>
     </div>
+    {!!advice&&<div data-testid="quality-delivery-advice" className="rounded-card border border-border bg-bg-primary/40 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-medium">{t('quality.report.advice.heading')}</p>
+        <span className={recommendation==='apply'?'text-success':'text-warning'}>{t(`quality.report.advice.recommendation.${recommendation}`,{defaultValue:advice.label||recommendation})}</span>
+      </div>
+      {!!advice.summary&&<p className="mt-1 break-words text-xs text-text-secondary">{advice.summary}</p>}
+      <p className="mt-1 text-xs text-text-muted">{t('quality.report.advice.advisory')}</p>
+      {!!(Number(gapCounts.evidence_missing||0)||Number(gapCounts.not_expressed||0))&&<div className="mt-2 flex flex-wrap gap-2 text-xs">
+        <span className="rounded bg-bg-hover px-2 py-0.5 text-text-secondary">{t('quality.report.advice.evidenceGaps',{count:Number(gapCounts.evidence_missing||0)})}</span>
+        <span className="rounded bg-bg-hover px-2 py-0.5 text-text-secondary">{t('quality.report.advice.expressionGaps',{count:Number(gapCounts.not_expressed||0)})}</span>
+      </div>}
+      {!!advice.reasons?.length&&<ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-text-secondary">{advice.reasons.map((reason,index)=><li className="break-words" key={index}>{reason}</li>)}</ul>}
+      {!!advice.next_actions?.length&&<div className="mt-2 text-xs text-text-secondary">
+        <p className="font-medium text-text-primary">{t('quality.report.advice.nextActions')}</p>
+        <ul className="mt-1 list-disc space-y-1 pl-4">{advice.next_actions.map((action,index)=><li className="break-words" key={index}>{action}</li>)}</ul>
+      </div>}
+    </div>}
     {TIERS.map(([name,label])=>{
       const tier: QualityTier | undefined = report.tiers?.[name];
       if(!tier)return null;
@@ -55,6 +75,7 @@ export function QualityReportPanel({report,title,onHighlightDecision}:{report?:Q
               <span className="font-mono text-warning">{failure.rule}</span>
               {failure.target&&<span> · {failure.target}</span>}
               {failure.reason&&<span>：{failure.reason}</span>}
+              {failure.gap_kind&&<span className="ml-2 rounded bg-bg-hover px-1.5 py-0.5 text-[10px] text-text-secondary">{t(`quality.report.gapKind.${failure.gap_kind}`,{defaultValue:failure.gap_kind})}</span>}
               {cardId&&<button type="button" className="ml-2 text-accent underline" onClick={()=>navigate(`/evidence?card=${encodeURIComponent(cardId)}`)}>{t('quality.report.openCard')}</button>}
             </li>;
           })}</ul>:

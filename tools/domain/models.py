@@ -56,9 +56,14 @@ class QualityFailure:
     rule: str
     target: str = ""
     reason: str = ""
+    # 对位缺口类型（evidence_missing / not_expressed）；其它层或旧报告不带该字段。
+    gap_kind: str = ""
 
     def to_dict(self) -> dict[str, str]:
-        return {"rule": self.rule, "target": self.target, "reason": self.reason}
+        value = {"rule": self.rule, "target": self.target, "reason": self.reason}
+        if self.gap_kind:
+            value["gap_kind"] = self.gap_kind
+        return value
 
 
 @dataclass(frozen=True)

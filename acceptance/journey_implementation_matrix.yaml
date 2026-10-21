@@ -867,6 +867,11 @@ steps:
       - tests/unit/domain/test_resume_projection.py
       - outputs/acceptance/p0-026-fact-priority-20261014/validation.json
       - outputs/acceptance/p0-026-gap-review-20261014/validation.json
+      - tests/unit/domain/test_tiered_evaluator.py
+      - tests/unit/domain/test_evaluation_quality.py
+      - tests/unit/gui/test_quality_report_ui.py
+      - outputs/acceptance/quality-advice-20261022/validation.json
+      - outputs/acceptance/quality-advice-20261022/render_validation.json
       covers:
       - official_company_facts_persisted_and_size_filter_in_app
       - headhunter_detail_and_freeform_complete_jd_read_with_identity_rules

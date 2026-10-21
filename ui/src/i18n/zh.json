@@ -1970,7 +1970,24 @@
       "rejected": "已否决",
       "reject": "否决",
       "select": "设为突出点",
-      "decisionSaved": "已记录突出点决策；重新评测后生效。"
+      "decisionSaved": "已记录突出点决策；重新评测后生效。",
+      "advice": {
+        "heading": "投递建议",
+        "advisory": "建议仅供参考，不拦截投递；最终是否投递由你决定。",
+        "recommendation": {
+          "apply": "建议投递",
+          "strengthen": "建议补强后投递",
+          "reconsider": "建议先补证据或更换更匹配目标",
+          "fix_facts": "先核对事实与硬性条件"
+        },
+        "evidenceGaps": "前三条职责证据缺口 {{count}} 项",
+        "expressionGaps": "前三条职责未表达 {{count}} 项",
+        "nextActions": "下一步"
+      },
+      "gapKind": {
+        "evidence_missing": "证据缺口",
+        "not_expressed": "未表达"
+      }
     }
   }
 }

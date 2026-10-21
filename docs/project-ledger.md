@@ -1,6 +1,16 @@
 # Project Ledger
 
-Last updated: 2026-10-21
+Last updated: 2026-10-22
+
+## 2026-10-22 质量报告→投递建议与对位缺口类型（P0-026 续）
+
+- 方向与复用：承接 2026-10-21 用户方向「产品目标改为帮助候选人拿到面试/录用；判项区分证据缺失 vs 未表达；报告改为投递建议」。复用现有四层评估器 `tools/engines/evaluation/tiered_evaluator.py`、`quality_report`、Markdown 评估报告与 `ui/src/components/quality-report.tsx`；未新增评分框架、模型调用或新 RPC，`auto_pass` 口径与审批门禁不变。
+- 数据与模型：`QualityFailure` 增加可选 `gap_kind`（`evidence_missing` 证据池非 supported，含 partial/insufficient/conflict/未知；`not_expressed` 证据池 supported 但正文未表达或未进首屏），仅对位 R2.2/R2.3 使用；R2.4 内容取舍不带该字段，旧报告不出现该键。对位矩阵行增加 `evidence_support`（来自语义评审 requirement `status`）。R2.2 中 supported 但不在首屏的 reason 改为明确的位置缺口措辞；R2.3 支持率只由 supported 决定，缺口计数只统计非 supported 行；证据缺口与未表达同时存在时输出两条 R2.3 failure（各带 gap_kind 与各自计数）。
+- 投递建议：`quality_report.delivery_advice = {recommendation, label, advisory_only, gap_counts, summary, reasons[], next_actions[]}`。规则（确定性、无模型）：合格层事实/硬性条件缺口（R1.1/R1.2/R1.7）→`fix_facts`；对位前三条职责 ≥2 项证据缺口→`reconsider`；其余对位缺口或合格层非事实缺口→`strengthen`；合格+对位通过→`apply`（优质/突出失败只写入可选改进依据）。合格层 metrics 增加 `pdf_check_state`；PDF 页数/裁切未回填时按“未校验”提示，只把 target=pdf 的 R1.5 排除在缺口外，首屏摘要/核心经历等已可判缺口必须保留；apply 的 summary/reasons 写明“除未校验项外”。`apply_pdf_check` 回填后只替换 target=pdf 的 R1.5，保留首屏 R1.5 并重算建议；四层结构不完整的稀疏/旧报告不新增或重算建议。建议不改变 `auto_pass`、不拦截投递、不替代用户最终决定。
+- 报告与页面：`run_evaluation._quality_markdown` 在四层报告前输出「## 投递建议」（结论、摘要、依据、下一步），对位缺口后标注「（证据缺口）/（未表达）」；`quality-report.tsx` 顶部新增建议区（结论、仅供参考说明、依据、下一步、前三条职责口径的证据缺口/未表达计数），逐项 failure 显示缺口类型徽标，无 `delivery_advice` 的旧报告不渲染；`types.ts` 增加 `QualityDeliveryAdvice`/`gap_kind`；中英文 i18n 与 `ui/design/DESIGN.md`、`ui/design/contracts/sidecar-rpc.md` 同步；spec `openspec/changes/resume-quality-standard-and-evidence-inference/specs/resume-quality/spec.md` 增量记录「投递建议与缺口类型」。
+- 验证：新增 17 项后端测试（15 项先红后绿、2 项旧行为护栏）并扩展既有 GUI/CLI 测试断言；全量 **1648 项通过、1 跳过、48 subtests**；`npx tsc --noEmit`、`pnpm --dir ui build` 通过。真实数据回放 `outputs/acceptance/quality-advice-20261022/replay.py`：用生产 `build_quality_report` + 本机判项缓存回放两个真实 run，判定 **0 次模型调用**（`judge_meta.cache=hit`，`model_calls` 取自实际 meta）——最近真实投递岗位「某上海专业技术服务公司 · 高级全栈工程师」(`qr_20261021133955495233`) 建议 `reconsider`，3 项 R2.2 核心职责证据缺口；Fit A「得物App · Java技术专家」(`qr_20261021090649699513`) 建议 `strengthen`，1 项 R2.2 证据缺口 + 1 项内容取舍。同一回放报告经真实组件 + 真实 `zh.json` 渲染（`render_report.py`，按渲染结果实际统计）得到建议结论、依据、下一步与 5/1 个缺口徽标（R2.3 双 failure 使最近岗位为 5 个）。证据：`outputs/acceptance/quality-advice-20261022/{validation.json,render_validation.json,*.scorecard.md,*.quality_report.json}`。
+- 独立审查：先审发现 1 项阻断 B1（PDF 未渲染时把全部 R1.5 当“未校验”排除，会隐藏首屏摘要/核心经历缺口并给出 apply）与 R2.3 计数口径（N1）等问题，均已修复：B1 改为结构化 `pdf_check_state` 且只排除 target=pdf 项、回填保留首屏 R1.5；N1 改为只统计非 supported 行并拆分两类 failure；另修复 apply 文案在未校验时超出证据、稀疏报告兜底、R1.5 动作误映射、i18n 计数口径。复审通过：B1/N1/N2/N3/N5/N6/N7 均闭合、无新增阻断；复审提出的稀疏回归约束力（改为 strengthen fixture）与 spec `reconsider` 分支措辞已同轮修正。
+- 边界：未在真实 App 内重新跑 Quick Run，故未做页面级场景验收（真实页面验收需下一次 App 内生成后查看建议区，如实标注）；未改 `auto_pass`、质量门禁、生成/匹配/投递逻辑，未触碰平台、事实、职业档案或授权；`.pen` 待补（本机无 Pencil 工具）。P0-026 仍唯一 `next`，待面试反馈。
 
 ## 2026-10-21 总览最近活动可读化
 

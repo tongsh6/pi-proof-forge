@@ -537,3 +537,323 @@ def test_distinct_prefers_first_screen_highlight_candidates():
     assert items[0]["highlight_id"] == "hl_first" and items[0]["first_screen"] is True
     report = evaluate_distinct(resume=resume, candidates=candidates, decisions={}, config=load_quality_config())
     assert report.passed
+
+
+# ---------------------------------------------------------------------------
+# 投递建议与缺口类型（2026-10-21）：证据缺失 / 未表达 / 建议仅供参考
+# ---------------------------------------------------------------------------
+
+FIRST_SCREEN_PROJECT_RESUME = """# 张三
+13800000000 | zhangsan@example.com | 上海
+当前定位：平台负责人
+
+## 职业概述
+负责平台架构与交付，覆盖 8 个品牌。
+
+## 项目经历
+### 统一平台建设（2022-03 ~ 2023-09）
+角色：平台负责人
+场景：多品牌微服务散落。
+- 完成平台抽象
+- 查询耗时从 2 秒降至 300 毫秒
+- 覆盖 8 个品牌
+
+<!-- first-screen-end -->
+
+## 工作经历
+### 示例科技 · 平台负责人（2021-03 ~ 至今）
+
+## 核心技能
+Java、Redis
+
+## 教育经历
+### 示例大学（2010-09 ~ 2014-06）
+软件工程 · 本科
+"""
+
+
+def first_screen_project_claims():
+    claims = claims_for_resume()
+    claims.append(
+        {"text": "覆盖 8 个品牌", "source_kind": "evidence", "field": "results", "evidence_id": "ec_00000001"}
+    )
+    return claims
+
+
+def first_screen_highlight():
+    return [{"bullet_ref": "bullet#2", "jd_item": "d1", "level": "L1", "exceeds": "规模", "reason": "示例"}]
+
+
+FIRST_SCREEN_NO_SUMMARY_RESUME = """# 张三
+13800000000 | zhangsan@example.com | 上海
+
+## 项目经历
+### 统一平台建设（2022-03 ~ 2023-09）
+角色：平台负责人
+场景：多品牌微服务散落。
+- 完成平台抽象
+- 查询耗时从 2 秒降至 300 毫秒
+- 覆盖 8 个品牌
+
+<!-- first-screen-end -->
+
+## 职业概述
+负责平台架构与交付，覆盖 8 个品牌。
+
+## 工作经历
+### 示例科技 · 平台负责人（2021-03 ~ 至今）
+
+## 核心技能
+Java、Redis
+
+## 教育经历
+### 示例大学（2010-09 ~ 2014-06）
+软件工程 · 本科
+"""
+
+
+def no_summary_claims():
+    return [
+        claim for claim in first_screen_project_claims()
+        if claim["text"] != "当前定位：平台负责人"
+    ]
+
+
+def fit_failure(report, rule="R2.2"):
+    return next(failure for failure in report["tiers"]["fit"]["failures"] if failure["rule"] == rule)
+
+
+def test_fit_gap_kind_separates_evidence_gap_from_not_expressed():
+    # 证据池 supported、正文 weak：属于“未表达”，可重新生成/调整选材解决。
+    semantic = semantic_review(statuses=("supported",))
+    judged = judged_payload(r2_1=[{"jd_item_id": "d1", "status": "weak", "bullet_ref": "bullet#1",
+                                   "citations": ["ec_00000001"], "reason": "正文未呈现已有支撑"}])
+    report = build(semantic=semantic, judgments=judged)
+    failure = fit_failure(report)
+    assert failure["gap_kind"] == "not_expressed"
+    assert report["tiers"]["fit"]["matrix"][0]["evidence_support"] == "supported"
+
+    # 证据池 partial：属于“证据缺失”，需要补证据或更换更匹配的目标。
+    semantic = semantic_review(statuses=("partial",))
+    judged = judged_payload(r2_1=[{"jd_item_id": "d1", "status": "supported", "bullet_ref": "bullet#1",
+                                   "citations": ["ec_00000001"], "reason": ""}])
+    report = build(semantic=semantic, judgments=judged)
+    failure = fit_failure(report)
+    assert failure["gap_kind"] == "evidence_missing"
+    assert report["tiers"]["fit"]["matrix"][0]["evidence_support"] == "partial"
+
+
+def test_r2_2_supported_but_not_first_screen_reports_position_gap():
+    report = build()  # 默认夹具：证据池 supported，但引用 bullet 在首屏标记之后
+    failure = fit_failure(report)
+    assert failure["gap_kind"] == "not_expressed"
+    assert "不在首屏" in failure["reason"]
+    assert "支撑状态 supported" not in failure["reason"]
+
+
+def test_r2_4_selection_gap_has_no_evidence_or_expression_kind():
+    report = build(resume=RESUME + "\n## 项目经历\n### 无关项目（2022 ~ 2023）\n- 制作宣传海报\n")
+    failure = fit_failure(report, "R2.4")
+    assert "gap_kind" not in failure
+
+
+def test_eligible_failures_never_carry_gap_kind():
+    unconfirmed = career_profile(career_status={"reviewed": False, "ready": False, "missing": [{"field": "work"}]})
+    report = build(profile=unconfirmed)
+    for failure in report["tiers"]["eligible"]["failures"]:
+        assert "gap_kind" not in failure
+
+
+def test_gap_tasks_label_fit_gap_kind():
+    report = build()
+    assert any("R2.2" in task and "未表达" in task for task in report["gap_tasks"]), report["gap_tasks"]
+
+
+def test_delivery_advice_apply_when_eligible_and_fit_pass():
+    report = build(
+        resume=FIRST_SCREEN_PROJECT_RESUME,
+        claims=first_screen_project_claims(),
+        highlights=first_screen_highlight(),
+    )
+    advice = report["delivery_advice"]
+    assert report["tiers"]["eligible"]["passed"] is True
+    assert report["tiers"]["fit"]["passed"] is True
+    assert advice["recommendation"] == "apply"
+    assert advice["advisory_only"] is True
+    assert advice["gap_counts"] == {"evidence_missing": 0, "not_expressed": 0}
+    assert advice["summary"] and advice["reasons"] and advice["next_actions"]
+    # 质量建议不依赖 auto_pass：LLM 判项未完成时 auto_pass 仍为 False。
+    assert report["auto_pass"] is False
+
+
+def test_delivery_advice_notes_optional_strong_tier_improvements_only():
+    resume = FIRST_SCREEN_PROJECT_RESUME.replace("- 覆盖 8 个品牌\n", "")
+    report = build(resume=resume, claims=first_screen_project_claims(), highlights=first_screen_highlight())
+    assert report["tiers"]["fit"]["passed"] is True
+    assert report["tiers"]["strong"]["passed"] is False
+    advice = report["delivery_advice"]
+    assert advice["recommendation"] == "apply"
+    assert any("优质层" in reason for reason in advice["reasons"]), advice["reasons"]
+
+
+def test_delivery_advice_strengthen_for_expression_gap_only():
+    report = build()
+    advice = report["delivery_advice"]
+    assert advice["recommendation"] == "strengthen"
+    assert advice["gap_counts"]["not_expressed"] >= 1
+    assert advice["gap_counts"]["evidence_missing"] == 0
+    assert any("首屏" in action or "重新生成" in action for action in advice["next_actions"])
+
+
+def test_delivery_advice_reconsider_when_core_responsibilities_lack_evidence():
+    report = build(semantic=semantic_review(statuses=("partial", "partial", "partial")))
+    advice = report["delivery_advice"]
+    assert advice["recommendation"] == "reconsider"
+    assert advice["gap_counts"]["evidence_missing"] >= 2
+    assert any("补" in action or "更换" in action for action in advice["next_actions"])
+
+
+def test_delivery_advice_fix_facts_when_profile_or_hard_requirements_fail():
+    unconfirmed = career_profile(career_status={"reviewed": False, "ready": False, "missing": [{"field": "work"}]})
+    report = build(profile=unconfirmed)
+    advice = report["delivery_advice"]
+    assert advice["recommendation"] == "fix_facts"
+    assert any("事实" in reason or "档案" in reason for reason in advice["reasons"])
+
+
+def test_delivery_advice_marks_pdf_unverified_without_calling_it_evidence_gap():
+    report = build(
+        resume=FIRST_SCREEN_PROJECT_RESUME,
+        claims=first_screen_project_claims(),
+        highlights=first_screen_highlight(),
+        pdf_check=None,
+    )
+    advice = report["delivery_advice"]
+    assert advice["recommendation"] == "apply"
+    assert any("未校验项" in reason and "PDF" in reason for reason in advice["reasons"])
+    assert "除未校验项外" in advice["summary"]
+    assert advice["gap_counts"] == {"evidence_missing": 0, "not_expressed": 0}
+
+
+def test_pdf_pending_must_not_hide_first_screen_summary_gap():
+    report = build(
+        resume=FIRST_SCREEN_NO_SUMMARY_RESUME,
+        claims=no_summary_claims(),
+        highlights=first_screen_highlight(),
+        pdf_check=None,
+    )
+    assert report["tiers"]["fit"]["passed"] is True
+    targets = [
+        (failure["rule"], failure.get("target"))
+        for failure in report["tiers"]["eligible"]["failures"]
+    ]
+    assert ("R1.5", "pdf") in targets
+    assert ("R1.5", "首屏") in targets
+    advice = report["delivery_advice"]
+    assert advice["recommendation"] != "apply", advice
+    assert advice["recommendation"] == "strengthen"
+    assert any("首屏" in reason for reason in advice["reasons"])
+    assert any("首屏" in action for action in advice["next_actions"])
+
+    # PDF 回填只替换 pdf 相关 R1.5；首屏缺口保留，建议不能“洗”成 apply。
+    updated = te.apply_pdf_check(report, {"pages": 2, "clipped": False})
+    targets = [
+        (failure["rule"], failure.get("target"))
+        for failure in updated["tiers"]["eligible"]["failures"]
+    ]
+    assert ("R1.5", "首屏") in targets and ("R1.5", "pdf") not in targets
+    assert updated["delivery_advice"]["recommendation"] == "strengthen"
+    assert any("首屏" in action for action in updated["delivery_advice"]["next_actions"])
+    assert not any("压缩" in action for action in updated["delivery_advice"]["next_actions"])
+
+
+def test_delivery_advice_apply_clears_unverified_wording_after_judge_and_pdf():
+    judged = judged_payload(
+        r2_1=[{"jd_item_id": "d1", "status": "supported", "bullet_ref": "bullet#1",
+               "citations": ["ec_00000001"], "reason": "首屏项目支撑"}]
+    )
+    report = build(
+        resume=FIRST_SCREEN_PROJECT_RESUME,
+        claims=first_screen_project_claims(),
+        highlights=first_screen_highlight(),
+        pdf_check=None,
+        judgments=judged,
+    )
+    assert report["llm_pending"] == []
+    assert report["delivery_advice"]["recommendation"] == "apply"
+    assert any("未校验项" in reason for reason in report["delivery_advice"]["reasons"])
+    updated = te.apply_pdf_check(report, {"pages": 2, "clipped": False})
+    assert updated["delivery_advice"]["recommendation"] == "apply"
+    assert not any("未校验项" in reason for reason in updated["delivery_advice"]["reasons"])
+    assert updated["delivery_advice"]["summary"].startswith("建议投递：合格层与对位层通过")
+
+
+def test_apply_pdf_check_recomputes_delivery_advice():
+    report = build(
+        resume=FIRST_SCREEN_PROJECT_RESUME,
+        claims=first_screen_project_claims(),
+        highlights=first_screen_highlight(),
+        pdf_check=None,
+    )
+    assert any("未校验项" in reason and "PDF" in reason for reason in report["delivery_advice"]["reasons"])
+    updated = te.apply_pdf_check(report, {"pages": 2, "clipped": False})
+    assert updated["delivery_advice"]["recommendation"] == "apply"
+    assert not any("尚未回填" in reason for reason in updated["delivery_advice"]["reasons"])
+    too_long = te.apply_pdf_check(report, {"pages": 3, "clipped": False})
+    assert too_long["delivery_advice"]["recommendation"] == "strengthen"
+    assert any("压缩" in action or "两页" in action for action in too_long["delivery_advice"]["next_actions"])
+
+
+def test_apply_pdf_check_does_not_add_advice_to_legacy_reports():
+    report = build(
+        resume=FIRST_SCREEN_PROJECT_RESUME,
+        claims=first_screen_project_claims(),
+        highlights=first_screen_highlight(),
+    )
+    report.pop("delivery_advice")
+    updated = te.apply_pdf_check(report, {"pages": 2, "clipped": False})
+    assert "delivery_advice" not in updated
+
+
+def test_apply_pdf_check_keeps_advice_when_tiers_are_sparse():
+    report = build()  # 对位有 gap：建议为 strengthen；去掉 guard 后空 tiers 会翻成 apply
+    assert report["delivery_advice"]["recommendation"] == "strengthen"
+    before = json.dumps(report["delivery_advice"], sort_keys=True, ensure_ascii=False)
+    report["tiers"] = {name: {} for name in report["tiers"]}
+    updated = te.apply_pdf_check(report, {"pages": 2, "clipped": False})
+    assert json.dumps(updated["delivery_advice"], sort_keys=True, ensure_ascii=False) == before
+
+
+def test_must_have_gap_counts_follow_support_status_and_split_kinds():
+    semantic = {
+        "mode": "semantic",
+        "fit_score": 50,
+        "resume_score": 40,
+        "requirements": [
+            {"requirement_id": "m1", "kind": "must_have", "text": "要求 m1",
+             "status": "supported", "resume_status": "supported", "reason": "", "citations": []},
+            {"requirement_id": "m2", "kind": "must_have", "text": "要求 m2",
+             "status": "partial", "resume_status": "partial", "reason": "", "citations": []},
+            {"requirement_id": "m3", "kind": "must_have", "text": "要求 m3",
+             "status": "supported", "resume_status": "not_present", "reason": "", "citations": []},
+        ],
+        "all_requirements_supported": False,
+    }
+    report = build(semantic=semantic)
+    must_have_failures = [
+        failure for failure in report["tiers"]["fit"]["failures"]
+        if failure["rule"] == "R2.3"
+    ]
+    assert sorted(failure["gap_kind"] for failure in must_have_failures) == [
+        "evidence_missing", "not_expressed",
+    ]
+    text = " ".join(failure["reason"] for failure in must_have_failures)
+    # supported 但不在首屏的 m1 不计入 R2.3 计数，因此不是 2 项未表达。
+    assert "证据缺口 1 项" in text and "未表达 1 项" in text
+    assert "未表达 2 项" not in text
+    advice = report["delivery_advice"]
+    assert advice["recommendation"] == "strengthen"
+    assert any("证据缺口" in reason for reason in advice["reasons"])
+    assert any("正文未表达" in reason for reason in advice["reasons"])
+    assert any("补充硬性要求相关的证据卡" == action for action in advice["next_actions"])
+    assert any("正文表达出来并前置" in action for action in advice["next_actions"])

@@ -440,15 +440,30 @@ def _quality_markdown(quality_report: dict | None) -> str:
     if not isinstance(quality_report, dict):
         return ""
     labels = {"eligible": "合格", "fit": "对位", "strong": "优质", "distinct": "突出"}
+    gap_labels = {"evidence_missing": "证据缺口", "not_expressed": "未表达"}
     tiers = quality_report.get("tiers") if isinstance(quality_report.get("tiers"), dict) else {}
-    lines = ["", "## 质量报告（四层，规则部分）"]
+    lines: list[str] = []
+    advice = quality_report.get("delivery_advice")
+    if isinstance(advice, dict):
+        recommendation = str(advice.get("recommendation", ""))
+        label = str(advice.get("label", "")) or recommendation
+        lines.extend(["", "## 投递建议", f"- 建议：{label}（仅供参考，不拦截投递；最终是否投递由你决定）"])
+        if advice.get("summary"):
+            lines.append(f"- 摘要：{advice['summary']}")
+        for reason in advice.get("reasons") or []:
+            lines.append(f"- 依据：{reason}")
+        for action in advice.get("next_actions") or []:
+            lines.append(f"- 下一步：{action}")
+    lines.append("## 质量报告（四层，规则部分）")
     for name, label in labels.items():
         tier = tiers.get(name) if isinstance(tiers, dict) else None
         tier = tier if isinstance(tier, dict) else {}
         lines.append(f"- {label}: {'通过' if tier.get('passed') else '未通过'}")
         for failure in (tier.get("failures") or [])[:10]:
+            kind = gap_labels.get(str(failure.get("gap_kind", "")))
+            kind_suffix = f"（{kind}）" if kind else ""
             lines.append(
-                f"  - {failure.get('rule', '')} {failure.get('target', '')}：{failure.get('reason', '')}"
+                f"  - {failure.get('rule', '')} {failure.get('target', '')}：{failure.get('reason', '')}{kind_suffix}"
             )
     pending = quality_report.get("llm_pending") or []
     if pending:

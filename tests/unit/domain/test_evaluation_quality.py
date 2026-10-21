@@ -194,6 +194,15 @@ def test_cli_writes_four_tier_quality_report_and_legacy_scores(tmp_path, monkeyp
     # 评估阶段还没有 PDF，R1.5 必须显式记录未校验，不能假装通过。
     rules = [failure["rule"] for failure in report["tiers"]["eligible"]["failures"]]
     assert "R1.5" in rules
+    advice = report["delivery_advice"]
+    assert advice["advisory_only"] is True
+    assert advice["recommendation"] in {"strengthen", "reconsider", "fix_facts", "apply"}
+    assert "## 投递建议" in markdown
+    assert "仅供参考" in markdown
+    for reason in advice["reasons"]:
+        assert reason in markdown
+    for action in advice["next_actions"]:
+        assert action in markdown
 
 
 class _FakeJudgeClient:

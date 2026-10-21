@@ -1970,7 +1970,24 @@
       "rejected": "Rejected",
       "reject": "Reject",
       "select": "Set as highlight",
-      "decisionSaved": "Highlight decision saved; re-evaluate to apply."
+      "decisionSaved": "Highlight decision saved; re-evaluate to apply.",
+      "advice": {
+        "heading": "Application advice",
+        "advisory": "Advisory only; it does not block applying. The final decision is yours.",
+        "recommendation": {
+          "apply": "Recommend applying",
+          "strengthen": "Recommend strengthening before applying",
+          "reconsider": "Add evidence or choose a closer target",
+          "fix_facts": "Verify facts and hard requirements first"
+        },
+        "evidenceGaps": "Evidence gaps in top 3 responsibilities: {{count}}",
+        "expressionGaps": "Not expressed in top 3 responsibilities: {{count}}",
+        "nextActions": "Next actions"
+      },
+      "gapKind": {
+        "evidence_missing": "Evidence gap",
+        "not_expressed": "Not expressed"
+      }
     }
   }
 }

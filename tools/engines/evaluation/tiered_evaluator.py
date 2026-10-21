@@ -313,8 +313,13 @@ def inspect_bullet_trace(resume: str, trace: dict | None) -> dict:
     }
 
 
-def _failure(rule: str, target: str, reason: str) -> QualityFailure:
-    return QualityFailure(rule=rule, target=_normalize(target)[:160], reason=_normalize(reason)[:500])
+def _failure(rule: str, target: str, reason: str, gap_kind: str = "") -> QualityFailure:
+    return QualityFailure(
+        rule=rule,
+        target=_normalize(target)[:160],
+        reason=_normalize(reason)[:500],
+        gap_kind=gap_kind,
+    )
 
 
 def _short(text: object, limit: int = 60) -> str:
@@ -551,6 +556,8 @@ def evaluate_eligible(
         {
             "pdf_pages": (pdf_check or {}).get("pages"),
             "clip_check": (pdf_check or {}).get("clipped"),
+            # 结构化标记 PDF 是否已回填；供投递建议区分“未校验”与真实篇幅/裁切缺口。
+            "pdf_check_state": "unverified" if not isinstance(pdf_check, dict) else "verified",
             "first_screen_mode": _mode,
             "reason_count": len(failures),
         },
@@ -661,6 +668,8 @@ def _fit_matrix(resume: str, semantic_review: dict | None, judgments: dict | Non
             "jd_item": _short(requirement.get("text", ""), 120),
             "kind": requirement.get("kind", "must_have"),
             "status": status,
+            # 证据池支撑状态：用于区分"未表达"（池 supported）与"证据缺失"（池 partial/insufficient）。
+            "evidence_support": str(requirement.get("status", "") or ""),
             "bullet_ref": "、".join(bullet_refs),
             "first_screen": first_screen,
         }
@@ -701,6 +710,27 @@ def _fit_matrix(resume: str, semantic_review: dict | None, judgments: dict | Non
     return rows, gap_rows
 
 
+def _fit_gap_kind(row: dict[str, object]) -> str:
+    """对位缺口类型：证据池已 supported 但正文未表达/未进首屏 → not_expressed；其余 → evidence_missing。"""
+    status = str(row.get("status", ""))
+    first_screen = bool(row.get("first_screen"))
+    if status == "supported" and first_screen:
+        return ""
+    if str(row.get("evidence_support", "")) == "supported":
+        return "not_expressed"
+    return "evidence_missing"
+
+
+def _fit_gap_reason(row: dict[str, object]) -> str:
+    status = str(row.get("status", ""))
+    support = str(row.get("evidence_support", "")) or "未知"
+    if _fit_gap_kind(row) == "not_expressed":
+        if status == "supported":
+            return "正文已支撑但不在首屏（首屏位置缺口，需 supported 且位于首屏）"
+        return f"证据池已 supported，正文未充分表达（当前 {status}，需 supported 且位于首屏）"
+    return f"证据池支撑为 {support}，正文支撑状态 {status}（需 supported 且位于首屏）"
+
+
 def evaluate_fit(
     *,
     resume: str,
@@ -720,14 +750,17 @@ def evaluate_fit(
     if not top:
         failures.append(_failure("R2.2", "JD 职责", "语义评审未提供岗位职责条目"))
     for row in top:
-        if row["status"] != "supported" or not row["first_screen"]:
-            failures.append(
-                _failure(
-                    "R2.2",
-                    f"JD 职责「{_short(row['jd_item'], 40)}」",
-                    f"首屏支撑状态 {row['status']}（需 supported 且位于首屏）",
-                )
+        gap_kind = _fit_gap_kind(row)
+        if not gap_kind:
+            continue
+        failures.append(
+            _failure(
+                "R2.2",
+                f"JD 职责「{_short(row['jd_item'], 40)}」",
+                _fit_gap_reason(row),
+                gap_kind=gap_kind,
             )
+        )
     # R2.4 与 JD 无关的经历应压缩或退出正文。
     project_entries = [
         entry for entry in _entries(resume).get("项目经历", []) if entry.get("title")
@@ -747,13 +780,31 @@ def evaluate_fit(
     supported = sum(1 for row in must_have if row["status"] == "supported")
     ratio = supported / len(must_have) if must_have else 1.0
     if must_have and ratio < float(thresholds["min_supported_must_have_ratio"]):
-        failures.append(
-            _failure(
-                "R2.3",
-                "must-have",
-                f"硬性要求正文支持率 {ratio:.2f} 低于 {thresholds['min_supported_must_have_ratio']}",
+        # 支持率只由 supported 决定；“supported 但不在首屏”不属于支持率缺口，不计入本规则计数。
+        unsupported = [row for row in must_have if row["status"] != "supported"]
+        evidence_gaps = sum(1 for row in unsupported if _fit_gap_kind(row) == "evidence_missing")
+        expression_gaps = len(unsupported) - evidence_gaps
+        detail = f"硬性要求正文支持率 {ratio:.2f} 低于 {thresholds['min_supported_must_have_ratio']}"
+        if evidence_gaps:
+            failures.append(
+                _failure(
+                    "R2.3",
+                    "must-have",
+                    f"{detail}（证据缺口 {evidence_gaps} 项）",
+                    gap_kind="evidence_missing",
+                )
             )
-        )
+        if expression_gaps:
+            failures.append(
+                _failure(
+                    "R2.3",
+                    "must-have",
+                    f"{detail}（未表达 {expression_gaps} 项）",
+                    gap_kind="not_expressed",
+                )
+            )
+        if not evidence_gaps and not expression_gaps:
+            failures.append(_failure("R2.3", "must-have", detail))
     metrics = {
         "fit_score": semantic_review.get("fit_score") if isinstance(semantic_review, dict) else None,
         "resume_score": semantic_review.get("resume_score") if isinstance(semantic_review, dict) else None,
@@ -1014,6 +1065,188 @@ def evaluate_distinct(
     return TierResult(passed=not failures, failures=tuple(failures), metrics=metrics, highlights=tuple(chosen))
 
 
+_GAP_KIND_LABELS = {"evidence_missing": "证据缺口", "not_expressed": "未表达"}
+_FACT_RULES = frozenset({"R1.1", "R1.2", "R1.7"})
+_RECOMMENDATION_LABELS = {
+    "apply": "建议投递",
+    "strengthen": "建议补强后投递",
+    "reconsider": "建议先补证据或更换更匹配目标",
+    "fix_facts": "先核对事实与硬性条件",
+}
+_RECOMMENDATION_SUMMARIES = {
+    "apply": "建议投递：合格层与对位层通过，事实追溯与岗位支撑已覆盖。",
+    "strengthen": "建议补强后投递：仍有可在生成或内容取舍阶段改进的缺口。",
+    "reconsider": "建议先补证据或更换更匹配目标：核心职责证据支撑不足。",
+    "fix_facts": "先核对事实与硬性条件：存在不能靠重新生成消除的缺口。",
+}
+
+
+def _unique(items: object) -> list[str]:
+    return list(dict.fromkeys(str(item) for item in items if str(item).strip()))
+
+
+def _pdf_check_pending(eligible: dict[str, object]) -> bool:
+    """评估阶段尚未渲染 PDF：只把 R1.5 的 pdf 页数/裁切项视为未校验，首屏缺口仍参与建议。"""
+    metrics = eligible.get("metrics") if isinstance(eligible.get("metrics"), dict) else {}
+    return str(metrics.get("pdf_check_state", "")) == "unverified"
+
+
+def _advice_recomputable(tiers: object) -> bool:
+    """只有四层结构完整（每层 failures 为 list）时才重算建议，稀疏/异常报告保留原值。"""
+    if not isinstance(tiers, dict):
+        return False
+    for name in ("eligible", "fit", "strong", "distinct"):
+        tier = tiers.get(name)
+        if not isinstance(tier, dict) or not isinstance(tier.get("failures"), list):
+            return False
+    return True
+
+
+def _delivery_advice(
+    tiers: dict[str, dict[str, object]],
+    llm_pending: object = (),
+) -> dict[str, object]:
+    """把四层结论转成可执行的投递建议；只作参考，不改变 auto_pass，也不拦截投递。"""
+    eligible = tiers.get("eligible") if isinstance(tiers.get("eligible"), dict) else {}
+    fit = tiers.get("fit") if isinstance(tiers.get("fit"), dict) else {}
+    strong = tiers.get("strong") if isinstance(tiers.get("strong"), dict) else {}
+    distinct = tiers.get("distinct") if isinstance(tiers.get("distinct"), dict) else {}
+    eligible_failures = [failure for failure in (eligible.get("failures") or []) if isinstance(failure, dict)]
+    fit_failures = [failure for failure in (fit.get("failures") or []) if isinstance(failure, dict)]
+    strong_failures = [failure for failure in (strong.get("failures") or []) if isinstance(failure, dict)]
+    pending_rules = [str(rule) for rule in (llm_pending or [])]
+    pdf_pending = _pdf_check_pending(eligible)
+    # PDF 未渲染时只排除页数/裁切这一条；首屏摘要/核心经历等已可判缺口必须保留。
+    real_eligible = [
+        failure for failure in eligible_failures
+        if not (
+            failure.get("rule") == "R1.5"
+            and failure.get("target") == "pdf"
+            and pdf_pending
+        )
+    ]
+    gap_counts = {"evidence_missing": 0, "not_expressed": 0}
+    for failure in fit_failures:
+        if failure.get("rule") != "R2.2":
+            continue
+        kind = str(failure.get("gap_kind") or "")
+        if kind in gap_counts:
+            gap_counts[kind] += 1
+    core_evidence = sum(
+        1 for failure in fit_failures
+        if failure.get("rule") == "R2.2" and failure.get("gap_kind") == "evidence_missing"
+    )
+    fact_failures = [failure for failure in real_eligible if str(failure.get("rule")) in _FACT_RULES]
+    reasons: list[str] = []
+    actions: list[str] = []
+    if fact_failures:
+        recommendation = "fix_facts"
+        rules = sorted({str(failure.get("rule")) for failure in fact_failures})
+        reasons.append("合格层存在事实/硬性条件缺口：" + "、".join(rules))
+        reasons.extend(
+            f"{failure.get('rule')} {failure.get('target', '')}：{failure.get('reason', '')}".strip()
+            for failure in fact_failures[:3]
+        )
+        actions.append("在简历中心核对并确认职业档案与关键事实")
+        actions.append("核对岗位硬性条件（年限/学历/资质）后再决定是否投递")
+    elif core_evidence >= 2:
+        recommendation = "reconsider"
+        reasons.append(
+            f"对位前三条职责中 {core_evidence} 项在证据池中支撑不足（证据池非 supported，含 partial/insufficient/conflict/未知），"
+            "仅重排或改写正文无法补齐"
+        )
+        reasons.append(
+            f"缺口计数：证据缺口 {gap_counts['evidence_missing']} 项、未表达 {gap_counts['not_expressed']} 项"
+        )
+        actions.append("补充覆盖核心职责的项目/成果证据卡后再生成")
+        actions.append("或优先选择证据支撑更充分的目标岗位")
+    elif fit_failures or real_eligible:
+        recommendation = "strengthen"
+        if gap_counts["not_expressed"]:
+            reasons.append(
+                f"有 {gap_counts['not_expressed']} 项对位缺口属于未表达：证据已有支撑，但正文未呈现或未进首屏"
+            )
+        if gap_counts["evidence_missing"]:
+            reasons.append(
+                f"有 {gap_counts['evidence_missing']} 项对位缺口属于证据缺失：证据池支撑不足"
+            )
+        other_fit = [failure for failure in fit_failures if str(failure.get("rule")) not in {"R2.2", "R2.3"}]
+        if other_fit:
+            reasons.append(f"对位层还有 {len(other_fit)} 项内容取舍或其他缺口")
+        for must_have in (failure for failure in fit_failures if failure.get("rule") == "R2.3"):
+            if must_have.get("gap_kind") == "evidence_missing":
+                reasons.append("硬性要求支持率不足：存在证据缺口")
+                actions.append("补充硬性要求相关的证据卡")
+            elif must_have.get("gap_kind") == "not_expressed":
+                reasons.append("硬性要求支持率不足：存在正文未表达")
+                actions.append("把已支撑的硬性要求在正文表达出来并前置")
+        if real_eligible:
+            rules = sorted({str(failure.get("rule")) for failure in real_eligible})
+            reasons.append("合格层仍有可修复缺口：" + "、".join(rules))
+            if any(
+                str(failure.get("rule")) == "R1.5" and failure.get("target") == "首屏"
+                for failure in real_eligible
+            ):
+                reasons.append("其中包含首屏缺少定位摘要或核心经历条目")
+        if gap_counts["not_expressed"]:
+            actions.append("按对位缺口调整首屏选材：把已有证据前置到第一页并重新生成")
+        if gap_counts["evidence_missing"]:
+            actions.append("补充相关证据卡，或确认该要求是否可迁移表达")
+        if any(str(failure.get("rule")) == "R2.4" for failure in fit_failures):
+            actions.append("压缩或移除与目标 JD 无关的项目/经历后重新生成")
+        if any(
+            str(failure.get("rule")) == "R1.5" and failure.get("target") == "首屏"
+            for failure in real_eligible
+        ):
+            actions.append("补齐首屏定位摘要与核心经历条目后重新生成")
+        if any(
+            str(failure.get("rule")) == "R1.5" and failure.get("target") == "pdf"
+            for failure in real_eligible
+        ):
+            actions.append("把 PDF 压缩到两页并确认无裁切后重新导出")
+        if any(str(failure.get("rule")) in {"R1.3", "R1.8"} for failure in real_eligible):
+            actions.append("补齐缺失的经历时间/简历结构后重新生成")
+        if not actions:
+            actions.append("按质量报告逐项修复后重新生成")
+    else:
+        recommendation = "apply"
+        unverified: list[str] = []
+        if pdf_pending:
+            unverified.append("PDF 页数与裁切")
+        if pending_rules:
+            unverified.append("LLM 判项（" + "、".join(pending_rules) + "）")
+        if unverified:
+            reasons.append(
+                "已校验的合格层与对位层通过；未校验项：" + "、".join(unverified)
+                + "，不按简历缺口处理"
+            )
+        else:
+            reasons.append(
+                "合格层与对位层通过：事实追溯、篇幅与职业档案一致性已覆盖，JD 职责/要求已在正文呈现"
+            )
+        if strong_failures:
+            reasons.append(
+                f"优质层仍有 {len(strong_failures)} 项表达/量化改进项，只作为提升命中率的可选优化，不影响投递"
+            )
+        if distinct.get("failures"):
+            reasons.append("突出层未通过：可作为差异化补充，但不是投递前置条件")
+        actions.append("准备投递 PDF 并核对目标岗位；最终发送仍由你确认")
+    if pdf_pending and recommendation != "apply":
+        reasons.append("PDF 尚未回填页数与裁切校验（评估阶段未渲染），投递前会再次校验，不按简历缺口处理")
+    summaries = dict(_RECOMMENDATION_SUMMARIES)
+    if recommendation == "apply" and (pdf_pending or pending_rules):
+        summaries["apply"] = "建议投递：除未校验项外，已校验的合格层与对位层通过。"
+    return {
+        "recommendation": recommendation,
+        "label": _RECOMMENDATION_LABELS[recommendation],
+        "advisory_only": True,
+        "gap_counts": gap_counts,
+        "summary": summaries[recommendation],
+        "reasons": _unique(reasons),
+        "next_actions": _unique(actions),
+    }
+
+
 def _tier_gap_tasks(tiers: dict[str, dict[str, object]], fit_gaps: list[dict]) -> list[str]:
     tasks: list[str] = []
     labels = {"eligible": "合格", "fit": "对位", "strong": "优质", "distinct": "突出"}
@@ -1021,8 +1254,10 @@ def _tier_gap_tasks(tiers: dict[str, dict[str, object]], fit_gaps: list[dict]) -
         for failure in tier.get("failures", []):  # type: ignore[union-attr]
             if not isinstance(failure, dict):
                 continue
+            kind_label = _GAP_KIND_LABELS.get(str(failure.get("gap_kind", "")))
+            suffix = f"（{kind_label}）" if kind_label else ""
             tasks.append(
-                f"{labels.get(tier_name, tier_name)} {failure.get('rule', '')} {failure.get('target', '')}：{failure.get('reason', '')}"
+                f"{labels.get(tier_name, tier_name)} {failure.get('rule', '')} {failure.get('target', '')}：{failure.get('reason', '')}{suffix}"
             )
     for gap in fit_gaps:
         tasks.append(f"对位缺口 {gap.get('item', '')}：{gap.get('reason', '')}")
@@ -1100,6 +1335,7 @@ def build_quality_report(
         "quality_judge": judge_meta or None,
         "llm_pending": llm_pending,
         "gap_tasks": _tier_gap_tasks(evaluated, list(fit.highlights)),
+        "delivery_advice": _delivery_advice(evaluated, llm_pending),
         "legacy_scores": legacy_scores or {"rule_total": None, "llm_expression": None},
     }
     return report
@@ -1126,7 +1362,9 @@ def apply_pdf_check(report: dict[str, object], pdf_check: dict) -> dict[str, obj
     failures = [
         failure
         for failure in eligible.get("failures", [])
-        if isinstance(failure, dict) and failure.get("rule") != "R1.5"
+        # 只替换 PDF 页数/裁切相关项；首屏摘要/核心经历等可判缺口在回填后仍保留。
+        if isinstance(failure, dict)
+        and not (failure.get("rule") == "R1.5" and failure.get("target") == "pdf")
     ]
     pages = pdf_check.get("pages")
     max_pages = int(thresholds["eligible"]["max_pdf_pages"])  # type: ignore[index]
@@ -1141,6 +1379,7 @@ def apply_pdf_check(report: dict[str, object], pdf_check: dict) -> dict[str, obj
     metrics = eligible.get("metrics") if isinstance(eligible.get("metrics"), dict) else {}
     metrics["pdf_pages"] = pages
     metrics["clip_check"] = pdf_check.get("clipped")
+    metrics["pdf_check_state"] = "verified"
     eligible["metrics"] = metrics
     eligible["passed"] = not eligible["failures"]
     for name in ("fit", "strong", "distinct"):
@@ -1154,5 +1393,7 @@ def apply_pdf_check(report: dict[str, object], pdf_check: dict) -> dict[str, obj
             tier["blocked_by"] = "eligible"
     fit = tiers.get("fit") or {}
     updated["gap_tasks"] = _tier_gap_tasks(tiers, list(fit.get("highlights") or []))
+    if "delivery_advice" in updated and _advice_recomputable(tiers):
+        updated["delivery_advice"] = _delivery_advice(tiers, updated.get("llm_pending") or ())
     updated["auto_pass"] = recompute_auto_pass(updated)
     return updated

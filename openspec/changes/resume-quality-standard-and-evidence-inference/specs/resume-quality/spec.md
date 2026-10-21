@@ -88,6 +88,36 @@ quality_report:
 - 每条 failure 指向具体 bullet 或证据卡，不得只给总体评语。
 - 旧的 `evaluation_score ≥ 78` 不再决定 `quality_passed`；保留为 `legacy_scores` 以便对比过渡期数据。
 
+## 投递建议与缺口类型（2026-10-21）
+
+产品目标是帮助候选人拿到面试/录用，不以 `auto_pass` 全绿为目标。质量报告在分层结论之外必须给出**可执行的投递建议**，并区分“证据缺失”与“未表达”：
+
+- 对位层 R2.2 / R2.3 的每条缺口带 `gap_kind`：
+  - `evidence_missing`：证据池支撑为非 `supported`（`partial` / `insufficient` / `conflict` / 未知），需补充证据或更换更匹配目标；
+  - `not_expressed`：证据池已 `supported`，但正文未表达或未进入首屏，需重新生成/调整首屏选材。
+- 对位矩阵行增加 `evidence_support`（证据池状态），供 UI 与复盘追溯缺口类型；R2.4（无关经历）属于内容取舍，不标记 `gap_kind`。
+- R2.2 中“正文已 supported 但不在首屏”的 reason 必须明确是位置问题，不得写成“支撑状态 supported”却判失败。
+- R2.3 支持率只由 `supported` 决定；“supported 但不在首屏”的行不计入 R2.3 缺口计数。R2.3 缺口计数只统计非 `supported` 行；证据缺口与未表达同时存在时，分别输出两条 R2.3 failure（各带 `gap_kind` 与各自计数）。`strengthen` 分支必须同时给出两类 R2.3 依据与动作；`reconsider` 分支已有自身动作，R2.3 明细仍保留在 failure 与缺口任务中。
+- 报告增加 `delivery_advice`：
+  ```yaml
+  delivery_advice:
+    recommendation: apply | strengthen | reconsider | fix_facts
+    label: <中文建议结论>
+    advisory_only: true
+    gap_counts: {evidence_missing: N, not_expressed: N}  # 仅统计对位前三条职责（R2.2）缺口
+    summary: <一句话建议>
+    reasons: [<依据>]
+    next_actions: [<下一步动作>]
+  ```
+  - `fix_facts`：合格层存在事实/硬性条件缺口（R1.1/R1.2/R1.7）时优先；
+  - `reconsider`：对位前三条职责中 ≥2 项为 `evidence_missing`；
+  - `strengthen`：其余对位缺口或合格层非事实缺口（结构、时间、篇幅、首屏等）；
+  - `apply`：合格层、对位层通过（优质/突出失败只作为可选改进依据）。
+  - PDF 页数/裁切未回填与 LLM 待判项按“未校验”如实标注，不按简历缺口处理，也不影响已校验项的结论；`apply` 的 summary/reasons 必须写明“除未校验项外”。
+- 合格层 metrics 增加 `pdf_check_state: unverified | verified`；`apply_pdf_check` 只替换 `target=pdf` 的 R1.5（页数/裁切），必须保留 `target=首屏` 的 R1.5（首屏摘要/核心经历），避免 PDF 回填吞掉已可判的首屏缺口；回填后重算建议。
+- 建议仅供参考，不改变 `auto_pass` 口径、不拦截投递、不替代用户决策；四层结构不完整的稀疏/旧报告不新增或重算建议。
+- 建议随 PDF 回填重算（`apply_pdf_check`）；Markdown 报告在四层报告前输出建议摘要，并在对位缺口后标注缺口类型。UI 在四层报告顶部展示建议区，计数胶囊明确为前三条职责口径，逐项 failure 展示缺口类型徽标。
+
 ## 判定来源
 
 | 层 | 规则可判 | LLM 判（需引用） | 用户判 |
