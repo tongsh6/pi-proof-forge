@@ -14,6 +14,14 @@ Last updated: 2026-10-21
 - 真实本机验收（`outputs/acceptance/strata-local-20261021/validation.json`，gitignored）：keyless `/models` 通过且无 Authorization；结构化 JSON 真实请求 0.8s 成功，线上载荷 `reasoning_effort=none`、无 `thinking`、请求头仅 `content-type`；settings 连接检查通过且未触碰真实 policy；keyless matching 阶段 `env -u LLM_API_KEY LLM_PROVIDER=strata ... --use-llm --require-llm` 跑通（1/1 卡、4 次模型调用、22.84s、0 纠错），产物与 stdout 已留档。
 - 边界：未改变当前生效 provider（仍为 DeepSeek）、未触碰用户真实凭据/policy、无平台写入；真实 App 页面点击验收（选 Strata → 检查连接 → 保存 → 跑一次实际任务）与 `.pen` 画布同步（本机无 Pencil 工具）待用户；P0-026 仍唯一 `next`。
 
+## 2026-10-21 新版猎聘附件上传阻塞与 App 后台自动上传
+
+- 问题：猎聘新版简历页把 PDF 附件上传改为「附件简历右侧 + → 上传附件简历弹窗 → 拖入/选择文件」；旧自动上传脚本只查找单一 `input[type=file][accept*=pdf]`，在弹窗打开前得到 0 个控件，持续返回 `not_submitted / 附件控件不唯一:共0个`。
+- 已实现（尚未成功验证）：App 内「一键自动上传」（自动开会话、检查登录、导航、上传）；后台文件触发器 `app-data/auto_upload_request.json`（action=upload/diagnose），不依赖 computer use/窗口前台；登录态等待与重试；内层滚动容器处理；新版弹窗识别与 `DataTransfer` 自动拖放；旧附件清理与附件入口诊断。提交：`f265980`、`2f288f4`、`08fe502`、`216236b`。
+- 当前阻塞：后台诊断触发超时，尚未拿到新版附件区真实 DOM；自动上传仍为 0 个 PDF 控件，未出现上传弹窗；无附件绑定、无投递记录、无回执。`delivery_attempts` 仍为 **17 条**，不能算已投递。
+- 下一步：修复诊断桥接超时并抓取附件区 DOM；针对新版滚动容器/+ 按钮/上传弹窗修选择器；成功上传后再走检查附件、核验岗位、沟通、确认发送、核验回执。不得自动重传 unknown 上传。
+- 证据：`outputs/acceptance/d5-fit-a-20261021/`（含真实上传尝试队列、UI 截图），以及 `outputs/review_queue/ar_20261021095944642230.json` 等。
+
 ## 2026-10-21 Fit A 真实整链（得物 Java 技术专家）与求职定位校准
 
 - 目标切换（Fit A）：原 P0-026 的「高级全栈」JD 与事实不匹配，按用户决定改跑匹配度更高的「得物App · Java技术专家（电商交易）」。补全旧画像 `jp-2026-002`（status=active、审核字段、恢复 `jd_inputs/jd-2026-002.txt` 引用并解析职责章节），未编造证据。
