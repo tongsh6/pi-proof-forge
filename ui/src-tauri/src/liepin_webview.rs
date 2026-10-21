@@ -422,6 +422,15 @@ async fn start_liepin_pdf_communication_inner(app:AppHandle,window:WebviewWindow
     pdf_rpc(app,"run.agent.recordPdfCommunication",json!({"run_id":run_id,"delivery_ref":packet["delivery_ref"],"observation":observation})).await
 }
 
+async fn ensure_target_chat_open(browser:&WebviewWindow,packet:&Value)->Result<(),String>{
+    // 步骤 A（独立于「发简历」）：幂等打开沟通抽屉并等其在页面内稳定；不点击任何投递控件。
+    // 入口点击若触发跳转，只会影响本脚本；「发简历」确认弹窗由后续独立脚本采集。
+    let script=include_str!("liepin_native_pdf_chat_open.js").replace("CHAT_PAYLOAD",&packet.to_string());
+    browser.eval(script).map_err(|_|"NATIVE_PDF_STATE_FAILED")?;
+    probe_sleep_ms(2500).await?;
+    Ok(())
+}
+
 async fn continue_liepin_pdf_delivery_inner(app:AppHandle,window:WebviewWindow,run_id:String,action:String) -> Result<Value,String> {
     require_local_command(&window)?;
     if !matches!(action.as_str(),"inspect"|"prepare"|"send"){return Err("INVALID_PDF_ACTION".into());}
@@ -434,6 +443,8 @@ async fn continue_liepin_pdf_delivery_inner(app:AppHandle,window:WebviewWindow,r
         browser.navigate(expected).map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED")?;
         tauri::async_runtime::spawn_blocking(||std::thread::sleep(Duration::from_millis(3000))).await.map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED")?;
     }
+    // 打开聊天与点击「发简历」拆成两步；只有准备/检查阶段需要确保抽屉已打开，发送阶段沿用已核验的确认框。
+    if matches!(action.as_str(),"inspect"|"prepare"){ensure_target_chat_open(&browser,&packet).await?;}
     // 导航/等待后重验，页面再以截止时间及取消标志约束真正点击和网络写入。
     if action=="send" {
         let permit=pdf_rpc(app.clone(),"daily.permit",json!({"run_id":run_id})).await?;
@@ -613,18 +624,14 @@ pub async fn inspect_liepin_native_attachments(app: AppHandle, window: WebviewWi
 
 pub async fn followup_from_trigger(app: AppHandle, window: WebviewWindow, run_id: String, action: String) -> Result<Value,String> {
     let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    // 回执核验只读已落盘的 App 业务响应，不需要打开或检查招聘会话。
+    if action=="receipt"{return pdf_rpc(app,"run.agent.verifyPdfReceipt",json!({"run_id":run_id})).await;}
     if app.get_webview_window(LABEL).is_none() {
         open_liepin_native_session_inner(app.clone(), window.clone()).await?;
         tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(6)))
             .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
     }
-    if let Some(browser) = app.get_webview_window(LABEL) {
-        if browser.url().map(|u| u.path() != "/resume/edit").unwrap_or(true) {
-            let _ = browser.navigate("https://c.liepin.com/resume/edit".parse().unwrap());
-            tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(3)))
-                .await.map_err(|_| "NATIVE_SESSION_PAGE_NOT_READY".to_string())?;
-        }
-    }
+    // 不在动作前统一导航到简历附件页：各动作会自行导航到所需页面，额外导航会造成会话检查竞态。
     let mut checked = serde_json::Value::Null;
     for _ in 0..8 {
         checked = check_liepin_native_session_inner(app.clone(), window.clone()).await?;
@@ -640,35 +647,87 @@ pub async fn followup_from_trigger(app: AppHandle, window: WebviewWindow, run_id
         "inspectChat" => continue_liepin_pdf_delivery_inner(app, window, run_id, "inspect".into()).await,
         "prepareResume" => continue_liepin_pdf_delivery_inner(app, window, run_id, "prepare".into()).await,
         "send" => continue_liepin_pdf_delivery_inner(app, window, run_id, "send".into()).await,
+        "receipt" => pdf_rpc(app,"run.agent.verifyPdfReceipt",json!({"run_id":run_id})).await,
         _ => Err("UNKNOWN_FOLLOWUP_ACTION".into()),
     }
 }
 
-pub async fn probe_chat_from_trigger(app: AppHandle, window: WebviewWindow, run_id: String) -> Result<Value,String> {
+async fn probe_sleep_ms(ms:u64)->Result<(),String>{
+    tauri::async_runtime::spawn_blocking(move||std::thread::sleep(Duration::from_millis(ms)))
+        .await.map_err(|_|"NATIVE_SESSION_CHECK_FAILED".to_string())
+}
+
+async fn ensure_probe_session(app:&AppHandle,window:&WebviewWindow)->Result<(),String>{
+    // 探测会话若已存在，说明它刚被真实业务流程使用；不要为了登录检查再导航或注入到未知页面。
+    if app.get_webview_window(LABEL).is_some(){return Ok(());}
+    open_liepin_native_session_inner(app.clone(),window.clone()).await?;
+    probe_sleep_ms(6000).await?;
+    for _ in 0..8{
+        let checked=check_liepin_native_session_inner(app.clone(),window.clone()).await?;
+        if checked["status"]=="authenticated"{return Ok(());}
+        probe_sleep_ms(2000).await?;
+    }
+    Err("NATIVE_SESSION_LOGIN_REQUIRED".into())
+}
+
+pub async fn probe_chat_open_from_trigger(app:AppHandle,window:WebviewWindow,run_id:String)->Result<Value,String>{
+    // 探测 1/2：只负责打开聊天。点击可能整页跳转，所以结果先回传、跳转后由独立只读探测读取真实页面。
     let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
-    if app.get_webview_window(LABEL).is_none() {
-        open_liepin_native_session_inner(app.clone(), window.clone()).await?;
-        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(6)))
-            .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
-    }
-    let mut checked = serde_json::Value::Null;
-    for _ in 0..8 {
-        checked = check_liepin_native_session_inner(app.clone(), window.clone()).await?;
-        if checked["status"] == "authenticated" { break; }
-        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(2)))
-            .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
-    }
-    if checked["status"] != "authenticated" { return Err("NATIVE_SESSION_LOGIN_REQUIRED".into()); }
+    ensure_probe_session(&app,&window).await?;
     let packet=pdf_rpc(app.clone(),"run.agent.pdfTargetPacket",json!({"run_id":run_id})).await?;
     let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
-    let url=packet["job_url"].as_str().ok_or("INVALID_PDF_TARGET")?.to_string();
-    browser.navigate(url.parse().map_err(|_|"INVALID_PDF_TARGET")?).map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED")?;
-    tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(3500)))
-        .await.map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED".to_string())?;
+    let target:Url=packet["job_url"].as_str().ok_or("INVALID_PDF_TARGET")?.parse().map_err(|_|"INVALID_PDF_TARGET")?;
+    if !allowed_navigation(&target){return Err("INVALID_PDF_TARGET".into());}
+    browser.navigate(target).map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED")?;
+    probe_sleep_ms(3500).await?;
+    *app.state::<NativeLiepinSession>().chat_navigation_allowed.lock().map_err(|_|"NATIVE_PDF_STATE_FAILED")?=true;
+    *app.state::<NativeLiepinSession>().chat_popup_url.lock().map_err(|_|"NATIVE_PDF_STATE_FAILED")?=None;
+    let before=browser.url().map_err(|_|"NATIVE_SESSION_PAGE_NOT_READY")?;
     let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
-    let mut payload=packet.clone();
-    payload["job_id"]=packet["platform_job_id"].clone();
-    run_pdf_script(&app,&browser,include_str!("liepin_native_chat_probe.js"),&payload,&nonce).await
+    let click=run_pdf_script(&app,&browser,include_str!("liepin_native_chat_open_probe.js"),&packet,&nonce).await?;
+    let mut navigated_to:Option<String>=None;
+    for _ in 0..40{
+        probe_sleep_ms(250).await?;
+        if let Ok(current)=browser.url(){
+            if current!=before{navigated_to=Some(current.to_string());break;}
+        }
+    }
+    probe_sleep_ms(2500).await?;
+    let popup_url=app.state::<NativeLiepinSession>().chat_popup_url.lock().map_err(|_|"NATIVE_PDF_STATE_FAILED")?.clone();
+    *app.state::<NativeLiepinSession>().chat_navigation_allowed.lock().map_err(|_|"NATIVE_PDF_STATE_FAILED")?=false;
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let ready=run_pdf_script(&app,&browser,include_str!("liepin_native_chat_ready_probe.js"),&packet,&nonce).await?;
+    let final_url=browser.url().map(|u|u.to_string()).ok();
+    Ok(json!({"before_url":before.to_string(),"navigated_to":navigated_to,"final_url":final_url,
+        "popup_url":popup_url,"click":click,"ready":ready}))
+}
+
+pub async fn probe_snapshot_from_trigger(app:AppHandle,window:WebviewWindow,run_id:String)->Result<Value,String>{
+    // 只读页面快照：诊断沟通入口缺失时的真实 DOM，不点击任何控件。
+    let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    ensure_probe_session(&app,&window).await?;
+    let packet=pdf_rpc(app.clone(),"run.agent.pdfTargetPacket",json!({"run_id":run_id})).await?;
+    let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+    let target:Url=packet["job_url"].as_str().ok_or("INVALID_PDF_TARGET")?.parse().map_err(|_|"INVALID_PDF_TARGET")?;
+    if !allowed_navigation(&target){return Err("INVALID_PDF_TARGET".into());}
+    browser.navigate(target).map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED")?;
+    probe_sleep_ms(4000).await?;
+    let page_url=browser.url().map(|u|u.to_string()).unwrap_or_default();
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let observation=run_pdf_script(&app,&browser,include_str!("liepin_native_page_snapshot.js"),&packet,&nonce).await?;
+    Ok(json!({"page_url":page_url,"observation":observation}))
+}
+
+pub async fn probe_resume_dialog_from_trigger(app:AppHandle,window:WebviewWindow,run_id:String)->Result<Value,String>{
+    // 探测 2/2：在已打开的沟通页面点「发简历」，只抓确认弹窗真实字段；不选附件、不发送。
+    let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    ensure_probe_session(&app,&window).await?;
+    let packet=pdf_rpc(app.clone(),"run.agent.pdfTargetPacket",json!({"run_id":run_id})).await?;
+    let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+    let page_url=browser.url().map(|u|u.to_string()).unwrap_or_default();
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let observation=run_pdf_script(&app,&browser,include_str!("liepin_native_resume_dialog_probe.js"),&packet,&nonce).await?;
+    Ok(json!({"page_url":page_url,"observation":observation}))
 }
 
 pub async fn diagnose_from_trigger(app: AppHandle, window: WebviewWindow) -> Result<Value,String> {

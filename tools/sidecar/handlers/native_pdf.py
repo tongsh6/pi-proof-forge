@@ -400,6 +400,19 @@ def _confirmation_matches(q):
     except (KeyError,ValueError,TypeError,IndexError,AttributeError):return False
 
 
+def _dialog_captured(q):
+    """是否已从真实确认框抓到过字段；只用于允许一次未生效的 prepare 重试，不授予发送权限。"""
+    try:
+        for event in q.get('pdf_delivery',{}).get('interaction_history',[]):
+            for response in event.get('observation',{}).get('responses',[]):
+                if response.get('method')!='OBSERVE':continue
+                detail=json.loads(response['payload'])
+                if isinstance(detail.get('confirmation'),list) and detail['confirmation']:return True
+    except (KeyError,TypeError,ValueError):
+        pass
+    return False
+
+
 def handle_pdf_interaction_packet(params):
     run_id=_id(params.get('run_id'));action=params.get('action');path=agent._get_queue_file(run_id)
     if action not in {'inspect','prepare','send'}:raise ValueError('unsupported_pdf_interaction')
@@ -411,7 +424,8 @@ def handle_pdf_interaction_packet(params):
             raise ValueError('pdf_delivery_not_pending')
         if action=='prepare':
             if q.get('daily_interruption'):raise ValueError('daily_recovery_required')
-            if d.get('resume_interaction_started'):raise ValueError('resume_interaction_already_started')
+            # 首次 prepare 的点击可能未生效（入口未打开/目标未核验）；确认框抓取成功前允许重试，避免一次失败锁死投递。
+            if d.get('resume_interaction_started') and _dialog_captured(q):raise ValueError('resume_interaction_already_started')
             d.update(state='resume_interaction_pending',resume_interaction_started=True)
             agent._save_queue(path,q)
         if action=='send':

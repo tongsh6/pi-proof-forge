@@ -31,7 +31,7 @@
     }
   }
   if(payload.action==='prepare'){
-    if(context && buttons.length===1){action.click_issued=true;action.reason='approved_recipient_resume_entry';buttons[0].click();await wait(1200);}
+    if(context && buttons.length===1){action.click_issued=true;action.reason='approved_recipient_resume_entry';buttons[0].click();await wait(1600);}
     else action.reason='active_recipient_not_verified';
     if(action.click_issued){
       const modals=Array.from(document.querySelectorAll('.ant-im-modal-content')).filter(e=>visible(e)

@@ -1,11 +1,14 @@
 (() => {
   const visible = e => Boolean(e && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
   const has = selector => Array.from(document.querySelectorAll(selector)).some(visible);
+  // 正向登录证据：全局用户菜单/已登录用户名；职位页不渲染 .nav-user-item，但头部仍显示已登录用户名。
+  const logged_in = has('.nav-user-item, [data-selector="c-logout"], .header-quick-menu-username');
   const send = attachmentView => {
     const observation = {
       url: location.origin + location.pathname,
-      authenticated: has('.nav-user-item, [data-selector="c-logout"]') || (location.hostname === 'c.liepin.com' && Array.from(document.querySelectorAll('a')).some(e => visible(e) && ((e.href === 'https://c.liepin.com/resume/edit' && e.textContent.includes('编辑简历')) || (location.pathname === '/resume/edit' && e.href.startsWith('https://c.liepin.com/resume/preview?') && e.textContent.includes('预览/下载简历'))))),
-      login_form: has('input[placeholder*="手机号"], input[type="password"], #header-quick-menu-login, .inline-login-container') || Array.from(document.querySelectorAll('a,button')).some(e => visible(e) && /^(登录|登录\/注册)$/.test(e.textContent.trim())),
+      authenticated: logged_in || (location.hostname === 'c.liepin.com' && Array.from(document.querySelectorAll('a')).some(e => visible(e) && ((e.href === 'https://c.liepin.com/resume/edit' && e.textContent.includes('编辑简历')) || (location.pathname === '/resume/edit' && e.href.startsWith('https://c.liepin.com/resume/preview?') && e.textContent.includes('预览/下载简历'))))),
+      // 已登录时页面仍会渲染隐藏的登录容器；只有不存在正向登录证据时才把登录容器/登录按钮视为等待登录。
+      login_form: !logged_in && (has('input[placeholder*="手机号"], input[type="password"], #header-quick-menu-login, .inline-login-container') || Array.from(document.querySelectorAll('a,button')).some(e => visible(e) && /^(登录|登录\/注册)$/.test(e.textContent.trim()))),
       challenge: location.hostname === 'safe.liepin.com' || /安全验证|人机验证|滑动验证/.test(document.body?.innerText || '')
     };
     if (attachmentView) observation.attachment_view = attachmentView;

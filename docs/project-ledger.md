@@ -2,6 +2,16 @@
 
 Last updated: 2026-10-21
 
+## 2026-10-21 猎聘确认弹窗真实字段核验与真实投递回执
+
+- 目标与授权：沿用既有官方猎聘小公司岗位「某上海专业技术服务公司 · 高级全栈工程师」（`jl_liepin_4ba2781f552c26d6cb52`，职位 URL `https://www.liepin.com/a/80594047.shtml`），run `ar_20261021134024153666`；平台附件 `童双龙-某上-全栈-20261021.8.PDF`（SHA256 `462b31be…`）file_id `…/QHotN7e3RZOJwu4UPFet9g.PDF`、attachment_id `287e8a2787M348b993290a8`，单笔授权已存在。
+- 探测拆分（dev 文件触发器，只读）：`probeChatOpen` 只打开沟通抽屉并在跳转/稳定后由独立就绪探测读取页面；`probeResumeDialog` 只点击「发简历」抓确认弹窗真实字段，不选附件、不发送；另加只读 `probeSnapshot` 诊断页。真实页面：新版沟通为职位页内抽屉（URL 不变），沟通开始后入口 `a.btn-main`/`a.btn-chat` 文案为「继续聊」（不再是「聊一聊」），唯一「发简历」为 `SPAN.im-ui-action-button-title`（父级 `im-ui-action-button action-item action-resume`）；`im-ui-basic-entry` 只是「我的沟通」列表入口，不能当作活跃会话。
+- 真实确认弹窗字段：`DIV.ant-im-modal-root` → `.ant-im-modal-content`；标题 `选择附件简历` + `招聘方将同时收到您的默认在线简历和附件简历`；3 个 `input.ant-im-radio-input`，value 为平台附件路径；目标附件默认 `checked=true`；主按钮 `立即投递`（`ant-im-btn ant-im-btn-round ant-im-btn-primary`，enabled）。既有 `_confirmation_matches` 的锚点（文件名 stem、默认在线简历和附件简历、file_id 单选、立即投递按钮）与真实字段完全一致，保留原规则并作为本次发送的匹配规则，未放宽。
+- 生产拆分与恢复：`liepin_native_pdf_chat_open.js` 改为幂等步骤 A（支持「聊一聊/继续聊」，匿名岗位不再要求公司名，改由 URL+岗位名约束；已见「发简历」时不再点击），`continue_liepin_pdf_delivery_inner` 在 inspect/prepare 前先执行该步骤，再独立执行原有「发简历」交互脚本；send 沿用已核验确认框。`handle_pdf_interaction_packet` 在未抓到确认框时允许 prepare 重试，抓到后仍阻断重复 prepare。`liepin_native_observe.js` 补 `.header-quick-menu-username` 正向登录证据，且仅在无正向证据时才把登录容器判为等待登录（职位页不渲染 `.nav-user-item`，此前会把已登录误判 waiting_for_login）；`followup_from_trigger` 移除动作前统一导航到附件页（竞态导致 `NATIVE_SESSION_CHECK_TIMEOUT`），新增 `receipt` 触发；旧合并探测 `liepin_native_chat_probe.js` 删除。
+- 真实发送与回执：prepare 记录确认框后 `can_confirm_send=true`；2026-10-21T15:17:22Z 发送动作点击「立即投递」，捕获 `POST https://api-c.liepin.com/api/com.liepin.im.c.chat.send-resume` HTTP 200，请求 `imUserType=0`、`imApp=1`、32 位 imId/oppositeImId、`attachmentId=287e8a2787M348b993290a8`，响应 `{"flag":1,"data":{}}`（15:17:27Z 采集）。15:17:33Z `run.agent.verifyPdfReceipt` 核验 `success`：`outputs/submissions/liepin/native-f61d3037e09f4a8dbdc0d15684746fa9/native_receipt.json`（sha256 `0d6a8a24…`），`submission_log` success 且 rate_limit/target_verify/submit_safety/resume_attachment_binding/login_check/chat_send_resume/submit/receipt 8 步全 success；`delivery_attempts` attempt `f61d3037e09f4a8dbdc0d15684746fa9` success、single_pdf 授权批次消耗 1；`agent_runs/ar_20261021134024153666.json` DONE、`deliveries_completed=1`、`app_verified_deliveries=1`；只读回看会话 UI 23:17 新增「这是我的简历…童先生的简历 在线简历 附件简历」记录。
+- 验证：`python3 -m pytest tests/ -q` → **1609 passed、1 skipped、48 subtests**；`pnpm --dir ui build`、`cargo check --manifest-path ui/src-tauri/Cargo.toml`、`check_execution_roadmap` / `check_v2_constraints` / `check_aief_l3` 通过。
+- 边界：本轮未改质量评分、匹配或 PDF 内容；平台附件仍有 3 份、未删除旧附件；发送由 App 内 dev 文件触发器驱动生产 Tauri 代码（非人工点击 App 页面），外部 CUA 点击验收仍未做；P0-026 仍唯一 `next`（首笔高匹配实投与状态回流此前已验，面试反馈待回流）。
+
 ## 2026-10-21 Strata Provider 接入（本地推理，keyless）
 
 - 定位与复用：现有系统设置已有 `lm_studio` / `openai` / `deepseek` / `openai_compatible` 预设、按 provider 凭据、思考开关与唯一 `LLMClient`；本机 Strata 桌面应用（strata-engine）提供 OpenAI 兼容本地推理（默认 `http://127.0.0.1:8081/v1`、当前模型 `qwen3.8-flash-next-q2_0`、本地默认无鉴权、思考控制走请求顶层 `reasoning_effort`）。实际缺口是 provider 预设/文案、keyless 语义、`reasoning_effort` 适配与子进程管线 credential gate，不新增 SDK/客户端/RPC 字段。Spec 见 `openspec/changes/strata-provider-integration/`。

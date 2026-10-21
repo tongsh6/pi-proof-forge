@@ -35,8 +35,8 @@ def test_native_delivery_reserves_pdf_quota_once_before_browser_action(tmp_path,
     inspect=flow.handle_pdf_interaction_packet({**params,'action':'inspect'})
     assert inspect['delivery_ref']==packet['delivery_ref']
     assert flow.handle_pdf_interaction_packet({**params,'action':'prepare'})['action']=='prepare'
-    with pytest.raises(ValueError,match='resume_interaction_already_started'):
-        flow.handle_pdf_interaction_packet({**params,'action':'prepare'})
+    # 尚未抓到确认框时，首次 prepare 的点击可能未生效，允许重试；抓到确认框后重复 prepare 必须阻断。
+    assert flow.handle_pdf_interaction_packet({**params,'action':'prepare'})['action']=='prepare'
     with pytest.raises(ValueError):flow.handle_pdf_interaction_packet({**params,'action':'send'})
     q=agent._load_queue(agent._get_queue_file('run'));q['attachment_binding']['file_id']='file-id'
     detail={'context':{'text':'公司 岗位'},'confirmation':[{'text':'选择附件简历 默认在线简历和附件简历 cv',
@@ -44,6 +44,8 @@ def test_native_delivery_reserves_pdf_quota_once_before_browser_action(tmp_path,
         'buttons':[{'text':'立即投递','disabled':False}]}]}
     q['pdf_delivery']['interaction_history']=[{'observation':{'responses':[{'method':'OBSERVE','payload':json.dumps(detail)}]}}]
     agent._save_queue(agent._get_queue_file('run'),q)
+    with pytest.raises(ValueError,match='resume_interaction_already_started'):
+        flow.handle_pdf_interaction_packet({**params,'action':'prepare'})
     assert flow.handle_pdf_interaction_packet({**params,'action':'send'})['file_id']=='file-id'
     with pytest.raises(ValueError,match='pdf_final_send_already_started'):flow.handle_pdf_interaction_packet({**params,'action':'send'})
     q=agent._load_queue(agent._get_queue_file('run'))
