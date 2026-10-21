@@ -644,6 +644,33 @@ pub async fn followup_from_trigger(app: AppHandle, window: WebviewWindow, run_id
     }
 }
 
+pub async fn probe_chat_from_trigger(app: AppHandle, window: WebviewWindow, run_id: String) -> Result<Value,String> {
+    let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    if app.get_webview_window(LABEL).is_none() {
+        open_liepin_native_session_inner(app.clone(), window.clone()).await?;
+        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(6)))
+            .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
+    }
+    let mut checked = serde_json::Value::Null;
+    for _ in 0..8 {
+        checked = check_liepin_native_session_inner(app.clone(), window.clone()).await?;
+        if checked["status"] == "authenticated" { break; }
+        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(2)))
+            .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
+    }
+    if checked["status"] != "authenticated" { return Err("NATIVE_SESSION_LOGIN_REQUIRED".into()); }
+    let packet=pdf_rpc(app.clone(),"run.agent.pdfTargetPacket",json!({"run_id":run_id})).await?;
+    let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+    let url=packet["job_url"].as_str().ok_or("INVALID_PDF_TARGET")?.to_string();
+    browser.navigate(url.parse().map_err(|_|"INVALID_PDF_TARGET")?).map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED")?;
+    tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(3500)))
+        .await.map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED".to_string())?;
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let mut payload=packet.clone();
+    payload["job_id"]=packet["platform_job_id"].clone();
+    run_pdf_script(&app,&browser,include_str!("liepin_native_chat_probe.js"),&payload,&nonce).await
+}
+
 pub async fn diagnose_from_trigger(app: AppHandle, window: WebviewWindow) -> Result<Value,String> {
     if app.get_webview_window(LABEL).is_none() {
         open_liepin_native_session_inner(app.clone(), window.clone()).await?;

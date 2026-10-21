@@ -477,6 +477,7 @@ fn main() {
                     tauri::async_runtime::spawn(async move {
                         let outcome = match (action.as_str(), handle.get_webview_window("main")) {
                             ("diagnose", Some(window)) => liepin_webview::diagnose_from_trigger(handle.clone(), window).await,
+                            ("probeChat", Some(window)) => liepin_webview::probe_chat_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("upload", Some(window)) => liepin_webview::auto_upload_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send", Some(window)) =>
                                 liepin_webview::followup_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default(), action.clone()).await,
