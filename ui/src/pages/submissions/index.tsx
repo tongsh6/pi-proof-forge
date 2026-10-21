@@ -26,6 +26,7 @@ import {
   createFeedbackIteration,
   getChannelSession,
   getSubmissionDetail,
+  listResumes,
   listSubmissionFeedback,
   listSubmissions,
   retrySubmission,
@@ -55,6 +56,7 @@ import type { ChannelSessionResult, FeedbackIterationResult, FeedbackListResult,
 
 type LoadState = "loading" | "ready" | "error";
 type RetryStrategy = "same_channel" | "fallback_email";
+type QuickRunOption = { id: string; label: string; updatedAt: string };
 
 const defaultSubmissionChannel = "liepin";
 
@@ -194,6 +196,7 @@ export function SubmissionsPage() {
   const [nativeSessionBusy, setNativeSessionBusy] = useState(false);
   const [nativeAttachmentView, setNativeAttachmentView] = useState<NativeLiepinObservation["attachment_view"]>();
   const [pdfQuickRunId, setPdfQuickRunId] = useState("");
+  const [quickRunOptions, setQuickRunOptions] = useState<QuickRunOption[]>([]);
   const [nativePdf, setNativePdf] = useState<NativePdfPreparation | null>(null);
   const [acceptPdfEffects, setAcceptPdfEffects] = useState(false);
   const [acceptAttachmentRemoval, setAcceptAttachmentRemoval] = useState(false);
@@ -220,6 +223,24 @@ export function SubmissionsPage() {
     setAcceptPdfEffects(false); setAcceptAttachmentRemoval(false);
     setNativePdfError(requestedQuickRun && !valid ? t("pages.submissions.nativePdf.invalidLinkedRun") : "");
   }, [requestedQuickRun, nativeSessionBusy, t]);
+  useEffect(() => {
+    let cancelled = false;
+    void listResumes().then((result) => {
+      if (cancelled) return;
+      const options: QuickRunOption[] = [];
+      for (const item of result.items) {
+        if (item.status !== "latest") continue;
+        const match = /^resume_mr-(qr_[A-Za-z0-9]+)_[AB]$/.exec(item.name);
+        if (!match) continue;
+        options.push({id: match[1], label: `${item.company || "未命名岗位"} · ${item.name.replace(/^resume_mr-|_[AB]$/g, "")} · ${item.score || "--"}`, updatedAt: item.updated_at});
+      }
+      options.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      setQuickRunOptions(options);
+      setPdfQuickRunId((current) => current || requestedQuickRun || options[0]?.id || "");
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [requestedQuickRun]);
+
   const [checkModeResult, setCheckModeResult] = useState<SubmissionCheckModeResult | null>(null);
   const [checkModeState, setCheckModeState] = useState<LoadState>("ready");
   const [feedbackList, setFeedbackList] = useState<FeedbackListResult | null>(null);
@@ -629,10 +650,15 @@ export function SubmissionsPage() {
                   );
                 })}
               </ol>
-              <label className="block text-text-secondary">{t("pages.submissions.nativePdf.quickRun")}
-                <input aria-label={t("pages.submissions.nativePdf.quickRun")} value={pdfQuickRunId} disabled={nativeSessionBusy}
+              <label className="block text-text-secondary">{t("pages.submissions.nativePdf.selectQuickRun", {defaultValue:"选择最近生成的简历 PDF"})}
+                <select aria-label={t("pages.submissions.nativePdf.selectQuickRun", {defaultValue:"选择最近生成的简历 PDF"})} value={pdfQuickRunId} disabled={nativeSessionBusy}
                   onChange={event=>{setPdfQuickRunId(event.target.value);setNativePdf(null);setAcceptPdfEffects(false);setNativePdfPreview("");setPreviewedPdf("");}}
-                  className="ml-3 rounded-card border border-border bg-bg-primary px-3 py-2 text-text-primary" />
+                  className="mt-1 w-full rounded-card border border-border bg-bg-primary px-3 py-2 text-text-primary">
+                  <option value="">{t("pages.submissions.nativePdf.selectQuickRunPlaceholder", {defaultValue:"自动选择最近一次生成的 PDF"})}</option>
+                  {quickRunOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  {pdfQuickRunId && !quickRunOptions.some((option) => option.id === pdfQuickRunId) &&
+                    <option value={pdfQuickRunId}>{t("pages.submissions.nativePdf.currentLinkedRun", {defaultValue:"当前链接任务"})}</option>}
+                </select>
               </label>
               <button type="button" disabled={nativeSessionBusy || !pdfQuickRunId.trim()} onClick={()=>void handleNativePdf("prepare")}
                 className={`mt-2 ${stepClass(0)}`}>{t("pages.submissions.nativePdf.prepare")}</button>
@@ -660,7 +686,23 @@ export function SubmissionsPage() {
                     onChange={event=>setAcceptPdfEffects(event.target.checked)} /><span>{t("pages.submissions.nativePdf.consentShort")}<details className="mt-1 text-xs text-text-muted"><summary className="cursor-pointer select-none text-accent">{t("common.fullTerms")}</summary><p className="mt-1">{t("pages.submissions.nativePdf.consent")}</p></details></span>
                 </label>
                 <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
+                  {pdfStep <= 1 && <button type="button" disabled={nativeSessionBusy} onClick={()=>void handleNativePdf('preview')} className={stepClass(1)}>{t('pages.submissions.nativePdf.preview')}</button>}
+                  {pdfStep === 2 && <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
+                    onClick={()=>void handleNativePdf("upload")} className={stepClass(2)}>{t("pages.submissions.nativePdf.upload")}</button>}
+                  {pdfStep === 3 && <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending"].includes(nativePdf.phase)}
+                    onClick={()=>void handleNativePdf("inspect")} className={stepClass(3)}>{t("pages.submissions.nativePdf.inspect")}</button>}
+                  {pdfStep === 4 && <button type="button" disabled={nativeSessionBusy || nativePdf.phase !== "attachment_verified"}
+                    onClick={()=>void handleNativePdf("target")} className={stepClass(4)}>{t("pages.submissions.nativePdf.target")}</button>}
+                  {pdfStep === 5 && <button type="button" disabled={nativeSessionBusy || !["communication_started","resume_interaction_pending","final_send_pending"].includes(nativePdf.phase)}
+                    onClick={()=>void handleNativePdf("inspectChat")} className={stepClass(5)}>{t("pages.submissions.nativePdf.inspectChat")}</button>}
+                  {pdfStep === 6 && <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || !nativePdf.can_confirm_send}
+                    onClick={()=>void handleNativePdf("send")} className={stepClass(6)}>{t("pages.submissions.nativePdf.send")}</button>}
+                  {pdfStep >= 7 && <button type="button" disabled={nativeSessionBusy || !["final_send_pending","success"].includes(nativePdf.phase)}
+                    onClick={()=>void handleNativePdf("receipt")} className={stepClass(7)}>{t("pages.submissions.nativePdf.receipt")}</button>}
+                </div>
+                <details className="mt-2 rounded-card border border-border bg-bg-primary/30 p-3">
+                  <summary className="cursor-pointer select-none text-xs text-text-secondary">{t("pages.submissions.nativePdf.moreActions", {defaultValue:"高级操作（诊断/重试）"})}</summary>
+                  <div className="mt-2 flex flex-wrap gap-2">                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
                   onClick={()=>void handleNativePdf("upload")} className={stepClass(2)}>{t("pages.submissions.nativePdf.upload")}</button>
                 <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending"].includes(nativePdf.phase)}
                   onClick={()=>void handleNativePdf("inspect")} className={stepClass(3)}>{t("pages.submissions.nativePdf.inspect")}</button>
@@ -676,7 +718,8 @@ export function SubmissionsPage() {
                   onClick={()=>void handleNativePdf("send")} className={stepClass(6)}>{t("pages.submissions.nativePdf.send")}</button>
                 <button type="button" disabled={nativeSessionBusy || !["final_send_pending","success"].includes(nativePdf.phase)}
                   onClick={()=>void handleNativePdf("receipt")} className={stepClass(7)}>{t("pages.submissions.nativePdf.receipt")}</button>
-                </div>
+                  </div>
+                </details>
                 {nativePdf.phase === "success" && nativePdf.platform_filename && <div className="mt-3 border-t border-border pt-3">
                   <p className="break-all">{t("pages.submissions.nativePdf.platformFile")}: {nativePdf.platform_filename}</p>
                   <p className="text-xs text-text-secondary">{t("pages.submissions.nativePdf.removeBoundary")}</p>
