@@ -21,18 +21,35 @@
     const stem=payload.filename.replace(/\.pdf$/i,'');
     // 附件区在简历页底部且懒加载；先滚到底部，必要时点击“附件简历”旁的加号创建上传控件。
     const waitInput=(ms)=>new Promise(r=>setTimeout(r,ms));
-    const pdfInputs=()=>Array.from(document.querySelectorAll('input[type="file"]')).filter(e => !e.disabled && /pdf/i.test(e.accept));
     const visible=e=>Boolean(e && e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
+    // 新版上传弹窗不一定是 antd，也不一定给 input 写 accept；弹窗内未声明 accept 的 file 控件同样视为附件控件。
+    const findModal=()=>Array.from(document.querySelectorAll('.ant-modal-content,[role="dialog"],[class*="modal"],[class*="Modal"],[class*="dialog"],[class*="Dialog"]'))
+      .find(e=>visible(e) && /上传附件/.test(e.innerText||'') && (e.innerText||'').length<600);
+    const pdfInputs=()=>Array.from(document.querySelectorAll('input[type="file"]')).filter(e => !e.disabled && (/pdf/i.test(e.accept) || (!e.accept && findModal()?.contains(e))));
+    const waitForInputs=async(rounds,ms)=>{ for(let i=0;i<rounds;i++){ await waitInput(ms); allInputs=pdfInputs(); if(allInputs.length || findModal()) return; } };
     window.scrollTo({top: document.body.scrollHeight, behavior: 'instant'});
     // 简历编辑页可能使用内层滚动容器，不能只滚 window。
     for (const el of Array.from(document.querySelectorAll('div,main,section')).slice(0,400)) {
       try { if (el.scrollHeight > el.clientHeight + 200) el.scrollTop = el.scrollHeight; } catch {}
     }
     let allInputs = [];
-    for (let i=0;i<4;i++) { await waitInput(350); allInputs=pdfInputs(); if(allInputs.length) break; }
-    if (!allInputs.length) {
+    await waitForInputs(4,350);
+    if (!allInputs.length && !findModal()) {
       const titles=Array.from(document.querySelectorAll('body *')).filter(e=>visible(e) && (e.textContent||'').includes('附件简历') && (e.textContent||'').trim().length<=20);
-      // 先按“标题行右侧”几何位置找加号，避免依赖平台不稳定的 class。
+      // 标题容器（sectionHeader）通常只有「标题 + 加号」两个控件；先点最后一个可交互子元素。
+      for (const title of titles.slice(0,4)) {
+        const header=title.parentElement;
+        if(!header) continue;
+        const controls=Array.from(header.querySelectorAll('button,a,span,i,svg,[role="button"]')).filter(visible).reverse();
+        for (const el of controls) {
+          el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+          await waitInput(500);
+          allInputs=pdfInputs();
+          if(allInputs.length || document.querySelector('.ant-modal-content')) break;
+        }
+        if(allInputs.length || document.querySelector('.ant-modal-content')) break;
+      }
+      // 再按“标题行右侧”几何位置找加号，避免依赖平台不稳定的 class。
       for (const title of titles.slice(0,4)) {
         const rect=title.getBoundingClientRect();
         const row=title.parentElement;
@@ -46,20 +63,19 @@
           el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
           await waitInput(500);
           allInputs=pdfInputs();
-          if(allInputs.length) break;
+          if(allInputs.length || findModal()) break;
         }
-        if(allInputs.length) break;
+        if(allInputs.length || findModal()) break;
       }
-      if (allInputs.length) { /* 已通过标题行右侧加号取得控件 */ }
       const candidates=[];
-      for (const title of titles.slice(0,4)) {
+      if (!allInputs.length && !findModal()) for (const title of titles.slice(0,4)) {
         let node=title;
         for (let depth=0;node && depth<6;depth++,node=node.parentElement) {
-          for (const el of node.querySelectorAll('button,[role="button"],span,i')) {
+          for (const el of node.querySelectorAll('button,[role="button"],span,i,svg,a')) {
             if (!visible(el)) continue;
             const text=(el.textContent||'').trim();
-            const cls=String(el.className||'');
-            if (text==='+' || /plus|add/i.test(cls) || el.getAttribute('aria-label')?.includes('添加')) candidates.push(el);
+            const cls=String(el.className?.baseVal ?? el.className ?? '');
+            if (text==='+' || text==='添加' || /plus|add|upload|attach/i.test(cls) || /添加|上传/.test(el.getAttribute('aria-label')||'')) candidates.push(el);
           }
           if (candidates.length) break;
         }
@@ -69,17 +85,17 @@
         el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
         await waitInput(600);
         allInputs=pdfInputs();
-        if (allInputs.length) break;
+        if (allInputs.length || findModal()) break;
       }
-      if (!allInputs.length) {
-        for (let i=0;i<12;i++) { await waitInput(400); allInputs=pdfInputs(); if(allInputs.length) break; }
-      }
+      if (!allInputs.length && !findModal()) await waitForInputs(12,400);
     }
+    // 弹窗出现后其内部 file 控件可能延迟挂载，再等一轮。
+    if (!allInputs.length && findModal()) await waitForInputs(6,300);
     let modalDropzone = null;
     if (!allInputs.length) {
-      const modal = Array.from(document.querySelectorAll('.ant-modal-content')).find(e=>visible(e) && /上传附件简历/.test(e.innerText||''));
+      const modal = findModal();
       if (modal) {
-        const zones = Array.from(modal.querySelectorAll('*')).filter(e=>visible(e) && /拖拽|点击上传/.test(e.textContent||'') && e.children.length<=4);
+        const zones = Array.from(modal.querySelectorAll('*')).filter(e=>visible(e) && /拖拽|拖入|点击上传|选择文件/.test(e.textContent||'') && e.children.length<=4);
         modalDropzone = zones[zones.length-1] || modal;
       }
     }
@@ -95,7 +111,7 @@
       });
       const bestScore = candidates.length ? Math.max(...candidates.map(c=>c.score)) : 0;
       best = candidates.filter(c=>c.score===bestScore && (bestScore>1 || c.visible));
-      if (best.length !== 1) { finish('not_submitted',['附件控件不唯一:共'+allInputs.length+'个，候选:'+candidates.map(c=>c.score).join(',')]); return; }
+      if (best.length !== 1) { finish('not_submitted',['附件控件不唯一:共'+allInputs.length+'个，候选:'+candidates.map(c=>c.score).join(','), '弹窗:'+(findModal()?'已出现':'未出现')+'，file控件总数:'+document.querySelectorAll('input[type="file"]').length]); return; }
     }
     const inputs = modalDropzone ? [] : [best[0].input];
     const bytes = new Uint8Array(payload.pdf_bytes);

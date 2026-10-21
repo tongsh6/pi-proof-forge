@@ -611,6 +611,39 @@ pub async fn inspect_liepin_native_attachments(app: AppHandle, window: WebviewWi
     inspect_liepin_native_attachments_inner(app,window).await
 }
 
+pub async fn followup_from_trigger(app: AppHandle, window: WebviewWindow, run_id: String, action: String) -> Result<Value,String> {
+    let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    if app.get_webview_window(LABEL).is_none() {
+        open_liepin_native_session_inner(app.clone(), window.clone()).await?;
+        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(6)))
+            .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
+    }
+    if let Some(browser) = app.get_webview_window(LABEL) {
+        if browser.url().map(|u| u.path() != "/resume/edit").unwrap_or(true) {
+            let _ = browser.navigate("https://c.liepin.com/resume/edit".parse().unwrap());
+            tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(3)))
+                .await.map_err(|_| "NATIVE_SESSION_PAGE_NOT_READY".to_string())?;
+        }
+    }
+    let mut checked = serde_json::Value::Null;
+    for _ in 0..8 {
+        checked = check_liepin_native_session_inner(app.clone(), window.clone()).await?;
+        if checked["status"] == "authenticated" { break; }
+        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(2)))
+            .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
+    }
+    if checked["status"] != "authenticated" { return Err("NATIVE_SESSION_LOGIN_REQUIRED".into()); }
+    match action.as_str() {
+        "inspect" => inspect_uploaded_liepin_pdf_inner(app, window, run_id).await,
+        "target" => inspect_liepin_pdf_target_inner(app, window, run_id).await,
+        "communicate" => start_liepin_pdf_communication_inner(app, window, run_id).await,
+        "inspectChat" => continue_liepin_pdf_delivery_inner(app, window, run_id, "inspect".into()).await,
+        "prepareResume" => continue_liepin_pdf_delivery_inner(app, window, run_id, "prepare".into()).await,
+        "send" => continue_liepin_pdf_delivery_inner(app, window, run_id, "send".into()).await,
+        _ => Err("UNKNOWN_FOLLOWUP_ACTION".into()),
+    }
+}
+
 pub async fn diagnose_from_trigger(app: AppHandle, window: WebviewWindow) -> Result<Value,String> {
     if app.get_webview_window(LABEL).is_none() {
         open_liepin_native_session_inner(app.clone(), window.clone()).await?;

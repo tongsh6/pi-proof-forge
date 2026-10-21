@@ -478,6 +478,8 @@ fn main() {
                         let outcome = match (action.as_str(), handle.get_webview_window("main")) {
                             ("diagnose", Some(window)) => liepin_webview::diagnose_from_trigger(handle.clone(), window).await,
                             ("upload", Some(window)) => liepin_webview::auto_upload_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
+                            ("inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send", Some(window)) =>
+                                liepin_webview::followup_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default(), action.clone()).await,
                             (_, Some(_)) => Err("UNKNOWN_TRIGGER_ACTION".to_string()),
                             (_, None) => Err("MAIN_WINDOW_MISSING".to_string()),
                         };
