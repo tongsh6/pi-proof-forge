@@ -65,6 +65,15 @@ class JobsListProfilesTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
+            scorecards_dir = root / "outputs" / "scorecards"
+            scorecards_dir.mkdir(parents=True)
+            (scorecards_dir / "scorecard_mr-2026-001_A.json").write_text(
+                json.dumps(
+                    {"quality_report": {"tiers": {"fit": {"passed": False, "failures": [{"rule": "R2.2"}, {"rule": "R2.4"}]}}}},
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
 
             params: dict[str, object] = {
                 "meta": {"correlation_id": "corr_jobs_1"},
@@ -79,6 +88,10 @@ class JobsListProfilesTests(unittest.TestCase):
                 patch(
                     "tools.sidecar.handlers.jobs._MATCHING_REPORT_DIR",
                     matching_reports_dir,
+                ),
+                patch(
+                    "tools.sidecar.handlers.jobs._SCORECARD_DIR",
+                    scorecards_dir,
                 ),
             ):
                 result = cast(dict[str, Any], handle_jobs_list_profiles(params))
@@ -98,6 +111,8 @@ class JobsListProfilesTests(unittest.TestCase):
         self.assertEqual(item["business_domain"], "E-commerce")
         self.assertEqual(item["keywords"], ["Python", "Kafka"])
         self.assertEqual(item["must_have"], ["Distributed systems", "Stability"])
+        self.assertEqual(item["fit_state"], "failed")
+        self.assertEqual(item["fit_failures"], 2)
 
     def test_filters_profiles_by_status_query_and_tags(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -21,6 +21,7 @@ _ROOT_DIR = Path(".")
 _JOB_PROFILE_DIR = _ROOT_DIR / "job_profiles"
 _JOB_LEAD_DIR = _ROOT_DIR / "job_leads"
 _MATCHING_REPORT_DIR = _ROOT_DIR / "matching_reports"
+_SCORECARD_DIR = _ROOT_DIR / "outputs" / "scorecards"
 _SUBMISSIONS_DIR = _ROOT_DIR / "outputs" / "submissions"
 _JOB_DRAFT_REQUIRED_FIELDS = {
     "target_role",
@@ -52,6 +53,8 @@ class MatchSnapshot(TypedDict):
     evidence_count: int
     updated_at: str
     sort_key: float
+    fit_state: str
+    fit_failures: int
 
 
 class JobProfileItem(TypedDict):
@@ -62,6 +65,8 @@ class JobProfileItem(TypedDict):
     match_score: int
     evidence_count: int
     resume_count: int
+    fit_state: str
+    fit_failures: int
     updated_at: str
     business_domain: str
     source_jd: str
@@ -428,6 +433,21 @@ def _safe_parse_iso_date(value: str) -> datetime | None:
     return parsed
 
 
+def _load_fit_snapshot(matching_stem: str) -> tuple[str, int]:
+    """读取与匹配报告同 stem 的质量评分卡，给出对位预检状态；不阻断任何操作。"""
+    path = _SCORECARD_DIR / f"scorecard_{matching_stem}_A.json"
+    if not path.is_file():
+        return "unassessed", 0
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        fit = ((payload.get("quality_report") or {}).get("tiers") or {}).get("fit") or {}
+        passed = bool(fit.get("passed"))
+        failures = len(fit.get("failures") or [])
+        return ("passed" if passed else "failed"), failures
+    except (OSError, ValueError, TypeError, AttributeError):
+        return "unassessed", 0
+
+
 def _load_matching_snapshots() -> dict[str, MatchSnapshot]:
     snapshots: dict[str, MatchSnapshot] = {}
 
@@ -457,11 +477,14 @@ def _load_matching_snapshots() -> dict[str, MatchSnapshot]:
         except ValueError:
             score = 0
 
+        fit_state, fit_failures = _load_fit_snapshot(path.stem)
         snapshot: MatchSnapshot = {
             "score": score,
             "evidence_count": len(doc["lists"].get("evidence_card_ids", [])),
             "updated_at": updated_at,
             "sort_key": sort_key,
+            "fit_state": fit_state,
+            "fit_failures": fit_failures,
         }
         existing = snapshots.get(job_profile_id)
         if existing is None or snapshot["sort_key"] >= existing["sort_key"]:
@@ -500,6 +523,8 @@ def _build_profile_item(
         "match_score": snapshot["score"] if snapshot is not None else 0,
         "evidence_count": snapshot["evidence_count"] if snapshot is not None else 0,
         "resume_count": 0,
+        "fit_state": snapshot["fit_state"] if snapshot is not None else "unassessed",
+        "fit_failures": snapshot["fit_failures"] if snapshot is not None else 0,
         "updated_at": updated_at,
         "business_domain": doc["scalars"].get("business_domain", ""),
         "source_jd": doc["scalars"].get("source_jd", ""),

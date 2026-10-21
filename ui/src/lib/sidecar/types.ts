@@ -260,6 +260,8 @@ export interface JobProfileListItem {
   match_score: number;
   evidence_count: number;
   resume_count: number;
+  fit_state?: "passed" | "failed" | "unassessed";
+  fit_failures?: number;
   updated_at: string;
   business_domain: string;
   source_jd: string;

@@ -497,12 +497,27 @@ export function QuickRunPage() {
                   {!targetAvailable ? (
                     <option value={selectedProfileId}>{t(selectedProfileId ? "pages.quickRun.targetUnavailable" : "common.empty")}</option>
                   ) : null}
-                  {activeJobProfiles.map((profile) => (
-                    <option key={profile.job_profile_id} value={profile.job_profile_id}>
-                      {profile.company ? `${profile.company} · ${profile.title}` : profile.title}
-                    </option>
-                  ))}
+                  {activeJobProfiles.map((profile) => {
+                    const suffix = profile.fit_state === "failed"
+                      ? t("pages.quickRun.fitBadgeFailed", { count: profile.fit_failures ?? 0 })
+                      : profile.fit_state === "unassessed"
+                        ? t("pages.quickRun.fitBadgeUnassessed")
+                        : "";
+                    return (
+                      <option key={profile.job_profile_id} value={profile.job_profile_id}>
+                        {profile.company ? `${profile.company} · ${profile.title}` : profile.title}{suffix}
+                      </option>
+                    );
+                  })}
                 </select>
+                {selectedProfile && selectedProfile.fit_state === "failed" &&
+                  <p role="status" className="text-xs text-warning">
+                    {t("pages.quickRun.fitHintFailed", { count: selectedProfile.fit_failures ?? 0 })}
+                  </p>}
+                {selectedProfile && selectedProfile.fit_state === "unassessed" &&
+                  <p role="status" className="text-xs text-text-secondary">
+                    {t("pages.quickRun.fitHintUnassessed")}
+                  </p>}
                 <select
                   value={resumePositioning}
                   disabled={runState === "running"}
