@@ -366,9 +366,9 @@
       "skipped": "Skipped",
       "chooseAnotherJob": "Choose another job",
       "preparePdfAnyway": "View and prepare this PDF (quality is not all-green; you can still continue)",
-      "fitBadgeFailed": " (fit gaps: {count})",
+      "fitBadgeFailed": " (fit gaps: {{count}})",
       "fitBadgeUnassessed": " (not prechecked)",
-      "fitHintFailed": "The last fit precheck for this job did not pass ({count} gaps). You can still continue or apply; the system will not block you. Consider filling evidence or choosing a better-matched job.",
+      "fitHintFailed": "The last fit precheck for this job did not pass ({{count}} gaps). You can still continue or apply; the system will not block you. Consider filling evidence or choosing a better-matched job.",
       "fitHintUnassessed": "This job has not been fit-prechecked yet. You can continue; matching gaps will be shown afterwards and will not block you.",
       "qualityNotPassedCanContinue": "Quality is not all-green, but this does not block you. You can still review and prepare this PDF; the system will not intercept your intent to apply. You remain in control of the final send."
     },

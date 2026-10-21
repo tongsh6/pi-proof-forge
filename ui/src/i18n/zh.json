@@ -366,9 +366,9 @@
       "skipped": "已跳过",
       "chooseAnotherJob": "返回岗位中心选择其他岗位",
       "preparePdfAnyway": "查看并准备此 PDF（质量未全绿，仍可继续）",
-      "fitBadgeFailed": "（适配有缺口，{count} 项）",
+      "fitBadgeFailed": "（适配有缺口，{{count}} 项）",
       "fitBadgeUnassessed": "（未预检）",
-      "fitHintFailed": "该岗位上次对位预检未通过（{count} 项缺口）。你可以继续运行或投递，系统不会拦截；建议先补证据或换更匹配的岗位。",
+      "fitHintFailed": "该岗位上次对位预检未通过（{{count}} 项缺口）。你可以继续运行或投递，系统不会拦截；建议先补证据或换更匹配的岗位。",
       "fitHintUnassessed": "该岗位尚未做对位预检；可继续运行，完成后会显示匹配缺口，不会因此被拦截。",
       "qualityNotPassedCanContinue": "质量层未全绿不影响继续投递：你可以查看并准备此 PDF，系统不会拦截你的投递意图；是否发送仍由你确认。"
     },
