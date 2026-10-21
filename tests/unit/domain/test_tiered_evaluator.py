@@ -512,3 +512,28 @@ def test_highlight_decisions_reject_and_select_are_applied():
     assert distinct["metrics"]["rejected"] == 1
     assert distinct["metrics"]["selected"] == 1
     assert [item["highlight_id"] for item in distinct["highlights"]] == ["hl_b2_d1"]
+
+
+def test_distinct_prefers_first_screen_highlight_candidates():
+    from tools.engines.evaluation.tiered_evaluator import (
+        _candidate_highlights,
+        evaluate_distinct,
+        load_quality_config,
+    )
+
+    resume = (
+        "# 候选人\n\n## 项目经历\n### 交易平台（2024）\n"
+        "- 主导交易链路重构：延迟从 800ms 降至 120ms\n\n"
+        "<!-- first-screen-end -->\n\n"
+        "- 把构建耗时从 20 分钟降到 4 分钟\n"
+    )
+    candidates = [
+        {"highlight_id": "hl_page2", "bullet": 2, "jd_item_id": "d1", "exceeds": ["scale", "scope"],
+         "level": "L1", "reason": "第二页突出点", "citations": ["ec_1"]},
+        {"highlight_id": "hl_first", "bullet": 1, "jd_item_id": "d1", "exceeds": ["difficulty"],
+         "level": "L1", "reason": "首屏突出点", "citations": ["ec_1"]},
+    ]
+    items = _candidate_highlights(resume, candidates, {})
+    assert items[0]["highlight_id"] == "hl_first" and items[0]["first_screen"] is True
+    report = evaluate_distinct(resume=resume, candidates=candidates, decisions={}, config=load_quality_config())
+    assert report.passed

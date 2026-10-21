@@ -937,6 +937,7 @@ def _candidate_highlights(
     items.sort(
         key=lambda item: (
             0 if item["selected_by_user"] else 1,
+            0 if item["first_screen"] else 1,
             -len(str(item["exceeds"]).split("、")) if item["exceeds"] else 0,
             item["bullet_ref"],
         )
@@ -963,10 +964,19 @@ def evaluate_distinct(
     failures: list[QualityFailure] = []
     minimum = int(thresholds["min_highlights"])
     maximum = int(thresholds["max_highlights"])
-    if len(items) < minimum:
-        reason = "无合格突出点" if candidates is not None else "无合格突出点（LLM 提名尚未运行或全部被否决）"
-        failures.append(_failure("R4.2", "highlights", reason))
-    chosen = items[:maximum] if len(items) > maximum else items
+    if candidates is not None:
+        # B4 设计要求突出点置于首屏；只有首屏候选可以被选入正文突出点。
+        eligible = [
+            item for item in items
+            if item.get("first_screen") is not False or item.get("selected_by_user")
+        ]
+        if len(eligible) < minimum:
+            failures.append(_failure("R4.2", "highlights", "无合格的首屏突出点"))
+        chosen = eligible[:maximum]
+    else:
+        if len(items) < minimum:
+            failures.append(_failure("R4.2", "highlights", "无合格突出点（LLM 提名尚未运行或全部被否决）"))
+        chosen = items[:maximum] if len(items) > maximum else items
     if len(items) > maximum and candidates is None:
         failures.append(
             _failure("R4.2", "highlights", f"突出点 {len(items)} 条，超过 {maximum} 条上限")
