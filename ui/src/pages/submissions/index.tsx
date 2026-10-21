@@ -35,6 +35,7 @@ import {
   openLiepinNativeSession,
   checkLiepinNativeSession,
   inspectLiepinNativeAttachments,
+  cleanupLiepinNativeAttachments,
   syncLiepinFeedback,
   type NativeLiepinObservation,
   prepareLiepinPdf,
@@ -195,6 +196,8 @@ export function SubmissionsPage() {
   const [nativeSession, setNativeSession] = useState("not_opened");
   const [nativeSessionBusy, setNativeSessionBusy] = useState(false);
   const [nativeAttachmentView, setNativeAttachmentView] = useState<NativeLiepinObservation["attachment_view"]>();
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupNotice, setCleanupNotice] = useState("");
   const [pdfQuickRunId, setPdfQuickRunId] = useState("");
   const [quickRunOptions, setQuickRunOptions] = useState<QuickRunOption[]>([]);
   const [nativePdf, setNativePdf] = useState<NativePdfPreparation | null>(null);
@@ -213,6 +216,27 @@ export function SubmissionsPage() {
       setQualityDecisionNotice(getErrorMessage(error));
     }
   }, [nativePdf, t]);
+  const cleanupOldAttachments = useCallback(async () => {
+    const confirmed = await confirmAction({
+      title: "移除旧的 App 生成附件",
+      description: "将删除猎聘账号中由本 App 命名规则生成的旧 PDF 附件；删除不可恢复。仅清理匹配命名规则的附件。",
+      confirmLabel: "确认移除",
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    setCleanupBusy(true); setCleanupNotice("");
+    try {
+      const result = await cleanupLiepinNativeAttachments();
+      const hints = (result as unknown as {hints?: string[]}).hints || [];
+      setCleanupNotice(hints.join("；") || result.status || "已完成");
+      notify("success", "旧附件清理完成");
+    } catch (error) {
+      setCleanupNotice(getErrorMessage(error));
+      notify("error", "旧附件清理失败", getErrorMessage(error));
+    } finally {
+      setCleanupBusy(false);
+    }
+  }, [t]);
   const [previewedPdf,setPreviewedPdf]=useState("");
   useEffect(() => {
     if (nativeSessionBusy || consumedQuickRun.current === requestedQuickRun) return;
@@ -650,6 +674,12 @@ export function SubmissionsPage() {
                   );
                 })}
               </ol>
+              <details className="mb-3 rounded-card border border-border bg-bg-primary/30 p-3">
+                <summary className="cursor-pointer select-none text-xs text-text-secondary">附件维护（移除旧附件）</summary>
+                <button type="button" disabled={nativeSessionBusy || cleanupBusy} onClick={()=>void cleanupOldAttachments()}
+                  className={`mt-2 ${buttonClass.danger}`}>移除旧的 App 生成附件</button>
+                {cleanupNotice && <p role="status" className="mt-2 text-xs text-text-secondary">{cleanupNotice}</p>}
+              </details>
               <label className="block text-text-secondary">{t("pages.submissions.nativePdf.selectQuickRun", {defaultValue:"选择最近生成的简历 PDF"})}
                 <select aria-label={t("pages.submissions.nativePdf.selectQuickRun", {defaultValue:"选择最近生成的简历 PDF"})} value={pdfQuickRunId} disabled={nativeSessionBusy}
                   onChange={event=>{setPdfQuickRunId(event.target.value);setNativePdf(null);setAcceptPdfEffects(false);setNativePdfPreview("");setPreviewedPdf("");}}

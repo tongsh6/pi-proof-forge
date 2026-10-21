@@ -481,6 +481,7 @@ fn main() {
             liepin_webview::inspect_liepin_native_attachments,
             liepin_webview::sync_liepin_feedback,
             liepin_webview::upload_liepin_native_pdf,
+            liepin_webview::cleanup_liepin_native_attachments,
             liepin_webview::inspect_uploaded_liepin_pdf,
             liepin_webview::inspect_liepin_pdf_target,
             liepin_webview::start_liepin_pdf_communication,

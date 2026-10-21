@@ -321,6 +321,23 @@ async fn run_pdf_script(app:&AppHandle,browser:&WebviewWindow,source:&str,payloa
     Ok(observation)
 }
 
+async fn cleanup_liepin_native_attachments_inner(app: AppHandle, window: WebviewWindow) -> Result<Value,String> {
+    require_local_command(&window)?;
+    let mut checked=check_liepin_native_session_inner(app.clone(),window.clone()).await?;
+    if checked["status"]!="authenticated" {return Err("NATIVE_SESSION_LOGIN_REQUIRED".into());}
+    if checked["url"]!="https://c.liepin.com/resume/edit" {
+        let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+        browser.navigate("https://c.liepin.com/resume/edit".parse().unwrap()).map_err(|_|"NATIVE_SESSION_PAGE_NOT_READY")?;
+        tauri::async_runtime::spawn_blocking(||std::thread::sleep(Duration::from_millis(3000))).await.map_err(|_|"NATIVE_SESSION_PAGE_NOT_READY")?;
+        checked=check_liepin_native_session_inner(app.clone(),window.clone()).await?;
+    }
+    if checked["status"]!="authenticated" || checked["url"]!="https://c.liepin.com/resume/edit" {return Err("NATIVE_SESSION_PAGE_NOT_READY".into());}
+    let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let payload=json!({"cleanup":true,"filename":""});
+    run_pdf_script(&app,&browser,include_str!("liepin_native_cleanup_attachments.js"),&payload,&nonce).await
+}
+
 async fn inspect_uploaded_liepin_pdf_inner(app:AppHandle,window:WebviewWindow,run_id:String) -> Result<Value,String> {
     require_local_command(&window)?;
     let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
@@ -596,6 +613,13 @@ pub async fn recheck_liepin_native_pdf_removal(app:AppHandle,window:WebviewWindo
     require_local_command(&window)?;
     let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
     recheck_liepin_native_pdf_removal_inner(app,window,run_id).await
+}
+
+#[tauri::command]
+pub async fn cleanup_liepin_native_attachments(app:AppHandle,window:WebviewWindow) -> Result<Value,String> {
+    require_local_command(&window)?;
+    let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    cleanup_liepin_native_attachments_inner(app,window).await
 }
 
 #[tauri::command]
