@@ -2,6 +2,18 @@
 
 Last updated: 2026-10-21
 
+## 2026-10-21 Strata Provider 接入（本地推理，keyless）
+
+- 定位与复用：现有系统设置已有 `lm_studio` / `openai` / `deepseek` / `openai_compatible` 预设、按 provider 凭据、思考开关与唯一 `LLMClient`；本机 Strata 桌面应用（strata-engine）提供 OpenAI 兼容本地推理（默认 `http://127.0.0.1:8081/v1`、当前模型 `qwen3.8-flash-next-q2_0`、本地默认无鉴权、思考控制走请求顶层 `reasoning_effort`）。实际缺口是 provider 预设/文案、keyless 语义、`reasoning_effort` 适配与子进程管线 credential gate，不新增 SDK/客户端/RPC 字段。Spec 见 `openspec/changes/strata-provider-integration/`。
+- 请求层：`LLMClient.build_headers()` 空 Key 不发 `Authorization`；`provider=strata` 且 payload 未显式带 `reasoning_effort` 时——`json_object` 或思考关闭 → `none`，思考开启 → low/high（`max→high`）；绝不注入 `thinking`；显式值不覆盖；其他 provider 分支不变。新增 `KEYLESS_PROVIDERS` / `provider_is_keyless` / `llm_request_available`。
+- settings：`_provider_label("strata")="Strata"`；`checkLlmConnection` 对 Strata 走 keyless local（无 Key 不返回 `BLOCKED_PROVIDER_CREDENTIAL`），失败/空模型列表返回 `BLOCKED_LOCAL_PROVIDER` 且消息用 Strata；可选 Key 仍存 `llm-strata-api-key`（0600）并按 provider 隔离。
+- 页面：provider 5 列卡片（LM Studio / Strata / OpenAI / DeepSeek / OpenAI Compatible）；Strata 预设与思考开关（仅 low/high，切到 Strata 时 max→high）；无 Key 显示「本地服务，无需密钥（可选）」且 placeholder 不再误示已有 Key；新增 `ui/src/lib/llmConfig.ts` 供 System Settings / Overview / Quick Run / Agent Run 共用 keyless 判定，keyless Strata 有 model 即视为已配置。i18n 中英文补齐并修正思考提示与实现一致。
+- keyless 管线（独立审查第 1 轮阻断 B1）：sidecar 不注入伪造 Key，管线脚本原以 `LLM_API_KEY` 判断 LLM 可用，导致 Quick Run 默认 `use_llm+require_llm` 在 matching 阶段误判失败。修复：`run_pipeline.has_llm_env`、`run_matching_scoring`、`run_generation`、`run_evaluation`（2 处）、`extract_evidence_llm` 统一复用 `llm_request_available`；在线 provider 无 Key 仍阻断；`extract_evidence_llm` keyless 缺 base_url 时显式报错，不落 OpenAI 默认地址。
+- 并发投递页提交补齐（独立 fix commit）：并行会话提交的投递页/附件改动遗漏 `pages.submissions.nativePdf.{currentLinkedRun,moreActions,selectQuickRun,selectQuickRunPlaceholder}` 四个 i18n 键、两个 GUI 测试 mock 的 `listResumes`，且列表回填会把非法 `quick_run_id` 重新注入选择值；已按页面新 UI 最小补齐（非法回填校验与页头校验一致），全量门禁恢复全绿。未触碰该会话仍未提交的 `liepin_native_upload.js` 等改动。
+- 验证：TDD 红→绿覆盖请求载荷、settings keyless/可选 Key/隔离、管线 gate（pipeline/matching/generation/evaluation/extract）与 GUI helper 行为（node-vm 真实执行）。全量 **1609 项通过、1 跳过、48 subtests**；`tsc --noEmit`、`check_execution_roadmap`、`check_v2_constraints`、`check_aief_l3` 通过。两轮独立审查：第 1 轮发现 B1 并修复，第 2 轮确认 B1 解决、无阻断（非阻断项已处理）。
+- 真实本机验收（`outputs/acceptance/strata-local-20261021/validation.json`，gitignored）：keyless `/models` 通过且无 Authorization；结构化 JSON 真实请求 0.8s 成功，线上载荷 `reasoning_effort=none`、无 `thinking`、请求头仅 `content-type`；settings 连接检查通过且未触碰真实 policy；keyless matching 阶段 `env -u LLM_API_KEY LLM_PROVIDER=strata ... --use-llm --require-llm` 跑通（1/1 卡、4 次模型调用、22.84s、0 纠错），产物与 stdout 已留档。
+- 边界：未改变当前生效 provider（仍为 DeepSeek）、未触碰用户真实凭据/policy、无平台写入；真实 App 页面点击验收（选 Strata → 检查连接 → 保存 → 跑一次实际任务）与 `.pen` 画布同步（本机无 Pencil 工具）待用户；P0-026 仍唯一 `next`。
+
 ## 2026-10-21 Fit A 真实整链（得物 Java 技术专家）与求职定位校准
 
 - 目标切换（Fit A）：原 P0-026 的「高级全栈」JD 与事实不匹配，按用户决定改跑匹配度更高的「得物App · Java技术专家（电商交易）」。补全旧画像 `jp-2026-002`（status=active、审核字段、恢复 `jd_inputs/jd-2026-002.txt` 引用并解析职责章节），未编造证据。

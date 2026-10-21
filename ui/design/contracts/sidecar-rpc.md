@@ -863,12 +863,15 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 - `llm_config` payload 当前支持更新字段：`provider`、`model`、`base_url`、`api_key`、`timeout`、`temperature`、`thinking_enabled`、`thinking_effort`；为部分更新，未传字段保持原值
 - `api_key` 按 provider 保存到本机凭据文件；payload 携带 `api_key` 时，`provider`（或当前已保存 provider）必须匹配 `^[a-z][a-z0-9_]{0,31}$`，否则拒绝
 - `provider=lm_studio` 且 `api_key="lm-studio"` 保持本地占位语义，不强制创建凭据文件
-- `thinking_enabled` 为布尔值，仅 `provider=deepseek` 时影响请求；写入 `policy.local.yaml` 的 `llm_thinking_enabled`
-- `thinking_effort` 枚举 `low | high | max`，默认 `high`；写入 `policy.local.yaml` 的 `llm_thinking_effort`，仅在思考开启时作为 `reasoning_effort` 发送
+- `provider=strata` 为本地免鉴权 provider：不要求 `api_key`；携带 `api_key` 时仍保存到 `llm-strata-api-key`（0600）并按该 provider 隔离，不修改 model/base_url
+- `thinking_enabled` 为布尔值，仅 `provider=deepseek` 或 `provider=strata` 时影响请求；写入 `policy.local.yaml` 的 `llm_thinking_enabled`
+- `thinking_effort` 枚举 `low | high | max`，默认 `high`；写入 `policy.local.yaml` 的 `llm_thinking_effort`。DeepSeek 思考开启时作为 `thinking` 内的 `reasoning_effort` 发送；Strata 思考开启时作为请求顶层 `reasoning_effort` 发送，`max` 映射为 `high`
 - `channels` 当前为 `settings.get` 只读返回字段，不支持 `settings.update`
 - `settings.get` 永不返回 secret 明文
 
 2026-09-28 本地模型兼容：`provider=lm_studio` 的结构化提取在 infra 将旧 `json_object` 转成对象 `json_schema`；Jobs 使用现有草稿字段类型的 schema，业务必需字段与严格 JSON 校验不变。对已实测 `qwen/qwen3.8-27b`，仅该转换且调用方未显式指定时，单次请求补 `reasoning_effort=none`；不改变 LM Studio 全局配置或其他服务商/模型的设置。连接检查只证明模型列表可读取，实际推理单独验收。
+
+2026-10-21 Strata 本地兼容：`provider=strata` 复用 OpenAI 兼容路径，默认 base_url `http://127.0.0.1:8081/v1`、model `qwen3.8-flash-next-q2_0`。本地回环默认免鉴权：`LLMClient.build_headers()` 在 `api_key` 为空时不发送 `Authorization`（这是所有 provider 的通用行为；在线 provider 缺 Key 仍会在服务端 401），有可选 Key 时仍为 Bearer。请求未显式指定 `reasoning_effort` 时，结构化 `json_object` 与思考关闭均发送顶层 `reasoning_effort=none`，思考开启时 `low|high`（`max→high`）；不发送 `thinking` 对象，其他 provider 不受影响。keyless 判定按 provider（`lm_studio` / `strata`）而非 base_url 是否回环；子进程管线以同一 provider 语义判断 LLM 是否可用，不注入伪造 Key。
 
 `result`
 
@@ -916,6 +919,7 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 - `status`: `pass | blocked`
 - 成功时 `code=OK` 且 `models` 返回最多 20 个模型 id
 - `provider=lm_studio` 的本地端点不可达、返回空模型列表或未配置 base_url 时，返回 `code=BLOCKED_LOCAL_PROVIDER`
+- `provider=strata` 为本地免鉴权 provider：缺少密钥不返回 `BLOCKED_PROVIDER_CREDENTIAL`；端点不可达、空模型列表或未配置 base_url 时返回 `code=BLOCKED_LOCAL_PROVIDER`，消息使用 `Strata`，不冒用 LM Studio
 - `openai_compatible` 的 localhost 端点允许不带密钥，但失败时返回 `code=BLOCKED_PROVIDER` 且消息使用 provider 名称，不冒用 LM Studio
 - 在线 provider（OpenAI / DeepSeek / OpenAI Compatible）缺少密钥时返回 `code=BLOCKED_PROVIDER_CREDENTIAL`；其余不可达/空列表返回 `code=BLOCKED_PROVIDER`
 - 请求的 provider 与当前生效 provider 不同时，只读取该 provider 自己的凭据文件；不得复用当前生效密钥

@@ -351,6 +351,8 @@ App 持续运行时每分钟检查到期批次；“执行今日批次”与自�
 
 2026-10-20 DeepSeek Provider 接入：模型分组新增 DeepSeek 预设、thinking 开关与 low/high/max 思考强度；API Key 改为按 provider 保存到本机 0600 权限文件，新增按 provider 的已配置状态、环境变量来源提示与清除入口；连接检查使用 provider 名称并在缺密钥时阻断。LLM 配置改为紧凑单卡：provider 分段选择、密钥状态内联、思考开关与强度同排；`.pen` 同步该布局，截图见 `outputs/pen-sync-20261021/system-settings-llm-screen.png`、`outputs/pen-sync-20261021/llm-config-compact.png` 与真实 React 渲染 `outputs/pen-sync-20261021/react-system-settings.png`；`.pen` 主文件已保存。
 
+2026-10-21 Strata Provider 接入：模型分组在 LM Studio 之后新增 Strata 本地 provider 预设（base_url `http://127.0.0.1:8081/v1`、model `qwen3.8-flash-next-q2_0`），provider 卡改为 5 列。Strata 本地回环默认免鉴权：无 Key 时显示「本地服务，无需密钥（可选）」且按可用状态展示，可选 serving API Key 仍按 provider 保存到本机 0600 文件并支持清除；Overview / Quick Run / Agent Run 共用 `ui/src/lib/llmConfig.ts` 的 keyless 判定，不再把无 Key Strata 显示为未配置。思考开关扩展为 DeepSeek / Strata 共用；Strata 通过请求顶层 `reasoning_effort` 控制（关闭/结构化输出为 `none`，开启后 low / high，`max` 归一到 `high`），不发送 DeepSeek 风格 `thinking` 对象。Quick Run 子进程管线使用同一 keyless 判定，无 Key 时不视为凭证缺失、不注入伪造占位 Key，请求头不带 `Authorization`。`.pen` 本轮未同步（本机无 Pencil 工具），需在 Pencil 中补 Strata 选项、5 列 provider 卡与思考开关条件。
+
 **布局**:
 - 顶部: 页面标题 + "Save / 保存" 主按钮
 - 内容区两栏:
@@ -368,12 +370,14 @@ App 持续运行时每分钟检查到期批次；“执行今日批次”与自�
       - 支持测试连接与最近一次可用性检查
       - 显示可选通道、最近错误与最近成功时间；历史 fallback 记录保留，不代表当前允许自动降级
     - LLM Config / 模型:
-      - provider（LM Studio / OpenAI / DeepSeek / OpenAI Compatible）、model、base_url、api_key（掩码）、timeout、temperature
+      - provider（LM Studio / Strata / OpenAI / DeepSeek / OpenAI Compatible，5 列卡片）、model、base_url、api_key（掩码）、timeout、temperature
       - DeepSeek 预设：base_url `https://api.deepseek.com`、model `deepseek-flash`；支持 `/models` 发现与连接检查
-      - 思考模式开关仅对 DeepSeek 显示，默认关闭；开启后按 low / high / max 选择思考强度，思考模式下温度参数不生效
-      - `api_key` 按 provider 分别保存到本机权限文件（目录 `0700`、文件 `0600`），不进入 localStorage、日志或 `policy.local.yaml`；页面只显示已保存 / 来自环境变量 / 本地占位 / 未配置状态，并支持清除
-      - 未提供真实密钥的在线 provider 不得显示为可用；LM Studio 保留本地 `lm-studio` 占位密钥
+      - Strata 预设：base_url `http://127.0.0.1:8081/v1`、model `qwen3.8-flash-next-q2_0`；本地回环默认免鉴权，无 Key 显示「本地服务，无需密钥（可选）」并按可用状态展示，可选 serving API Key 仍按 provider 保存与清除
+      - 思考模式开关对 DeepSeek / Strata 显示，默认关闭：DeepSeek 按 low / high / max 选择强度（thinking 对象，思考模式下温度不生效）；Strata 按 low / high 选择强度（顶层 `reasoning_effort`，关闭与结构化输出为 `none`，`max` 归一到 `high`）
+      - `api_key` 按 provider 分别保存到本机权限文件（目录 `0700`、文件 `0600`），不进入 localStorage、日志或 `policy.local.yaml`；页面只显示已保存 / 来自环境变量 / 本地占位 / 本地可选 / 未配置状态，并支持清除
+      - 未提供真实密钥的在线 provider 不得显示为可用；LM Studio 保留本地 `lm-studio` 占位密钥，Strata 无需密钥即可用
       - 支持校验、连通性测试、模型发现；切换 provider 时清空上一 provider 的检测结果
+      - 2026-10-21 `.pen` 待补：Strata 选项、5 列 provider 卡与 Strata 思考开关条件；本机无 Pencil 工具，未以源码测试替代画布
 
 ---
 
