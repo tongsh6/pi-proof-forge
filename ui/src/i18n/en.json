@@ -1100,6 +1100,10 @@
       "openApproval": "View this approval and receipt",
       "nativePdf": {
         "quickRun": "Generated resume run ID",
+        "currentLinkedRun": "Current linked run",
+        "moreActions": "Advanced actions (diagnostics/retry)",
+        "selectQuickRun": "Select a recently generated resume PDF",
+        "selectQuickRunPlaceholder": "Automatically select the latest generated PDF",
         "prepare": "Seal PDF and target job",
         "consent": "I reviewed this PDF and its suitability for the job, and accept platform parsing and inclusion in subsequent applications.",
         "upload": "Approve and upload this PDF",

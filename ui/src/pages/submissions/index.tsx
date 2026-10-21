@@ -260,7 +260,12 @@ export function SubmissionsPage() {
       }
       options.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       setQuickRunOptions(options);
-      setPdfQuickRunId((current) => current || requestedQuickRun || options[0]?.id || "");
+      // 列表回填不得重新注入非法/未经验证的 quick_run_id（与上方校验保持一致）。
+      const requestedValid =
+        requestedQuickRun !== null && /^[A-Za-z0-9_-]{1,160}$/.test(requestedQuickRun);
+      setPdfQuickRunId(
+        (current) => current || (requestedValid ? requestedQuickRun : "") || options[0]?.id || ""
+      );
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [requestedQuickRun]);

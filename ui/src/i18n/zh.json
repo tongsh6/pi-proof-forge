@@ -1100,6 +1100,10 @@
       "openApproval": "查看本次审批与回执",
       "nativePdf": {
         "quickRun": "已生成简历的运行编号",
+        "currentLinkedRun": "当前链接任务",
+        "moreActions": "高级操作（诊断/重试）",
+        "selectQuickRun": "选择最近生成的简历 PDF",
+        "selectQuickRunPlaceholder": "自动选择最近一次生成的 PDF",
         "prepare": "固定此 PDF 与目标岗位",
         "consent": "我已审核此 PDF 的完整内容与岗位适用性，并接受上传后补全在线简历及随后续投递附带。",
         "upload": "批准并上传此 PDF",
