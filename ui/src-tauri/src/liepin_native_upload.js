@@ -19,13 +19,38 @@
     }
     if(payload.filename.length>24){finish('not_submitted',['附件名称超过平台上限']);return;}
     const stem=payload.filename.replace(/\.pdf$/i,'');
-    // 附件区在简历页底部且懒加载；先滚到底部并等待控件出现。
+    // 附件区在简历页底部且懒加载；先滚到底部，必要时点击“附件简历”旁的加号创建上传控件。
+    const waitInput=(ms)=>new Promise(r=>setTimeout(r,ms));
+    const pdfInputs=()=>Array.from(document.querySelectorAll('input[type="file"]')).filter(e => !e.disabled && /pdf/i.test(e.accept));
+    const visible=e=>Boolean(e && e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
     window.scrollTo({top: document.body.scrollHeight, behavior: 'instant'});
     let allInputs = [];
-    for (let i=0;i<8;i++) {
-      await new Promise(r=>setTimeout(r,350));
-      allInputs = Array.from(document.querySelectorAll('input[type="file"]')).filter(e => !e.disabled && /pdf/i.test(e.accept));
-      if (allInputs.length) break;
+    for (let i=0;i<4;i++) { await waitInput(350); allInputs=pdfInputs(); if(allInputs.length) break; }
+    if (!allInputs.length) {
+      const titles=Array.from(document.querySelectorAll('body *')).filter(e=>visible(e) && (e.textContent||'').trim()==='附件简历');
+      const candidates=[];
+      for (const title of titles.slice(0,4)) {
+        let node=title;
+        for (let depth=0;node && depth<6;depth++,node=node.parentElement) {
+          for (const el of node.querySelectorAll('button,[role="button"],span,i')) {
+            if (!visible(el)) continue;
+            const text=(el.textContent||'').trim();
+            const cls=String(el.className||'');
+            if (text==='+' || /plus|add/i.test(cls) || el.getAttribute('aria-label')?.includes('添加')) candidates.push(el);
+          }
+          if (candidates.length) break;
+        }
+      }
+      const ordered=candidates.filter((el,i)=>candidates.indexOf(el)===i).slice(0,8);
+      for (const el of ordered) {
+        el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+        await waitInput(600);
+        allInputs=pdfInputs();
+        if (allInputs.length) break;
+      }
+      if (!allInputs.length) {
+        for (let i=0;i<12;i++) { await waitInput(400); allInputs=pdfInputs(); if(allInputs.length) break; }
+      }
     }
     const candidates = allInputs.map(e => {
       let text='', node=e;
