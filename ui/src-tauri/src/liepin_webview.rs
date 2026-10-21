@@ -611,6 +611,23 @@ pub async fn inspect_liepin_native_attachments(app: AppHandle, window: WebviewWi
     inspect_liepin_native_attachments_inner(app,window).await
 }
 
+pub async fn diagnose_from_trigger(app: AppHandle, window: WebviewWindow) -> Result<Value,String> {
+    if app.get_webview_window(LABEL).is_none() {
+        open_liepin_native_session_inner(app.clone(), window.clone()).await?;
+        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(6)))
+            .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
+    }
+    let mut checked = serde_json::Value::Null;
+    for _ in 0..8 {
+        checked = check_liepin_native_session_inner(app.clone(), window.clone()).await?;
+        if checked["status"] == "authenticated" { break; }
+        tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(2)))
+            .await.map_err(|_| "NATIVE_SESSION_CHECK_FAILED".to_string())?;
+    }
+    if checked["status"] != "authenticated" { return Err("NATIVE_SESSION_LOGIN_REQUIRED".into()); }
+    diagnose_liepin_native_attachments_inner(app, window).await
+}
+
 pub async fn auto_upload_from_trigger(app: AppHandle, window: WebviewWindow, run_id: String) -> Result<Value,String> {
     if app.get_webview_window(LABEL).is_none() {
         open_liepin_native_session_inner(app.clone(), window.clone()).await?;
