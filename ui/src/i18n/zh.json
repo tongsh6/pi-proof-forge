@@ -1252,6 +1252,15 @@
         "saved": "已保存",
         "error": "保存失败"
       },
+      "aiDisclosure": {
+        "title": "AI 投递声明",
+        "subtitle": "开启后，每次真实投递前由 App 在目标沟通会话中向招聘方发送一条 AI 自动化声明。",
+        "enabled": "每次投递前发送 AI 自动化声明",
+        "enabledHint": "投递流程会先发送固定声明，确认送达后才继续发简历；声明未确认时本次投递会被阻断。",
+        "previewLabel": "将发送给招聘方的声明",
+        "previewFallback": "声明文案由产品固定提供",
+        "note": "声明只披露自动化事实，不包含模型、提示词、简历细节或本机信息；关闭时投递行为与之前一致。"
+      },
       "gatePolicy": {
         "title": "门禁策略",
         "subtitle": "当前多轮门禁策略快照",
@@ -1319,8 +1328,7 @@
         "channels": "通道",
         "llm": "模型",
         "materialSources": "材料来源",
-      "evidenceInference": "证据推断",
-        "aiDisclosure": "投递声明"
+      "evidenceInference": "证据推断"
       },
       "exclusionList": {
         "title": "企业例外清单",
@@ -1469,15 +1477,6 @@
         "enabled": "允许 LLM 跨文档推断",
         "enabledHint": "关闭后只显示规则可得的 L2 时间线索，不调用模型；接受/否决仍然有效。",
         "note": "推断候选不写卡；接受后字段进入待审核，来源与置信度记录在卡片 provenance 中。"
-      },
-      "aiDisclosure": {
-        "title": "AI 投递声明",
-        "subtitle": "开启后，每次真实投递前由 App 在目标沟通会话中向招聘方发送一条 AI 自动化声明。",
-        "enabled": "每次投递前发送 AI 自动化声明",
-        "enabledHint": "投递流程会先发送固定声明，确认送达后才继续发简历；声明未确认时本次投递会被阻断。",
-        "previewLabel": "将发送给招聘方的声明",
-        "previewFallback": "声明文案由产品固定提供",
-        "note": "声明只披露自动化事实，不包含模型、提示词、简历细节或本机信息；关闭时投递行为与之前一致。"
       },
       "materialSources": {
         "title": "材料来源",
@@ -1791,7 +1790,8 @@
       "feedbackSaved": "反馈已记录"
     },
     "policy": {
-      "saved": "策略已保存"
+      "saved": "策略已保存",
+      "aiDisclosureSaved": "AI 投递声明设置已保存"
     },
     "systemSettings": {
       "saved": "模型配置已保存",
@@ -1804,8 +1804,7 @@
     "settings": {
       "materialRootSaved": "材料来源根已保存",
       "materialRootRemoved": "材料来源根已移除",
-      "evidenceInferenceSaved": "证据推断设置已保存",
-      "aiDisclosureSaved": "AI 投递声明设置已保存"
+      "evidenceInferenceSaved": "证据推断设置已保存"
     }
   },
   "reasons": {

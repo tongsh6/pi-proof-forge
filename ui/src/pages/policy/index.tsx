@@ -16,6 +16,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { confirmAction, notify } from "@/lib/ui";
 import {
   getSettings,
+  updateAiDisclosureSetting,
   updateDeliverySettings,
   updateExclusionList,
   updateLegalEntityExclusionList,
@@ -193,6 +194,7 @@ export function PolicyPage() {
   const [legalEntitySaveState, setLegalEntitySaveState] =
     useState<SaveState>("idle");
   const [deliverySaveState, setDeliverySaveState] = useState<SaveState>("idle");
+  const [aiDisclosureBusy, setAiDisclosureBusy] = useState(false);
   const [companyError, setCompanyError] = useState<string | null>(null);
   const [legalEntityError, setLegalEntityError] = useState<string | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
@@ -268,8 +270,32 @@ export function PolicyPage() {
     }
   }, [settings]);
 
-  const handleSaveCompanies = useCallback(async () => {
+  // AI 投递声明属于投递行为策略：开关即时保存，不依赖门禁策略的“保存”按钮。
+  const handleAiDisclosureToggle = useCallback(async (enabled: boolean) => {
     if (!settings) return;
+    setAiDisclosureBusy(true);
+    try {
+      await updateAiDisclosureSetting(enabled);
+      setSettings((current) =>
+        current
+          ? {
+              ...current,
+              ai_disclosure: {
+                enabled,
+                text: current.ai_disclosure?.text || "",
+              },
+            }
+          : current
+      );
+      notify("success", t("toasts.policy.aiDisclosureSaved"));
+    } catch (nextError) {
+      notify("error", getErrorMessage(nextError));
+    } finally {
+      setAiDisclosureBusy(false);
+    }
+  }, [settings, t]);
+
+  const handleSaveCompanies = useCallback(async () => {    if (!settings) return;
     setCompanySaveState("saving");
     setCompanyError(null);
     try {
@@ -584,6 +610,64 @@ export function PolicyPage() {
                     />
                   </button>
                 </FieldCard>
+              </div>
+
+              <div className="mt-5 rounded-card border border-border bg-bg-primary/70 p-4" data-testid="policy-ai-disclosure">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-accent" aria-hidden="true" />
+                      <h3 className="text-sm font-semibold text-text-primary">
+                        {t("pages.policy.aiDisclosure.title")}
+                      </h3>
+                    </div>
+                    <p className="mt-1 text-sm text-text-secondary">
+                      {t("pages.policy.aiDisclosure.subtitle")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.ai_disclosure?.enabled === true}
+                    aria-label={t("pages.policy.aiDisclosure.enabled")}
+                    data-testid="policy-ai-disclosure-toggle"
+                    disabled={aiDisclosureBusy}
+                    className={`relative inline-flex h-7 w-12 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      settings.ai_disclosure?.enabled === true
+                        ? "border-accent bg-accent"
+                        : "border-border bg-bg-panel"
+                    }`}
+                    onClick={() =>
+                      void handleAiDisclosureToggle(!(settings.ai_disclosure?.enabled === true))
+                    }
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${
+                        settings.ai_disclosure?.enabled === true
+                          ? "translate-x-5"
+                          : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className="mt-3 text-xs text-text-muted">
+                  {t("pages.policy.aiDisclosure.enabledHint")}
+                </p>
+                <div className="mt-3 rounded-card border border-border bg-bg-panel p-3">
+                  <p className="text-xs font-medium text-text-secondary">
+                    {t("pages.policy.aiDisclosure.previewLabel")}
+                  </p>
+                  <p
+                    className="mt-1 text-sm text-text-primary"
+                    data-testid="policy-ai-disclosure-preview"
+                  >
+                    {settings.ai_disclosure?.text ||
+                      t("pages.policy.aiDisclosure.previewFallback")}
+                  </p>
+                </div>
+                <p className="mt-3 text-xs text-text-muted">
+                  {t("pages.policy.aiDisclosure.note")}
+                </p>
               </div>
 
               {deliveryError ? (

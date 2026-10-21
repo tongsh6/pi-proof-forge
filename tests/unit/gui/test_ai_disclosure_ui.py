@@ -9,17 +9,20 @@ def _source(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_settings_page_has_ai_disclosure_toggle_section():
-    settings = _source("ui/src/pages/system-settings/index.tsx")
+def test_policy_page_has_ai_disclosure_toggle_section():
+    policy = _source("ui/src/pages/policy/index.tsx")
     for token in (
         "aiDisclosure",
-        "settings-ai-disclosure",
-        "ai-disclosure-toggle",
-        "ai-disclosure-preview",
+        "policy-ai-disclosure",
+        "policy-ai-disclosure-toggle",
+        "policy-ai-disclosure-preview",
         "updateAiDisclosureSetting",
-        "pages.systemSettings.aiDisclosure.enabledHint",
+        "pages.policy.aiDisclosure.enabledHint",
     ):
-        assert token in settings, token
+        assert token in policy, token
+    settings = _source("ui/src/pages/system-settings/index.tsx")
+    for token in ("aiDisclosure", "ai-disclosure-toggle", "updateAiDisclosureSetting"):
+        assert token not in settings, token
 
 
 def test_api_and_types_expose_ai_disclosure_contract():
@@ -41,11 +44,13 @@ def test_submissions_shows_disclosure_state_before_send():
 def test_i18n_keys_exist_in_both_catalogs():
     for lang in ("zh", "en"):
         catalog = json.loads(_source(f"ui/src/i18n/{lang}.json"))
-        assert catalog["pages"]["systemSettings"]["nav"]["aiDisclosure"]
-        section = catalog["pages"]["systemSettings"]["aiDisclosure"]
+        assert "aiDisclosure" not in catalog["pages"]["systemSettings"]["nav"]
+        assert "aiDisclosure" not in catalog["pages"]["systemSettings"]
+        section = catalog["pages"]["policy"]["aiDisclosure"]
         for key in ("title", "subtitle", "enabled", "enabledHint", "previewLabel", "previewFallback", "note"):
             assert section.get(key), (lang, key)
-        assert catalog["toasts"]["settings"]["aiDisclosureSaved"]
+        assert catalog["toasts"]["policy"]["aiDisclosureSaved"]
+        assert "aiDisclosureSaved" not in catalog["toasts"]["settings"]
         native = catalog["pages"]["submissions"]["nativePdf"]
         assert native["aiDisclosureSent"]
         assert native["aiDisclosurePending"]

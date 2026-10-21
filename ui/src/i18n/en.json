@@ -1252,6 +1252,15 @@
         "saved": "Saved",
         "error": "Save failed"
       },
+      "aiDisclosure": {
+        "title": "AI delivery disclosure",
+        "subtitle": "When enabled, the App sends an AI-automation disclosure to the recruiter in the target conversation before every real delivery.",
+        "enabled": "Send an AI disclosure before each delivery",
+        "enabledHint": "The flow first sends the fixed statement and continues to the resume only after it is confirmed; if unconfirmed, this delivery is blocked.",
+        "previewLabel": "Statement sent to the recruiter",
+        "previewFallback": "The statement text is fixed by the product",
+        "note": "The statement discloses automation only; it contains no model, prompt, resume detail, or local information. When off, delivery behavior is unchanged."
+      },
       "gatePolicy": {
         "title": "Gate policy",
         "subtitle": "Current policy snapshot for multi-round gating.",
@@ -1319,8 +1328,7 @@
         "channels": "Channels",
         "llm": "LLM Config",
         "materialSources": "Material sources",
-      "evidenceInference": "Evidence inference",
-        "aiDisclosure": "AI disclosure"
+      "evidenceInference": "Evidence inference"
       },
       "exclusionList": {
         "title": "Company exclusion list",
@@ -1469,15 +1477,6 @@
         "enabled": "Allow LLM cross-document inference",
         "enabledHint": "When off, only rule-based L2 time hints are shown without model calls; accept/reject still applies.",
         "note": "Candidates never write cards directly; accepted fields enter review and keep provenance/confidence."
-      },
-      "aiDisclosure": {
-        "title": "AI delivery disclosure",
-        "subtitle": "When enabled, the App sends an AI-automation disclosure to the recruiter in the target conversation before every real delivery.",
-        "enabled": "Send an AI disclosure before each delivery",
-        "enabledHint": "The flow first sends the fixed statement and continues to the resume only after it is confirmed; if unconfirmed, this delivery is blocked.",
-        "previewLabel": "Statement sent to the recruiter",
-        "previewFallback": "The statement text is fixed by the product",
-        "note": "The statement discloses automation only; it contains no model, prompt, resume detail, or local information. When off, delivery behavior is unchanged."
       },
       "materialSources": {
         "title": "Material sources",
@@ -1791,7 +1790,8 @@
       "feedbackSaved": "Feedback recorded"
     },
     "policy": {
-      "saved": "Policy saved"
+      "saved": "Policy saved",
+      "aiDisclosureSaved": "AI disclosure setting saved"
     },
     "systemSettings": {
       "saved": "Model settings saved",
@@ -1804,8 +1804,7 @@
     "settings": {
       "materialRootSaved": "Source root saved",
       "materialRootRemoved": "Source root removed",
-      "evidenceInferenceSaved": "Evidence inference settings saved",
-      "aiDisclosureSaved": "AI disclosure setting saved"
+      "evidenceInferenceSaved": "Evidence inference settings saved"
     }
   },
   "reasons": {
