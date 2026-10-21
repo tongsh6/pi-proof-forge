@@ -378,6 +378,8 @@
       "fitBadgeUnassessed": " (not prechecked)",
       "fitHintFailed": "The last fit precheck for this job did not pass ({{count}} gaps). You can still continue or apply; the system will not block you. Consider filling evidence or choosing a better-matched job.",
       "fitHintUnassessed": "This job has not been fit-prechecked yet. You can continue; matching gaps will be shown afterwards and will not block you.",
+      "fitBadgePrecheck": " (rule precheck: {{label}})",
+      "fitHintPrecheck": "This job has not been model-prechecked yet; rule precheck: {{label}}, matched {{matched}}/{{total}} requirements. For reference only; it will not block you.",
       "qualityNotPassedCanContinue": "Quality is not all-green, but this does not block you. You can still review and prepare this PDF; the system will not intercept your intent to apply. You remain in control of the final send."
     },
     "evidence": {
@@ -833,6 +835,30 @@
         "submit": "Save record",
         "saving": "Saving…",
         "open": "Open Submissions"
+      },
+      "precheck": {
+        "heading": "Application suggestions",
+        "subtitle": "Prefers the latest Quick Run fit precheck, then rule prechecks from the evidence library and JD keywords. For reference only; never blocks actions.",
+        "empty": "No precheck suggestions yet. Run a Quick Run, or enrich this job's keywords and evidence.",
+        "limitation": "Rule prechecks do not call the model; run a Quick Run to confirm.",
+        "basisAssessed": "Based on the latest Quick Run fit precheck",
+        "basisRule": "Based on evidence and JD keyword rules",
+        "basisInsufficient": "Insufficient precheck data: job requirements or evidence library missing",
+        "coverage": "Requirement coverage {{percent}}%",
+        "matched": "Matched {{matched}}/{{total}} requirements",
+        "missing": "Uncovered requirements ({{count}})",
+        "sortLabel": "Sort",
+        "sortPrecheck": "Best fit first",
+        "sortUpdated": "Recently updated",
+        "state": {
+          "recommended": "Apply",
+          "consider": "Strengthen first",
+          "promising": "Initial match",
+          "caution": "Has gaps",
+          "hold": "Verify facts first",
+          "unknown": "Insufficient data",
+          "low": "Low match"
+        }
       }
     },
     "agentRun": {

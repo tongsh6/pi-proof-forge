@@ -872,6 +872,10 @@ steps:
       - tests/unit/gui/test_quality_report_ui.py
       - outputs/acceptance/quality-advice-20261022/validation.json
       - outputs/acceptance/quality-advice-20261022/render_validation.json
+      - tests/unit/matching/test_fit_precheck.py
+      - tests/unit/gui/test_fit_precheck_ui.py
+      - outputs/acceptance/fit-precheck-20261022/validation.json
+      - outputs/acceptance/fit-precheck-20261022/page_validation.json
       covers:
       - official_company_facts_persisted_and_size_filter_in_app
       - headhunter_detail_and_freeform_complete_jd_read_with_identity_rules

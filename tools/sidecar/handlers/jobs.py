@@ -11,6 +11,7 @@ from urllib import request
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from tools.engines.matching import fit_precheck as fit_precheck_engine
 from tools.infra.llm.client import LLMClient
 from tools.infra.liepin_readonly import liepin_readonly
 from tools.infra.persistence.job_lead_binding import same_official_source_url
@@ -23,6 +24,9 @@ _JOB_LEAD_DIR = _ROOT_DIR / "job_leads"
 _MATCHING_REPORT_DIR = _ROOT_DIR / "matching_reports"
 _SCORECARD_DIR = _ROOT_DIR / "outputs" / "scorecards"
 _SUBMISSIONS_DIR = _ROOT_DIR / "outputs" / "submissions"
+_EVIDENCE_CARD_DIR = _ROOT_DIR / "evidence_cards"
+# 证据库规则预检语料缓存：(证据卡文件指纹, 语料)；只读，不写卡。
+_PRECHECK_CORPUS_CACHE: tuple[tuple[tuple[str, int, int], ...], dict[str, Any]] | None = None
 _JOB_DRAFT_REQUIRED_FIELDS = {
     "target_role",
     "must_have",
@@ -55,6 +59,8 @@ class MatchSnapshot(TypedDict):
     sort_key: float
     fit_state: str
     fit_failures: int
+    fit_score: int | None
+    advice: dict[str, Any] | None
 
 
 class JobProfileItem(TypedDict):
@@ -75,6 +81,7 @@ class JobProfileItem(TypedDict):
     must_have: list[str]
     nice_to_have: list[str]
     seniority_signal: list[str]
+    fit_precheck: dict[str, Any]
 
 
 class JobsListResult(TypedDict):
@@ -433,19 +440,37 @@ def _safe_parse_iso_date(value: str) -> datetime | None:
     return parsed
 
 
-def _load_fit_snapshot(matching_stem: str) -> tuple[str, int]:
-    """读取与匹配报告同 stem 的质量评分卡，给出对位预检状态；不阻断任何操作。"""
+def _load_fit_snapshot(
+    matching_stem: str,
+) -> tuple[str, int, dict[str, Any] | None, int | None]:
+    """读取与匹配报告同 stem 的质量评分卡，给出对位预检状态、投递建议与语义适配分。"""
     path = _SCORECARD_DIR / f"scorecard_{matching_stem}_A.json"
     if not path.is_file():
-        return "unassessed", 0
+        return "unassessed", 0, None, None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        fit = ((payload.get("quality_report") or {}).get("tiers") or {}).get("fit") or {}
+        quality_report = payload.get("quality_report")
+        tiers = quality_report.get("tiers") if isinstance(quality_report, dict) else None
+        fit = tiers.get("fit") if isinstance(tiers, dict) else None
+        # 旧评分卡没有四层报告/对位层时不能谎报“已预检失败”，交给规则预检。
+        if not isinstance(fit, dict) or "passed" not in fit:
+            return "unassessed", 0, None, None
         passed = bool(fit.get("passed"))
         failures = len(fit.get("failures") or [])
-        return ("passed" if passed else "failed"), failures
+        advice = quality_report.get("delivery_advice") if isinstance(quality_report, dict) else None
+        raw_fit_score = (payload.get("semantic_review") or {}).get("fit_score")
+        try:
+            fit_score = int(raw_fit_score) if raw_fit_score is not None else None
+        except (TypeError, ValueError):
+            fit_score = None
+        return (
+            "passed" if passed else "failed",
+            failures,
+            advice if isinstance(advice, dict) else None,
+            fit_score,
+        )
     except (OSError, ValueError, TypeError, AttributeError):
-        return "unassessed", 0
+        return "unassessed", 0, None, None
 
 
 def _load_matching_snapshots() -> dict[str, MatchSnapshot]:
@@ -477,7 +502,7 @@ def _load_matching_snapshots() -> dict[str, MatchSnapshot]:
         except ValueError:
             score = 0
 
-        fit_state, fit_failures = _load_fit_snapshot(path.stem)
+        fit_state, fit_failures, fit_advice, fit_score = _load_fit_snapshot(path.stem)
         snapshot: MatchSnapshot = {
             "score": score,
             "evidence_count": len(doc["lists"].get("evidence_card_ids", [])),
@@ -485,12 +510,40 @@ def _load_matching_snapshots() -> dict[str, MatchSnapshot]:
             "sort_key": sort_key,
             "fit_state": fit_state,
             "fit_failures": fit_failures,
+            "fit_score": fit_score,
+            "advice": fit_advice,
         }
         existing = snapshots.get(job_profile_id)
         if existing is None or snapshot["sort_key"] >= existing["sort_key"]:
             snapshots[job_profile_id] = snapshot
 
     return snapshots
+
+
+def _load_precheck_corpus() -> dict[str, Any]:
+    """加载已审核证据卡的规则预检语料；按文件指纹缓存，不读取未完成/不可入池卡。"""
+    global _PRECHECK_CORPUS_CACHE
+    paths = _glob_files(_EVIDENCE_CARD_DIR, "*.yaml")
+    fingerprint = tuple(
+        (str(path), path.stat().st_mtime_ns, path.stat().st_size) for path in paths
+    )
+    cached = _PRECHECK_CORPUS_CACHE
+    if cached is not None and cached[0] == fingerprint:
+        return cached[1]
+    cards: list[dict[str, Any]] = []
+    for path in paths:
+        doc = _try_read_yaml_doc(path)
+        if doc is None:
+            continue
+        scalars = doc["scalars"]
+        if scalars.get("status", "").strip() != "saved_eligible":
+            continue
+        if scalars.get("candidate_pool_eligible", "").strip().lower() == "false":
+            continue
+        cards.append({**scalars, **doc["lists"]})
+    corpus = fit_precheck_engine.build_evidence_corpus(cards)
+    _PRECHECK_CORPUS_CACHE = (fingerprint, corpus)
+    return corpus
 
 
 def _derive_status(doc: ParsedDoc, snapshot: MatchSnapshot | None) -> str:
@@ -503,7 +556,7 @@ def _derive_status(doc: ParsedDoc, snapshot: MatchSnapshot | None) -> str:
 
 
 def _build_profile_item(
-    path: Path, snapshots: dict[str, MatchSnapshot]
+    path: Path, snapshots: dict[str, MatchSnapshot], corpus: dict[str, Any]
 ) -> JobProfileItem | None:
     doc = _try_read_yaml_doc(path)
     if doc is None:
@@ -515,6 +568,11 @@ def _build_profile_item(
         if snapshot is not None
         else _format_utc_timestamp(path.stat().st_mtime)
     )
+    precheck = fit_precheck_engine.precheck_profile(
+        {**doc["scalars"], **doc["lists"]},
+        snapshot,
+        corpus,
+    )
     return {
         "job_profile_id": job_profile_id,
         "title": doc["scalars"].get("target_role", job_profile_id),
@@ -525,6 +583,7 @@ def _build_profile_item(
         "resume_count": 0,
         "fit_state": snapshot["fit_state"] if snapshot is not None else "unassessed",
         "fit_failures": snapshot["fit_failures"] if snapshot is not None else 0,
+        "fit_precheck": precheck,
         "updated_at": updated_at,
         "business_domain": doc["scalars"].get("business_domain", ""),
         "source_jd": doc["scalars"].get("source_jd", ""),
@@ -606,7 +665,7 @@ def _parse_cursor(value: object) -> int:
 
 def _parse_sort_field(value: object) -> str:
     field = str(value or "updated_at")
-    if field in {"match_score", "updated_at"}:
+    if field in {"match_score", "updated_at", "fit_precheck"}:
         return field
     return "updated_at"
 
@@ -768,6 +827,16 @@ def _sort_items(
     items: list[JobProfileItem], field: str, order: str
 ) -> list[JobProfileItem]:
     reverse = order != "asc"
+    if field == "fit_precheck":
+        return sorted(
+            items,
+            key=lambda item: (
+                fit_precheck_engine.precheck_rank(item.get("fit_precheck")),
+                item["updated_at"],
+                item["job_profile_id"],
+            ),
+            reverse=reverse,
+        )
     if field == "match_score":
         return sorted(
             items,
@@ -794,17 +863,19 @@ def handle_jobs_list_profiles(params: dict[str, object]) -> dict[str, object]:
     filters = cast(dict[str, object], params.get("filters") or {})
 
     snapshots = _load_matching_snapshots()
+    corpus = _load_precheck_corpus()
     items: list[JobProfileItem] = []
     for path in _glob_files(_JOB_PROFILE_DIR, "*.yaml"):
-        item = _build_profile_item(path, snapshots)
+        item = _build_profile_item(path, snapshots, corpus)
         if item is not None:
             items.append(item)
     items = _apply_filters(items, filters)
-    items = _sort_items(
-        items,
-        _parse_sort_field(sort.get("field")),
-        _parse_sort_order(sort.get("order")),
-    )
+    sort_field = _parse_sort_field(sort.get("field"))
+    sort_order = _parse_sort_order(sort.get("order"))
+    # 推荐排序默认 rank 升序；显式 order 优先。
+    if sort_field == "fit_precheck" and not str(sort.get("order") or "").strip():
+        sort_order = "asc"
+    items = _sort_items(items, sort_field, sort_order)
 
     paged_items = items[cursor : cursor + page_size]
     next_offset = cursor + page_size

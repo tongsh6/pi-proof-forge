@@ -378,6 +378,8 @@
       "fitBadgeUnassessed": "（未预检）",
       "fitHintFailed": "该岗位上次对位预检未通过（{{count}} 项缺口）。你可以继续运行或投递，系统不会拦截；建议先补证据或换更匹配的岗位。",
       "fitHintUnassessed": "该岗位尚未做对位预检；可继续运行，完成后会显示匹配缺口，不会因此被拦截。",
+      "fitBadgePrecheck": "（规则预检：{{label}}）",
+      "fitHintPrecheck": "该岗位尚未做模型对位预检；规则预检结论：{{label}}，命中 {{matched}}/{{total}} 项要求。仅供参考，不会拦截。",
       "qualityNotPassedCanContinue": "质量层未全绿不影响继续投递：你可以查看并准备此 PDF，系统不会拦截你的投递意图；是否发送仍由你确认。"
     },
     "evidence": {
@@ -833,6 +835,30 @@
         "submit": "保存记录",
         "saving": "保存中…",
         "open": "查看投递记录"
+      },
+      "precheck": {
+        "heading": "投递建议",
+        "subtitle": "优先用最近一次 Quick Run 对位预检，其次按证据库与 JD 关键词规则预检；仅供参考、不拦截操作。",
+        "empty": "暂无预检建议；先跑一次 Quick Run，或补全岗位关键词与证据后重试。",
+        "limitation": "规则预检未调用模型，建议跑一次 Quick Run 确认。",
+        "basisAssessed": "依据最近一次 Quick Run 对位预检",
+        "basisRule": "依据证据库与 JD 关键词规则预检",
+        "basisInsufficient": "预检数据不足：岗位要求或证据库不足",
+        "coverage": "要求覆盖 {{percent}}%",
+        "matched": "命中 {{matched}}/{{total}} 项要求",
+        "missing": "未覆盖要求（{{count}} 项）",
+        "sortLabel": "排序",
+        "sortPrecheck": "推荐优先",
+        "sortUpdated": "最近更新",
+        "state": {
+          "recommended": "建议投递",
+          "consider": "补强后投递",
+          "promising": "初步匹配",
+          "caution": "有缺口",
+          "hold": "先核对事实",
+          "unknown": "数据不足",
+          "low": "匹配度低"
+        }
       }
     },
     "agentRun": {

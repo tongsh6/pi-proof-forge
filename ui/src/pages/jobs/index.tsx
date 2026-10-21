@@ -12,6 +12,7 @@ import {
   Star,
   Tag,
 } from "lucide-react";
+import { FitPrecheckBadge, FitPrecheckDetail, FitPrecheckRanking } from "@/components/fit-precheck";
 import { getErrorMessage } from "@/lib/errors";
 import { confirmAction, notify } from "@/lib/ui";
 import {
@@ -40,6 +41,8 @@ type LoadState = "loading" | "ready" | "error";
 type ActionState = "idle" | "creating" | "saving" | "converting";
 type DraftState = "idle" | "generating";
 type ActiveTab = "profiles" | "leads";
+// 岗位画像排序：推荐优先（按预检 rank，无预检的排后）或最近更新；仅客户端排序。
+type ProfileSort = "precheck" | "updated";
 
 const DEFAULT_PROFILE_FILTERS: JobProfilesFilters = { status: null, query: "", tags: [] };
 const DEFAULT_LEAD_FILTERS: JobLeadsFilters = {
@@ -101,6 +104,24 @@ function compactList(items: string[], fallback: string, limit = 5): string[] {
   return items.slice(0, limit);
 }
 
+function precheckRank(profile: JobProfileListItem): number {
+  return typeof profile.fit_precheck?.rank === "number" ? profile.fit_precheck.rank : 5;
+}
+
+function sortProfiles(items: JobProfileListItem[], sort: ProfileSort): JobProfileListItem[] {
+  const sorted = [...items];
+  if (sort === "updated") {
+    return sorted.sort((left, right) =>
+      (right.updated_at || "").localeCompare(left.updated_at || "")
+    );
+  }
+  return sorted.sort(
+    (left, right) =>
+      precheckRank(left) - precheckRank(right) ||
+      (right.updated_at || "").localeCompare(left.updated_at || "")
+  );
+}
+
 export function JobsPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -148,6 +169,7 @@ export function JobsPage() {
   const [liepinSearching, setLiepinSearching] = useState(false);
   const [liepinSearchResult, setLiepinSearchResult] = useState<LiepinSearchResult | null>(null);
   const [liepinSearchError, setLiepinSearchError] = useState<string | null>(null);
+  const [profileSort, setProfileSort] = useState<ProfileSort>("precheck");
 
   const hasLoadedRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -171,7 +193,11 @@ export function JobsPage() {
       setError(null);
       try {
         const [profileResult, leadResult] = await Promise.all([
-          listJobProfiles(nextProfileFilters),
+          // 推荐清单按预检 rank 取首屏，避免只加载最近 20 个画像时漏掉更匹配的老画像。
+          listJobProfiles(nextProfileFilters, {
+            pageSize: 100,
+            sort: { field: "fit_precheck", order: "asc" },
+          }),
           listJobLeads(nextLeadFilters),
         ]);
         setProfiles(profileResult.items);
@@ -237,6 +263,10 @@ export function JobsPage() {
       evidence: profiles.reduce((total, item) => total + item.evidence_count, 0),
     }),
     [profiles]
+  );
+  const sortedProfiles = useMemo(
+    () => sortProfiles(profiles, profileSort),
+    [profileSort, profiles]
   );
 
   useEffect(() => {
@@ -941,6 +971,19 @@ export function JobsPage() {
             >
               {t("pages.jobs.filters.reset")}
             </button>
+            <label className="inline-flex items-center gap-2 text-sm text-text-secondary">
+              {t("pages.jobs.precheck.sortLabel")}
+              <select
+                aria-label={t("pages.jobs.precheck.sortLabel")}
+                className="rounded-card border border-border bg-bg-panel px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                data-testid="jobs-profile-sort"
+                onChange={(event) => setProfileSort(event.target.value as ProfileSort)}
+                value={profileSort}
+              >
+                <option value="precheck">{t("pages.jobs.precheck.sortPrecheck")}</option>
+                <option value="updated">{t("pages.jobs.precheck.sortUpdated")}</option>
+              </select>
+            </label>
           </form>
         ) : (
           <form
@@ -1082,9 +1125,11 @@ export function JobsPage() {
       ) : null}
 
       {loadState === "ready" && activeTab === "profiles" ? (
+        <>
+        <FitPrecheckRanking profiles={profiles} onSelect={handleSelectProfile} />
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] wide:grid-cols-[minmax(0,1fr)_420px]">
           <div className="grid content-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-            {profiles.map((profile) => {
+            {sortedProfiles.map((profile) => {
               const selected = profile.job_profile_id === selectedProfileId;
               const tags = compactList(
                 profile.keywords,
@@ -1113,6 +1158,7 @@ export function JobsPage() {
                       </p>
                     </div>
                     <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      <FitPrecheckBadge precheck={profile.fit_precheck} compact />
                       {profile.import_mode === "manual" ? (
                         <span className="rounded-chip border border-border px-2 py-1 text-xs text-text-secondary" data-testid="profile-manual-import">
                           {t("pages.jobs.manualImport")}
@@ -1254,6 +1300,7 @@ export function JobsPage() {
                     {t(`pages.jobs.status.${selectedProfile.status}`)}
                   </span>
                 </div>
+                <FitPrecheckDetail precheck={selectedProfile.fit_precheck} />
                 {(
                   [
                     ["keywords", selectedProfile.keywords, t("pages.jobs.card.noTags")],
@@ -1478,6 +1525,7 @@ export function JobsPage() {
             )}
           </aside>
         </section>
+        </>
       ) : null}
 
       {loadState === "ready" && activeTab === "leads" ? (

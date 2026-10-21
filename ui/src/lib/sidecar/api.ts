@@ -386,12 +386,13 @@ export async function listJobProfiles(
   options: {
     cursor?: string | null;
     pageSize?: number;
+    sort?: { field: "updated_at" | "match_score" | "fit_precheck"; order: "asc" | "desc" };
   } = {}
 ): Promise<JobProfilesListResult> {
   return client.call<JobProfilesListResult>("jobs.listProfiles", {
     cursor: options.cursor ?? null,
     page_size: options.pageSize ?? 20,
-    sort: { field: "updated_at", order: "desc" },
+    sort: options.sort ?? { field: "updated_at", order: "desc" },
     filters,
   });
 }

@@ -1,5 +1,8 @@
 # PiProofForge Sidecar RPC Contract
 
+
+2026-10-22 岗位适配预检（批量推荐排序）：`jobs.listProfiles.items[]` 增加 `fit_precheck:{source:assessed|rule|insufficient, state:recommended|consider|promising|caution|hold|unknown|low, rank:0-6, coverage:0-1|null, matched_requirements, total_requirements, evidence_hits, matched_terms[], missing_terms[], fit_state, fit_failures, match_score, fit_score, basis}（assessed_quick_run|rule_evidence_overlap|insufficient_requirements|insufficient_evidence）。排序白名单增加 `fit_precheck`；未显式传 `sort.order` 时该字段默认按 rank 升序（推荐优先），显式 order 优先。可信 assessed 仅在 scorecard 具备四层报告 `tiers.fit` 时使用；failed 态还须有语义 `semantic_review.fit_score`（0 合法）或合法 `delivery_advice.recommendation`，空建议对象不可信；旧评分卡或不可信四层报告退回规则预检，不得谎报已预检失败。规则预检只读 saved_eligible/candidate_pool_eligible 证据卡，英文完整词边界、中文二字窗口，年限/学历类要求不进入分母；不调用模型、不写卡、不阻断任何操作，UI 须标注“规则预检仅供参考”。
+
 2026-10-20 推断确认接续：`evidence.confirmInference` 接受成功返回的新 `card_sha256` 是同一卡下一字段确认的输入；保存一字段时保留另一字段已有 provenance，仍设为待审核、不可自动入池。客户端每次成功更新卡指纹、剩余候选及计数；部分失败不重放已成功项，确认后不隐式再次调用 `inferFields`。
 
 2026-10-20 用户修订职责取向：本人经历项目在缺少分工记录且无反向信息时，推断优先主导/负责人视角；仍按 L3 候选记录来源与确认状态。已采纳 L3 职责在角色行、行动和 trace 中保持原义，不机械降为参与；明确参与、协助及否定限定不被提升。R1.4 对有出处且已由用户确认的 L3 不因等级自动拒绝，未确认归因仍待核对。候选 value 只保存业务文本，等级及默认归因说明单独呈现。
@@ -409,7 +412,7 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 
 ### 6.7 jobs.listProfiles
 
-排序白名单：`match_score`, `updated_at`
+排序白名单：`match_score`, `updated_at`, `fit_precheck`（`fit_precheck` 按 rank 升序优先，用于推荐排序；未显式 order 时默认升序）
 
 筛选字段：`status`, `query`, `tags`
 
@@ -447,7 +450,23 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
   "keywords": ["Python", "Kafka"],
   "must_have": ["Distributed systems", "Stability"],
   "nice_to_have": ["FinOps"],
-  "seniority_signal": ["Owner"]
+  "seniority_signal": ["Owner"],
+  "fit_precheck": {
+    "source": "assessed",
+    "state": "consider",
+    "rank": 1,
+    "coverage": null,
+    "matched_requirements": null,
+    "total_requirements": null,
+    "evidence_hits": null,
+    "matched_terms": [],
+    "missing_terms": [],
+    "fit_state": "failed",
+    "fit_failures": 2,
+    "match_score": 85,
+    "fit_score": 85,
+    "basis": "assessed_quick_run"
+  }
 }
 ```
 

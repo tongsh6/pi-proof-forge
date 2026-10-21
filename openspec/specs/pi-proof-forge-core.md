@@ -361,6 +361,19 @@ App 求职偏好接续（2026-10-12，用户强调以 App 能力为主）：
 - 猎头岗位（官方 `jobType=1`）的公开详情位于 `https://www.liepin.com/a/<id>.shtml`，与企业岗位 `/job/<id>.shtml` 页面结构一致：完整 JD 读取、来源 URL 身份比对与反馈同步的岗位 ID 提取同样接受该路径，原始岗位 ID 相符、不跟随重定向等既有规则不变。生成 PDF 沟通路线对 `/a/` 岗位仍保持显式阻断，待真实验证后再开放。
 - 完整 JD 判定修订：真实 JD 常用“工作内容 / 我们期待你 / Job Responsibilities”等自定标题，固定中文“职责/要求”标题不再是必要条件。无登录/展开/截断提示且压缩后正文 ≥ 200 字即视为完整；更短的正文仍须同时具备职责与要求两类实质章节。一句话岗位（如“会后端开会，项目0-1”）与纯介绍段落仍不升级为完整 JD。
 
+### 岗位适配预检与推荐排序（2026-10-22）
+
+目的：在逐个跑 Quick Run（真实全链 12–29 分钟）之前，用低成本预检判断“哪些岗位值得跑”，避免把低匹配岗位送入授权投递。
+
+- `jobs.listProfiles` 的每个画像增加 `fit_precheck`，只作推荐参考，不阻断生成、审批或投递；保留 `fit_state` 字段，但旧评分卡没有四层 `tiers.fit` 时由旧的 `failed` 改判为 `unassessed` 并退回规则预检，不能把历史结果冒充已预检失败。
+- 预检优先级：**可信 assessed 优先，否则规则预检**。
+  - assessed 仅在最近 matching report 对应的 scorecard 具备四层报告 `quality_report.tiers.fit`（明确 `passed`）时可信；failed 态还必须有语义评审 `semantic_review.fit_score`（0 是合法显式分）或带有合法 `recommendation` 的 `delivery_advice`，空建议对象或仅四层报告不算可信。旧评分卡没有四层报告时不得谎报“已预检失败”，退回规则预检。可信 assessed 的 `state` 优先取 `delivery_advice.recommendation`（apply→recommended、strengthen→consider、reconsider→caution、fix_facts→hold）；无建议时以 `fit` 通过为 recommended，未通过时结合语义适配分与缺口数给出 consider/caution/low。
+  - 规则预检使用**已审核且可入池**（`status=saved_eligible`、`candidate_pool_eligible != false`）的证据卡，按关键词/硬性要求/加分要求与证据文本做包含匹配；不读取未完成卡、不改卡、不调用模型。
+- 规则约束：英文技术词必须完整词边界（`JavaScript` 不命中 `Java`），中文按二字窗口匹配并过滤通用词；年限、学历/学位类要求无法由证据卡验证，不进入规则预检分母，也不冒充已覆盖。
+- 状态与排序：`recommended(0) > consider(1) > promising(2) > caution(3) > hold(4) > unknown(5) > low(6)`，`rank` 越小越靠前。规则覆盖率 ≥0.65 且至少命中 1 项 → `promising`；≥0.35 → `caution`；否则 `low`。缺少可用要求或证据库为空 → `unknown`（`source=insufficient`）。
+- 规则预检必须返回可解释字段：`coverage`、`matched_requirements/total_requirements`、`evidence_hits`、`matched_terms[]`、`missing_terms[]`、`basis`；UI 必须标注“规则预检未调用模型，建议跑一次 Quick Run 确认”。
+- `sort.field` 白名单增加 `fit_precheck`；UI 按推荐优先展示，并提供“最近更新”排序回退。
+
 ## 材料对账与批量整理契约（2026-10-12）
 
 ### 评估校准与审批信息（2026-10-13）

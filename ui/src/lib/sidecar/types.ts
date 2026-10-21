@@ -240,6 +240,37 @@ export interface EvidenceSaveDraftResult extends EvidenceMutationResult {
   updated_at: string;
 }
 
+export type FitPrecheckState =
+  | "recommended"
+  | "consider"
+  | "promising"
+  | "caution"
+  | "hold"
+  | "unknown"
+  | "low";
+
+export type FitPrecheckSource = "assessed" | "rule" | "insufficient";
+
+/** 岗位批量适配预检：优先最近一次 Quick Run 评估，否则按证据库与 JD 关键词规则预检。 */
+export interface FitPrecheck {
+  source: FitPrecheckSource;
+  state: FitPrecheckState;
+  /** 越小越靠前：recommended=0 … low=6。 */
+  rank: number;
+  coverage: number | null;
+  /** assessed 结果只复用 Quick Run 结论，没有可解释的命中明细时为 null。 */
+  matched_requirements: number | null;
+  total_requirements: number | null;
+  evidence_hits: number | null;
+  matched_terms: string[];
+  missing_terms: string[];
+  fit_state?: "passed" | "failed" | "unassessed" | string;
+  fit_failures?: number;
+  match_score?: number;
+  fit_score?: number | null;
+  basis: string;
+}
+
 export interface JobProfileListItem {
   job_profile_id: string;
   job_lead_id?: string;
@@ -262,6 +293,8 @@ export interface JobProfileListItem {
   resume_count: number;
   fit_state?: "passed" | "failed" | "unassessed";
   fit_failures?: number;
+  /** 批量适配预检结果；旧数据或未预检时可能缺失。 */
+  fit_precheck?: FitPrecheck;
   updated_at: string;
   business_domain: string;
   source_jd: string;

@@ -69,6 +69,7 @@ vm.runInNewContext(code, { exports, require: (name) => {
   if (name === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
   if (name === 'react-i18next') return { useTranslation: () => ({ t, i18n: { language: 'en' } }) };
   if (name === 'lucide-react') return new Proxy({}, { get: (_, key) => key });
+  if (name === '@/components/fit-precheck') return { FitPrecheckBadge: () => null, FitPrecheckRanking: () => null, FitPrecheckDetail: () => null };
   if (name === '@/lib/errors') return { getErrorMessage: (error) => error.message };
   if (name === '@/lib/sidecar/api') return api;
   if (name === '@/lib/ui') return {notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};

@@ -272,6 +272,12 @@ export function QuickRunPage() {
   }, [task, selectedProfileId, quickRunResult, runState]);
   const activeJobProfiles = jobProfiles.filter((jp) => jp.status === "active" && jp.source_jd?.trim());
   const targetAvailable = selectedProfile?.status === "active" && Boolean(selectedProfile.source_jd?.trim());
+  // 未做模型对位预检时展示规则预检结论；assessed（Quick Run 结果）优先，保持原有已评估提示不变。
+  const selectedPrecheck = selectedProfile?.fit_precheck;
+  const rulePrecheck = selectedPrecheck && selectedPrecheck.source === "rule" ? selectedPrecheck : null;
+  const precheckStateLabel = rulePrecheck
+    ? t(`pages.jobs.precheck.state.${rulePrecheck.state}`, { defaultValue: rulePrecheck.state })
+    : "";
   const providerSummary = [
     {
       label: t("pages.quickRun.provider"),
@@ -501,11 +507,16 @@ export function QuickRunPage() {
                     <option value={selectedProfileId}>{t(selectedProfileId ? "pages.quickRun.targetUnavailable" : "common.empty")}</option>
                   ) : null}
                   {activeJobProfiles.map((profile) => {
-                    const suffix = profile.fit_state === "failed"
-                      ? t("pages.quickRun.fitBadgeFailed", { count: profile.fit_failures ?? 0 })
-                      : profile.fit_state === "unassessed"
-                        ? t("pages.quickRun.fitBadgeUnassessed")
-                        : "";
+                    const precheck = profile.fit_precheck;
+                    const suffix = precheck && precheck.source === "rule"
+                      ? t("pages.quickRun.fitBadgePrecheck", {
+                          label: t(`pages.jobs.precheck.state.${precheck.state}`, { defaultValue: precheck.state }),
+                        })
+                      : profile.fit_state === "failed"
+                        ? t("pages.quickRun.fitBadgeFailed", { count: profile.fit_failures ?? 0 })
+                        : profile.fit_state === "unassessed"
+                          ? t("pages.quickRun.fitBadgeUnassessed")
+                          : "";
                     return (
                       <option key={profile.job_profile_id} value={profile.job_profile_id}>
                         {profile.company ? `${profile.company} · ${profile.title}` : profile.title}{suffix}
@@ -513,11 +524,19 @@ export function QuickRunPage() {
                     );
                   })}
                 </select>
-                {selectedProfile && selectedProfile.fit_state === "failed" &&
+                {selectedProfile && selectedProfile.fit_state === "failed" && !rulePrecheck &&
                   <p role="status" className="text-xs text-warning">
                     {t("pages.quickRun.fitHintFailed", { count: selectedProfile.fit_failures ?? 0 })}
                   </p>}
-                {selectedProfile && selectedProfile.fit_state === "unassessed" &&
+                {selectedProfile && rulePrecheck &&
+                  <p role="status" className="text-xs text-text-secondary">
+                    {t("pages.quickRun.fitHintPrecheck", {
+                      label: precheckStateLabel,
+                      matched: rulePrecheck.matched_requirements ?? 0,
+                      total: rulePrecheck.total_requirements ?? 0,
+                    })}
+                  </p>}
+                {selectedProfile && selectedProfile.fit_state === "unassessed" && !rulePrecheck &&
                   <p role="status" className="text-xs text-text-secondary">
                     {t("pages.quickRun.fitHintUnassessed")}
                   </p>}
