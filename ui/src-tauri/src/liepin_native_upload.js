@@ -28,6 +28,25 @@
     for (let i=0;i<4;i++) { await waitInput(350); allInputs=pdfInputs(); if(allInputs.length) break; }
     if (!allInputs.length) {
       const titles=Array.from(document.querySelectorAll('body *')).filter(e=>visible(e) && (e.textContent||'').trim()==='附件简历');
+      // 先按“标题行右侧”几何位置找加号，避免依赖平台不稳定的 class。
+      for (const title of titles.slice(0,4)) {
+        const rect=title.getBoundingClientRect();
+        const row=title.parentElement;
+        if(!row) continue;
+        const rrect=row.getBoundingClientRect();
+        const points=[];
+        for(let x=rrect.right-8; x>rect.right+24; x-=8) points.push([x, rect.top+rect.height/2]);
+        for(const [x,y] of points){
+          const el=document.elementFromPoint(x,y);
+          if(!el || !visible(el) || el===title || title.contains(el)) continue;
+          el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+          await waitInput(500);
+          allInputs=pdfInputs();
+          if(allInputs.length) break;
+        }
+        if(allInputs.length) break;
+      }
+      if (allInputs.length) { /* 已通过标题行右侧加号取得控件 */ }
       const candidates=[];
       for (const title of titles.slice(0,4)) {
         let node=title;
@@ -52,17 +71,29 @@
         for (let i=0;i<12;i++) { await waitInput(400); allInputs=pdfInputs(); if(allInputs.length) break; }
       }
     }
-    const candidates = allInputs.map(e => {
-      let text='', node=e;
-      for(let i=0;node && i<6;i++,node=node.parentElement) text += ' ' + (node.innerText || '');
-      const score = /附件简历|上传附件|附件简历/.test(text) ? 3 : /附件/.test(text) ? 2 : 1;
-      const visible = Boolean(e.getClientRects().length);
-      return {input:e, score, visible, text:text.replace(/\s+/g,' ').slice(0,120)};
-    });
-    const bestScore = candidates.length ? Math.max(...candidates.map(c=>c.score)) : 0;
-    const best = candidates.filter(c=>c.score===bestScore && (bestScore>1 || c.visible));
-    if (best.length !== 1) { finish('not_submitted',['附件控件不唯一:共'+allInputs.length+'个，候选:'+candidates.map(c=>c.score).join(',')]); return; }
-    const inputs = [best[0].input];
+    let modalDropzone = null;
+    if (!allInputs.length) {
+      const modal = Array.from(document.querySelectorAll('.ant-modal-content')).find(e=>visible(e) && /上传附件简历/.test(e.innerText||''));
+      if (modal) {
+        const zones = Array.from(modal.querySelectorAll('*')).filter(e=>visible(e) && /拖拽|点击上传/.test(e.textContent||'') && e.children.length<=4);
+        modalDropzone = zones[zones.length-1] || modal;
+      }
+    }
+    let best = [];
+    let candidates = [];
+    if (!modalDropzone) {
+      candidates = allInputs.map(e => {
+        let text='', node=e;
+        for(let i=0;node && i<6;i++,node=node.parentElement) text += ' ' + (node.innerText || '');
+        const score = /附件简历|上传附件|附件简历/.test(text) ? 3 : /附件/.test(text) ? 2 : 1;
+        const visible = Boolean(e.getClientRects().length);
+        return {input:e, score, visible, text:text.replace(/\s+/g,' ').slice(0,120)};
+      });
+      const bestScore = candidates.length ? Math.max(...candidates.map(c=>c.score)) : 0;
+      best = candidates.filter(c=>c.score===bestScore && (bestScore>1 || c.visible));
+      if (best.length !== 1) { finish('not_submitted',['附件控件不唯一:共'+allInputs.length+'个，候选:'+candidates.map(c=>c.score).join(',')]); return; }
+    }
+    const inputs = modalDropzone ? [] : [best[0].input];
     const bytes = new Uint8Array(payload.pdf_bytes);
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
     if (digest !== payload.pdf_sha256) { finish('not_submitted',['PDF 指纹不一致']); return; }
@@ -94,9 +125,18 @@
     restore=()=>{window.fetch=oldFetch;proto.open=oldOpen;proto.send=oldSend;};
     if(!canWrite()){finish('not_submitted',['授权已暂停或到期']);return;}
     const transfer=new DataTransfer();transfer.items.add(new File([bytes],payload.filename,{type:'application/pdf'}));
-    inputs[0].files=transfer.files;
-    dispatched=true;
-    inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
+    if (modalDropzone) {
+      // 新版猎聘先把附件上传放进弹窗；用 drop 事件触发，不打开系统文件选择器。
+      for (const type of ['dragenter','dragover','drop']) {
+        modalDropzone.dispatchEvent(new DragEvent(type,{bubbles:true,cancelable:true,dataTransfer:transfer}));
+        await new Promise(r=>setTimeout(r,300));
+      }
+      dispatched=true;
+    } else {
+      inputs[0].files=transfer.files;
+      dispatched=true;
+      inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
+    }
     let rounds=0;
     const observe=()=>{
       const text=document.body?.innerText||'';
