@@ -530,6 +530,8 @@ class TestQuickRunStart:
         )
         assert result["traceability"]["resume_traceable"] is False
         assert result["resume_readiness"]["deliverable"] is False
+        assert result["resume_readiness"]["manual_override_allowed"] is True
+        assert result["resume_readiness"]["quality_gate_blocking"] is False
         assert run_payload["run"]["material_source"]["material_id"] == "mat_001"
         assert run_payload["traceability"]["resume_traceable"] is False
 

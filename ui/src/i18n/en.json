@@ -364,7 +364,9 @@
       },
       "notGenerated": "No resume was generated",
       "skipped": "Skipped",
-      "chooseAnotherJob": "Choose another job"
+      "chooseAnotherJob": "Choose another job",
+      "preparePdfAnyway": "View and prepare this PDF (quality is not all-green; you can still continue)",
+      "qualityNotPassedCanContinue": "Quality is not all-green, but this does not block you. You can still review and prepare this PDF; the system will not intercept your intent to apply. You remain in control of the final send."
     },
     "evidence": {
       "title": "Evidence",

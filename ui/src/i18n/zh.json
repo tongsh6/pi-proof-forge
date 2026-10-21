@@ -364,7 +364,9 @@
       },
       "notGenerated": "本次未生成简历",
       "skipped": "已跳过",
-      "chooseAnotherJob": "返回岗位中心选择其他岗位"
+      "chooseAnotherJob": "返回岗位中心选择其他岗位",
+      "preparePdfAnyway": "查看并准备此 PDF（质量未全绿，仍可继续）",
+      "qualityNotPassedCanContinue": "质量层未全绿不影响继续投递：你可以查看并准备此 PDF，系统不会拦截你的投递意图；是否发送仍由你确认。"
     },
     "evidence": {
       "title": "证据卡",

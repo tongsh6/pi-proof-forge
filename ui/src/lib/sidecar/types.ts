@@ -1087,6 +1087,8 @@ export interface QuickRunStartResult extends RpcResultBase {
   resume_readiness?: {
     status: "NEEDS_EVIDENCE" | "NEEDS_REVIEW" | "NOT_GENERATED";
     deliverable: boolean;
+    manual_override_allowed?: boolean;
+    quality_gate_blocking?: boolean;
     quality_passed: boolean;
     auto_pass?: boolean;
     quality_report?: QualityReport | null;

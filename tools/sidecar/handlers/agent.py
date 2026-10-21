@@ -877,6 +877,9 @@ def _quick_run_result_details(
     )
     readiness.update({
         "deliverable": False,
+        # 质量报告是建议与护栏，不是用户投递权的开关；前端据此展示“仍可继续”。
+        "manual_override_allowed": True,
+        "quality_gate_blocking": False,
         "evaluation_score": evaluation_score,
         "auto_pass": auto_pass,
         "quality_report": quality_report,

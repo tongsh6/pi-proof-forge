@@ -634,8 +634,12 @@ export function QuickRunPage() {
                 <p>{t(quickRunResult.resume_readiness?.status === "NOT_GENERATED" ? "pages.quickRun.notGenerated" : quickRunResult.resume_readiness?.content_ready ? "pages.quickRun.reviewNext" : "pages.quickRun.needsEvidence")}</p>
                 {quickRunResult.status === "DONE" && quickRunResult.resume_readiness?.content_ready === true &&
                   quickRunResult.traceability?.resume_traceable === true && quickRunResult.resume_pdf ?
-                  <button type="button" data-testid="quick-run-prepare-pdf" className="rounded-card border border-accent px-3 py-2 text-accent"
-                    onClick={() => navigate(`/submissions?quick_run_id=${encodeURIComponent(quickRunResult.run_id)}`)}>{t("pages.quickRun.preparePdf")}</button> :
+                  <div className="space-y-2">
+                    <button type="button" data-testid="quick-run-prepare-pdf" className="rounded-card border border-accent px-3 py-2 text-accent"
+                      onClick={() => navigate(`/submissions?quick_run_id=${encodeURIComponent(quickRunResult.run_id)}`)}>{t(quickRunResult.resume_readiness?.quality_passed === false ? "pages.quickRun.preparePdfAnyway" : "pages.quickRun.preparePdf")}</button>
+                    {quickRunResult.resume_readiness?.quality_passed === false &&
+                      <p className="text-xs text-warning">{t("pages.quickRun.qualityNotPassedCanContinue")}</p>}
+                  </div> :
                   <button type="button" className="text-accent underline" onClick={() => navigate(quickRunResult.status === "SKIPPED" ? "/jobs" : "/evidence")}>{t(quickRunResult.status === "SKIPPED" ? "pages.quickRun.chooseAnotherJob" : "pages.quickRun.openEvidence")}</button>}
               </div>}
               <div className="mt-4 h-[360px] overflow-auto rounded-card border border-border bg-bg-primary p-4 font-mono text-xs leading-6 text-text-secondary">

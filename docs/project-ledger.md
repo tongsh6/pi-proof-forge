@@ -15,6 +15,8 @@ Last updated: 2026-10-21
   - 对位层仍失败 2 项：R2.2 首条职责「负责得物App电商业务系统核心开发」首屏 weak（候选人有同类电商业务系统核心开发证据，但证据池仅 partial，且未在得物任职）；R2.4「众安双十一投屏」项目未映射到任何 JD 条目。
   - `auto_pass=false`；本轮 3/4 层通过，不宣称整体完成。fit_score=80，resume_score=40。
 - 生成修复：首屏按可配对量化成果排序（不再固定语义首卡）；无词面关联的行动/结果改为非 bullet「职责：/结果：」保留原文，不再把无结果支撑的行动伪装成 achievement bullet（避免 R3.1 假失败）。
+- R2.2 口径澄清：本次语义池 d1 的理由是「有同类电商业务系统核心开发经验，但非在得物App任职」，即模型把“未在得物任职”当成降级依据，而不是“没有同类电商经验”；该 partial 会把 r2_1 的 supported 封顶为 weak。已进一步在语义评审提示词中禁止把“未在目标公司任职/不是同名产品”作为 insufficient 或降级理由，后续运行生效。
+- 用户投递权：质量层只作建议与事实护栏，不拦截投递。Quick Run 的「准备投递 PDF」本来只依赖正文可追溯与 PDF，不依赖 auto_pass；本轮又显式增加 `manual_override_allowed=true`、`quality_gate_blocking=false`，前端在质量未全绿时显示「仍可继续」文案与按钮，原生 PDF 的准备/授权/发送也不以 quality_passed 为门禁；最终发送仍由用户确认。
 - 求职定位（用户方向）：产品目标从“auto_pass 全绿”改为“帮助候选人拿到面试/录用”；公共模型语境新增“事实边界内的职业化加工”（重排、结果前置、可迁移能力映射；禁止新增事实/职责/技术栈/数字）。后续继续落 JD 适配预检、判项区分“证据缺失 vs 未表达”、报告改为投递建议。
 - 验证：全量 **1568 passed、1 skipped、27 subtests passed**；`tsc`、`execution_roadmap` 通过。
 - 证据：`outputs/acceptance/d5-fit-a-20261021/`（quick-run.json、resume.pdf 两页、matching/semantic、PDF 分页文本、validation.json）。
