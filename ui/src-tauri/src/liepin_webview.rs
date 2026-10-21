@@ -279,7 +279,15 @@ async fn pdf_rpc(app: AppHandle, method: &'static str, mut params: Value) -> Res
 
 async fn upload_liepin_native_pdf_inner(app: AppHandle, window: WebviewWindow, run_id: String, accept_account_effects: bool) -> Result<Value,String> {
     require_local_command(&window)?;
-    let checked=check_liepin_native_session_inner(app.clone(),window).await?;
+    let mut checked=check_liepin_native_session_inner(app.clone(),window.clone()).await?;
+    if checked["status"]!="authenticated" {return Err("NATIVE_SESSION_LOGIN_REQUIRED".into());}
+    // 会话可能停在猎聘首页；上传脚本固定要求简历附件页，已认证时只做站内导航，不提交任何表单。
+    if checked["url"]!="https://c.liepin.com/resume/edit" {
+        let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+        browser.navigate("https://c.liepin.com/resume/edit".parse().unwrap()).map_err(|_|"NATIVE_SESSION_PAGE_NOT_READY")?;
+        tauri::async_runtime::spawn_blocking(||std::thread::sleep(Duration::from_millis(3000))).await.map_err(|_|"NATIVE_SESSION_PAGE_NOT_READY")?;
+        checked=check_liepin_native_session_inner(app.clone(),window).await?;
+    }
     if checked["status"]!="authenticated" || checked["url"]!="https://c.liepin.com/resume/edit" {return Err("NATIVE_SESSION_PAGE_NOT_READY".into());}
     let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
     let payload=pdf_rpc(app.clone(),"run.agent.beginPdfUpload",json!({"run_id":run_id,"accept_account_effects":accept_account_effects})).await?;
