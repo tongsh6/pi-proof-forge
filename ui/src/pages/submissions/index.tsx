@@ -36,6 +36,7 @@ import {
   checkLiepinNativeSession,
   inspectLiepinNativeAttachments,
   cleanupLiepinNativeAttachments,
+  diagnoseLiepinNativeAttachments,
   syncLiepinFeedback,
   type NativeLiepinObservation,
   prepareLiepinPdf,
@@ -237,6 +238,43 @@ export function SubmissionsPage() {
       setCleanupBusy(false);
     }
   }, [t]);
+  const diagnoseAttachments = useCallback(async () => {
+    setCleanupBusy(true); setCleanupNotice("");
+    try {
+      const result = await diagnoseLiepinNativeAttachments();
+      const hints = (result as unknown as {hints?: string[]}).hints || [];
+      setCleanupNotice(hints.join("；") || result.status || "诊断完成");
+    } catch (error) {
+      setCleanupNotice(getErrorMessage(error));
+    } finally {
+      setCleanupBusy(false);
+    }
+  }, [t]);
+  const oneClickUpload = useCallback(async () => {
+    if (!nativePdf?.run_id) return;
+    const confirmed = await confirmAction({
+      title: "一键自动上传",
+      description: "App 将自动打开猎聘会话、进入简历附件页、打开上传弹窗并拖入当前 PDF。上传会产生平台账号效果，是否继续？",
+      confirmLabel: "自动上传",
+      tone: "default",
+    });
+    if (!confirmed) return;
+    setNativeSessionBusy(true); setNativePdfError("");
+    try {
+      await openLiepinNativeSession();
+      const session = await checkLiepinNativeSession();
+      setNativeSession(session.status);
+      if (session.status !== "authenticated") throw new Error("请先在 App 内完成猎聘登录");
+      const next = await uploadLiepinNativePdf(nativePdf.run_id, true);
+      setNativePdf(next);
+      notify("success", "自动上传完成");
+    } catch (error) {
+      setNativePdfError(getErrorMessage(error));
+      notify("error", "自动上传失败", getErrorMessage(error));
+    } finally {
+      setNativeSessionBusy(false);
+    }
+  }, [nativePdf]);
   const [previewedPdf,setPreviewedPdf]=useState("");
   useEffect(() => {
     if (nativeSessionBusy || consumedQuickRun.current === requestedQuickRun) return;
@@ -681,8 +719,12 @@ export function SubmissionsPage() {
               </ol>
               <details className="mb-3 rounded-card border border-border bg-bg-primary/30 p-3">
                 <summary className="cursor-pointer select-none text-xs text-text-secondary">附件维护（移除旧附件）</summary>
-                <button type="button" disabled={nativeSessionBusy || cleanupBusy} onClick={()=>void cleanupOldAttachments()}
-                  className={`mt-2 ${buttonClass.danger}`}>移除旧的 App 生成附件</button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" disabled={nativeSessionBusy || cleanupBusy} onClick={()=>void cleanupOldAttachments()}
+                    className={buttonClass.danger}>移除旧的 App 生成附件</button>
+                  <button type="button" disabled={nativeSessionBusy || cleanupBusy} onClick={()=>void diagnoseAttachments()}
+                    className={buttonClass.secondary}>诊断附件入口</button>
+                </div>
                 {cleanupNotice && <p role="status" className="mt-2 text-xs text-text-secondary">{cleanupNotice}</p>}
               </details>
               <label className="block text-text-secondary">{t("pages.submissions.nativePdf.selectQuickRun", {defaultValue:"选择最近生成的简历 PDF"})}
@@ -720,6 +762,10 @@ export function SubmissionsPage() {
                   <input type="checkbox" aria-label={t("pages.submissions.nativePdf.consent")} checked={acceptPdfEffects} disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !["prepared","not_submitted"].includes(nativePdf.phase)}
                     onChange={event=>setAcceptPdfEffects(event.target.checked)} /><span>{t("pages.submissions.nativePdf.consentShort")}<details className="mt-1 text-xs text-text-muted"><summary className="cursor-pointer select-none text-accent">{t("common.fullTerms")}</summary><p className="mt-1">{t("pages.submissions.nativePdf.consent")}</p></details></span>
                 </label>
+                <button type="button" disabled={nativeSessionBusy || cleanupBusy || nativePdf.recovery_only}
+                  onClick={()=>void oneClickUpload()} className={`mb-2 ${buttonClass.primary || buttonClass.secondary}`}>
+                  一键自动上传（App 内操作，无需手动点猎聘）
+                </button>
                 <div className="flex flex-wrap gap-2">
                   {pdfStep <= 1 && <button type="button" disabled={nativeSessionBusy} onClick={()=>void handleNativePdf('preview')} className={stepClass(1)}>{t('pages.submissions.nativePdf.preview')}</button>}
                   {pdfStep === 2 && <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}

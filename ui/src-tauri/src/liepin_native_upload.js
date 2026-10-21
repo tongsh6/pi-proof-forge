@@ -27,7 +27,7 @@
     let allInputs = [];
     for (let i=0;i<4;i++) { await waitInput(350); allInputs=pdfInputs(); if(allInputs.length) break; }
     if (!allInputs.length) {
-      const titles=Array.from(document.querySelectorAll('body *')).filter(e=>visible(e) && (e.textContent||'').trim()==='附件简历');
+      const titles=Array.from(document.querySelectorAll('body *')).filter(e=>visible(e) && (e.textContent||'').includes('附件简历') && (e.textContent||'').trim().length<=20);
       // 先按“标题行右侧”几何位置找加号，避免依赖平台不稳定的 class。
       for (const title of titles.slice(0,4)) {
         const rect=title.getBoundingClientRect();
