@@ -2,6 +2,24 @@
 
 Last updated: 2026-10-21
 
+## 2026-10-21 Fit A 真实整链（得物 Java 技术专家）与求职定位校准
+
+- 目标切换（Fit A）：原 P0-026 的「高级全栈」JD 与事实不匹配，按用户决定改跑匹配度更高的「得物App · Java技术专家（电商交易）」。补全旧画像 `jp-2026-002`（status=active、审核字段、恢复 `jd_inputs/jd-2026-002.txt` 引用并解析职责章节），未编造证据。
+- DeepSeek 结构化输出修复（真实整链暴露）：
+  - 方向评估 `json_object` 请求缺 "json" 字样触发 HTTP 400；提示词补齐。
+  - DeepSeek thinking 在 `json_object` 下耗尽小输出预算导致空正文/无效 JSON；LLMClient 对结构化 JSON 默认关闭 thinking（显式 thinking 仍优先）。
+  - 语义评审职责阶段模型只返回部分职责/自创键名；提示词固定 `assessments` 数组格式并要求逐项完整覆盖，修复 `semantic_invalid_response`。
+  - `【岗位职责】/【任职要求】` 章节解析；语义评审明确“目标公司专名/产品名不是任职前提”，避免把“未在得物任职”直接判为证据不足。
+- 真实运行：通过 App quick-start handler（与 Quick Run 同管线）以 51 张已审核证据、EC+ 引用材料、DeepSeek 运行，产出两页 PDF；修复前 matching 阶段曾连续失败，修复后整链 DONE。
+  - 合格层通过；优质层通过（首屏量化 1.0、全文 0.6、R3.1 全部通过、无 pending）；突出层通过（2 条首屏突出点）。
+  - 对位层仍失败 2 项：R2.2 首条职责「负责得物App电商业务系统核心开发」首屏 weak（候选人有同类电商业务系统核心开发证据，但证据池仅 partial，且未在得物任职）；R2.4「众安双十一投屏」项目未映射到任何 JD 条目。
+  - `auto_pass=false`；本轮 3/4 层通过，不宣称整体完成。fit_score=80，resume_score=40。
+- 生成修复：首屏按可配对量化成果排序（不再固定语义首卡）；无词面关联的行动/结果改为非 bullet「职责：/结果：」保留原文，不再把无结果支撑的行动伪装成 achievement bullet（避免 R3.1 假失败）。
+- 求职定位（用户方向）：产品目标从“auto_pass 全绿”改为“帮助候选人拿到面试/录用”；公共模型语境新增“事实边界内的职业化加工”（重排、结果前置、可迁移能力映射；禁止新增事实/职责/技术栈/数字）。后续继续落 JD 适配预检、判项区分“证据缺失 vs 未表达”、报告改为投递建议。
+- 验证：全量 **1568 passed、1 skipped、27 subtests passed**；`tsc`、`execution_roadmap` 通过。
+- 证据：`outputs/acceptance/d5-fit-a-20261021/`（quick-run.json、resume.pdf 两页、matching/semantic、PDF 分页文本、validation.json）。
+- 边界：本轮通过 App quick-start handler 跑真实整链，**未完成真实 App UI 点击验收**；R2.2/R2.4 真实失败；`ui/design` 无变更。
+
 ## 2026-10-21 行动-成果关联与首屏成果位置修复（P0-026 续）
 
 - 定位与复用：沿用既有模板生成、四层评估、判项缓存与 DeepSeek provider；不新增评分框架、不放宽阈值。真实输入复用 `qr_20261020152045116470` 的匹配报告、51 卡、同一目标岗位与职业档案。

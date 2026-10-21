@@ -116,6 +116,15 @@ def test_responsibility_section_ends_before_qualification_and_bonus_aliases(head
     assert len(duties)==2
     assert duties[-1]['text']=='2. 完善发布验证与恢复流程。'
 
+def test_responsibility_headers_wrapped_in_brackets_are_parsed():
+    from tools.engines.matching.semantic_review import job_requirements
+    jd='【岗位职责】\n1. 负责核心业务开发。\n2. 建设数据与权限体系。\n【任职要求】\n1. 本科及以上学历。'
+    rows=job_requirements(['本科及以上学历'],jd)
+    duties=[r for r in rows if r['kind']=='responsibility']
+    assert len(duties)==2
+    assert duties[0]['text']=='1. 负责核心业务开发。'
+
+
 def test_listed_related_majors_are_examples_not_three_required_degrees():
     from tools.engines.matching.semantic_review import requirement_checks
     text = "本科及以上学历，计算机、软件工程、数学、电子信息等相关专业"

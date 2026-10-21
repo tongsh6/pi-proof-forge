@@ -99,15 +99,23 @@ class LLMClient:
         response_schema: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         payload = with_job_search_context(payload)
-        if self._provider == "deepseek" and "thinking" not in payload:
-            payload = {
-                **payload,
-                "thinking": {
-                    "type": "enabled" if self._thinking_enabled else "disabled"
-                },
-            }
-            if self._thinking_enabled and "reasoning_effort" not in payload:
-                payload = {**payload, "reasoning_effort": self._reasoning_effort}
+        if self._provider == "deepseek":
+            # DeepSeek 的 json_object 请求若开启 thinking，推理会耗尽较小的输出预算，
+            # 导致结构化正文为空；结构化输出默认关闭思考，显式 thinking 仍由调用方决定。
+            if (
+                payload.get("response_format") == {"type": "json_object"}
+                and "thinking" not in payload
+            ):
+                payload = {**payload, "thinking": {"type": "disabled"}}
+            if "thinking" not in payload:
+                payload = {
+                    **payload,
+                    "thinking": {
+                        "type": "enabled" if self._thinking_enabled else "disabled"
+                    },
+                }
+                if self._thinking_enabled and "reasoning_effort" not in payload:
+                    payload = {**payload, "reasoning_effort": self._reasoning_effort}
         if (
             self._provider == "lm_studio"
             and payload.get("response_format") == {"type": "json_object"}

@@ -270,6 +270,8 @@ def test_actions_without_lexical_result_match_are_not_paired_as_bullets():
              personal_profile=profile, claims=claims)
     bullets = [line for line in text.splitlines() if line.startswith('- ')]
     assert not any(any(a in line for a in card['actions']) and any(r in line for r in card['results']) for line in bullets)
+    assert any(line.startswith('职责：') and card['actions'][0] in line for line in text.splitlines())
+    assert any(line.startswith('结果：') and card['results'][0] in line for line in text.splitlines())
     for value in (card['actions'][0], card['results'][0]):
         assert value in text
     checked = inspect_bullet_trace(text, {'claims': claims})

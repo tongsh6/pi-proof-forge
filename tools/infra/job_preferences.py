@@ -84,7 +84,7 @@ def assess_direction(preferences,jd,client,model,cache_dir):
             'aligned=属于主投/桥接/探索之一且无明确回避项；needs_review=职责边界资料不足，需面试核实；'
             'excluded=JD明确背离方向或命中回避项。不能只看岗位名或技术栈，不能把缺信息当明确不符。'
             '不推断公司文化，不评估候选人能力，不把多个可选方向要求为同时满足。'
-            '返回status、中文reason、对应偏好零基criterion_index、从JD逐字复制的jd_quote。')
+            '返回 JSON 对象，含 status、中文reason、对应偏好零基criterion_index、从JD逐字复制的jd_quote。')
     payload={'model':model,'temperature':0,'max_tokens':800,'response_format':{'type':'json_object'},'messages':[
         {'role':'system','content':prompt},{'role':'user','content':json.dumps({'preferences':preferences['items'],'jd':jd},ensure_ascii=False)}]}
     schema={'type':'object','properties':{'status':{'type':'string','enum':['aligned','needs_review','excluded']},'reason':{'type':'string'},

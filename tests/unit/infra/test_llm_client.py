@@ -340,6 +340,20 @@ class DeepSeekThinkingTests(unittest.TestCase):
                 )
                 self.assertEqual(sent["reasoning_effort"], effort)
 
+    def test_json_object_requests_disable_deepseek_thinking(self) -> None:
+        sent = self._sent(
+            {
+                "model": "deepseek-flash",
+                "messages": [{"role": "user", "content": "json"}],
+                "response_format": {"type": "json_object"},
+            },
+            provider="deepseek",
+            thinking_enabled=True,
+            thinking_effort="max",
+        )
+        self.assertEqual(sent["thinking"], {"type": "disabled"})
+        self.assertNotIn("reasoning_effort", sent)
+
     def test_explicit_thinking_and_effort_are_not_overridden(self) -> None:
         sent = self._sent(
             {

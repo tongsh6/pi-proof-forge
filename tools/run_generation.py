@@ -351,16 +351,17 @@ def build_template_resume(
                     continue
                 lines.append("- " + combined)
         else:
-            # 无可核对关联时退回原文行动/成果分列，保留旧版选材与可追溯；关联缺口由评估如实暴露。
+            # 无可核对关联时不把行动/成果硬拼成成就 bullet；以非 bullet 事实行保留原文，
+            # 避免 R3.1 被无结果支撑的成就条目拉低，同时让关联缺口继续显式暴露。
             for action in list(unpaired_actions)[:3]:
-                lines.append("- " + fact(template_assembler.downgrade_wording(action, role_level),
-                                         "evidence", "actions", card["id"]))
+                lines.append("职责：" + fact(template_assembler.downgrade_wording(action, role_level),
+                                             "evidence", "actions", card["id"]))
             for result in list(unpaired_results)[:2]:
                 rendered = fact(template_assembler.downgrade_wording(result, role_level),
                                 "evidence", "results", card["id"])
                 if targeted and rendered in ' '.join(card['context'].split()):
                     continue
-                lines.append("- " + rendered)
+                lines.append("结果：" + rendered)
         lines.append("")
         if not marker_done:
             lines.extend(["", FIRST_SCREEN_MARKER, ""])

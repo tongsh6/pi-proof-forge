@@ -235,11 +235,9 @@ def first_screen_priority(cards: Sequence[EvidenceCard | dict]) -> list:
         quant = sum(1 for _action, rows in pairs if any(_has_quant(row) for row in rows))
         return (quant, len(pairs))
     values = list(cards)
-    if len(values) <= 2:
-        return values
-    indexed = list(enumerate(values[1:]))
+    indexed = list(enumerate(values))
     indexed.sort(key=lambda item: (-score(item[1])[0], -score(item[1])[1], item[0]))
-    return [values[0]] + [card for _index, card in indexed]
+    return [card for _index, card in indexed]
 
 
 class TemplateAssembler:

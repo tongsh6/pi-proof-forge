@@ -266,3 +266,20 @@ def test_work_history_responsibilities_render_without_achievement_bullets():
     assert "职责：负责后端开发与接口联调" in text
     work_section = text.split("## 工作经历", 1)[1].split("## ", 1)[0]
     assert not any(line.startswith("- ") for line in work_section.splitlines() if "接口联调" in line)
+
+
+def test_first_screen_priority_orders_by_quantified_pairs_not_original_first_card():
+    from tools.engines.generation.template_assembler import first_screen_priority
+
+    context_only = {
+        "id": "ec_context", "title": "微服务架构",
+        "actions": ["使用 Spring Boot 构建微服务", "通过 HTTP/REST 通信"],
+        "results": ["减少业务开发成本", "提高业务开发效率"],
+    }
+    quantified = {
+        "id": "ec_quant", "title": "性能治理",
+        "actions": ["执行慢查询改写与索引优化"],
+        "results": ["门店预约列表查询 2–3s → 300–400ms"],
+    }
+    ordered = first_screen_priority([context_only, quantified])
+    assert [card["id"] for card in ordered] == ["ec_quant", "ec_context"]

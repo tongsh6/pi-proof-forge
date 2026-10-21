@@ -122,7 +122,7 @@ def job_requirements(terms, jd='', kind='must_have'):
     rows=[{'id':f'r{i+1}','text':text,'kind':kind} for i,text in enumerate(terms)]
     active=False;groups=[];current=[]
     for raw in jd.splitlines():
-        line=raw.strip().strip('#* ：:').strip()
+        line=raw.strip().strip('#* ：:【】「」').strip()
         if re.fullmatch(r'工作职责|岗位职责|岗位描述|Job responsibilities|Responsibilities',line,re.I):
             active=True;continue
         if active and re.fullmatch(r'任职要求|职位要求|任职资格|任职条件|岗位要求|背景与能力要求|加分项|加分经历|Requirements|Qualifications',line,re.I):break

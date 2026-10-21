@@ -149,13 +149,20 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
         else:
             system += ('对每项要求返回且仅返回一条。supported=完整要求有直接支撑；partial=仅部分支撑或可迁移经验；'
                        'insufficient=未找到足够证据；conflict=原文存在明确相反事实。复合条件任一缺证据最多partial。'
-                       '不得把无证据说成不具备，不得由职位名推断学历/年限，未知本人职责不能认定本人主导。'
+                       '目标公司的平台专名、产品名、团队城市或业务域数量不是候选人必须在同公司/同名平台任职的前提；'
+                       '职责写成“负责某公司某业务系统核心开发”时，应按同类业务系统的实际开发证据判断，'
+                       '不得仅因候选人未在该公司任职、系统名称不同就判 insufficient。'
+'不得把无证据说成不具备，不得由职位名推断学历/年限，未知本人职责不能认定本人主导。'
                        'preferred_source_ids是本次拟展示的事实完整项目。相同支撑力度时优先引用这些项目，'
                        '仍以原文为准，不得为优先引用而提高结论；个人补充成果不得推断为任职单位生产落地。'
                        '逐项独立判断，不掺入其他要求；按assessment_date计算年限，已满足数值不得写未达门槛。'
                        '要求中的或是备选，不是同时满足。JD未明确要求企业级/生产项目时，真实个人开源实践也可支撑实际项目，'
                        '不得自行增加企业生产、商业规模等录用条件。')
-            system += ('每项含完整父要求text和本次核对子项criterion，只评价criterion，其他子项不影响这一项。'
+            system += ('只返回 JSON 对象，格式固定为 '
+                       '{"assessments":[{"requirement_id":"<要求id>","status":"supported|partial|insufficient|conflict",'
+                       '"citations":[{"fact_id":"<facts中的id>","quote":"<逐字原文>"}],"reason":"<简短中文理由>"}]}；'
+                       'assessments 必须恰好覆盖 requirements 中每个要求 id，每项一条，禁止遗漏；'
+                       '每项含完整父要求text和本次核对子项criterion，只评价criterion，其他子项不影响这一项。'
                        'criterion内的或/若干/任一保持原备选含义。source_role为空的卡仅为项目资料，不能认定本人完成。'
                        '只有技术栈名称或职务标签不足以支持完整实践，应引用具体行动/结果。'
                        '引用有参与或负责、主导或深度参与时，理由必须保留同样限定，不能改成全部主导。')
