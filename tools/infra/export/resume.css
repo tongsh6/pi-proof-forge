@@ -22,7 +22,7 @@ time { flex-shrink:0; max-width:38%; text-align:right; font-size:9pt; color:#5d6
 .context { margin:4pt 0 5pt; color:#53606b; font-size:9.7pt; break-after:avoid; }
 .paragraph { margin:4pt 0; }
 ul { margin:0; padding-left:12pt; }
-li { margin:3pt 0; padding-left:2pt; text-align:left; overflow-wrap:anywhere; orphans:2; widows:2; }
+li { margin:3pt 0; padding-left:2pt; text-align:left; overflow-wrap:anywhere; orphans:2; widows:2; break-inside:avoid; page-break-inside:avoid; }
 li::marker { color:#5b7487; font-size:8pt; }
 strong { font-weight:700; color:#203d53; }
 code { font:9.2pt/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; color:#304956; overflow-wrap:anywhere; }

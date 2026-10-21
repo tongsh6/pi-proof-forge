@@ -280,6 +280,43 @@ def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path
     assert client.calls == 4, "每次最多纠错一次，无效结果不得写入缓存"
 
 
+class _SequencedJudgeClient:
+    chat_completions_url = "http://fake/v1/chat/completions"
+
+    def __init__(self, contents):
+        self.contents = list(contents)
+        self.calls = 0
+        self.prompts = []
+
+    def post_json(self, url, payload):
+        self.calls += 1
+        self.prompts.append(payload["messages"][-1]["content"])
+        content = self.contents.pop(0) if self.contents else "{}"
+        return {"choices": [{"message": {"content": content}}]}
+
+    @staticmethod
+    def extract_content(response):
+        return response["choices"][0]["message"]["content"]
+
+
+def test_quality_judge_retries_only_missing_sections_in_second_call(tmp_path, monkeypatch):
+    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    payload = json.loads(content)
+    first = json.dumps({"r1_4": payload["r1_4"]}, ensure_ascii=False)
+    second = json.dumps({key: payload[key] for key in ("r2_1", "r3_1", "r3_5", "r4_1")}, ensure_ascii=False)
+    client = _SequencedJudgeClient([first, second])
+    judgments, meta, _ = run_evaluation._run_quality_judge(
+        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
+        client_factory=lambda: client,
+    )
+    assert judgments is not None
+    assert set(judgments["judged_sections"]) == {"r1_4", "r2_1", "r3_1", "r3_5", "r4_1"}
+    assert meta["model_calls"] == 2 and meta["repair_calls"] == 1
+    assert client.calls == 2
+    assert "EXACTLY these keys: r2_1, r3_1, r3_5, r4_1" in client.prompts[1]
+
+
 def test_quality_judge_disabled_without_llm_or_semantic_review(tmp_path, monkeypatch):
     resume, semantic, _content = _judge_fixture(tmp_path, monkeypatch)
     judgments, meta, decisions = run_evaluation._run_quality_judge(

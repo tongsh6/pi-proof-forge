@@ -136,6 +136,112 @@ def order_cards_for_resume(
     return ordered[:maximum_projects]
 
 
+_ASSOC_ASCII = re.compile(r"[A-Za-z][A-Za-z0-9+#./-]{1,}")
+_ASSOC_CJK = re.compile(r"[\u4e00-\u9fff]{2,}")
+_ASSOC_GENERIC = {
+    "系统", "业务", "功能", "相关", "开发", "设计", "实现", "支持", "完成", "通过",
+    "包括", "项目", "工作", "数据", "服务", "平台", "管理", "优化", "治理", "改造",
+    "建设", "方案", "流程", "机制", "能力", "经验", "进行", "以及", "一个", "多个",
+}
+
+
+def _assoc_tokens(text: str) -> set[str]:
+    value = str(text or "")
+    tokens = {token.casefold() for token in _ASSOC_ASCII.findall(value)}
+    for run in _ASSOC_CJK.findall(value):
+        tokens.update(run[index:index + 2] for index in range(len(run) - 1))
+    return tokens
+
+
+def _assoc_score(left: set[str], right: set[str]) -> int:
+    return sum(1 if token in _ASSOC_GENERIC else 2 for token in left & right)
+
+
+def _has_quant(value: str) -> bool:
+    from tools.domain.quality_text import has_quant_metric
+
+    return has_quant_metric(value)
+
+
+def pair_actions_results(
+    actions: Sequence[str],
+    results: Sequence[str],
+    *,
+    max_bullets: int = 3,
+    max_results_per_bullet: int = 2,
+) -> tuple[list[tuple[str, list[str]]], list[str], list[str]]:
+    """把同卡的行动与成果按词面关联配对；无关联的保持未配对，不按索引硬拼。
+
+    返回 (配对列表[(action, [result...])], 未配对 actions, 未配对 results)。
+    配对仅供逐条呈现，不引入因果措辞；结果仍保留原文。
+    """
+    action_pool = [str(action).strip() for action in actions if str(action).strip()]
+    result_pool = [str(result).strip() for result in results if str(result).strip()]
+    if not action_pool or not result_pool:
+        return [], action_pool, result_pool
+    result_tokens = [_assoc_tokens(result) for result in result_pool]
+    # 相关度：词面交集为主，量化成果在同分时优先；同时保留原始顺序用于稳定排序。
+    ranked_actions: list[tuple[int, int, int, str]] = []
+    for action_index, action in enumerate(action_pool):
+        tokens = _assoc_tokens(action)
+        scored = [
+            (_assoc_score(tokens, result_tokens[result_index]), int(_has_quant(result_pool[result_index])), -result_index, result_index)
+            for result_index in range(len(result_pool))
+        ]
+        scored = [row for row in scored if row[0] >= 2]
+        scored.sort(key=lambda row: (-row[0], -row[1], row[2]))
+        if scored:
+            top_score = scored[0][0]
+            has_quant = any(row[1] for row in scored)
+            ranked_actions.append((-top_score, -int(has_quant), action_index, action))
+    ranked_actions.sort()
+    used_results: set[int] = set()
+    pairs: list[tuple[str, list[str]]] = []
+    used_actions: set[int] = set()
+    for _neg_score, _neg_quant, action_index, action in ranked_actions:
+        if action_index in used_actions or len(pairs) >= max_bullets:
+            continue
+        tokens = _assoc_tokens(action)
+        candidates = [
+            (_assoc_score(tokens, result_tokens[result_index]), int(_has_quant(result_pool[result_index])), -result_index, result_index)
+            for result_index in range(len(result_pool))
+            if result_index not in used_results and _assoc_score(tokens, result_tokens[result_index]) >= 2
+        ]
+        candidates.sort(key=lambda row: (-row[0], -row[1], row[2]))
+        chosen = [row[3] for row in candidates[:max_results_per_bullet]]
+        if not chosen:
+            continue
+        used_actions.add(action_index)
+        used_results.update(chosen)
+        pairs.append((action, [result_pool[index] for index in chosen]))
+    unpaired_actions = [action for index, action in enumerate(action_pool) if index not in used_actions]
+    unpaired_results = [result for index, result in enumerate(result_pool) if index not in used_results]
+    return pairs, unpaired_actions, unpaired_results
+
+
+def paired_bullet_text(action: str, results: Sequence[str]) -> str:
+    """行动在前、成果在后；用冒号/间隔号连接，trace 分段由 claims 覆盖。"""
+    action_text = " ".join(str(action).split()).rstrip("。；;,， ")
+    parts = [" ".join(str(result).split()).rstrip("。；;,， ") for result in results if str(result).strip()]
+    return f"{action_text}：{' · '.join(parts)}" if parts else action_text
+
+
+def first_screen_priority(cards: Sequence[EvidenceCard | dict]) -> list:
+    """首屏保留语义首卡；其余卡按可配对量化成果数优先，让关键结果尽量落在第一页。"""
+    def score(card: EvidenceCard | dict) -> tuple[int, int]:
+        actions = list((card.get("actions") if isinstance(card, dict) else card.actions) or [])
+        results = list((card.get("results") if isinstance(card, dict) else card.results) or [])
+        pairs, _, _ = pair_actions_results(actions, results)
+        quant = sum(1 for _action, rows in pairs if any(_has_quant(row) for row in rows))
+        return (quant, len(pairs))
+    values = list(cards)
+    if len(values) <= 2:
+        return values
+    indexed = list(enumerate(values[1:]))
+    indexed.sort(key=lambda item: (-score(item[1])[0], -score(item[1])[1], item[0]))
+    return [values[0]] + [card for _index, card in indexed]
+
+
 class TemplateAssembler:
     def generate(
         self,

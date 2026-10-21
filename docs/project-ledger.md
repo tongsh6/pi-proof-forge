@@ -1,6 +1,20 @@
 # Project Ledger
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
+
+## 2026-10-21 行动-成果关联与首屏成果位置修复（P0-026 续）
+
+- 定位与复用：沿用既有模板生成、四层评估、判项缓存与 DeepSeek provider；不新增评分框架、不放宽阈值。真实输入复用 `qr_20261020152045116470` 的匹配报告、51 卡、同一目标岗位与职业档案。
+- 问题（上版结果）：优质层 14 项失败，其中 R3.2 首屏量化 0.40、全文量化 0.24；R3.1 有 12 条 bullet 缺结果段或动作段；消息平台量化成果落在第二页；行动与成果分列、无关联；工作经历职责被当作 achievements bullet 但无成果依据。
+- 修复：
+  - 行动-成果词面配对（`pair_actions_results`）：同卡内按中文 bigram / 英文词交集加权（通用词权重 1、专有词权重 2）配对，每卡最多 3 条 bullet、每 bullet 最多 2 条结果；只做逐条呈现，不按索引硬拼、不写因果措辞；无词面关联时回退原文分列，让缺口由评估如实暴露。配对 bullet 由 action + “：” + result 组成，claims 分别覆盖 action/result，trace 校验 11/11。
+  - 首屏组织：保留语义首卡，其余卡按“可配对量化成果数”排序，站内消息卡前移到第二位，使 20 万名单往返与 P95 等关键量化成果进入第一页；PDF 样式增加 `li { break-inside: avoid }`，避免 bullet 跨页切断。
+  - 工作经历：无可核验成果的职责改为非 bullet「职责：」行，不再把职责伪装成成果 bullet；项目经历与补充成果仍保留配对 bullet。
+  - DeepSeek 判项完整性：结构化判项禁用 thinking（此前 thinking 会把 6000 输出预算全耗在 reasoning，正文为空）；首轮缺 section 时第二轮只请求缺失 section，不再重复整份 prompt。本轮真实 DeepSeek judge 用时 2 次调用 + 1 次补段，覆盖全部 judged_sections。
+- 真实复跑（同一匹配报告 + 51 卡模板生成，不调用生成模型；DeepSeek 判项）：优质层 **passed=true**，`quant_first_screen=1.0`、`quant_total=0.625`、R3.1 全 bullet 三段通过、`llm_pending=[]`。仍如实失败：对位 4 项（R2.2×3 证据池支撑不足、R2.3 硬性要求支持率 0.20）、突出 1 项（R4.2 突出点#2 未在首屏）、合格层 R1.5（本次评估未传 PDF；另行生成两页 PDF 并验证）。
+- PDF 复核：2 页；第一页包含亚玛芬性能结果、15+ 系统、站内消息 20 万名单往返与 P95 两类量化成果；第二页从「补充成果」开始；无 bullet 跨页切断。`auto_pass=false`，不把优质层达标当作整体 P0-026 完成；对位/突出差距保留在质量报告与 gap 中。
+- 验证：全量 **1564 passed、1 skipped、27 subtests passed**；`tsc`、`execution_roadmap` 通过。证据：`outputs/acceptance/quality-strong-20261021/`（resume、trace、DeepSeek 判项、scorecard、PDF 分页文本、validation.json）。
+- 边界：本次为报告复跑与判项验证，未在真实 App 重跑整链，也未修改职业档案/分流文件；真实 App 页面验收与 P0-026 整体完成仍需用户执行。
 
 ## 2026-10-20 DeepSeek Provider 接入（独立任务）
 

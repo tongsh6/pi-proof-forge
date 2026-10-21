@@ -775,9 +775,10 @@ def evaluate_fit(
 
 def _has_verifiable_quant(body: str, results: list[str]) -> bool:
     # 数字必须属于实际呈现的成果片段，技术版本或年份恰好相同不算量化成果。
-    normalized = _compact(body)
-    metric = r"\d[\d,.]*\+?\s*(?:%|ms\b|s\b|毫秒|秒|分钟|小时|万?条|次|个|人|项|QPS\b|TPS\b|GB\b|TB\b)"
-    return any(re.search(metric, str(result).replace("*", ""), re.I) and _compact(result) in normalized
+    from tools.domain.quality_text import compact, has_quant_metric
+
+    normalized = compact(body)
+    return any(has_quant_metric(result) and compact(result) in normalized
                for result in results if str(result).strip())
 
 

@@ -373,24 +373,43 @@ def _run_quality_judge(
         # 只对本机 base_url 关闭推理输出，不改变远端模型请求语义。
         if "127.0.0.1" in base_url or "localhost" in base_url:
             payload["reasoning_effort"] = "none"
+        elif os.getenv("LLM_PROVIDER", "").strip().lower() == "deepseek":
+            # 结构化判项不需要推理输出；DeepSeek thinking 会把 6000 输出预算全部耗在 reasoning 上。
+            payload["thinking"] = {"type": "disabled"}
         meta.update(model_calls=0, repair_calls=0)
-        parsed = None
+        parsed: dict | None = None
+        merged: dict[str, Any] = {}
+        all_sections = ("r1_4", "r2_1", "r3_1", "r3_5", "r4_1")
+        requested = tuple(all_sections)
         for attempt in range(2):
             meta["model_calls"] += 1
+            if attempt:
+                payload = {**payload, "messages": [
+                    payload["messages"][0],
+                    {"role": "user", "content": llm_judge.build_judge_prompt(
+                        bullets=bullets, cards=cards, jd_items=jd_items,
+                        resume_text=resume_text, sections=requested)},
+                ]}
             response = client.post_json(client.chat_completions_url, payload)
-            parsed = llm_judge.parse_judgments(
+            current = llm_judge.parse_judgments(
                 client.extract_content(response), bullets=bullets, jd_items=jd_items, cards=cards,
                 resume_text=resume_text,
             )
-            missing = sorted(set(("r1_4", "r2_1", "r3_1", "r3_5", "r4_1")) -
-                             set((parsed or {}).get("judged_sections", [])))
-            if not missing or attempt:
+            if current:
+                for section in current.get("judged_sections") or []:
+                    merged[section] = current.get(section)
+                merged.setdefault("judged_sections", [])
+                merged["judged_sections"] = sorted(set(merged["judged_sections"]) | set(current.get("judged_sections") or []))
+                merged["rejected_items"] = len(merged.get("rejected_items") or []) if isinstance(merged.get("rejected_items"), list) else merged.get("rejected_items", 0)
+            missing = [section for section in all_sections if section not in (merged.get("judged_sections") or [])]
+            if not missing:
+                parsed = {**merged, "judged_sections": list(all_sections)}
+                break
+            if attempt:
+                parsed = merged if merged.get("judged_sections") else None
                 break
             meta["repair_calls"] += 1
-            payload["messages"] = [*payload["messages"][:2], {
-                "role": "user", "content": "上次判项缺失或引用无效：" + "、".join(missing) +
-                "。请重新输出完整 JSON，覆盖所有 JD id 与经历 bullet；每项给出有效引用。"
-                "未呈现用 absent + citations=[\"resume\"]，个人成果可引用其 bullet；不要省略。"}]
+            requested = tuple(missing)
     except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
         meta["error"] = str(exc)[:300]
         print(f"[evaluation] LLM 判项不可用，保留 pending：{exc}")

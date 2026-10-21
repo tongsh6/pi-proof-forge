@@ -263,7 +263,9 @@ def build_template_resume(
     # 没有可用经历时退回摘要/能力区结尾。渲染层忽略该注释行。
     first_screen_fallback = len(lines)
     visible_cards = [card for card in cards if template_assembler.visible_in_resume(card)]
-    render_cards = template_assembler.order_cards_for_resume(visible_cards, semantic_report)
+    render_cards = template_assembler.first_screen_priority(
+        template_assembler.order_cards_for_resume(visible_cards, semantic_report)
+    )
     stacks = unique_stack(visible_cards,limit=sum(len(c['stack']) for c in visible_cards)) if targeted else unique_stack(visible_cards)
     keywords = [str(term).casefold() for term in target.get("keywords", [])]
     stacks.sort(key=lambda value: value.casefold() not in keywords)
@@ -290,12 +292,13 @@ def build_template_resume(
                 lines.append('### '+personal(item['company'],base+'.company')+' · '+personal(item['title'],base+'.title')+'（'+career_period(item,'work')+'）')
                 for contribution in item.get('contributions',[]):
                     if any(f['source_id']=='personal_profile' and f['field']==base+'.contributions' and f['text']==contribution for f in (preferred_facts or [])) and not any(c['text']==contribution for c in claims):
-                        lines.append('- '+personal(contribution,base+'.contributions'))
+                        # 工作经历没有可核验的成果段，职责以非 bullet 行呈现，避免把职责伪装成成果。
+                        lines.append('职责：'+personal(contribution,base+'.contributions'))
                 continue
             lines.append('### '+personal(item['company'],base+'.company')+'（'+career_period(item,'work')+'）')
             lines.append('角色：'+' · '.join(v for v in (personal(item.get('department',''),base+'.department'),personal(item['title'],base+'.title')) if v))
             if item.get('scope'):lines.append('场景：'+personal(item['scope'],base+'.scope'))
-            for contribution in item.get('contributions',[]):lines.append('- '+personal(contribution,base+'.contributions'))
+            for contribution in item.get('contributions',[]):lines.append('职责：'+personal(contribution,base+'.contributions'))
     deferred_work=lines[work_start:] if targeted else []
     if targeted:del lines[work_start:]
     lines.extend(["", "## 项目经历"])
@@ -324,21 +327,40 @@ def build_template_resume(
         actions.sort(key=lambda value: (-sum(term in value.casefold() for term in keywords if term), value != preferred))
         if targeted:
             actions = prioritize_project_facts(actions, card['id'], 'actions', preferred_facts)
-        actions = actions[:3]
         results = list(card['results'])
         if targeted:
             results = prioritize_project_facts(results, card['id'], 'results', preferred_facts)
-        rendered_fields = {"actions": [], "results": []}
-        for field, values in (("actions", actions), ("results", results[:2])):
-            for value in values:
-                if value:
-                    rendered = fact(template_assembler.downgrade_wording(value, role_level), "evidence", field, card["id"])
-                    if targeted and field == 'results' and rendered in ' '.join(card['context'].split()):
-                        continue
-                    rendered_fields[field].append(rendered)
-        # 卡内仅有独立行动与成果列表，不足以断言逐项因果关系，保持各自原文。
-        for rows in rendered_fields.values():
-            lines.extend("- " + value for value in rows)
+        pairs, unpaired_actions, unpaired_results = template_assembler.pair_actions_results(
+            actions, results, max_bullets=3, max_results_per_bullet=2,
+        )
+        if pairs:
+            def clean_fact_value(value: str) -> str:
+                return re.sub(r"[。；;，,\s]+$", "", " ".join(str(value).split()))
+            for action, result_values in pairs:
+                action_text = fact(
+                    clean_fact_value(template_assembler.downgrade_wording(action, role_level)),
+                    "evidence", "actions", card["id"],
+                )
+                result_texts = [
+                    fact(clean_fact_value(template_assembler.downgrade_wording(value, role_level)),
+                         "evidence", "results", card["id"])
+                    for value in result_values
+                ]
+                combined = template_assembler.paired_bullet_text(action_text, result_texts)
+                if targeted and combined in ' '.join(card['context'].split()):
+                    continue
+                lines.append("- " + combined)
+        else:
+            # 无可核对关联时退回原文行动/成果分列，保留旧版选材与可追溯；关联缺口由评估如实暴露。
+            for action in list(unpaired_actions)[:3]:
+                lines.append("- " + fact(template_assembler.downgrade_wording(action, role_level),
+                                         "evidence", "actions", card["id"]))
+            for result in list(unpaired_results)[:2]:
+                rendered = fact(template_assembler.downgrade_wording(result, role_level),
+                                "evidence", "results", card["id"])
+                if targeted and rendered in ' '.join(card['context'].split()):
+                    continue
+                lines.append("- " + rendered)
         lines.append("")
         if not marker_done:
             lines.extend(["", FIRST_SCREEN_MARKER, ""])
@@ -365,8 +387,11 @@ def build_template_resume(
                       for item in extras for ref in preferred_facts
                       if ref['source_id'] == 'personal_profile' and ref['field'].startswith(f"career.extras.{item['id']}.")]
         body_coverage: dict[str, int] = {}
+        def _same_fact_text(left: str, right: str) -> bool:
+            normalize = lambda value: re.sub(r"[。；;，,\s]+$", "", " ".join(str(value).split()))
+            return normalize(left) == normalize(right)
         for ref in preferred_facts:
-            if any(claim['text'] == ref['text'] and claim['field'] == ref['field']
+            if any(_same_fact_text(claim['text'], ref['text']) and claim['field'] == ref['field']
                    and (claim.get('evidence_id') or 'personal_profile') == ref['source_id'] for claim in claims):
                 parent = ref.get('requirement_id', '')
                 body_coverage[parent] = max(body_coverage.get(parent, 0), ref.get('support_weight', 1))

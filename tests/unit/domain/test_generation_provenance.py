@@ -202,3 +202,67 @@ def test_template_assembler_engine_uses_levels():
     legacy = EvidenceCard(id="ec-4", title="旧卡", raw_source="m", results=("结果",),
                           artifacts=("报告.pdf",))
     assert "旧卡" in TemplateAssembler().generate(report, [legacy], "A").content
+
+
+def test_action_result_pairing_requires_lexical_association_and_unique_use():
+    from tools.engines.generation.template_assembler import pair_actions_results, paired_bullet_text
+
+    pairs, unpaired_actions, unpaired_results = pair_actions_results(
+        ["将核心存储迁移至 MongoDB", "修复聚合查询慢查询", "整理接口文档"],
+        ["迁移后 20 万名单往返次数从 201,208 次降至 508 次",
+         "慢查询 P95 从 2 秒降至 300 毫秒",
+         "服务 6 个品牌"],
+    )
+    assert len(pairs) == 2
+    assert unpaired_actions == ["整理接口文档"]
+    assert unpaired_results == ["服务 6 个品牌"]
+    used = set()
+    for action, results in pairs:
+        text = paired_bullet_text(action, results)
+        assert action in text
+        for result in results:
+            assert result in text and result not in used
+            used.add(result)
+
+
+def test_generation_pairs_action_with_related_result_inside_first_screen():
+    card = {
+        "id": "ec-1", "title": "站内消息存储改造", "time_range": "2024 ~ 2025", "role_scope": "负责人",
+        "context": "发送链改造。",
+        "actions": ["将核心存储迁移至 MongoDB 并重写查询索引",
+                    "对大名单发送链采用流式批量写入"],
+        "results": ["慢查询 P95 从 2 秒降至 300 毫秒",
+                    "20 万名单发送链往返次数从 201,208 次降至 508 次"],
+        "stack": ["Java"], "artifacts": ["报告"],
+    }
+    claims: list[dict] = []
+    text = build_template_resume("A", "r", 80, "now", [card], personal_profile={"career": {}}, claims=claims)
+    first = text.split(FIRST_SCREEN_MARKER)[0]
+    bullets = [line for line in first.splitlines() if line.startswith("- ")]
+    assert bullets
+    assert all("- " not in line or "：" in line for line in bullets)
+    assert any(card["actions"][0] in line and card["results"][0] in line for line in bullets)
+    from tools.engines.evaluation.tiered_evaluator import evaluate_strong
+    from tools.engines.evaluation.tiered_evaluator import load_quality_config
+
+    report = evaluate_strong(resume=text, cards={"ec-1": card}, trace={"claims": claims},
+                             config=load_quality_config())
+    assert report.metrics["quant_first_screen"] == 1.0
+
+
+def test_work_history_responsibilities_render_without_achievement_bullets():
+    profile = {
+        "career": {
+            "work": [{"id": "w1", "company": "示例公司", "title": "工程师", "start": "2020-01",
+                      "end": "2024-01", "current": False, "scope": "交易平台",
+                      "contributions": ["负责后端开发与接口联调"]}],
+            "education_visibility": "omit", "education": [], "skills": [], "extras": [],
+        }
+    }
+    text = build_template_resume("A", "r", 60, "now", [], personal_profile=profile,
+                                 preferred_facts=[{"source_id": "personal_profile",
+                                                   "field": "career.work.w1.contributions",
+                                                   "text": "负责后端开发与接口联调"}] if False else None)
+    assert "职责：负责后端开发与接口联调" in text
+    work_section = text.split("## 工作经历", 1)[1].split("## ", 1)[0]
+    assert not any(line.startswith("- ") for line in work_section.splitlines() if "接口联调" in line)

@@ -73,6 +73,7 @@ def build_judge_prompt(
     cards: dict[str, dict],
     jd_items: list[dict[str, str]],
     resume_text: str = "",
+    sections: tuple[str, ...] | None = None,
 ) -> str:
     bullet_lines = [
         {
@@ -94,23 +95,26 @@ def build_judge_prompt(
             for item in jd_items
         ],
     }
+    selected = tuple(section for section in (sections or _RULES) if section in _RULES)
+    schema = {
+        "r1_4": '  "r1_4": [{"bullet": <int>, "supported": <bool>, "citations": ["ec_..."], "reason": "<short>"}]',
+        "r2_1": '  "r2_1": [{"jd_item_id": "<id>", "status": "supported|weak|absent", "bullet_ref": "bullet#N 或 line#N；absent 时为空", '
+                '"citations": ["bullet#N 或 line#N 或 ec_...；absent 可用 resume"], "reason": "<short>"}]',
+        "r3_1": '  "r3_1": [{"bullet": <int>, "scene": <bool>, "action": <bool>, "result": <bool>, '
+                '"citations": ["ec_..."], "reason": "<short>"}]',
+        "r3_5": '  "r3_5": {"summary_lines": <int>, "role_scale_match": <bool>, "generic_adjectives": ["<word>"], '
+                '"citations": ["bullet#<int>"], "reason": "<short>"}',
+        "r4_1": '  "r4_1": [{"bullet": <int>, "jd_item_id": "<id>", "exceeds": ["scale|difficulty|scope|scarcity"], '
+                '"level": "L1|L2", "citations": ["ec_..."], "reason": "<short>"}]',
+    }
+    schema_text = "{\n" + ",\n".join(schema[section] for section in selected) + "\n}\n"
     return (
         "You are a strict resume-quality judge. Judge ONLY from the provided bullets, evidence cards and JD items.\n"
         "每项判断必须引用输入中存在的 bullet#N、line#N 或证据卡 id。仅 absent 可引用 resume，"
         "表示已审阅本次完整正文。理由用简短中文，不虚构事实。\n"
-        "Return ONLY a JSON object (no markdown fence) with EXACTLY these keys:\n"
-        "{\n"
-        '  "r1_4": [{"bullet": <int>, "supported": <bool>, "citations": ["ec_..."], "reason": "<short>"}],\n'
-        '  "r2_1": [{"jd_item_id": "<id>", "status": "supported|weak|absent", "bullet_ref": "bullet#N 或 line#N；absent 时为空", '
-        '"citations": ["bullet#N 或 line#N 或 ec_...；absent 可用 resume"], "reason": "<short>"}],\n'
-        '  "r3_1": [{"bullet": <int>, "scene": <bool>, "action": <bool>, "result": <bool>, '
-        '"citations": ["ec_..."], "reason": "<short>"}],\n'
-        '  "r3_5": {"summary_lines": <int>, "role_scale_match": <bool>, "generic_adjectives": ["<word>"], '
-        '"citations": ["bullet#<int>"], "reason": "<short>"},\n'
-        '  "r4_1": [{"bullet": <int>, "jd_item_id": "<id>", "exceeds": ["scale|difficulty|scope|scarcity"], '
-        '"level": "L1|L2", "citations": ["ec_..."], "reason": "<short>"}]\n'
-        "}\n"
-        "Rules: r1_4 covers every bullet whose wording claims ownership (负责/主导/独立负责/全权负责/设计并落地); "
+        "Return ONLY a JSON object (no markdown fence) with EXACTLY these keys: " + ", ".join(selected) + "\n"
+        + schema_text
+        + "Rules: r1_4 covers every bullet whose wording claims ownership (负责/主导/独立负责/全权负责/设计并落地); "
         "判断责任强度要结合卡内已审核职责与具体行动；不要求简历或证据句反复出现“我”，"
         "已经用户确认的 L3 职责可以保留主导/负责人，不因等级自动否定；仍须核对行动与职责范围，"
         "也不能将团队成果、系统功能或限定参与提升为独立负责。"
