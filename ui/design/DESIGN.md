@@ -224,6 +224,8 @@ Dashboard + Chat 混合模式（方案 B+C）：
 
 执行结束后，现有 Stage Output 区同步显示 `resume_readiness`：区分“需审核后再投递”与“资料或证据不完整”，展示具体原因。`DONE` 表示 pipeline 执行结束，不表示简历已获投递批准。该说明复用现有日志区域，不新增页面或布局区域。
 
+2026-10-22 Quick Run 真实阶段进度：`run.quick.start` 改为后端启动后台管线后立即返回 `RUNNING`，新增 `run.quick.get` 供页面每秒轮询；四阶段卡片只按后端回写的 `progress.stages` 显示 waiting / running / done / error / skipped 与当前阶段耗时，不再把四个阶段同时标为进行中。轮询不绑定页面生命周期：切到其他页面后仍在全局任务 store 中更新进度并在完成时收尾（侧栏继续显示任务），回到页面按岗位一致读回同一运行；启动前的岗位、材料与证据校验仍同步执行，失败立即提示，不产生“假进度”。页面执行中的提示改为说明异步轮询与可切换页面。`.pen` 待补（本机无 Pencil 工具）。
+
 **布局**:
 - 顶部: 页面标题 + "Run / 执行" 主按钮
 - 模型配置摘要: 读取 `settings.get.llm_config`，展示 Provider / Model / Base URL / API key configured 状态；不得展示 secret 明文
@@ -322,6 +324,18 @@ App 持续运行时每分钟检查到期批次；“执行今日批次”与自�
 
 2026-10-11 手动投递记录：人工导入平台的投递由用户在 App 外完成后回填，记录通道为平台码（列表显示平台中文名）、状态“手动记录”、模式“人工”、步骤“手动记录投递”、回执来源 `manual_tracking`；不可重试，不计自动确认数，可作为反馈迭代的关联投递。
 
+2026-10-22 PDF 投递自动推进与上传失败可解释：主操作由 8 个并列步骤按钮收敛为「自动推进到最终确认」+ 人工「确认投递所选 PDF」。点击自动推进并经用户确认副作用后，App 先打开/检查 App 内猎聘会话，再串行执行上传已批准 PDF → 核验平台附件 → 登记本岗位一次投递授权 → 开始本次投递 → 检查既有沟通 → 检查发简历确认界面，到 `resume_interaction_pending && can_confirm_send` 停止；每一步以上一步返回的阶段判断，失败立即停止并映射可读原因，绝不自动执行最终发送。最终发送仍由人点击；点击后自动只读核验业务回执并刷新投递记录，失败保留可读错误与只读核验入口，不伪造成功。高级操作折叠只保留只读诊断（检查已保存附件、核验目标岗位、检查本次沟通、核验本次回执）与附件维护，删除重复写操作。上传失败原因可视化：后端返回 `upload_state`（归一后的有效状态）、`upload_attempts`、`upload_hints`（前 10 条脱敏提示）、`can_retry_upload`；确定性未派发（上传脚本自报 `not_submitted` 且无 POST/PUT/PATCH 观察）记为 `not_submitted` 并允许重新批准上传，旧队列中同证据的 raw `unknown` 读取时只读归一；真正 `unknown`（已派发但结果不明/超时）仍禁止重传，页面显示原因并保留只读核验与重新准备 PDF 的指引。每日投递的恢复判定复用同一归一，避免已证明未派发的上传长期阻塞每日批次。`.pen` 待补（本机无 Pencil 工具）。
+
+2026-10-22 附件简历上限补充：猎聘附件简历上限为 3 个，达到上限后「附件简历」区不再渲染添加入口（`sectionAction` 为空，其它 section 仍有 `resume-add-icon`/编辑图标）。上传脚本先检查附件区：能定位到 `data-nick="resume-add-icon"` 时直接点该入口上传；附件卡片 ≥3 且无添加入口时回传 `attachment_quota_reached`，不再空点页面控件或把“找不到控件”重复归因为选择器故障。页面识别该 token 后显示上限说明与「移除旧的 App 生成附件」入口，并禁用自动推进避免空转；清理成功后在本地一次性解锁自动推进（后端旧 hints 不再阻塞）。附件维护（批量清理/单份移除）同步支持新版 `attachmentCard`、`ant-c-dropdown-menu-item`、`ant-c-modal-root` 选择器与 pointer 点击序列，仍只删除符合本 App 命名规则的旧 PDF 并在确认框出现后执行。`.pen` 待补（本机无 Pencil 工具）。
+
+2026-10-22 AI 投递声明证据位置修正：声明脚本把发送证据放在 observation 顶层 `network`，后端原先只读 `ai_disclosure.network`，导致真实 HTTP 200 发送成功仍被判 `ai_disclosure_not_confirmed` 并阻断发简历。契约改为：`evidence=network` 时同时接受 `ai_disclosure.network` 与 observation 顶层 `network`，仍要求 `http_status=200` 且请求文本包含声明原文；`evidence=dom` 仍要求 `dom_confirmed=true`。脚本同时把 network 镜像进 `ai_disclosure.network`。声明未确认时页面显示可读原因与重试入口，不进入发简历/最终发送；重试时若会话已出现声明原文则不重复发送。
+
+2026-10-22 同岗位重复投递冲突：同一岗位只保留一笔投递尝试（`delivery_attempts` 的 in-flight/success 记录）。若用户为同岗位重新跑 Quick Run 并用新 PDF 再次「固定」，后端返回 `delivery_already_attempted`，并在错误中附带已固定运行的 `quick_run_id` 与 PDF 文件名（只读扫描审核队列，不改变一次性门禁）。页面把该错误显示为可读说明与「载入已固定的投递流程」入口：一键 `prepare` 对应 quick_run_id，回到原有沟通/确认进度继续自动推进，而不是让用户重新固定新 PDF。若确需改用新 PDF，必须先结束/核验那笔未决尝试（当前界面未提供该入口）。
+
+2026-10-22 最终发送前平台附件被移除的恢复：仅当已进入投递、`final_send_started=false`、候选已批准且无有效附件绑定时，允许重新上传**同一份已批准 PDF**（`can_reupload_attachment`）；重传前清掉失效的 fileId/attachmentId 绑定，旧上传记录进 history，重新核验通过后 `attachment_bound=true` 并恢复原投递阶段。界面显示“平台附件已不在，本次投递尚未发出”，提供「重新上传同一 PDF 并继续」（上传→只读核验绑定→提示继续自动推进），不自动发简历、不解除一次性投递尝试。`final_send_started` 之后仍禁止重传，只能核验回执。
+
+2026-10-22 附件绑定恢复补丁：新版简历页附件卡片为懒加载，检查脚本先滚动并最多等待 8s 再抓取，避免把“未渲染”误判为“附件已移除”而清绑定。无旧 list 回包时，核验允许同字节同名重复附件：所有观测行大小/类型一致且恰好一行对应本次上传 ack 的 filePath，绑定仍指向唯一 fileId；重复行字节不同仍拒绝。投递状态内的附件绑定缺失返回 `attachment_verification_required`（而非 `pdf_delivery_not_pending`）；Submissions 恢复流程以 `upload_state` 判断重新核验，自动推进前绑定缺失给可读提示。
+
 ### 8. Policy / 策略配置
 
 **职责**: Policy 编辑器、企业例外清单、投递/门禁策略治理
@@ -358,6 +372,8 @@ App 持续运行时每分钟检查到期批次；“执行今日批次”与自�
 
 2026-10-21 Strata Provider 接入：模型分组在 LM Studio 之后新增 Strata 本地 provider 预设（base_url `http://127.0.0.1:8081/v1`、model `qwen3.8-flash-next-q2_0`），provider 卡改为 5 列。Strata 本地回环默认免鉴权：无 Key 时显示「本地服务，无需密钥（可选）」且按可用状态展示，可选 serving API Key 仍按 provider 保存到本机 0600 文件并支持清除；Overview / Quick Run / Agent Run 共用 `ui/src/lib/llmConfig.ts` 的 keyless 判定，不再把无 Key Strata 显示为未配置。思考开关扩展为 DeepSeek / Strata 共用；Strata 通过请求顶层 `reasoning_effort` 控制（关闭/结构化输出为 `none`，开启后 low / high，`max` 归一到 `high`），不发送 DeepSeek 风格 `thinking` 对象。Quick Run 子进程管线使用同一 keyless 判定，无 Key 时不视为凭证缺失、不注入伪造占位 Key，请求头不带 `Authorization`。`.pen` 本轮未同步（本机无 Pencil 工具），需在 Pencil 中补 Strata 选项、5 列 provider 卡与思考开关条件。
 
+2026-10-22 Strata App 统一推理后台（方案修正）：Strata 预设改为只连接 Strata App 管理的唯一入口 `http://127.0.0.1:47831/v1`（base_url 只读、来自共享常量），不再使用直连引擎的 8081 / `qwen3.8-flash-next-q2_0`；model 默认为空且只读，需先「检查连接」从 App 当前 `/v1/models` 列表选择。Strata 成为新建/未配置时的默认 provider（其他 provider 保留可切换，预设不变）；默认端点不提供编辑入口，旧配置里的其他 strata 端点读取/保存时归一为统一入口。App `/v1/models` 为空时连接检查如实返回 blocked 并提示先在 Strata App 加载模型。`.pen` 待补该状态（本机无 Pencil 工具）。
+
 
 **布局**:
 - 顶部: 页面标题 + "Save / 保存" 主按钮
@@ -380,7 +396,8 @@ App 持续运行时每分钟检查到期批次；“执行今日批次”与自�
     - LLM Config / 模型:
       - provider（LM Studio / Strata / OpenAI / DeepSeek / OpenAI Compatible，5 列卡片）、model、base_url、api_key（掩码）、timeout、temperature
       - DeepSeek 预设：base_url `https://api.deepseek.com`、model `deepseek-flash`；支持 `/models` 发现与连接检查
-      - Strata 预设：base_url `http://127.0.0.1:8081/v1`、model `qwen3.8-flash-next-q2_0`；本地回环默认免鉴权，无 Key 显示「本地服务，无需密钥（可选）」并按可用状态展示，可选 serving API Key 仍按 provider 保存与清除
+      - Strata 预设（2026-10-22 起）：base_url 固定 `http://127.0.0.1:47831/v1`（只读，Strata App 统一推理后台）、model 默认空（只读，需检查连接后从 App 当前 `/v1/models` 选择）；本地回环默认免鉴权，无 Key 显示「本地服务，无需密钥（可选）」并按可用状态展示，可选 serving API Key 仍按 provider 保存与清除
+      - 默认 provider 为 Strata；其他 provider（LM Studio / OpenAI / DeepSeek / OpenAI Compatible）保留为可切换 fallback，预设不变；切换 provider 时清空上一 provider 的检测结果与 model
       - 思考模式开关对 DeepSeek / Strata 显示，默认关闭：DeepSeek 按 low / high / max 选择强度（thinking 对象，思考模式下温度不生效）；Strata 按 low / high 选择强度（顶层 `reasoning_effort`，关闭与结构化输出为 `none`，`max` 归一到 `high`）
       - `api_key` 按 provider 分别保存到本机权限文件（目录 `0700`、文件 `0600`），不进入 localStorage、日志或 `policy.local.yaml`；页面只显示已保存 / 来自环境变量 / 本地占位 / 本地可选 / 未配置状态，并支持清除
       - 未提供真实密钥的在线 provider 不得显示为可用；LM Studio 保留本地 `lm-studio` 占位密钥，Strata 无需密钥即可用

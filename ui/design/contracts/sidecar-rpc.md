@@ -1,5 +1,6 @@
 # PiProofForge Sidecar RPC Contract
 
+2026-10-22 Quick Run 异步执行与真实阶段进度：`run.quick.start` 不再同步等待管线，立即返回 `status=RUNNING` 与 `progress:{stages[4],current_stage,updated_at}`；后台线程用 `Popen` 执行 `tools/run_pipeline.py`，每约 0.5s 由 `outputs/agent_runs/<run_id>/run_log.json` 的 `PIPELINE_STEP_*` 事件推导 `extract/match/generate/evaluate` 四阶段状态。新增只读 RPC `run.quick.get {run_id}` 轮询状态，终态时返回与旧同步接口相同的 details；不存在返回 `NOT_FOUND`。同进程一次只允许一个活跃 Quick Run，并发 start 抛 `quick_run_already_running`。`run.quick.cancel` 对运行中任务写 `cancel_requested_at` 并尽量 `terminate/kill`，记为 `stopped`；强制超时沿用 `options.timeout_seconds`，记为 `TIMEOUT`。UI 必须轮询 `run.quick.get` 并消费 `progress.stages[].status/elapsed_seconds`。
 
 2026-10-22 岗位适配预检（批量推荐排序）：`jobs.listProfiles.items[]` 增加 `fit_precheck:{source:assessed|rule|insufficient, state:recommended|consider|promising|caution|hold|unknown|low, rank:0-6, coverage:0-1|null, matched_requirements, total_requirements, evidence_hits, matched_terms[], missing_terms[], fit_state, fit_failures, match_score, fit_score, basis}（assessed_quick_run|rule_evidence_overlap|insufficient_requirements|insufficient_evidence）。排序白名单增加 `fit_precheck`；未显式传 `sort.order` 时该字段默认按 rank 升序（推荐优先），显式 order 优先。可信 assessed 仅在 scorecard 具备四层报告 `tiers.fit` 时使用；failed 态还须有语义 `semantic_review.fit_score`（0 合法）或合法 `delivery_advice.recommendation`，空建议对象不可信；旧评分卡或不可信四层报告退回规则预检，不得谎报已预检失败。规则预检只读 saved_eligible/candidate_pool_eligible 证据卡，英文完整词边界、中文二字窗口，年限/学历类要求不进入分母；不调用模型、不写卡、不阻断任何操作，UI 须标注“规则预检仅供参考”。
 
@@ -60,8 +61,8 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 
 | 方法 | 输入与效果 |
 | --- | --- |
-| `run.agent.beginPdfUpload` | `run_id, accept_account_effects`；批准并在释放固定 PDF bytes 前写 in-flight，返回 upload_ref/filename/pdf_sha256/pdf_bytes；未知不重传 |
-| `run.agent.finishPdfUpload` | `run_id, upload_ref, observation`；保留上传真实响应，尚不标投递成功 |
+| `run.agent.beginPdfUpload` | `run_id, accept_account_effects`；批准并在释放固定 PDF bytes 前写 in-flight，返回 upload_ref/filename/pdf_sha256/pdf_bytes；仅有效状态为空或 `not_submitted`（已证明未派发）允许再次批准，`unknown`/`in_flight`/`uploaded_unverified` 拒绝并返回 `pdf_upload_already_attempted` |
+| `run.agent.finishPdfUpload` | `run_id, upload_ref, observation`；保留上传真实响应：`status=uploaded`→`uploaded_unverified`；`status=not_submitted` 且 responses 中无 POST/PUT/PATCH（确定性未派发）→`not_submitted`；其余（`unknown`/超时/已有写请求）→`unknown`，尚不标投递成功 |
 | `run.agent.inspectPdfPacket` / `recordPdfInspection` | 取得固定文件身份 / 写入有界观察；比对上传成功、当前唯一附件、fileId、附件 ID、文件大小；可回读时核对完整字节 SHA256 |
 | `run.agent.pdfTargetPacket` / `recordPdfTarget` | 取得快照目标 / 保存真实 URL、公司、岗位与入口观察；不发送 |
 | `run.agent.beginPdfDelivery` | `run_id`；复核最新 JD、审批、附件、排除规则，必须已有 generated_pdf 批次，原子占位后返回一次性 delivery_ref |
@@ -69,7 +70,9 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 | `run.agent.pdfInteractionPacket` / `recordPdfInteraction` | `run_id, action` / 加 delivery_ref、observation；发简历入口与最终确认各只执行一次，最终前验证唯一选中 fileId 和当前会话 |
 | `run.agent.verifyPdfReceipt` | `run_id`；仅本地核验已保存的 send-resume 请求/响应、附件绑定、岗位上下文与快照，更新既有 SubmissionRecorder、占位与审批结果；重复调用幂等，无网络或重发 |
 
-阶段：`prepared → in_flight → uploaded_unverified → attachment_verified → delivery_in_flight → communication_started → resume_interaction_pending → final_send_pending → success`。上传 `unknown` 保留原记录；只有同版官方 beforeUpload 契约证明旧 27 字符文件名在请求前拒绝，才记 `not_submitted` 并允许短名继续同一文件。`can_confirm_send` 来自后端对当前确认框的判断，不能由前端自报。
+阶段：`prepared → in_flight → uploaded_unverified → attachment_verified → delivery_in_flight → communication_started → resume_interaction_pending → final_send_pending → success`。上传结果只有可证伪的未派发才算 `not_submitted`：上传脚本的 observation 自报 `status=not_submitted` 且 responses 中没有任何 POST/PUT/PATCH（脚本只采集上传/附件请求）时，才记 `not_submitted` 并允许重新批准上传；旧 27 字符文件名的同版官方 beforeUpload 契约复核成立（请求前拒绝）同样归为 `not_submitted`。`unknown`（含超时、已派发但结果不明）保留原记录且永不重传。旧队列里 `state=unknown` 但 observation 已自证未派发的记录读取时只读归一为 `not_submitted`，不改写原文件；重试时旧记录整体进入 `pdf_upload_history`。`can_confirm_send` 来自后端对当前确认框的判断，不能由前端自报。
+
+`NativePdfPreparation` 上传字段（2026-10-22）：`upload_state` 为归一后的有效上传状态（无上传记录为空串）；`upload_attempts` 为已发生尝试数 = `pdf_upload_history` 长度 + 当前 `pdf_upload` 记录是否存在（0/1）；`upload_hints` 为当前上传 observation.hints 的前 10 条字符串，已去 query/fragment 与凭据键值；`can_retry_upload` 仅在有效状态为空或 `not_submitted` 时为 true。UI 必须据此判断能否再次批准上传，不能按原始 `pdf_upload.state` 推断；`phase` 同样使用归一后的有效状态。
 
 业务回执 parser v1 只认可实际观察到的固定 `https://api-c.liepin.com/api/com.liepin.im.c.chat.send-resume` POST、HTTP 200、匹配 attachmentId/会话请求及精确 `{"flag":1,"data":{}}` 成功形状；其他形状未知。私有 `native_receipt.json`、摘要日志、审批记录与 SQLite 均绑定同一 PDF/attempt，普通日志不含签名 URL 或请求头。最终发送开始后历史绑定冻结，当前平台附件变化不得使旧回执失效。
 
@@ -530,30 +533,111 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
   "evidence_id": "ec_001",
   "job_profile_id": "jp_001",
   "options": {
-    "generate_resume": true
+    "generate_resume": true,
+    "timeout_seconds": 1800
   }
 }
 ```
 
-`result`
+`result`（立即返回，不等管线结束）
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "run_id": "qr_001",
+  "status": "RUNNING",
+  "started_at": "2026-10-22T03:00:00Z",
+  "finished_at": "",
+  "exit_code": null,
+  "run_record": "outputs/agent_runs/qr_001/run_log.json",
+  "summary": "outputs/agent_runs/qr_001/summary.json",
+  "llm_config_summary": {},
+  "material_source": null,
+  "job_profile": {},
+  "selected_evidence_card_ids": ["ec_001"],
+  "progress": {
+    "stages": [
+      { "key": "extract", "status": "running", "started_at": "2026-10-22T03:00:00Z" },
+      { "key": "match", "status": "waiting" },
+      { "key": "generate", "status": "waiting" },
+      { "key": "evaluate", "status": "waiting" }
+    ],
+    "current_stage": "extract",
+    "updated_at": "2026-10-22T03:00:00Z"
+  }
+}
+```
+
+说明：
+- 异步执行：`run.quick.start` 只做同步校验并启动后台 daemon 线程，立即返回 `status=RUNNING`；后台线程用 `Popen` 执行 `tools/run_pipeline.py`（`--skip-evidence-extraction`），stdout/stderr 写临时文件避免管道填满。终态与结果详情用 `run.quick.get` 轮询获取。
+- `progress.stages[]` 固定四阶段顺序 `extract`、`match`、`generate`、`evaluate`；`stage.status` 仅 `waiting | running | done | error | skipped`；可选 `started_at`、`finished_at`、`elapsed_seconds`（整数秒）。进度由 `outputs/agent_runs/<run_id>/run_log.json` 的 `PIPELINE_STEP_START/SUCCESS/FAILURE`、`PIPELINE_DONE/FAILED` 事件推导，约每 0.5s 刷新；skip 提取时 `evidence-selection` 立即成功，对应 `extract` 阶段。
+- 同进程一次只允许一个活跃 Quick Run：仍在运行时新 start 抛 `VALIDATION_ERROR`（message 含 `quick_run_already_running`）。
+- 原有同步校验顺序保留：job profile/证据/材料/`options` 等校验失败仍在返回前抛错，不启动后台线程。`llm_config_summary` 保持 masked，不返回 Key。
+- `status` 非终态仅 `RUNNING`；终态为 `DONE`、`SKIPPED`、`FAILED`、`TIMEOUT`、`stopped`，终态结果字段见 6.10.1。
+
+### 6.10.1 run.quick.get
+
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "run_id": "qr_001"
+}
+```
+
+`result`（RUNNING 时仅返回公共字段与 `progress`，不含结果详情）
 
 ```json
 {
   "meta": { "correlation_id": "corr_001" },
   "run_id": "qr_001",
   "status": "DONE",
+  "started_at": "2026-10-22T03:00:00Z",
+  "finished_at": "2026-10-22T03:01:30Z",
   "exit_code": 0,
   "run_record": "outputs/agent_runs/qr_001/run_log.json",
-  "summary": "outputs/agent_runs/qr_001/summary.json"
+  "summary": "outputs/agent_runs/qr_001/summary.json",
+  "llm_config_summary": {},
+  "material_source": null,
+  "job_profile": {},
+  "selected_evidence_card_ids": ["ec_001"],
+  "progress": {
+    "stages": [
+      { "key": "extract", "status": "done", "started_at": "2026-10-22T03:00:00Z", "finished_at": "2026-10-22T03:00:01Z", "elapsed_seconds": 1 },
+      { "key": "match", "status": "done", "started_at": "2026-10-22T03:00:01Z", "finished_at": "2026-10-22T03:00:20Z", "elapsed_seconds": 19 },
+      { "key": "generate", "status": "done", "started_at": "2026-10-22T03:00:20Z", "finished_at": "2026-10-22T03:01:00Z", "elapsed_seconds": 40 },
+      { "key": "evaluate", "status": "done", "started_at": "2026-10-22T03:01:00Z", "finished_at": "2026-10-22T03:01:30Z", "elapsed_seconds": 30 }
+    ],
+    "current_stage": null,
+    "updated_at": "2026-10-22T03:01:30Z"
+  },
+  "stdout": "[pipeline] done\n",
+  "stderr": "",
+  "artifacts": {},
+  "failed_step": "",
+  "reason": "",
+  "score_total": 82,
+  "score_breakdown": {},
+  "semantic_review": null,
+  "quality_report": null,
+  "career_direction": null,
+  "gaps": [],
+  "gap_tasks": [],
+  "resume_positioning": {},
+  "resume_pdf": "",
+  "pdf_export_error": "",
+  "resume_readiness": {},
+  "traceability": {}
 }
 ```
 
 说明：
-- `run.quick.start` 启动本地单次 pipeline；当前 sidecar 同步返回执行结果。
-- `status` 可为 `DONE`、`SKIPPED`、`FAILED` 或 `TIMEOUT`。
+- `run.quick.get` 是只读轮询接口，不推进、不取消任务；取消使用 6.11。
+- RUNNING 时只保证公共字段（`run_id/status/started_at/finished_at/exit_code/run_record/summary/llm_config_summary/material_source/job_profile/selected_evidence_card_ids/progress`）；终态时额外附带与旧同步 `run.quick.start` 相同的 details：`stdout`、`stderr`、`artifacts`、`failed_step`、`reason`、`score_total`、`score_breakdown`、`semantic_review`、`quality_report`、`career_direction`、`gaps`、`gap_tasks`、`resume_positioning`、`resume_pdf`、`pdf_export_error`、`resume_readiness`、`traceability`。
 - `resume_readiness` 独立于执行状态，包含 `status`（`NEEDS_EVIDENCE` / `NEEDS_REVIEW`）、`deliverable=false`、`quality_passed`（由 `quality_report.auto_pass` 与追溯/PDF/语义完整性门禁共同决定）、`auto_pass`、`quality_report`、`quality_failures[]`、`evaluation_score`（旧版参考分，仅展示）、`reasons[]`、`gap_tasks[]` 及缺失资料字段；不再提供 `evaluation_reference_score`（78 参考线已废弃）；本轮未实现人工批准写回，不自动标记可投递。
 - generation 使用简历中心 `personal_profile.yaml` 和选定 Job Profile/JD；`artifacts.resume_trace` 指向独立 `.trace.json`，`traceability.resume_traceable` 通过正文与输入指纹检查得出，正文不承载内部追溯标记。
-- CLI fallback 仍可由 UI 展示，但 Quick Run 页面不再只展示命令。
+- `run_id` 不存在返回 `NOT_FOUND`；非法 `run_id` 返回 `VALIDATION_ERROR`。
 - 桌面端 Quick Run 自动化不属于 sidecar JSON-RPC contract。验收必须由外部自动化驱动真实页面或真实桌面壳；生产前端不得内置 verifier env 分支、自启动验收流程或验收事件钩子。外部脚本应通过真实 UI 动作与 `outputs/quick_runs` / summary 等产物校验结果。
 
 ### 6.11 run.quick.cancel
@@ -568,6 +652,11 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 ```
 
 `result`: `{ "meta": { "correlation_id": "corr_001" }, "accepted": true }`
+
+说明：
+- 运行中取消：写 `run.cancel_requested_at`，并通过线程内 Event 通知后台线程尽量 `terminate` 管线进程（宽限期后 `kill`），进程退出后 `status=stopped`，`progress` 中未完成阶段标 `skipped`/`waiting`。
+- 已终态（`DONE`/`SKIPPED`/`FAILED`/`TIMEOUT`/`stopped`）时只记录 `cancel_requested_at`，不覆盖终态。
+- 没有活跃后台线程的残留 `RUNNING` 记录（如 sidecar 重启后）直接落 `stopped`。
 
 ### 6.12 run.agent.start
 
@@ -881,10 +970,10 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 - `section`: `gate_policy | exclusion_list | excluded_legal_entities | llm_config`
 - `gate_policy` payload 当前支持更新字段：`delivery_mode`、`batch_review`；为部分更新，未传字段保持原值
 - `delivery_mode` 枚举：`auto | manual`；`batch_review` 为布尔值，仅 `delivery_mode=manual` 时生效
-- `llm_config` payload 当前支持更新字段：`provider`、`model`、`base_url`、`api_key`、`timeout`、`temperature`、`thinking_enabled`、`thinking_effort`；为部分更新，未传字段保持原值
+- `llm_config` payload 当前支持更新字段：`provider`、`model`、`base_url`、`api_key`、`timeout`、`temperature`、`thinking_enabled`、`thinking_effort`；为部分更新，未传字段保持原值。例外：切换 `provider` 且未显式传 `model` / `base_url` 时，旧 provider 的 model / base_url 会被清除（2026-10-22）
 - `api_key` 按 provider 保存到本机凭据文件；payload 携带 `api_key` 时，`provider`（或当前已保存 provider）必须匹配 `^[a-z][a-z0-9_]{0,31}$`，否则拒绝
 - `provider=lm_studio` 且 `api_key="lm-studio"` 保持本地占位语义，不强制创建凭据文件
-- `provider=strata` 为本地免鉴权 provider：不要求 `api_key`；携带 `api_key` 时仍保存到 `llm-strata-api-key`（0600）并按该 provider 隔离，不修改 model/base_url
+- `provider=strata` 为本地免鉴权 provider：不要求 `api_key`；携带 `api_key` 时仍保存到 `llm-strata-api-key`（0600）并按该 provider 隔离。strata 的 base_url 固定为 `http://127.0.0.1:47831/v1`（Strata App 统一推理后台），payload/旧配置中的其他地址在保存与读取时归一为该地址；切换到 strata 且未显式提供 model 时清除旧 provider 的 model
 - `thinking_enabled` 为布尔值，仅 `provider=deepseek` 或 `provider=strata` 时影响请求；写入 `policy.local.yaml` 的 `llm_thinking_enabled`
 - `thinking_effort` 枚举 `low | high | max`，默认 `high`；写入 `policy.local.yaml` 的 `llm_thinking_effort`。DeepSeek 思考开启时作为 `thinking` 内的 `reasoning_effort` 发送；Strata 思考开启时作为请求顶层 `reasoning_effort` 发送，`max` 映射为 `high`
 - `channels` 当前为 `settings.get` 只读返回字段，不支持 `settings.update`
@@ -893,6 +982,8 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 2026-09-28 本地模型兼容：`provider=lm_studio` 的结构化提取在 infra 将旧 `json_object` 转成对象 `json_schema`；Jobs 使用现有草稿字段类型的 schema，业务必需字段与严格 JSON 校验不变。对已实测 `qwen/qwen3.8-27b`，仅该转换且调用方未显式指定时，单次请求补 `reasoning_effort=none`；不改变 LM Studio 全局配置或其他服务商/模型的设置。连接检查只证明模型列表可读取，实际推理单独验收。
 
 2026-10-21 Strata 本地兼容：`provider=strata` 复用 OpenAI 兼容路径，默认 base_url `http://127.0.0.1:8081/v1`、model `qwen3.8-flash-next-q2_0`。本地回环默认免鉴权：`LLMClient.build_headers()` 在 `api_key` 为空时不发送 `Authorization`（这是所有 provider 的通用行为；在线 provider 缺 Key 仍会在服务端 401），有可选 Key 时仍为 Bearer。请求未显式指定 `reasoning_effort` 时，结构化 `json_object` 与思考关闭均发送顶层 `reasoning_effort=none`，思考开启时 `low|high`（`max→high`）；不发送 `thinking` 对象，其他 provider 不受影响。keyless 判定按 provider（`lm_studio` / `strata`）而非 base_url 是否回环；子进程管线以同一 provider 语义判断 LLM 是否可用，不注入伪造 Key。
+
+2026-10-22 Strata App 统一推理后台（方案修正）：`provider=strata` 只连接 Strata App 管理的唯一入口 `http://127.0.0.1:47831/v1`（`tools/infra/llm/client.py::STRATA_UNIFIED_BASE_URL`）。`settings.get` 在 provider=strata 时恒返回该 base_url；`settings.update` 保存时归一为该地址（忽略页面/旧配置的其他地址）；`settings.checkLlmConnection` 也强制该地址。模型由 App 管理：默认 `model=""`，检查连接从真实 `/v1/models` 列表选择后保存显式 id；`/v1/models` 为空表示 App 未加载模型，返回 `BLOCKED_LOCAL_PROVIDER` 并提示先加载。新建/未配置时默认 provider=strata；其他 provider 配置不被自动改写；切换 provider 清除旧 provider 的 model。`LLMClient` 在 provider=strata 且 base_url 为空时回退统一入口；`extract_evidence_llm` 同样回退，不落 OpenAI 默认地址。`reasoning_effort`/keyless 行为不变。
 
 2026-10-21 AI 投递声明：`settings.get` 增加 `ai_disclosure:{enabled,text}`；`settings.update` 新增 `section=ai_disclosure`（payload `{enabled:bool}`，持久化 policy.local.yaml，默认 false）。原生 PDF 投递的 `run.agent.pdfInteractionPacket` 在开关开启且尚无有效声明记录时，对 prepare/send 返回 `requires_ai_disclosure:true` 与 `ai_disclosure:{text,sha256}` 且不推进投递状态；App 在目标沟通会话真实发送声明后，以 `run.agent.recordPdfInteraction`（action `ai_disclosure`）提交观察，后端校验目标会话与发送证据并写入 `pdf_delivery.ai_disclosure`，之后 prepare/send 才放行。`NativePdfPreparation` 增加 `ai_disclosure_enabled/ai_disclosure_text/ai_disclosure_sent`。
 
@@ -942,7 +1033,7 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 - `status`: `pass | blocked`
 - 成功时 `code=OK` 且 `models` 返回最多 20 个模型 id
 - `provider=lm_studio` 的本地端点不可达、返回空模型列表或未配置 base_url 时，返回 `code=BLOCKED_LOCAL_PROVIDER`
-- `provider=strata` 为本地免鉴权 provider：缺少密钥不返回 `BLOCKED_PROVIDER_CREDENTIAL`；端点不可达、空模型列表或未配置 base_url 时返回 `code=BLOCKED_LOCAL_PROVIDER`，消息使用 `Strata`，不冒用 LM Studio
+- `provider=strata` 为本地免鉴权 provider：缺少密钥不返回 `BLOCKED_PROVIDER_CREDENTIAL`；检查地址强制为 `http://127.0.0.1:47831/v1`（忽略 payload/旧配置的其他地址）；端点不可达、空模型列表（App 未加载模型）或未配置 base_url 时返回 `code=BLOCKED_LOCAL_PROVIDER`，消息使用 `Strata App`，不冒用 LM Studio；空模型消息明确提示先在 Strata App 加载模型
 - `openai_compatible` 的 localhost 端点允许不带密钥，但失败时返回 `code=BLOCKED_PROVIDER` 且消息使用 provider 名称，不冒用 LM Studio
 - 在线 provider（OpenAI / DeepSeek / OpenAI Compatible）缺少密钥时返回 `code=BLOCKED_PROVIDER_CREDENTIAL`；其余不可达/空列表返回 `code=BLOCKED_PROVIDER`
 - 请求的 provider 与当前生效 provider 不同时，只读取该 provider 自己的凭据文件；不得复用当前生效密钥
