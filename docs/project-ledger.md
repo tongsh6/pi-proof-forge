@@ -2,6 +2,14 @@
 
 Last updated: 2026-10-22
 
+## 2026-10-22 附件移除误报 attachment_removal_success_required（发送前重传后回执证据附件身份过期）
+
+- 现象（用户实测）：对已成功投递的 `.5` PDF 点击「移除此平台附件」，App 先自动做只读附件页检查，随后报 `run.agent.beginPdfRemoval failed with VALIDATION_ERROR: attachment_removal_success_required`，无法移除。
+- 定位：队列 `ar_20261022140520046851` 的 `pdf_delivery.state` 确实为 `success`（14:58 真实发送成功），错误来自成功证据复核而非投递状态。① 该笔 14:06 开始投递时绑定旧附件 `287f8d2d8aA348c943f9dae`；最终发送前平台附件消失，按既有恢复流程于 14:51:55 重传同一 PDF、14:54:04 绑定更新为 `…/IDSZFJa0TrmpZmA-TBXjhA.PDF` / `287c8e228dM348d9c389cae`，14:58 发送与回执核验成功；但 `handle_verify_pdf_receipt` 只补回执摘要，未把回执证明的实际发送附件身份写回 `submission_log.input_artifacts`（仍为旧 `287f8d2d…`），`inspect_submission_evidence` 因此返回 `receipt_binding_mismatch`；`_checked_removal_target` 又把“投递未成功”和“成功证据未通过”合并报成 `attachment_removal_success_required`。② 平台附件页有 2 张同字节卡片（目标 `IDSZFJa0…` + 遗留 `YAaU8ett…`），旧门禁要求页面恰好 1 行，即使证据修复也会以 `attachment_removal_identity_unverified` 阻断（`liepin_native_pdf_remove.js` 本身已按 `attachment_count`/fileId 集合支持多卡片页）。
+- 修复：① `handle_verify_pdf_receipt` 在回执归档后调用 `_record_verified_attachment_identity`，写入 `input_artifacts.attachment_id`/`attachment_file_id`，旧值追加到 `attachment_id_history`；首次核验走 recorder 原路径，幂等重核仅在变化时原子写 JSON 且不重复 consume 配额。② `_checked_removal_target`：`state!=success` 仍报 `attachment_removal_success_required`；成功但证据未过时，仅对 `receipt_binding_mismatch` 且归档回执完整自证（log/归档/队列三处 sha、run/candidate/pdf/file_id/final_send/attempt 逐项一致 + 按 binding 重算回执完全相等）的记录做一次性本地校正，写入 `pdf_delivery.evidence_reconciliations`，随后重跑严格 inspect；仍未过报 `attachment_removal_evidence_unverified[:reason]`。③ 多卡片门禁改为“观察完整（`attachment_count` 与行数一致）、fileId 非空唯一、目标卡按 fileId+encryAttachmentId+文件名恰好 1 张”，只对目标卡校验原字节，其它同字节遗留卡允许存在；finish 前后 fileId 集合校验不变。④ Submissions 页把 5 个 removal 错误码映射为可读中英文案。
+- 验证：后端先红后绿（removal 12 失败/8 通过 → 31 passed；delivery 1 失败 → 3 passed）；全量单测 **1645 通过、1 跳过、53 subtests**，GUI **140 通过**，`tsc --noEmit`、`pnpm --dir ui build`、roadmap/v2/AIEF 门禁通过。真实数据只读回放 `outputs/acceptance/attachment-removal-evidence-20261022/`：复制真实 queue/agent_runs/submission 证据/delivery_attempts.sqlite3 到临时根，证据 `incomplete/receipt_binding_mismatch` → `beginPdfRemoval` 成功 `in_flight, attachment_count=2` → log 校正 + `evidence_reconciliations` → evidence verified → `finishPdfRemoval` removed；篡改归档 file_id / 回执附件 ID 的副本均被拒绝（`attachment_removal_evidence_unverified`）且不改 log、不建占位；真实文件 sha256 前后一致，平台写入 0。
+- 边界：只本地校正“回执已证明”的日志字段；`submission_log.yaml` 不含附件身份字段故未改；真实 App 重启后仍需用户先「检查已保存附件」再勾选确认移除，平台最终删除由人确认；平台上 2 份同字节附件本轮未删除；`.pen` 待补；P0-026 仍唯一 `next`。
+
 ## 2026-10-22 恢复后真实发送成功：第 19 笔（睿秀 · AI 全栈）
 
 - 触发与补记原因：附件绑定误清的问题经只读 inspect 恢复（`outputs/acceptance/attachment-binding-recovery-20261022/validation.json`，22:56）后，用户于 App 内点击「确认投递所选 PDF」；上一则条目只记录到“最终发送仍需用户手动确认”，本条目补记该笔真实发送与回执结果。
