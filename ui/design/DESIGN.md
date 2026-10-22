@@ -336,6 +336,8 @@ App 持续运行时每分钟检查到期批次；“执行今日批次”与自�
 
 2026-10-22 附件绑定恢复补丁：新版简历页附件卡片为懒加载，检查脚本先滚动并最多等待 8s 再抓取，避免把“未渲染”误判为“附件已移除”而清绑定。无旧 list 回包时，核验允许同字节同名重复附件：所有观测行大小/类型一致且恰好一行对应本次上传 ack 的 filePath，绑定仍指向唯一 fileId；重复行字节不同仍拒绝。投递状态内的附件绑定缺失返回 `attachment_verification_required`（而非 `pdf_delivery_not_pending`）；Submissions 恢复流程以 `upload_state` 判断重新核验，自动推进前绑定缺失给可读提示。
 
+2026-10-22 附件移除成功证据与实际发送附件对齐：最终发送前重传会让 `submission_log` 中开始投递时的 attachment_id 过期；`verifyPdfReceipt` 成功时把回执证明的实际发送附件身份写回（`attachment_id`/`attachment_file_id`，旧值留 `attachment_id_history`），`beginPdfRemoval` 对历史记录中唯一可自证的 `receipt_binding_mismatch` 做一次性本地校正并记录 `pdf_delivery.evidence_reconciliations`，其它缺口报 `attachment_removal_evidence_unverified[:reason]`，不再误报 `attachment_removal_success_required`。移除前附件页允许其它同字节遗留卡：要求观察完整（`attachment_count` 与行数一致）、fileId 非空唯一、目标卡恰好 1 张且原字节一致；页面把 removal 各类失败映射为可读中英文案。
+
 ### 8. Policy / 策略配置
 
 **职责**: Policy 编辑器、企业例外清单、投递/门禁策略治理
