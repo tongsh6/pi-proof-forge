@@ -11,6 +11,14 @@ STATUS_LABELS = {'supported': '有证据支持', 'partial': '部分支持', 'ins
 
 def _rows(response, key, identity, expected):
     rows = response.get(key) if isinstance(response, dict) else None
+    if rows is None and isinstance(response, dict):
+        rows = response
+    if isinstance(rows, dict) and rows and set(rows) == set(expected) and all(
+        isinstance(row, dict) for row in rows.values()
+    ):
+        # 本地模型偶发把"每项一行"直接输出为以 id 为键的对象；结构等价时归一为数组，
+        # 仍逐项校验覆盖、分数、引用与理由，不放宽语义标准。
+        rows = [{**row, identity: row_id} for row_id, row in rows.items()]
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise ValueError('semantic_invalid_response')
     ids = [row.get(identity) for row in rows]

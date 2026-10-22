@@ -7,12 +7,16 @@ import hashlib
 import os
 import re
 import shutil
-import subprocess
 import sys
+import tempfile
+import threading
+import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
+# 直接引用 Popen：单测只需替换本模块引用，不影响其它模块的 subprocess.Popen。
+from subprocess import Popen
 from typing import Any
 
 from tools.infra.export.pdf_exporter import markdown_to_pdf, pdf_page_count
@@ -31,6 +35,29 @@ _PROJECT_ROOT = _find_project_root(Path(__file__).resolve())
 _AGENT_RUN_DIR = _PROJECT_ROOT / "outputs" / "agent_runs"
 _QUICK_RUN_DIR = _PROJECT_ROOT / "outputs" / "quick_runs"
 _REVIEW_QUEUE_DIR = _PROJECT_ROOT / "outputs" / "review_queue"
+
+# Quick Run 的四个真实阶段与 run_pipeline 步骤名的映射（skip 提取时第一步即 evidence-selection）。
+_QUICK_RUN_STAGES: tuple[str, ...] = ("extract", "match", "generate", "evaluate")
+_QUICK_RUN_STEP_STAGES: dict[str, str] = {
+    "evidence-selection": "extract",
+    "evidence-extraction-llm": "extract",
+    "evidence-extraction-rule": "extract",
+    "matching-scoring": "match",
+    "generation": "generate",
+    "evaluation": "evaluate",
+}
+_QUICK_RUN_TERMINAL_STATUSES = frozenset(
+    {"DONE", "SKIPPED", "FAILED", "TIMEOUT", "stopped"}
+)
+_QUICK_RUN_ENVELOPE_KEYS = frozenset({"run", "progress"})
+# 后台线程轮询 run_log.json / 进程状态的间隔；测试可 monkeypatch 缩短。
+_QUICK_RUN_POLL_INTERVAL_SECONDS = 0.5
+# terminate 之后等待进程退出的宽限期，超时再 kill。
+_QUICK_RUN_TERMINATE_GRACE_SECONDS = 2.0
+# 读/写 outputs/quick_runs/<run_id>.json 与活跃运行状态都由这把锁保护（handler 主循环与后台线程并发）。
+_QUICK_RUN_LOCK = threading.RLock()
+_QUICK_RUN_ACTIVE: dict[str, Any] | None = None
+_QUICK_RUN_LAST_THREAD: threading.Thread | None = None
 
 
 def _utcnow_iso() -> str:
@@ -110,9 +137,488 @@ def _load_quick_run(run_id: str) -> dict[str, Any]:
 
 
 def _save_quick_run(run_file: Path, payload: dict[str, Any]) -> None:
-    run_file.write_text(
+    # 原子替换：后台线程写进度时，读取方不会看到半截 JSON。
+    run_file.parent.mkdir(parents=True, exist_ok=True)
+    temporary = run_file.with_name(run_file.name + ".tmp")
+    temporary.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    os.replace(temporary, run_file)
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _elapsed_seconds_between(start: Any, end: Any) -> int | None:
+    start_dt = _parse_iso_datetime(start)
+    end_dt = _parse_iso_datetime(end)
+    if start_dt is None or end_dt is None:
+        return None
+    return max(0, int(round((end_dt - start_dt).total_seconds())))
+
+
+def _stage_progress_from_events(
+    events: list[dict[str, Any]],
+    *,
+    started_at: str = "",
+    final_status: str = "",
+    now: str | None = None,
+) -> dict[str, Any]:
+    """由 run_log.json 事件推导 Quick Run 四阶段进度（纯函数，不读写文件）。
+
+    stage: {key, status(waiting|running|done|error|skipped), started_at?, finished_at?, elapsed_seconds?}
+    final_status 为空时使用 PIPELINE_DONE/PIPELINE_FAILED 事件内的终态；
+    传入进程真实终态（DONE/SKIPPED/FAILED/TIMEOUT/stopped）时以其为准。
+    """
+    stages: dict[str, dict[str, Any]] = {
+        key: {"key": key, "status": "waiting"} for key in _QUICK_RUN_STAGES
+    }
+    if started_at and stages["extract"]["status"] == "waiting":
+        stages["extract"]["status"] = "running"
+        stages["extract"]["started_at"] = started_at
+
+    event_terminal_status = ""
+    terminal_timestamp = ""
+    failed_step = ""
+
+    def stage_for_step(step: Any) -> dict[str, Any] | None:
+        key = _QUICK_RUN_STEP_STAGES.get(str(step or ""))
+        return stages.get(key) if key else None
+
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        event_type = str(event.get("event_type") or "")
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+        timestamp = str(event.get("timestamp") or "")
+        if event_type == "PIPELINE_STEP_START":
+            stage = stage_for_step(payload.get("step"))
+            if stage is not None:
+                stage["status"] = "running"
+                start_stamp = timestamp or started_at
+                if start_stamp:
+                    stage.setdefault("started_at", start_stamp)
+        elif event_type == "PIPELINE_STEP_SUCCESS":
+            stage = stage_for_step(payload.get("step"))
+            if stage is not None:
+                start_stamp = timestamp or started_at
+                if start_stamp:
+                    stage.setdefault("started_at", start_stamp)
+                finish_stamp = timestamp or stage.get("started_at", "")
+                if finish_stamp:
+                    stage["finished_at"] = finish_stamp
+                stage["status"] = "done"
+        elif event_type == "PIPELINE_STEP_FAILURE":
+            stage = stage_for_step(payload.get("step"))
+            if stage is not None:
+                start_stamp = timestamp or started_at
+                if start_stamp:
+                    stage.setdefault("started_at", start_stamp)
+                finish_stamp = timestamp or stage.get("started_at", "")
+                if finish_stamp:
+                    stage["finished_at"] = finish_stamp
+                stage["status"] = "error"
+        elif event_type in {"PIPELINE_DONE", "PIPELINE_FAILED"}:
+            event_terminal_status = str(
+                payload.get("status") or event_terminal_status
+            )
+            failed_step = str(payload.get("failed_step") or failed_step)
+            terminal_timestamp = timestamp or terminal_timestamp
+
+    effective_status = final_status or event_terminal_status
+    normalized = effective_status.upper() if effective_status else ""
+    if normalized:
+        failed_stage = stage_for_step(failed_step)
+        if normalized == "DONE":
+            for stage in stages.values():
+                if stage["status"] != "done":
+                    if started_at:
+                        stage.setdefault("started_at", started_at)
+                    finish_stamp = terminal_timestamp or stage.get("started_at", "")
+                    if finish_stamp:
+                        stage["finished_at"] = finish_stamp
+                    stage["status"] = "done"
+        elif normalized == "SKIPPED":
+            for stage in stages.values():
+                if stage["status"] != "done":
+                    stage["status"] = "skipped"
+                    stage["finished_at"] = (
+                        terminal_timestamp
+                        or stage.get("finished_at")
+                        or stage.get("started_at", "")
+                    )
+        elif normalized in {"FAILED", "TIMEOUT"}:
+            if failed_stage is not None and failed_stage["status"] != "done":
+                failed_stage["status"] = "error"
+                if started_at:
+                    failed_stage.setdefault("started_at", started_at)
+                finish_stamp = terminal_timestamp or failed_stage.get("started_at", "")
+                if finish_stamp:
+                    failed_stage["finished_at"] = finish_stamp
+            for stage in stages.values():
+                if stage["status"] == "running":
+                    stage["status"] = "error"
+                    stage["finished_at"] = (
+                        terminal_timestamp
+                        or stage.get("finished_at")
+                        or stage.get("started_at", "")
+                    )
+            if not any(stage["status"] == "error" for stage in stages.values()):
+                for key in _QUICK_RUN_STAGES:
+                    stage = stages[key]
+                    if stage["status"] != "done":
+                        stage["status"] = "error"
+                        if started_at:
+                            stage.setdefault("started_at", started_at)
+                        finish_stamp = terminal_timestamp or stage.get(
+                            "started_at", ""
+                        )
+                        if finish_stamp:
+                            stage["finished_at"] = finish_stamp
+                        break
+        elif normalized == "STOPPED":
+            # 用户取消不是错误：未开始的阶段保持 waiting，正在执行的阶段标记 skipped。
+            for stage in stages.values():
+                if stage["status"] == "running":
+                    stage["status"] = "skipped"
+                    stage["finished_at"] = terminal_timestamp or now or _utcnow_iso()
+
+    current_timestamp = now or _utcnow_iso()
+    for stage in stages.values():
+        started = stage.get("started_at")
+        finished = stage.get("finished_at")
+        if started and finished:
+            elapsed = _elapsed_seconds_between(started, finished)
+        elif started and normalized in {"", "RUNNING"}:
+            elapsed = _elapsed_seconds_between(started, current_timestamp)
+        else:
+            elapsed = None
+        if elapsed is not None:
+            stage["elapsed_seconds"] = elapsed
+
+    current_stage: str | None = None
+    if normalized in {"", "RUNNING"}:
+        for key in _QUICK_RUN_STAGES:
+            if stages[key]["status"] == "running":
+                current_stage = key
+                break
+        if current_stage is None:
+            for key in _QUICK_RUN_STAGES:
+                if stages[key]["status"] == "waiting":
+                    current_stage = key
+                    break
+
+    return {
+        "stages": [stages[key] for key in _QUICK_RUN_STAGES],
+        "current_stage": current_stage,
+        "updated_at": current_timestamp,
+    }
+
+
+def _pipeline_run_log_path(run_id: str) -> Path:
+    return _PROJECT_ROOT / "outputs" / "agent_runs" / run_id / "run_log.json"
+
+
+def _read_pipeline_run_events(run_id: str) -> list[dict[str, Any]]:
+    path = _pipeline_run_log_path(run_id)
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(loaded, list):
+        return []
+    return [item for item in loaded if isinstance(item, dict)]
+
+
+def _read_temp_file_text(handle: Any) -> str:
+    try:
+        handle.flush()
+        handle.seek(0)
+        data = handle.read()
+    except (OSError, ValueError):
+        return ""
+    if isinstance(data, bytes):
+        return data.decode("utf-8", errors="replace")
+    return str(data)
+
+
+def _wait_for_process_exit(process: Any, timeout: float) -> bool:
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        try:
+            if process.poll() is not None:
+                return True
+        except OSError:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+
+
+def _terminate_quick_run_process(process: Any) -> None:
+    """超时/取消时尽量终止管线进程：先 terminate，宽限期后 kill。"""
+    try:
+        process.terminate()
+    except OSError:
+        pass
+    if _wait_for_process_exit(process, _QUICK_RUN_TERMINATE_GRACE_SECONDS):
+        return
+    try:
+        process.kill()
+    except OSError:
+        pass
+    _wait_for_process_exit(process, _QUICK_RUN_TERMINATE_GRACE_SECONDS)
+
+
+def _refresh_quick_run_progress(run_id: str) -> None:
+    events = _read_pipeline_run_events(run_id)
+    with _QUICK_RUN_LOCK:
+        try:
+            payload = _load_quick_run(run_id)
+        except KeyError:
+            return
+        run_payload = payload.get("run")
+        started_at = (
+            str(run_payload.get("started_at") or "")
+            if isinstance(run_payload, dict)
+            else ""
+        )
+        payload["progress"] = _stage_progress_from_events(
+            events, started_at=started_at
+        )
+        _save_quick_run(_get_quick_run_file(run_id), payload)
+
+
+def _quick_run_envelope(payload: dict[str, Any], correlation_id: str) -> dict[str, Any]:
+    run_payload = payload.get("run")
+    if not isinstance(run_payload, dict):
+        run_payload = {}
+    run_id = str(run_payload.get("run_id") or "")
+    progress = payload.get("progress")
+    if not isinstance(progress, dict):
+        # 兼容不含 progress 的旧记录：按 run_log 事件与终态推导，避免终态仍显示“进行中”。
+        status = str(run_payload.get("status") or "")
+        progress = _stage_progress_from_events(
+            _read_pipeline_run_events(run_id),
+            started_at=str(run_payload.get("started_at") or ""),
+            final_status=status if status in _QUICK_RUN_TERMINAL_STATUSES else "",
+        )
+    envelope: dict[str, Any] = {
+        "meta": {"correlation_id": correlation_id},
+        "run_id": run_id,
+        "status": str(run_payload.get("status") or ""),
+        "started_at": str(run_payload.get("started_at") or ""),
+        "finished_at": str(run_payload.get("finished_at") or ""),
+        "exit_code": run_payload.get("exit_code"),
+        "run_record": str(Path("outputs") / "agent_runs" / run_id / "run_log.json"),
+        "summary": str(Path("outputs") / "agent_runs" / run_id / "summary.json"),
+        "llm_config_summary": run_payload.get("llm_config_summary") or {},
+        "material_source": run_payload.get("material_source"),
+        "job_profile": run_payload.get("job_profile") or {},
+        "selected_evidence_card_ids": list(
+            run_payload.get("selected_evidence_card_ids") or []
+        ),
+        "progress": progress,
+    }
+    for key, value in payload.items():
+        if key not in _QUICK_RUN_ENVELOPE_KEYS:
+            envelope[key] = value
+    return envelope
+
+
+def _finalize_quick_run(
+    run_id: str,
+    *,
+    status: str,
+    exit_code: int | None,
+    stdout: str,
+    stderr: str,
+) -> None:
+    """把管线终态、阶段终态与结果详情一次性写回 quick_runs JSON。
+
+    详情组装（含 PDF 导出）期间保持 RUNNING，避免 UI 在详情就绪前停止轮询。
+    """
+    global _QUICK_RUN_ACTIVE
+
+    try:
+        # 详情组装（含 PDF 导出）可能耗时数百毫秒到数秒，必须在锁外进行：
+        # 期间 run.quick.get 仍能读到 RUNNING，且不被阻塞。
+        with _QUICK_RUN_LOCK:
+            snapshot = _load_quick_run(run_id)
+            snapshot_run = snapshot.get("run")
+            if not isinstance(snapshot_run, dict):
+                snapshot_run = {}
+            started_at = str(snapshot_run.get("started_at") or "")
+            selected_ids = [
+                str(item)
+                for item in snapshot_run.get("selected_evidence_card_ids") or []
+            ]
+            positioning = snapshot_run.get("resume_positioning")
+        events = _read_pipeline_run_events(run_id)
+        progress = _stage_progress_from_events(
+            events, started_at=started_at, final_status=status
+        )
+        try:
+            details = _quick_run_result_details(
+                run_id,
+                stdout,
+                stderr,
+                selected_evidence_card_ids=selected_ids,
+                resume_positioning=positioning
+                if isinstance(positioning, dict)
+                else None,
+            )
+        except Exception as exc:  # noqa: BLE001 - 结果组装失败也必须落终态
+            details = {
+                "stdout": stdout[-4000:],
+                "stderr": (
+                    stderr + f"\n[quick-run] result assembly failed: {exc}"
+                )[-4000:],
+            }
+        with _QUICK_RUN_LOCK:
+            payload = _load_quick_run(run_id)
+            run_payload = payload.get("run")
+            if not isinstance(run_payload, dict):
+                run_payload = {}
+                payload["run"] = run_payload
+            run_payload["status"] = status
+            run_payload["exit_code"] = exit_code
+            run_payload["finished_at"] = _utcnow_iso()
+            payload["progress"] = progress
+            payload.update(details)
+            payload["stdout"] = str(details.get("stdout") or stdout[-4000:])
+            payload["stderr"] = str(details.get("stderr") or stderr[-4000:])
+            _save_quick_run(_get_quick_run_file(run_id), payload)
+            active = _QUICK_RUN_ACTIVE
+            if active is not None and active.get("run_id") == run_id:
+                _QUICK_RUN_ACTIVE = None
+    finally:
+        with _QUICK_RUN_LOCK:
+            active = _QUICK_RUN_ACTIVE
+            if active is not None and active.get("run_id") == run_id:
+                _QUICK_RUN_ACTIVE = None
+
+
+def _execute_quick_run(
+    run_id: str,
+    command: list[str],
+    llm_env: dict[str, str],
+    timeout_seconds: int,
+    cancel_event: threading.Event,
+) -> None:
+    """后台线程：Popen 执行 run_pipeline，轮询 run_log 写真实阶段进度。"""
+    status = "FAILED"
+    exit_code: int | None = None
+    stdout_text = ""
+    stderr_text = ""
+    process: Any = None
+    # stdout/stderr 写临时文件，避免管道填满阻塞子进程。
+    out_handle = tempfile.TemporaryFile()
+    err_handle = tempfile.TemporaryFile()
+    try:
+        if cancel_event.is_set():
+            status = "stopped"
+        else:
+            try:
+                process = Popen(
+                    command,
+                    stdout=out_handle,
+                    stderr=err_handle,
+                    cwd=str(_PROJECT_ROOT),
+                    env={**os.environ, **llm_env},
+                )
+            except OSError as exc:
+                stderr_text = f"[quick-run] failed to start pipeline: {exc}\n"
+            if process is not None:
+                with _QUICK_RUN_LOCK:
+                    active = _QUICK_RUN_ACTIVE
+                    if active is not None and active.get("run_id") == run_id:
+                        active["process"] = process
+                deadline = time.monotonic() + timeout_seconds
+                while True:
+                    returncode = process.poll()
+                    if returncode is not None:
+                        exit_code = returncode
+                        status = (
+                            "DONE"
+                            if returncode == 0
+                            else ("SKIPPED" if returncode == 2 else "FAILED")
+                        )
+                        break
+                    if cancel_event.is_set():
+                        status = "stopped"
+                        _terminate_quick_run_process(process)
+                        exit_code = process.poll()
+                        break
+                    if time.monotonic() >= deadline:
+                        status = "TIMEOUT"
+                        _terminate_quick_run_process(process)
+                        exit_code = process.poll()
+                        break
+                    try:
+                        _refresh_quick_run_progress(run_id)
+                    except OSError:
+                        pass
+                    cancel_event.wait(_QUICK_RUN_POLL_INTERVAL_SECONDS)
+    except Exception as exc:  # noqa: BLE001 - 后台线程异常不得泄漏，落 FAILED 终态
+        status = "FAILED"
+        stderr_text += f"\n[quick-run] internal error: {exc}\n"
+    finally:
+        stdout_text = _read_temp_file_text(out_handle)
+        stderr_text = stderr_text + _read_temp_file_text(err_handle)
+        try:
+            out_handle.close()
+        except OSError:
+            pass
+        try:
+            err_handle.close()
+        except OSError:
+            pass
+        _finalize_quick_run(
+            run_id,
+            status=status,
+            exit_code=exit_code,
+            stdout=stdout_text,
+            stderr=stderr_text,
+        )
+
+
+def _run_quick_run_worker(
+    run_id: str,
+    command: list[str],
+    llm_env: dict[str, str],
+    timeout_seconds: int,
+    cancel_event: threading.Event,
+) -> None:
+    global _QUICK_RUN_ACTIVE
+
+    try:
+        _execute_quick_run(run_id, command, llm_env, timeout_seconds, cancel_event)
+    except Exception:  # noqa: BLE001 - 最外层兜底，确保活跃标记被清理
+        with _QUICK_RUN_LOCK:
+            active = _QUICK_RUN_ACTIVE
+            if active is not None and active.get("run_id") == run_id:
+                _QUICK_RUN_ACTIVE = None
+
+
+def _join_quick_run_thread(timeout: float | None = None) -> None:
+    thread = _QUICK_RUN_LAST_THREAD
+    if thread is not None and thread.is_alive():
+        thread.join(timeout)
 
 
 def _coerce_positive_int(value: Any, default: int) -> int:
@@ -967,7 +1473,9 @@ def _persisted_llm_runtime_context() -> tuple[dict[str, Any], dict[str, str]]:
 
 
 def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
-    """Run the single-pass pipeline from the desktop Quick Run page."""
+    """启动单次 pipeline；立即返回 RUNNING，由后台线程执行并回写逐阶段进度。"""
+    global _QUICK_RUN_ACTIVE, _QUICK_RUN_LAST_THREAD
+
     correlation_id = params["meta"]["correlation_id"]
     job_profile_id = _validate_run_resource_id(
         "job_profile_id", params.get("job_profile_id")
@@ -979,6 +1487,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(options, dict):
         raise ValueError("options must be an object")
 
+    # 同步校验保持原顺序：校验失败在返回前直接抛错，不会启动后台线程。
     raw_path, job_profile_path, material_context = _quick_run_paths(job_profile_id, options)
     job_profile_context = _load_job_profile_context(job_profile_id, job_profile_path)
     selected_evidence_cards = _selected_evidence_cards(
@@ -989,6 +1498,14 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     ]
     resume_positioning = _quick_run_positioning(options)
     llm_config_summary, llm_env = _persisted_llm_runtime_context()
+
+    # 同进程一次只允许一个活跃 Quick Run；已结束的残留标记允许清理。
+    with _QUICK_RUN_LOCK:
+        active = _QUICK_RUN_ACTIVE
+        active_thread = active.get("thread") if isinstance(active, dict) else None
+        if isinstance(active_thread, threading.Thread) and active_thread.is_alive():
+            raise ValueError("quick_run_already_running")
+
     run_id = _build_quick_run_id()
     evidence_dir = Path("outputs") / "quick_runs" / run_id / "evidence_cards"
     _stage_selected_evidence(selected_evidence_cards, evidence_dir)
@@ -1019,45 +1536,12 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     if options.get("require_llm") is True:
         command.append("--require-llm")
 
-    status = "queued"
-    exit_code: int | None = None
-    stdout = ""
-    stderr = ""
-    finished_at = ""
-
-    try:
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            cwd=str(_PROJECT_ROOT),
-            env={**os.environ, **llm_env},
-        )
-        exit_code = completed.returncode
-        stdout = completed.stdout
-        stderr = completed.stderr
-        if completed.returncode == 0:
-            status = "DONE"
-        elif completed.returncode == 2:
-            status = "SKIPPED"
-        else:
-            status = "FAILED"
-        finished_at = _utcnow_iso()
-    except subprocess.TimeoutExpired as exc:
-        status = "TIMEOUT"
-        exit_code = None
-        stdout = str(exc.stdout or "")
-        stderr = str(exc.stderr or "")
-        finished_at = _utcnow_iso()
-
     payload = {
         "run": {
             "run_id": run_id,
-            "status": status,
+            "status": "RUNNING",
             "started_at": started_at,
-            "finished_at": finished_at,
+            "finished_at": "",
             "job_profile_id": job_profile_id,
             "evidence_id": evidence_id or "",
             "job_profile": job_profile_context,
@@ -1068,49 +1552,83 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
             "evidence_dir": str(evidence_dir),
             "resume_positioning": resume_positioning,
             "command": command,
-            "exit_code": exit_code,
+            "exit_code": None,
             "options": options,
             "llm_config_summary": llm_config_summary,
         },
-        "stdout": stdout[-4000:],
-        "stderr": stderr[-4000:],
+        "progress": _stage_progress_from_events([], started_at=started_at),
     }
-    details = _quick_run_result_details(
-        run_id,
-        stdout,
-        stderr,
-        selected_evidence_card_ids=selected_evidence_card_ids,
-        resume_positioning=resume_positioning,
+    cancel_event = threading.Event()
+    thread = threading.Thread(
+        target=_run_quick_run_worker,
+        args=(run_id, command, llm_env, timeout_seconds, cancel_event),
+        name=f"quick-run-{run_id}",
+        daemon=True,
     )
-    payload.update(details)
-    _save_quick_run(_get_quick_run_file(run_id), payload)
+    with _QUICK_RUN_LOCK:
+        active = _QUICK_RUN_ACTIVE
+        active_thread = active.get("thread") if isinstance(active, dict) else None
+        if isinstance(active_thread, threading.Thread) and active_thread.is_alive():
+            raise ValueError("quick_run_already_running")
+        # 先落盘再启动线程，保证 start 返回后 run.quick.get 立即可读到 RUNNING。
+        _save_quick_run(_get_quick_run_file(run_id), payload)
+        _QUICK_RUN_ACTIVE = {
+            "run_id": run_id,
+            "process": None,
+            "cancel_event": cancel_event,
+            "thread": thread,
+        }
+        _QUICK_RUN_LAST_THREAD = thread
+        thread.start()
 
-    return {
-        "meta": {"correlation_id": correlation_id},
-        "run_id": run_id,
-        "status": status,
-        "exit_code": exit_code,
-        "run_record": str(Path("outputs") / "agent_runs" / run_id / "run_log.json"),
-        "summary": str(Path("outputs") / "agent_runs" / run_id / "summary.json"),
-        "llm_config_summary": llm_config_summary,
-        "material_source": material_context,
-        "job_profile": job_profile_context,
-        "selected_evidence_card_ids": selected_evidence_card_ids,
-        **details,
-    }
+    return _quick_run_envelope(payload, correlation_id)
+
+
+def handle_quick_get(params: dict[str, Any]) -> dict[str, Any]:
+    """读取 Quick Run 当前状态与真实阶段进度；终态时附带完整结果详情。"""
+    correlation_id = params["meta"]["correlation_id"]
+    run_id = _validate_run_resource_id("run_id", params.get("run_id"))
+    with _QUICK_RUN_LOCK:
+        payload = _load_quick_run(run_id)
+    return _quick_run_envelope(payload, correlation_id)
 
 
 def handle_quick_cancel(params: dict[str, Any]) -> dict[str, Any]:
-    """Best-effort cancellation marker for Quick Run records."""
+    """取消 Quick Run：写取消标记并通知后台线程 terminate 管线进程。"""
     correlation_id = params["meta"]["correlation_id"]
     run_id = _validate_run_resource_id("run_id", params.get("run_id"))
     run_file = _get_quick_run_file(run_id)
-    payload = _load_quick_run(run_id)
-    run_payload = payload.setdefault("run", {})
-    if run_payload.get("status") not in {"DONE", "FAILED", "SKIPPED", "TIMEOUT"}:
-        run_payload["status"] = "stopped"
-    run_payload["cancel_requested_at"] = _utcnow_iso()
-    _save_quick_run(run_file, payload)
+    cancel_event: threading.Event | None = None
+    with _QUICK_RUN_LOCK:
+        payload = _load_quick_run(run_id)
+        run_payload = payload.get("run")
+        if not isinstance(run_payload, dict):
+            run_payload = {}
+            payload["run"] = run_payload
+        run_payload["cancel_requested_at"] = _utcnow_iso()
+        active = _QUICK_RUN_ACTIVE
+        active_thread = active.get("thread") if isinstance(active, dict) else None
+        if (
+            isinstance(active, dict)
+            and active.get("run_id") == run_id
+            and isinstance(active_thread, threading.Thread)
+            and active_thread.is_alive()
+        ):
+            event = active.get("cancel_event")
+            if isinstance(event, threading.Event):
+                cancel_event = event
+        elif run_payload.get("status") not in _QUICK_RUN_TERMINAL_STATUSES:
+            # 没有活跃后台线程（例如 sidecar 重启后的残留记录）时直接落 stopped。
+            run_payload["status"] = "stopped"
+            run_payload["finished_at"] = _utcnow_iso()
+            payload["progress"] = _stage_progress_from_events(
+                _read_pipeline_run_events(run_id),
+                started_at=str(run_payload.get("started_at") or ""),
+                final_status="stopped",
+            )
+        _save_quick_run(run_file, payload)
+    if cancel_event is not None:
+        cancel_event.set()
 
     return {
         "meta": {"correlation_id": correlation_id},

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import { isLlmSecretConfigured } from "@/lib/llmConfig";
+import { isQuickRunTerminal, trackQuickRun } from "@/lib/quick-run-tracker";
 import { useTaskStore, type BackgroundTask } from "@/state/task-store";
 import { notify } from "@/lib/ui";
 import {
@@ -30,6 +31,7 @@ import type {
   EvidenceListItem,
   LlmConfig,
   MaterialSourceItem,
+  QuickRunStageProgress,
   QuickRunStartResult,
   ProfilePayload,
 } from "@/lib/sidecar/types";
@@ -63,15 +65,19 @@ const failedStepAliases: Record<(typeof PIPELINE_STEPS)[number]["key"], string[]
   evaluate: ["evaluate", "evaluation"],
 };
 
-function getStageStatus(
+export function getStageStatus(
   runState: RunState,
   status: string | null,
   failedStep: string,
-  stepIndex: number
+  stepIndex: number,
+  stages: QuickRunStageProgress[] | undefined,
+  stepKey: string
 ): StageStatus {
-  // 管线在后端同步执行、没有逐阶段进度；执行期间四个阶段都标为进行中，避免假进度。
+  // RUNNING 时使用后端回写的真实阶段进度；没有进度时只让首阶段进行中，避免四个阶段同时转圈。
   if (runState === "running") {
-    return "running";
+    const stage = stages?.find((item) => item.key === stepKey);
+    if (stage) return stage.status;
+    return stepIndex === 0 ? "running" : "waiting";
   }
   if (status === "SKIPPED") {
     const stoppedIndex = PIPELINE_STEPS.findIndex(step => failedStepAliases[step.key].some(alias => failedStep.includes(alias)));
@@ -248,6 +254,7 @@ export function QuickRunPage() {
       if (!quickRunInFlightRef.current) {
         setRunState("running");
         setStartedAt(task.startedAt);
+        if (task.runId) setQuickRunId(task.runId);
       }
       return;
     }
@@ -335,6 +342,33 @@ export function QuickRunPage() {
     [quickRunResult, runError, t]
   );
 
+  const applyTerminalResult = useCallback((result: QuickRunStartResult, version: number, notifyUser: boolean) => {
+    const finished = result.status === "DONE" || result.status === "SKIPPED";
+    const reason = result.reason || `${result.status}${result.exit_code != null ? ` (${result.exit_code})` : ""}`;
+    // 任务 store 与提醒在版本守卫之前完成：页面切走或目标变化后仍要收口全局任务。
+    const taskStore = useTaskStore.getState();
+    if (notifyUser) {
+      if (finished) {
+        notify("success", t("toasts.quickRun.done"));
+      } else {
+        notify("error", t("toasts.quickRun.failed"), reason);
+      }
+    }
+    if (version !== selectionVersion.current) {
+      if (finished) taskStore.finish("quickRun", result);
+      else taskStore.fail("quickRun", reason);
+      return;
+    }
+    if (finished) taskStore.finish("quickRun", result);
+    else taskStore.fail("quickRun", reason);
+    setQuickRunId(result.run_id);
+    setQuickRunStatus(result.status);
+    setQuickRunResult(result);
+    setElapsedSeconds(Math.max(0, Math.floor((Date.now() - (taskStore.tasks.quickRun?.startedAt ?? Date.now())) / 1000)));
+    setRunState(finished ? "done" : "error");
+    if (!finished) setRunError(reason);
+  }, [t]);
+
   const handleStartQuickRun = useCallback(async () => {
     if (!canStartRun || quickRunInFlightRef.current) return;
     if (useTaskStore.getState().tasks.quickRun?.status === "running") return;
@@ -354,8 +388,9 @@ export function QuickRunPage() {
     setRunError(null);
     setQuickRunStatus(null);
     setQuickRunResult(null);
+    setQuickRunId(null);
     try {
-      const result = await startQuickRun({
+      const started = await startQuickRun({
         job_profile_id: selectedProfileId,
         options: {
           generate_resume: true,
@@ -367,23 +402,27 @@ export function QuickRunPage() {
           timeout_seconds: useLlm ? 1800 : 120,
         },
       });
-      // 无论页面是否已切走或目标是否已改变，任务结果都记入全局 store 并提示；只有本页状态按版本守卫更新。
-      const finished = result.status === "DONE" || result.status === "SKIPPED";
-      const reason = `${result.status}${result.exit_code != null ? ` (${result.exit_code})` : ""}`;
-      if (finished) {
-        taskStore.finish("quickRun", result);
-        notify("success", t("toasts.quickRun.done"));
-      } else {
-        taskStore.fail("quickRun", reason);
-        notify("error", t("toasts.quickRun.failed"), reason);
+      if (isQuickRunTerminal(started.status)) {
+        // 兼容同步返回终态（旧后端或测试桩）：无需轮询，直接收口。
+        applyTerminalResult(started, version, true);
+        return;
       }
-      if (version !== selectionVersion.current) return;
-      setQuickRunId(result.run_id);
-      setQuickRunStatus(result.status);
-      setQuickRunResult(result);
-      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - now) / 1000)));
-      setRunState(finished ? "done" : "error");
-      if (!finished) setRunError(reason);
+      if (version === selectionVersion.current) {
+        setQuickRunId(started.run_id);
+        setQuickRunStatus(started.status);
+      }
+      // 轮询不依赖本页挂载；切到其他页面后仍会继续更新全局任务与最终结果。
+      const result = await trackQuickRun(started.run_id, {
+        doneMessage: t("toasts.quickRun.done"),
+        failedMessage: t("toasts.quickRun.failed"),
+      });
+      if (!result) {
+        if (version !== selectionVersion.current) return;
+        setRunState("error");
+        setRunError(useTaskStore.getState().tasks.quickRun?.detail ?? t("toasts.quickRun.failed"));
+        return;
+      }
+      applyTerminalResult(result, version, false);
     } catch (e) {
       const message = getErrorMessage(e);
       taskStore.fail("quickRun", message);
@@ -395,7 +434,7 @@ export function QuickRunPage() {
       quickRunInFlightRef.current = false;
       if (version !== selectionVersion.current) setRunState("ready_to_run");
     }
-  }, [canStartRun, eligibleEvidenceIds, resumePositioning, selectedProfileId, selectedProfile?.title, selectedMaterialId, useLlm, t]);
+  }, [applyTerminalResult, canStartRun, eligibleEvidenceIds, resumePositioning, selectedProfileId, selectedProfile?.title, selectedMaterialId, useLlm, t]);
 
 
   // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。
@@ -594,15 +633,32 @@ export function QuickRunPage() {
             ) : null}
             <div className="grid gap-3 xl:grid-cols-4">
               {PIPELINE_STEPS.map((step, index) => {
+                const progressStages = task?.progress?.stages;
+                const stageProgress = progressStages?.find((item) => item.key === step.key);
                 const stageStatus = getStageStatus(
                   runState,
                   quickRunStatus,
                   quickRunResult?.failed_step ?? "",
-                  index
+                  index,
+                  progressStages,
+                  step.key
                 );
+                const stageSeconds = stageProgress?.elapsed_seconds;
+                const stageText =
+                  stageStatus === "running"
+                    ? t("pages.quickRun.progress.running", { seconds: stageSeconds ?? elapsedSeconds })
+                    : stageStatus === "done"
+                      ? runState === "running" && typeof stageSeconds === "number"
+                        ? t("pages.quickRun.progress.done", { seconds: stageSeconds })
+                        : t("pages.quickRun.result")
+                      : stageStatus === "error"
+                        ? t("pages.quickRun.progress.failed")
+                        : t(stageStatus === "skipped" ? "pages.quickRun.skipped" : "pages.quickRun.waiting");
                 return (
                   <div key={step.key} className="flex items-center gap-3">
                     <div
+                      data-stage={step.key}
+                      data-stage-status={stageStatus}
                       className={`min-h-[96px] flex-1 rounded-card border p-4 transition-colors ${stageStatusClass[stageStatus]}`}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -626,11 +682,7 @@ export function QuickRunPage() {
                         {t(step.labelKey)}
                       </p>
                       <p className="mt-2 text-xs text-text-secondary">
-                        {stageStatus === "running"
-                          ? t("pages.quickRun.elapsed", { seconds: elapsedSeconds })
-                          : stageStatus === "done"
-                            ? t("pages.quickRun.result")
-                            : t(stageStatus === "skipped" ? "pages.quickRun.skipped" : "pages.quickRun.waiting")}
+                        {stageText}
                       </p>
                     </div>
                     {index < PIPELINE_STEPS.length - 1 ? (

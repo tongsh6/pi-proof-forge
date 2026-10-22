@@ -205,6 +205,51 @@ class RunMatchingScoringKeylessLlmTests(unittest.TestCase):
         self.assertEqual(captured[0]["api_key"], "")
         self.assertEqual(captured[0]["provider"], "strata")
 
+    def test_http_502_reports_retryable_backend_error(self) -> None:
+        import contextlib
+        import io
+        from io import BytesIO
+        from urllib.error import HTTPError
+
+        def fake_run_semantic_matching(**kwargs: Any) -> dict[str, Any]:
+            raise HTTPError(
+                "http://127.0.0.1:47831/v1/chat/completions",
+                502,
+                "Bad Gateway",
+                {},
+                BytesIO(b'{"error":{"message":"fetch failed"}}'),
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            policy_path, job_profile, evidence_dir = self._fixture(tmp_dir)
+            output_path = Path(tmp_dir) / "mr-http.yaml"
+            stdout = io.StringIO()
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "PPF_POLICY_PATH": str(policy_path),
+                        "LLM_PROVIDER": "strata",
+                        "LLM_MODEL": "iq3_s",
+                        "LLM_BASE_URL": "http://127.0.0.1:47831/v1",
+                    },
+                    clear=True,
+                ),
+                mock.patch("tools.run_matching_scoring.LLMClient"),
+                mock.patch(
+                    "tools.infra.semantic_matching.run_semantic_matching",
+                    fake_run_semantic_matching,
+                ),
+                mock.patch("sys.argv", self._argv(job_profile, evidence_dir, output_path)),
+                contextlib.redirect_stdout(stdout),
+            ):
+                code = main()
+
+        self.assertEqual(code, 1)
+        printed = stdout.getvalue()
+        self.assertIn("HTTP 502", printed)
+        self.assertIn("有限重试", printed)
+
     def test_online_provider_without_api_key_still_blocks_required_llm(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             policy_path, job_profile, evidence_dir = self._fixture(tmp_dir)

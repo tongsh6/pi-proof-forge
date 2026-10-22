@@ -1,5 +1,5 @@
 import json
-import subprocess
+import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -11,6 +11,53 @@ from tools.sidecar.server import (
     build_success_response,
     build_error_response,
 )
+
+
+class _FakeQuickRunProcess:
+    """subprocess.Popen 替身：覆盖 Quick Run 后台线程用到的接口。"""
+
+    def __init__(self, *, returncode: int | None = 0) -> None:
+        self.returncode = returncode
+        self.terminated = 0
+        self.killed = 0
+        self.poll_calls = 0
+
+    def poll(self) -> int | None:
+        self.poll_calls += 1
+        return self.returncode
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated += 1
+        self.returncode = -15
+
+    def kill(self) -> None:
+        self.killed += 1
+        self.returncode = -9
+
+
+_QUICK_RUN_TERMINAL_STATUSES = {"DONE", "SKIPPED", "FAILED", "TIMEOUT", "stopped"}
+
+
+def _wait_quick_run(process_quick_get, timeout: float = 5.0) -> dict:
+    """轮询 run.quick.get，直到进入终态；同时等待后台线程收尾。"""
+    from tools.sidecar.handlers import agent
+
+    deadline = time.monotonic() + timeout
+    result: dict = {}
+    while time.monotonic() < deadline:
+        response = process_quick_get()
+        if "error" in response:
+            raise AssertionError(f"run.quick.get failed: {response['error']}")
+        result = response["result"]
+        if result["status"] in _QUICK_RUN_TERMINAL_STATUSES:
+            agent._join_quick_run_thread(5.0)
+            return result
+        time.sleep(0.01)
+    agent._join_quick_run_thread(1.0)
+    raise AssertionError(f"quick run did not finish: {result}")
 
 
 class ProcessRequestTests(unittest.TestCase):
@@ -298,7 +345,7 @@ class ProcessRequestTests(unittest.TestCase):
                 ]
                 self.assertEqual(event_types, ["INIT", "DISCOVER", "DONE"])
 
-    def test_run_quick_start_and_cancel_methods_are_registered(self) -> None:
+    def test_run_quick_start_returns_running_and_get_reaches_terminal(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             quick_runs_dir = Path(tmp_dir) / "quick_runs"
             raw_path = Path(tmp_dir) / "sample_raw.txt"
@@ -335,12 +382,15 @@ class ProcessRequestTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            completed = subprocess.CompletedProcess(
-                args=[],
-                returncode=0,
-                stdout="[pipeline] done\n",
-                stderr="",
-            )
+            process = _FakeQuickRunProcess()
+
+            def spawn(command, **kwargs):
+                stdout = kwargs.get("stdout")
+                if stdout is not None:
+                    stdout.write(b"[pipeline] done\n")
+                    stdout.flush()
+                return process
+
             with (
                 patch(
                     "tools.sidecar.handlers.agent._PROJECT_ROOT",
@@ -353,8 +403,8 @@ class ProcessRequestTests(unittest.TestCase):
                     create=True,
                 ),
                 patch(
-                    "tools.sidecar.handlers.agent.subprocess.run",
-                    return_value=completed,
+                    "tools.sidecar.handlers.agent.Popen",
+                    side_effect=spawn,
                 ) as run_mock,
             ):
                 start_response = process_request(
@@ -376,9 +426,36 @@ class ProcessRequestTests(unittest.TestCase):
                 self.assertIn("result", start_response)
                 start_result = start_response["result"]
                 self.assertEqual(start_result["meta"]["correlation_id"], "corr_quick")
-                self.assertEqual(start_result["status"], "DONE")
+                self.assertEqual(start_result["status"], "RUNNING")
                 self.assertTrue(start_result["run_id"].startswith("qr_"))
-                self.assertIn("run_record", start_result)
+                self.assertIn("progress", start_result)
+                self.assertEqual(
+                    [stage["key"] for stage in start_result["progress"]["stages"]],
+                    ["extract", "match", "generate", "evaluate"],
+                )
+
+                result = _wait_quick_run(
+                    lambda: process_request(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": "req_quick_get",
+                            "method": "run.quick.get",
+                            "params": {
+                                "meta": {"correlation_id": "corr_quick_get"},
+                                "run_id": start_result["run_id"],
+                            },
+                        }
+                    )
+                )
+
+                self.assertEqual(result["status"], "DONE")
+                self.assertEqual(result["stdout"], "[pipeline] done\n")
+                self.assertTrue(
+                    all(
+                        stage["status"] == "done"
+                        for stage in result["progress"]["stages"]
+                    )
+                )
                 command = run_mock.call_args.args[0]
                 self.assertTrue(command[1].endswith("tools/run_pipeline.py"))
                 self.assertIn(str(profile_path), command)
@@ -398,6 +475,28 @@ class ProcessRequestTests(unittest.TestCase):
 
                 self.assertIn("result", cancel_response)
                 self.assertTrue(cancel_response["result"]["accepted"])
+
+    def test_run_quick_get_unknown_run_returns_not_found(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            with patch(
+                "tools.sidecar.handlers.agent._QUICK_RUN_DIR",
+                Path(tmp_dir) / "quick_runs",
+                create=True,
+            ):
+                response = process_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "req_quick_get_missing",
+                        "method": "run.quick.get",
+                        "params": {
+                            "meta": {"correlation_id": "corr_quick_missing"},
+                            "run_id": "qr_missing",
+                        },
+                    }
+                )
+
+        self.assertIn("error", response)
+        self.assertEqual(response["error"]["code"], "NOT_FOUND")
 
 
 class BuildResponseTests(unittest.TestCase):

@@ -221,6 +221,8 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                 request_body = {**request_body, 'messages': [*original_messages,
                     {'role': 'assistant', 'content': content},
                     {'role': 'user', 'content': '程序校验失败：' + code + '。冒号后的标识定位错误项。'
+                     '顶层结构必须严格保持为 ' + ('{"cards":[...]}' if stage == 'recall' else '{"assessments":[...]}')
+                     + '，不得改成以 id 为键的对象，也不得遗漏或重复任何输入 id。'
                      'support_requires_citation 的 cards/requirements 列出所有缺引用项，必须逐项补齐真实 fact_id 和 quote；'
                      '确实找不到引用的卡必须 score=0、requirement_ids=[]，要求则用 insufficient。不能保留正分或正向结论而引用为空。'
                      'unknown_fact 表示该事实编号不在输入 facts 中，必须从原输入复制真实编号及对应原文，不得猜测编号。wrong_source 表示引用串卡，expected后的卡只能引用属于该卡的facts，不能借用同批其他卡的事实。numeric_contradiction 表示年限比较自相矛盾；added_requirement 表示增加了当前JD没有的条件，必须按该项原要求重评。请修正对应结论或引用，完整保留逐卡/逐要求条目。引用必须逐字复制对应facts中至少8字的连续原文，短字段引用全部；不得改变空白标点或补写事实。'}]}

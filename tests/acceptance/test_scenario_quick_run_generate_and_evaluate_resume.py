@@ -2,20 +2,82 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from tools.acceptance.journey_contract import load_journey_contract
-from tools.acceptance.journey_report import (
-    JourneyStepResult,
-    build_journey_report,
-    write_journey_report,
-)
-from tools.sidecar.handlers.agent import handle_quick_start
+import pytest
+
+from tools.sidecar.handlers import agent
+from tools.sidecar.handlers.agent import handle_quick_get, handle_quick_start
 
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "acceptance" / "journey_contract.yaml"
+_PDF_SUPPORT_CACHE: bool | None = None
+_QUICK_RUN_TERMINAL_STATUSES = {"DONE", "SKIPPED", "FAILED", "TIMEOUT", "stopped"}
+
+
+class _FakeQuickRunProcess:
+    """subprocess.Popen 替身：让 Quick Run 后台线程在测试内走完生命周期。"""
+
+    def __init__(self, *, returncode: int = 0, stdout_text: str = "") -> None:
+        self.returncode = returncode
+        self.stdout_text = stdout_text
+        self.terminated = 0
+        self.killed = 0
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated += 1
+        self.returncode = -15
+
+    def kill(self) -> None:
+        self.killed += 1
+        self.returncode = -9
+
+
+def _get_quick_run(run_id: str) -> dict:
+    return handle_quick_get(
+        {"meta": {"correlation_id": "corr_quick_acceptance_get"}, "run_id": run_id}
+    )
+
+
+def _wait_quick_run(run_id: str, *, timeout: float = 120.0) -> dict:
+    deadline = time.monotonic() + timeout
+    result: dict = {}
+    while time.monotonic() < deadline:
+        result = _get_quick_run(run_id)
+        if result["status"] in _QUICK_RUN_TERMINAL_STATUSES:
+            agent._join_quick_run_thread(10.0)
+            return result
+        time.sleep(0.05)
+    agent._join_quick_run_thread(1.0)
+    raise AssertionError(f"quick run {run_id} did not finish: {result}")
+
+
+def _pdf_export_supported() -> bool:
+    """探测当前环境能否真正渲染 PDF；沙箱/CI 缺失渲染器时跳过 PDF 相关断言。"""
+    global _PDF_SUPPORT_CACHE
+    if _PDF_SUPPORT_CACHE is None:
+        from tools.infra.export.pdf_exporter import markdown_to_pdf
+
+        try:
+            with TemporaryDirectory() as tmp:
+                source = Path(tmp) / "probe.md"
+                target = Path(tmp) / "probe.pdf"
+                source.write_text("# probe\n\n- one\n", encoding="utf-8")
+                markdown_to_pdf(source, target)
+                _PDF_SUPPORT_CACHE = target.read_bytes().startswith(b"%PDF-")
+        except Exception:  # noqa: BLE001 - 任何渲染器异常都按不可用处理
+            _PDF_SUPPORT_CACHE = False
+    return _PDF_SUPPORT_CACHE
 
 
 def _write_policy(path: Path) -> None:
@@ -120,17 +182,18 @@ def _write_material_and_evidence(project_root: Path) -> None:
     )
 
 
-def _completed_process() -> object:
-    return type(
-        "Completed",
-        (),
-        {"returncode": 0, "stdout": "[pipeline] done\n", "stderr": ""},
-    )()
-
-
 def test_quick_run_legacy_body_markers_do_not_prove_traceability(
     tmp_path: Path,
 ) -> None:
+    # journey_contract/journey_report 依赖 PyYAML；最小测试环境未安装时只跳过本报告断言，不阻塞收集。
+    pytest.importorskip("yaml", reason="PyYAML is required for journey_contract assertions")
+    from tools.acceptance.journey_contract import load_journey_contract
+    from tools.acceptance.journey_report import (
+        JourneyStepResult,
+        build_journey_report,
+        write_journey_report,
+    )
+
     project_root = tmp_path
     quick_dir = project_root / "outputs" / "quick_runs"
     policy_path = project_root / "policy.yaml"
@@ -138,7 +201,7 @@ def test_quick_run_legacy_body_markers_do_not_prove_traceability(
     _write_active_job_profile(project_root)
     _write_material_and_evidence(project_root)
 
-    def create_pipeline_outputs(*_args: object, **_kwargs: object) -> object:
+    def create_pipeline_outputs(*_args: object, **_kwargs: object) -> None:
         run_id = "qr_quick_acceptance"
         matching_dir = project_root / "matching_reports"
         resume_dir = project_root / "outputs" / run_id
@@ -200,7 +263,15 @@ def test_quick_run_legacy_body_markers_do_not_prove_traceability(
             ),
             encoding="utf-8",
         )
-        return _completed_process()
+
+    process = _FakeQuickRunProcess()
+
+    def spawn(command, **kwargs):
+        if kwargs.get("stdout") is not None:
+            kwargs["stdout"].write(b"[pipeline] done\n")
+            kwargs["stdout"].flush()
+        create_pipeline_outputs(command)
+        return process
 
     with (
         patch("tools.sidecar.handlers.agent._PROJECT_ROOT", project_root),
@@ -214,11 +285,11 @@ def test_quick_run_legacy_body_markers_do_not_prove_traceability(
             return_value=policy_path,
         ),
         patch(
-            "tools.sidecar.handlers.agent.subprocess.run",
-            side_effect=create_pipeline_outputs,
+            "tools.sidecar.handlers.agent.Popen",
+            side_effect=spawn,
         ) as run_mock,
     ):
-        result = handle_quick_start(
+        started = handle_quick_start(
             {
                 "meta": {"correlation_id": "corr_quick_acceptance"},
                 "job_profile_id": "jp_quick_acceptance",
@@ -230,6 +301,9 @@ def test_quick_run_legacy_body_markers_do_not_prove_traceability(
                 },
             }
         )
+        assert started["status"] == "RUNNING"
+        assert started["progress"]["current_stage"] == "extract"
+        result = _wait_quick_run(started["run_id"])
         run_payload = json.loads(
             (quick_dir / "qr_quick_acceptance.json").read_text(encoding="utf-8")
         )
@@ -243,8 +317,14 @@ def test_quick_run_legacy_body_markers_do_not_prove_traceability(
     assert result["selected_evidence_card_ids"] == ["ec_quick_acceptance"]
     assert result["resume_positioning"]["mode"] == "technical_depth"
     assert result["artifacts"]["matching"].endswith("mr-qr_quick_acceptance.yaml")
-    assert result["resume_pdf"].endswith(".PDF")
-    assert (project_root / result["resume_pdf"]).read_bytes().startswith(b"%PDF-")
+    assert all(stage["status"] == "done" for stage in result["progress"]["stages"])
+    if _pdf_export_supported():
+        assert result["resume_pdf"].endswith(".PDF")
+        assert (project_root / result["resume_pdf"]).read_bytes().startswith(b"%PDF-")
+    else:
+        # 沙箱/CI 没有可用 PDF 渲染器时，run 仍应完成并显式报告导出失败原因。
+        assert result["resume_pdf"] == ""
+        assert "PDF_RENDER" in result["pdf_export_error"]
     assert result["gap_tasks"] == ["补充容量或成本治理指标"]
     assert result["traceability"]["matching_uses_selected_evidence"] is True
     assert result["traceability"]["resume_traceable"] is False
@@ -277,8 +357,6 @@ def test_quick_run_legacy_body_markers_do_not_prove_traceability(
 
 
 def test_quick_run_real_pipeline_generates_pdf_and_independent_trace(tmp_path, monkeypatch):
-    from tools.sidecar.handlers import agent
-
     shutil.copytree(ROOT / "tools", tmp_path / "tools", ignore=shutil.ignore_patterns("__pycache__"))
     _write_active_job_profile(tmp_path)
     _write_material_and_evidence(tmp_path)
@@ -291,12 +369,21 @@ def test_quick_run_real_pipeline_generates_pdf_and_independent_trace(tmp_path, m
     monkeypatch.setenv("PPF_POLICY_PATH", str(tmp_path / "policy.yaml"))
     monkeypatch.setattr(agent, "_PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(agent, "_QUICK_RUN_DIR", tmp_path / "outputs/quick_runs")
-    result = agent.handle_quick_start({
+    started = agent.handle_quick_start({
         "meta": {"correlation_id": "real-local-pipeline"},
         "job_profile_id": "jp_quick_acceptance",
         "options": {"evidence_ids": ["ec_quick_acceptance"], "use_llm": False},
     })
+    assert started["status"] == "RUNNING"
+    # 真实管线在后台线程执行；轮询 run.quick.get 直到终态。
+    result = _wait_quick_run(started["run_id"], timeout=300.0)
     assert result["status"] == "DONE", result
+    assert [stage["status"] for stage in result["progress"]["stages"]] == [
+        "done",
+        "done",
+        "done",
+        "done",
+    ], result["progress"]
     resume = tmp_path / result["traceability"]["resume_a"]
     text = resume.read_text()
     assert "候选人甲" in text
@@ -312,7 +399,11 @@ def test_quick_run_real_pipeline_generates_pdf_and_independent_trace(tmp_path, m
     assert result["resume_readiness"]["content_ready"] is False
     assert result["resume_readiness"]["deliverable"] is False
     assert isinstance(result["resume_readiness"]["evaluation_score"], int)
-    assert (tmp_path / result["resume_pdf"]).read_bytes().startswith(b"%PDF-")
+    if _pdf_export_supported():
+        assert (tmp_path / result["resume_pdf"]).read_bytes().startswith(b"%PDF-")
+    else:
+        assert result["resume_pdf"] == ""
+        assert "PDF_RENDER" in result["pdf_export_error"]
     resume.write_text(text + "- 未经证据支持的新声明\n", encoding="utf-8")
     changed = agent._quick_run_result_details(
         result["run_id"], "", "", selected_evidence_card_ids=["ec_quick_acceptance"],

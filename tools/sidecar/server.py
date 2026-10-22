@@ -73,6 +73,7 @@ from tools.sidecar.handlers.agent import (
     handle_create_review_candidates,
     handle_get_pending_review,
     handle_quick_cancel,
+    handle_quick_get,
     handle_quick_start,
     handle_submit_review,
 )
@@ -168,6 +169,7 @@ def _create_router() -> Router:
     router.register("settings.checkLlmConnection", handle_settings_check_llm_connection)
     router.register("settings.clearLlmApiKey", handle_settings_clear_llm_api_key)
     router.register("run.quick.start", handle_quick_start)
+    router.register("run.quick.get", handle_quick_get)
     router.register("run.quick.cancel", handle_quick_cancel)
     router.register("run.agent.start", handle_agent_start)
     router.register("run.agent.get", handle_agent_get)

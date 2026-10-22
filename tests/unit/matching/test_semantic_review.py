@@ -37,6 +37,35 @@ def test_semantic_card_can_match_without_literal_keyword():
     assert rows[0]['score'] == 90
 
 
+def test_map_keyed_cards_are_normalized_before_validation():
+    # 本地模型偶发把每卡一行输出为 {id: row} 对象；等价结构归一后仍逐项校验。
+    cards, facts, requirements = fixtures()
+    response = {row['id']: {k: value for k, value in row.items() if k != 'id'}
+                for row in replies(cards)['cards']}
+    rows = engine().validate_cards(response, cards, facts, requirements)
+    assert [row['id'] for row in rows] == ['e1', 'e2']
+    assert [row['score'] for row in rows] == [90, 0]
+
+
+def test_map_keyed_assessments_are_normalized_before_validation():
+    _, facts, requirements = fixtures()
+    response = {'r1': {'status': 'supported', 'reason': '存在故障恢复实践', 'citations': [citation()]}}
+    rows = engine().validate_assessments(response, facts, requirements)
+    assert rows[0]['requirement_id'] == 'r1'
+    assert rows[0]['status'] == 'supported'
+
+
+def test_unexpected_object_shape_is_still_rejected():
+    cards, facts, requirements = fixtures()
+    with pytest.raises(ValueError, match='semantic_invalid_response'):
+        engine().validate_cards({'items': []}, cards, facts, requirements)
+    with pytest.raises(ValueError, match='semantic_invalid_response'):
+        engine().validate_cards({'e1': {'score': 0}}, cards, facts, requirements)
+    with pytest.raises(ValueError, match='semantic_invalid_response'):
+        engine().validate_cards({'e1': {'score': 0}, 'e2': {'score': 0}, 'unknown': {}},
+                                cards, facts, requirements)
+
+
 def test_missing_citation_diagnostic_identifies_all_positive_cards_and_requirements():
     cards,facts,requirements=fixtures()
     response=replies(cards)

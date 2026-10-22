@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 import sys
 from typing import TypedDict, cast
+from urllib.error import HTTPError
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -13,7 +14,12 @@ if str(ROOT) not in sys.path:
 
 from tools.domain.result import Err
 from tools.domain.value_objects import Candidate
-from tools.infra.llm.client import LLMClient, llm_request_available, llm_timeout_from_env
+from tools.infra.llm.client import (
+    LLMClient,
+    default_base_url,
+    llm_request_available,
+    llm_timeout_from_env,
+)
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.policy.audit import write_exclusion_audit
 from tools.policy.exclusions import (
@@ -323,7 +329,7 @@ def _legacy_main() -> int:
     )
     _ = parser.add_argument(
         "--base-url",
-        default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
+        default=os.getenv("LLM_BASE_URL", "") or default_base_url(fallback=DEFAULT_BASE_URL),
         help="OpenAI-compatible base URL",
     )
     _ = parser.add_argument(
@@ -411,6 +417,9 @@ def _legacy_main() -> int:
                             'job_preferences_source_changed': '求职偏好的来源材料已变化，请到简历中心重新提炼并确认'}
                 code = str(exc)
                 detail = messages.get(code, code if code.startswith(('semantic_', 'career_direction_', 'job_preferences_')) else type(exc).__name__)
+                if isinstance(exc, HTTPError):
+                    detail = (f'推理后台暂时不可用（HTTP {exc.code} {exc.reason}），已做有限重试仍失败；'
+                              '请稍后重试或减少同时运行的推理任务')
                 print(f"[matching] 语义评审失败：{detail}")
                 if require_llm:
                     return 1
