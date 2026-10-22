@@ -1475,3 +1475,126 @@ class JobFitPrecheckZeroScoreTests(unittest.TestCase):
         self.assertEqual(precheck["state"], "low")
         self.assertEqual(precheck["fit_score"], 0)
         self.assertEqual(precheck["rank"], 6)
+
+
+class NativePdfDeliveryStateTests(unittest.TestCase):
+    """画像列表提前暴露 App 内原生 PDF 投递可用性，避免用户走到 Submissions 才被拦。"""
+
+    def _list_profiles(
+        self, profiles: Path, matching: Path, leads: Path, cards: Path
+    ) -> list[dict[str, Any]]:
+        from tools.sidecar.handlers import jobs as jobs_module
+
+        with (
+            patch.object(jobs_module, "_JOB_PROFILE_DIR", profiles),
+            patch.object(jobs_module, "_MATCHING_REPORT_DIR", matching),
+            patch.object(jobs_module, "_JOB_LEAD_DIR", leads),
+            patch.object(jobs_module, "_EVIDENCE_CARD_DIR", cards),
+            patch.object(jobs_module, "_SCORECARD_DIR", profiles.parent / "scorecards"),
+        ):
+            result = cast(
+                dict[str, Any],
+                handle_jobs_list_profiles(
+                    {
+                        "meta": {"correlation_id": "corr-native"},
+                        "filters": {"status": "active"},
+                    }
+                ),
+            )
+        return cast(list[dict[str, Any]], result["items"])
+
+    def test_manual_import_profile_reports_manual_delivery_only(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            profiles, matching, leads, cards = (
+                root / "job_profiles",
+                root / "matching_reports",
+                root / "job_leads",
+                root / "evidence_cards",
+            )
+            for directory in (profiles, matching, leads, cards):
+                directory.mkdir()
+            (profiles / "jp-manual.yaml").write_text(
+                "\n".join(
+                    [
+                        'target_role: "Java技术专家"',
+                        'company: "得物App"',
+                        'status: "active"',
+                        'source: "v2ex"',
+                        'import_mode: "manual"',
+                        'source_jd: "负责电商业务系统核心开发"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            items = self._list_profiles(profiles, matching, leads, cards)
+
+        item = next(item for item in items if item["job_profile_id"] == "jp-manual")
+        self.assertEqual(
+            item["native_pdf_delivery"],
+            {"supported": False, "reason": "manual_import"},
+        )
+
+    def test_lead_bound_reviewed_official_profile_reports_supported(self) -> None:
+        import hashlib
+
+        jd_text = "负责电商业务系统核心开发"
+        jd_sha = hashlib.sha256(jd_text.encode()).hexdigest()
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            profiles, matching, leads, cards = (
+                root / "job_profiles",
+                root / "matching_reports",
+                root / "job_leads",
+                root / "evidence_cards",
+            )
+            for directory in (profiles, matching, leads, cards):
+                directory.mkdir()
+            (profiles / "jp-official.yaml").write_text(
+                "\n".join(
+                    [
+                        'target_role: "Java技术专家"',
+                        'company: "得物App"',
+                        'status: "active"',
+                        'review_decision: "approved"',
+                        'reviewed_at: "2026-10-23T00:00:00Z"',
+                        'jd_summary: "负责电商核心系统"',
+                        f'source_jd: "{jd_text}"',
+                        f'source_jd_sha256: "{jd_sha}"',
+                        'job_lead_id: "jl-official"',
+                        'source_url: "https://www.liepin.com/job/123.shtml"',
+                        'platform: "liepin"',
+                        'platform_job_id: "123"',
+                        'platform_job_type: "2"',
+                        "must_have:",
+                        '  - "Java"',
+                        "keywords:",
+                        '  - "Java"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (leads / "jl-official.yaml").write_text(
+                "\n".join(
+                    [
+                        'id: "jl-official"',
+                        'source: "liepin_official"',
+                        'jd_status: "complete_reviewed"',
+                        'job_profile_id: "jp-official"',
+                        'url: "https://www.liepin.com/job/123.shtml"',
+                        f'source_jd: "{jd_text}"',
+                        f'source_jd_sha256: "{jd_sha}"',
+                        'platform: "liepin"',
+                        'platform_job_id: "123"',
+                        'platform_job_type: "2"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            items = self._list_profiles(profiles, matching, leads, cards)
+
+        item = next(item for item in items if item["job_profile_id"] == "jp-official")
+        self.assertEqual(item["native_pdf_delivery"], {"supported": True, "reason": ""})

@@ -447,6 +447,8 @@ export function SubmissionsPage() {
       ["account_effects_consent_required", t("pages.submissions.nativePdf.errors.account_effects_consent_required")],
       ["attachment_verification_required", t("pages.submissions.nativePdf.errors.attachment_verification_required")],
       ["pdf_target_verification_required", t("pages.submissions.nativePdf.errors.pdf_target_verification_required")],
+      ["resume_target_unreviewed", t("pages.submissions.nativePdf.errors.resume_target_unreviewed")],
+      ["pdf_job_review_required", t("pages.submissions.nativePdf.errors.pdf_job_review_required")],
       ["attachment_quota_reached", t("pages.submissions.nativePdf.errors.attachment_quota_reached")],
       ["attachment_current_state_mismatch", t("pages.submissions.nativePdf.errors.attachment_current_state_mismatch")],
       ["pdf_upload_not_dispatched", t("pages.submissions.nativePdf.errors.pdf_upload_not_dispatched")],

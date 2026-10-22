@@ -16,8 +16,9 @@ import { getErrorMessage } from "@/lib/errors";
 import { isLlmSecretConfigured } from "@/lib/llmConfig";
 import { isQuickRunTerminal, trackQuickRun } from "@/lib/quick-run-tracker";
 import { useTaskStore, type BackgroundTask } from "@/state/task-store";
-import { notify } from "@/lib/ui";
+import { confirmAction, notify } from "@/lib/ui";
 import {
+  checkQuickRunDirection,
   getSettings,
   getProfile,
   listEvidence,
@@ -31,6 +32,7 @@ import type {
   EvidenceListItem,
   LlmConfig,
   MaterialSourceItem,
+  QuickRunDirectionCheck,
   QuickRunStageProgress,
   QuickRunStartResult,
   ProfilePayload,
@@ -279,6 +281,8 @@ export function QuickRunPage() {
   }, [task, selectedProfileId, quickRunResult, runState]);
   const activeJobProfiles = jobProfiles.filter((jp) => jp.status === "active" && jp.source_jd?.trim());
   const targetAvailable = selectedProfile?.status === "active" && Boolean(selectedProfile.source_jd?.trim());
+  // 手工导入/未绑定已审核平台线索的画像不能走 App 内原生 PDF 投递，只能手动投递后记录。
+  const manualDeliveryOnly = selectedProfile?.native_pdf_delivery?.supported === false;
   // 未做模型对位预检时展示规则预检结论；assessed（Quick Run 结果）优先，保持原有已评估提示不变。
   const selectedPrecheck = selectedProfile?.fit_precheck;
   const rulePrecheck = selectedPrecheck && selectedPrecheck.source === "rule" ? selectedPrecheck : null;
@@ -374,6 +378,35 @@ export function QuickRunPage() {
     if (useTaskStore.getState().tasks.quickRun?.status === "running") return;
     quickRunInFlightRef.current = true;
     const version = selectionVersion.current;
+    // 方向评估只给分析与建议：excluded 时由用户决定是否仍然运行，不强制阻断。
+    // 预检本身失败时 fail-open，照常启动。
+    let directionCheck: QuickRunDirectionCheck | null = null;
+    if (useLlm) {
+      // 规则模式不做方向评估；仅语义模式需要启动前建议。
+      try {
+        directionCheck = await checkQuickRunDirection({ job_profile_id: selectedProfileId });
+      } catch {
+        directionCheck = null;
+      }
+    }
+    let directionAcknowledged = false;
+    if (directionCheck?.requires_confirmation && directionCheck.direction) {
+      const confirmed = await confirmAction({
+        title: t("pages.quickRun.direction.confirmTitle"),
+        description: t("pages.quickRun.direction.confirmDescription", {
+          reason: directionCheck.direction.reason,
+          preference: directionCheck.direction.preference?.text ?? "",
+          quote: directionCheck.direction.jd_quote,
+        }),
+        confirmLabel: t("pages.quickRun.direction.confirmContinue"),
+        cancelLabel: t("common.cancel"),
+      });
+      if (!confirmed) {
+        quickRunInFlightRef.current = false;
+        return;
+      }
+      directionAcknowledged = true;
+    }
     const now = Date.now();
     const taskStore = useTaskStore.getState();
     taskStore.start({
@@ -400,6 +433,7 @@ export function QuickRunPage() {
           use_llm: useLlm,
           require_llm: useLlm,
           timeout_seconds: useLlm ? 1800 : 120,
+          direction_acknowledged: directionAcknowledged,
         },
       });
       if (isQuickRunTerminal(started.status)) {
@@ -559,6 +593,7 @@ export function QuickRunPage() {
                     return (
                       <option key={profile.job_profile_id} value={profile.job_profile_id}>
                         {profile.company ? `${profile.company} · ${profile.title}` : profile.title}{suffix}
+                        {profile.native_pdf_delivery?.supported === false ? ` ${t("pages.quickRun.manualDeliveryOnlyBadge")}` : ""}
                       </option>
                     );
                   })}
@@ -566,6 +601,10 @@ export function QuickRunPage() {
                 {selectedProfile && selectedProfile.fit_state === "failed" && !rulePrecheck &&
                   <p role="status" className="text-xs text-warning">
                     {t("pages.quickRun.fitHintFailed", { count: selectedProfile.fit_failures ?? 0 })}
+                  </p>}
+                {manualDeliveryOnly &&
+                  <p role="status" data-testid="quick-run-manual-delivery-hint" className="text-xs text-warning">
+                    {t("pages.quickRun.manualDeliveryHintShort")}
                   </p>}
                 {selectedProfile && rulePrecheck &&
                   <p role="status" className="text-xs text-text-secondary">
@@ -714,21 +753,32 @@ export function QuickRunPage() {
                 </div>
               </div>
               {quickRunResult && <div className="mt-4 space-y-2 text-sm">
-                {quickRunResult.career_direction&&<div className="rounded-card border border-border p-3" data-testid="career-direction-result">
+                {quickRunResult.career_direction&&<div className={`rounded-card border p-3 ${quickRunResult.career_direction.status === "excluded" ? "border-warning/50 bg-warning/10" : "border-border"}`} data-testid="career-direction-result">
                   <p className="font-semibold">{t(`pages.quickRun.direction.${quickRunResult.career_direction.status}`)}</p>
                   <p>{quickRunResult.career_direction.reason}</p>
                   <p className="mt-2 text-xs text-text-secondary">{t('pages.quickRun.direction.preference')}：{quickRunResult.career_direction.preference.text}</p>
                   <blockquote className="mt-2 border-l-2 border-accent pl-2 text-xs">{quickRunResult.career_direction.jd_quote}</blockquote>
+                  <p className="mt-2 text-xs text-text-secondary">{t('pages.quickRun.direction.advisory')}</p>
                 </div>}
                 <p>{t(quickRunResult.resume_readiness?.status === "NOT_GENERATED" ? "pages.quickRun.notGenerated" : quickRunResult.resume_readiness?.content_ready ? "pages.quickRun.reviewNext" : "pages.quickRun.needsEvidence")}</p>
                 {quickRunResult.status === "DONE" && quickRunResult.resume_readiness?.content_ready === true &&
                   quickRunResult.traceability?.resume_traceable === true && quickRunResult.resume_pdf ?
-                  <div className="space-y-2">
-                    <button type="button" data-testid="quick-run-prepare-pdf" className="rounded-card border border-accent px-3 py-2 text-accent"
-                      onClick={() => navigate(`/submissions?quick_run_id=${encodeURIComponent(quickRunResult.run_id)}`)}>{t(quickRunResult.resume_readiness?.quality_passed === false ? "pages.quickRun.preparePdfAnyway" : "pages.quickRun.preparePdf")}</button>
-                    {quickRunResult.resume_readiness?.quality_passed === false &&
-                      <p className="text-xs text-warning">{t("pages.quickRun.qualityNotPassedCanContinue")}</p>}
-                  </div> :
+                  (manualDeliveryOnly ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-warning" data-testid="quick-run-manual-delivery-result">
+                        {t("pages.quickRun.manualDeliveryHint", { path: quickRunResult.resume_pdf })}
+                      </p>
+                      <button type="button" data-testid="quick-run-record-manual" className="rounded-card border border-border px-3 py-2 text-text-primary"
+                        onClick={() => navigate("/jobs")}>{t("pages.quickRun.goRecordManual")}</button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <button type="button" data-testid="quick-run-prepare-pdf" className="rounded-card border border-accent px-3 py-2 text-accent"
+                        onClick={() => navigate(`/submissions?quick_run_id=${encodeURIComponent(quickRunResult.run_id)}`)}>{t(quickRunResult.resume_readiness?.quality_passed === false ? "pages.quickRun.preparePdfAnyway" : "pages.quickRun.preparePdf")}</button>
+                      {quickRunResult.resume_readiness?.quality_passed === false &&
+                        <p className="text-xs text-warning">{t("pages.quickRun.qualityNotPassedCanContinue")}</p>}
+                    </div>
+                  )) :
                   <button type="button" className="text-accent underline" onClick={() => navigate(quickRunResult.status === "SKIPPED" ? "/jobs" : "/evidence")}>{t(quickRunResult.status === "SKIPPED" ? "pages.quickRun.chooseAnotherJob" : "pages.quickRun.openEvidence")}</button>}
               </div>}
               <div className="mt-4 h-[360px] overflow-auto rounded-card border border-border bg-bg-primary p-4 font-mono text-xs leading-6 text-text-secondary">

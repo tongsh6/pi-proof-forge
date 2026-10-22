@@ -7,12 +7,6 @@ from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.prompts.context import context_fingerprint
 
 
-class CareerDirectionExcluded(ValueError):
-    def __init__(self,review):
-        super().__init__('career_direction_excluded')
-        self.review=review
-
-
 def preferences_from_fields(fields):
     raw=fields.get('job_preferences_json','')
     value=json.loads(raw) if raw else {'schema_version':1,'items':[],'source':None}

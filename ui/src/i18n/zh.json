@@ -373,8 +373,12 @@
       "direction": {
         "aligned": "符合已保存求职方向",
         "needs_review": "岗位方向需要进一步核实",
-        "excluded": "已停止：岗位明确不符合求职偏好",
-        "preference": "对应偏好"
+        "excluded": "方向提示：岗位明确不符合求职偏好（仅供参考）",
+        "preference": "对应偏好",
+        "advisory": "该判断由模型基于已确认的求职偏好分析得出，仅供参考，不会阻止你继续生成或投递。",
+        "confirmTitle": "方向评估：岗位可能不符合求职偏好",
+        "confirmDescription": "{{reason}}\n\n对应偏好：{{preference}}\n\nJD 原文：{{quote}}\n\n该判断仅供参考，你可以取消，也可以仍然运行；继续后系统会正常生成简历并保留这一提示。",
+        "confirmContinue": "仍然运行"
       },
       "notGenerated": "本次未生成简历",
       "skipped": "已跳过",
@@ -386,7 +390,11 @@
       "fitHintUnassessed": "该岗位尚未做对位预检；可继续运行，完成后会显示匹配缺口，不会因此被拦截。",
       "fitBadgePrecheck": "（规则预检：{{label}}）",
       "fitHintPrecheck": "该岗位尚未做模型对位预检；规则预检结论：{{label}}，命中 {{matched}}/{{total}} 项要求。仅供参考，不会拦截。",
-      "qualityNotPassedCanContinue": "质量层未全绿不影响继续投递：你可以查看并准备此 PDF，系统不会拦截你的投递意图；是否发送仍由你确认。"
+      "qualityNotPassedCanContinue": "质量层未全绿不影响继续投递：你可以查看并准备此 PDF，系统不会拦截你的投递意图；是否发送仍由你确认。",
+      "manualDeliveryOnlyBadge": "（仅手动投递）",
+      "manualDeliveryHintShort": "该岗位为手工导入或未绑定已审核的平台线索，App 内 PDF 投递不可用；可在平台手动投递后到岗位中心记录。",
+      "manualDeliveryHint": "该岗位不支持 App 内 PDF 投递。简历已生成：{{path}}。请先在平台手动投递，再到岗位中心记录手动投递。",
+      "goRecordManual": "去岗位中心记录手动投递"
     },
     "evidence": {
       "title": "证据卡",
@@ -1226,6 +1234,8 @@
           "account_effects_consent_required": "尚未接受上传产生的平台账号效果，请先预览 PDF 并勾选同意后重试。",
           "attachment_verification_required": "平台附件尚未完成核验，不能继续投递；请先只读检查已保存附件。",
           "pdf_target_verification_required": "目标岗位尚未核验或岗位信息已变化，不能继续投递；请先只读核验目标岗位。",
+          "resume_target_unreviewed": "该岗位未绑定已审核的平台线索（手工导入或线索缺失），无法生成 App 内投递 PDF。请先在岗位中心用猎聘搜索导入该岗位并审核，或改为手动投递后在岗位中心记录。",
+          "pdf_job_review_required": "该岗位线索未完成官方审核，或与当前画像的 JD 指纹不一致，无法 App 内投递。请重新读取完整 JD、审核并转为画像后再试。",
           "native_session_login_required": "App 内猎聘会话未登录，请先打开 App 内登录并完成认证，再检查会话。",
           "native_session_page_not_ready": "App 内猎聘页面未就绪（可能仍在加载或已跳转），请等待页面稳定后重试。",
           "attachment_quota_reached": "猎聘附件简历已达平台上限（3 个）。请先移除一个旧附件，再重新上传这份 PDF。",

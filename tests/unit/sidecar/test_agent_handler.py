@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -1391,3 +1392,139 @@ def test_persisted_llm_runtime_context_keeps_keyless_strata_keyless() -> None:
     assert "LLM_API_KEY" not in env
     assert env["LLM_PROVIDER"] == "strata"
     assert env["LLM_MODEL"] == "qwen3.8-flash-next-q2_0"
+
+
+def _direction_precheck_root(tmp_path: Path) -> Path:
+    (tmp_path / "job_profiles").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "job_profiles" / "jp-dir.yaml").write_text(
+        'target_role: "Java技术专家"\nstatus: "active"\nsource_jd: "负责电商业务系统核心开发"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "personal_profile.yaml").write_text('name: "测试"\n', encoding="utf-8")
+    return tmp_path
+
+
+def _direction_llm_context() -> tuple[dict[str, Any], dict[str, str]]:
+    return (
+        {"thinking_enabled": False, "thinking_effort": "high"},
+        {
+            "LLM_PROVIDER": "lm_studio",
+            "LLM_MODEL": "test-model",
+            "LLM_BASE_URL": "http://127.0.0.1:1234/v1",
+            "LLM_TIMEOUT": "60",
+        },
+    )
+
+
+def test_quick_direction_precheck_returns_excluded_for_user_confirmation(tmp_path, monkeypatch):
+    """方向 excluded 只返回建议与确认标记，不阻断启动。"""
+    from tools.infra import job_preferences
+    from tools.sidecar.handlers import agent
+
+    root = _direction_precheck_root(tmp_path)
+    monkeypatch.setattr(agent, "_PROJECT_ROOT", root)
+    monkeypatch.setattr(agent, "_persisted_llm_runtime_context", lambda: _direction_llm_context())
+    monkeypatch.setattr(
+        job_preferences, "load_preferences", lambda _path: {"items": [], "revision": "rev-1"}
+    )
+    review = {
+        "status": "excluded",
+        "reason": "核心职责为业务功能开发",
+        "criterion_index": 0,
+        "jd_quote": "负责电商业务系统核心开发",
+        "preference": {"kind": "primary", "text": "产品型公司 Tech Lead"},
+        "cache_hit": True,
+        "model_calls": 0,
+        "repair_calls": 0,
+    }
+    monkeypatch.setattr(job_preferences, "assess_direction", lambda *a, **k: dict(review))
+
+    result = agent.handle_quick_check_direction(
+        {"meta": {"correlation_id": "c-dir"}, "job_profile_id": "jp-dir"}
+    )
+
+    assert result["requires_confirmation"] is True
+    assert result["direction"]["status"] == "excluded"
+    assert result["direction"]["preferences_revision"] == "rev-1"
+    assert result["unavailable_reason"] == ""
+
+
+def test_quick_direction_precheck_fails_open_without_llm(tmp_path, monkeypatch):
+    """预检失败不阻断启动：无模型时返回 unavailable，前端照常运行。"""
+    from tools.infra import job_preferences
+    from tools.sidecar.handlers import agent
+
+    root = _direction_precheck_root(tmp_path)
+    monkeypatch.setattr(agent, "_PROJECT_ROOT", root)
+    monkeypatch.setattr(agent, "_persisted_llm_runtime_context", lambda: ({}, {}))
+    monkeypatch.setattr(
+        job_preferences, "load_preferences", lambda _path: {"items": [], "revision": "rev-1"}
+    )
+
+    result = agent.handle_quick_check_direction(
+        {"meta": {"correlation_id": "c-dir"}, "job_profile_id": "jp-dir"}
+    )
+
+    assert result["direction"] is None
+    assert result["requires_confirmation"] is False
+    assert result["unavailable_reason"] == "llm_unavailable"
+
+
+def test_quick_direction_precheck_fails_open_on_assessment_error(tmp_path, monkeypatch):
+    from tools.infra import job_preferences
+    from tools.sidecar.handlers import agent
+
+    root = _direction_precheck_root(tmp_path)
+    monkeypatch.setattr(agent, "_PROJECT_ROOT", root)
+    monkeypatch.setattr(agent, "_persisted_llm_runtime_context", lambda: _direction_llm_context())
+    monkeypatch.setattr(
+        job_preferences, "load_preferences", lambda _path: {"items": [], "revision": "rev-1"}
+    )
+
+    def _raise(*_args, **_kwargs):
+        raise ValueError("career_direction_empty_content")
+
+    monkeypatch.setattr(job_preferences, "assess_direction", _raise)
+
+    result = agent.handle_quick_check_direction(
+        {"meta": {"correlation_id": "c-dir"}, "job_profile_id": "jp-dir"}
+    )
+
+    assert result["direction"] is None
+    assert result["requires_confirmation"] is False
+    assert result["unavailable_reason"].startswith("direction_unavailable:")
+
+
+def test_quick_start_records_direction_acknowledgement(tmp_path, monkeypatch):
+    """用户确认“仍然运行”后，run 记录保留审计字段；该字段不参与启动放行。"""
+    from tools.sidecar.handlers import agent
+
+    root = tmp_path
+    (root / "tools").mkdir()
+    (root / "tools" / "sample_raw.txt").write_text("raw", encoding="utf-8")
+    _write_active_profile(root / "job_profiles")
+    _write_eligible_evidence(root)
+    monkeypatch.setattr(agent, "_PROJECT_ROOT", root)
+    quick_dir = root / "outputs" / "quick_runs"
+    monkeypatch.setattr(agent, "_QUICK_RUN_DIR", quick_dir)
+    monkeypatch.setattr(agent, "_build_quick_run_id", lambda: "qr_ack")
+    monkeypatch.setattr(agent, "_persisted_llm_runtime_context", lambda: ({}, {}))
+    monkeypatch.setattr(agent, "_run_quick_run_worker", lambda *args, **kwargs: None)
+    monkeypatch.setattr(agent, "_QUICK_RUN_ACTIVE", None)
+
+    try:
+        started = agent.handle_quick_start(
+            {
+                "meta": {"correlation_id": "c-ack"},
+                "job_profile_id": "jp-001",
+                "options": {"direction_acknowledged": True},
+            }
+        )
+        payload = json.loads((quick_dir / "qr_ack.json").read_text(encoding="utf-8"))
+    finally:
+        agent._QUICK_RUN_ACTIVE = None
+
+    assert started["status"] == "RUNNING"
+    acknowledgement = payload["run"]["direction_acknowledgement"]
+    assert acknowledgement["acknowledged"] is True
+    assert acknowledgement["acknowledged_at"]

@@ -373,8 +373,12 @@
       "direction": {
         "aligned": "Aligned with saved career preferences",
         "needs_review": "Career direction needs clarification",
-        "excluded": "Stopped: career preferences conflict",
-        "preference": "Preference"
+        "excluded": "Direction note: this job conflicts with your saved preferences (advisory only)",
+        "preference": "Preference",
+        "advisory": "This assessment is generated from your confirmed career preferences. It is advisory only and will not block you from continuing or applying.",
+        "confirmTitle": "Direction check: this job may conflict with your preferences",
+        "confirmDescription": "{{reason}}\n\nPreference: {{preference}}\n\nJD quote: {{quote}}\n\nThis is advisory only. You can cancel, or continue anyway; the run will still generate the resume and keep this note.",
+        "confirmContinue": "Run anyway"
       },
       "notGenerated": "No resume was generated",
       "skipped": "Skipped",
@@ -386,7 +390,11 @@
       "fitHintUnassessed": "This job has not been fit-prechecked yet. You can continue; matching gaps will be shown afterwards and will not block you.",
       "fitBadgePrecheck": " (rule precheck: {{label}})",
       "fitHintPrecheck": "This job has not been model-prechecked yet; rule precheck: {{label}}, matched {{matched}}/{{total}} requirements. For reference only; it will not block you.",
-      "qualityNotPassedCanContinue": "Quality is not all-green, but this does not block you. You can still review and prepare this PDF; the system will not intercept your intent to apply. You remain in control of the final send."
+      "qualityNotPassedCanContinue": "Quality is not all-green, but this does not block you. You can still review and prepare this PDF; the system will not intercept your intent to apply. You remain in control of the final send.",
+      "manualDeliveryOnlyBadge": " (manual delivery only)",
+      "manualDeliveryHintShort": "This job was manually imported or is not bound to a reviewed platform lead, so in-App PDF delivery is unavailable. Apply manually on the platform, then record it in Jobs.",
+      "manualDeliveryHint": "In-App PDF delivery is not available for this job. The resume PDF is ready at {{path}}. Apply manually on the platform, then record it in Jobs.",
+      "goRecordManual": "Record manual delivery in Jobs"
     },
     "evidence": {
       "title": "Evidence",
@@ -1226,6 +1234,8 @@
           "account_effects_consent_required": "Platform account effects have not been accepted. Preview the PDF and check the consent box before retrying.",
           "attachment_verification_required": "The platform attachment is not verified yet; delivery cannot continue. Inspect the saved attachment (read-only) first.",
           "pdf_target_verification_required": "The target job is not verified or has changed; delivery cannot continue. Inspect the target job (read-only) first.",
+          "resume_target_unreviewed": "This job is not bound to a reviewed platform lead (manual import or missing lead), so an in-App delivery PDF cannot be generated. Import and review the job from Liepin search in Jobs, or apply manually and record it in Jobs.",
+          "pdf_job_review_required": "This job lead is not officially reviewed or its JD fingerprint no longer matches the current profile, so in-App delivery is unavailable. Re-read the complete JD, review it, and convert it to a profile before retrying.",
           "native_session_login_required": "The in-App Liepin session is not authenticated. Open the in-App login, finish signing in, then check the session.",
           "native_session_page_not_ready": "The in-App Liepin page is not ready (still loading or navigated away). Wait for the page to settle and retry.",
           "attachment_quota_reached": "Liepin is at its 3-attachment limit. Remove an old attachment before uploading this PDF again.",

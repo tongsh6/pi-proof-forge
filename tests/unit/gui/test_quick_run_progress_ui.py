@@ -85,7 +85,8 @@ const api={getProfile:async()=>({profile:{career_status:{ready:true,reviewed:tru
 listEvidence:async()=>({items:[{evidence_id:'ec1',title:'项目一',status:'saved_eligible'}],next_cursor:null}),
 listEvidenceMaterialSources:async()=>({items:[{material_id:'work',label:'工作'}]}),
 listJobProfiles:async()=>({items:[{job_profile_id:'job-a',status:'active',title:'目标A',company:'A公司',source_jd:'完整要求A'},{job_profile_id:'job-b',status:'active',title:'目标B',company:'B公司',source_jd:'完整要求B'}],next_cursor:null}),
-getSettings:async()=>({llm_config:{api_key:{configured:false}}}),startQuickRun:startQuickRunMock};
+getSettings:async()=>({llm_config:{api_key:{configured:false}}}),startQuickRun:startQuickRunMock,
+checkQuickRunDirection:async()=>({direction:null,requires_confirmation:false})};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/quick-run/index.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText,
 {exports,console,Intl,Date,Map,Set,URLSearchParams,window:{setInterval:()=>0,clearInterval:()=>{}},
 require:(n=>{if(n==='react-router-dom')return{useSearchParams:()=>[searchParams,p=>searchParams=new URLSearchParams(p)],useNavigate:()=>url=>navigations.push(url)};

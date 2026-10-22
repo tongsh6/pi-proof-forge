@@ -82,6 +82,7 @@ class JobProfileItem(TypedDict):
     nice_to_have: list[str]
     seniority_signal: list[str]
     fit_precheck: dict[str, Any]
+    native_pdf_delivery: dict[str, Any]
 
 
 class JobsListResult(TypedDict):
@@ -555,6 +556,35 @@ def _derive_status(doc: ParsedDoc, snapshot: MatchSnapshot | None) -> str:
     return "draft"
 
 
+def _native_pdf_delivery_state(
+    scalars: dict[str, str], job_profile_id: str
+) -> dict[str, Any]:
+    """判断画像能否走 App 内原生 PDF 投递（只用于界面提示，不替代投递门禁）。
+
+    原生投递要求目标绑定已审核的猎聘官方线索，且画像与线索的 JD 指纹一致；
+    手工导入或未绑定线索的画像只能手动投递并记录。
+    """
+    lead_id = str(scalars.get("job_lead_id", "") or "").strip()
+    if not lead_id:
+        reason = "manual_import" if scalars.get("import_mode") == "manual" else "job_lead_missing"
+        return {"supported": False, "reason": reason}
+    lead_path = _find_lead_path(lead_id)
+    if lead_path is None:
+        return {"supported": False, "reason": "job_lead_missing"}
+    lead = _read_yaml_doc(lead_path)["scalars"]
+    if lead.get("source") != "liepin_official":
+        return {"supported": False, "reason": "not_official_channel"}
+    from tools.infra.persistence.job_lead_binding import reviewed_official_profile
+
+    if reviewed_official_profile(lead, _JOB_PROFILE_DIR) is None:
+        return {"supported": False, "reason": "job_review_required"}
+    if lead.get("job_profile_id") != job_profile_id:
+        return {"supported": False, "reason": "job_binding_mismatch"}
+    if str(scalars.get("source_jd_sha256", "")) != str(lead.get("source_jd_sha256", "")):
+        return {"supported": False, "reason": "jd_fingerprint_mismatch"}
+    return {"supported": True, "reason": ""}
+
+
 def _build_profile_item(
     path: Path, snapshots: dict[str, MatchSnapshot], corpus: dict[str, Any]
 ) -> JobProfileItem | None:
@@ -584,6 +614,9 @@ def _build_profile_item(
         "fit_state": snapshot["fit_state"] if snapshot is not None else "unassessed",
         "fit_failures": snapshot["fit_failures"] if snapshot is not None else 0,
         "fit_precheck": precheck,
+        "native_pdf_delivery": _native_pdf_delivery_state(
+            doc["scalars"], job_profile_id
+        ),
         "updated_at": updated_at,
         "business_domain": doc["scalars"].get("business_domain", ""),
         "source_jd": doc["scalars"].get("source_jd", ""),

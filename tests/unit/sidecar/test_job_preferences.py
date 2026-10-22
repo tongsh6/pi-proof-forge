@@ -60,7 +60,8 @@ def test_direction_uses_jd_quote_and_known_preference(tmp_path,monkeypatch):
     with pytest.raises(ValueError):infra.validate_direction({**good,'jd_quote':'虚构JD'},draft,'负责客户驻场实施与交付')
 
 
-def test_app_matching_stops_on_excluded_direction_before_card_review(tmp_path,monkeypatch):
+def test_app_matching_continues_on_excluded_direction_as_advisory(tmp_path,monkeypatch):
+    """方向明确不符只作为建议：继续全卡评审并返回 direction_review，不抛错、不阻断。"""
     module,_,_=setup(tmp_path,monkeypatch)
     draft=module.handle_generate({'meta':{},'material_id':'mat_p'})['draft']
     module.handle_save({'meta':{},'draft':draft,'confirmed':True,'expected_revision':module.get_preferences(profile._load_profile())['revision']})
@@ -72,13 +73,22 @@ def test_app_matching_stops_on_excluded_direction_before_card_review(tmp_path,mo
         chat_completions_url='http://localhost/v1/chat/completions'
         def post_json(self,url,payload,**kwargs):
             calls.append(payload)
-            return {'choices':[{'message':{'content':json.dumps({'status':'excluded','reason':'驻场交付与偏好冲突','criterion_index':1,'jd_quote':'负责客户驻场实施与交付'})}}]}
+            data=json.loads(payload['messages'][1]['content'])
+            if 'preferences' in data:
+                content={'status':'excluded','reason':'驻场交付与偏好冲突','criterion_index':1,'jd_quote':'负责客户驻场实施与交付'}
+            elif data.get('stage')=='recall':
+                content={'cards':[{'id':'ec1','score':80,'reason':'Java接口开发','requirement_ids':['r1'],'citations':[{'fact_id':'ec1:results:0','quote':'完成接口'}]}]}
+            else:
+                content={'assessments':[{'requirement_id':'r1','status':'supported','reason':'有Java接口开发','citations':[{'fact_id':'ec1:results:0','quote':'完成接口'}]}]}
+            return {'choices':[{'message':{'content':json.dumps(content)}}]}
         @staticmethod
         def extract_content(response):return response['choices'][0]['message']['content']
-    with pytest.raises(ValueError,match='career_direction_excluded'):
-        semantic_matching.run_semantic_matching(job_path=job,evidence_files=[card],personal_profile=profile._PROFILE_PATH,
-            client=Client(),model='test',cache_dir=tmp_path/'cache')
-    assert len(calls)==1
+    result=semantic_matching.run_semantic_matching(job_path=job,evidence_files=[card],personal_profile=profile._PROFILE_PATH,
+        client=Client(),model='test',cache_dir=tmp_path/'cache')
+    assert result['direction_review']['status']=='excluded'
+    assert result['direction_review']['reason']=='驻场交付与偏好冲突'
+    assert result['reviewed_card_ids']==['ec1']
+    assert len(calls)==3
 
 
 @pytest.mark.parametrize('repair_direction', [False, True])

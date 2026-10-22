@@ -1472,6 +1472,78 @@ def _persisted_llm_runtime_context() -> tuple[dict[str, Any], dict[str, str]]:
     return summary, env
 
 
+def _direction_precheck_cache_dir() -> Path:
+    """方向预检与管线 matching 阶段共用的判定缓存目录，避免重复模型调用。"""
+    return _PROJECT_ROOT / "matching_reports" / ".semantic-cache"
+
+
+def handle_quick_check_direction(params: dict[str, Any]) -> dict[str, Any]:
+    """启动前方向预检：只读分析并返回建议；excluded 时要求用户确认，但不阻断。"""
+    correlation_id = params["meta"]["correlation_id"]
+    job_profile_id = _validate_run_resource_id(
+        "job_profile_id", params.get("job_profile_id")
+    )
+    job_profile_path = _PROJECT_ROOT / "job_profiles" / f"{job_profile_id}.yaml"
+    if not job_profile_path.is_file():
+        raise ValueError(f"job_profile_path does not exist: {job_profile_path}")
+    # 与正式运行一致：只对 active 且可读的岗位画像做方向评估。
+    _load_job_profile_context(job_profile_id, job_profile_path)
+
+    def response(
+        direction: dict[str, Any] | None,
+        requires_confirmation: bool = False,
+        unavailable_reason: str = "",
+    ) -> dict[str, Any]:
+        return {
+            "meta": {"correlation_id": correlation_id},
+            "direction": direction,
+            "requires_confirmation": requires_confirmation,
+            "unavailable_reason": unavailable_reason,
+        }
+
+    from tools.infra.job_preferences import assess_direction, load_preferences
+
+    personal_profile = _PROJECT_ROOT / "personal_profile.yaml"
+    preferences = load_preferences(personal_profile) if personal_profile.is_file() else None
+    if not preferences:
+        # 未确认求职偏好时不做方向判断，也不阻断启动。
+        return response(None, False, "no_preferences")
+
+    doc = parse_simple_yaml(job_profile_path.read_text(encoding="utf-8"))
+    from tools.infra.job_context import load_jd_source
+    jd, _jd_path = load_jd_source(
+        str(doc["scalars"].get("source_jd", "")), job_profile_path
+    )
+    if not jd.strip():
+        return response(None, False, "jd_missing")
+
+    llm_summary, llm_env = _persisted_llm_runtime_context()
+    provider = str(llm_env.get("LLM_PROVIDER", "")).strip()
+    model = str(llm_env.get("LLM_MODEL", "")).strip()
+    api_key = str(llm_env.get("LLM_API_KEY", "")).strip()
+    from tools.infra.llm.client import LLMClient, llm_request_available
+    if not llm_request_available(provider=provider, api_key=api_key, model=model):
+        return response(None, False, "llm_unavailable")
+    try:
+        client = LLMClient(
+            base_url=str(llm_env.get("LLM_BASE_URL", "")).strip(),
+            api_key=api_key,
+            timeout=int(llm_env.get("LLM_TIMEOUT") or 60),
+            provider=provider,
+            thinking_enabled=bool(llm_summary.get("thinking_enabled")),
+            reasoning_effort=str(llm_summary.get("thinking_effort") or "high"),
+        )
+        review = assess_direction(
+            preferences, jd, client, model, _direction_precheck_cache_dir()
+        )
+    except (ValueError, OSError, RuntimeError, TypeError, KeyError) as exc:
+        # 预检只做建议；失败时前端 fail-open，继续走正常启动流程。
+        detail = str(exc) or type(exc).__name__
+        return response(None, False, f"direction_unavailable:{detail}"[:300])
+    review = {**review, "preferences_revision": preferences["revision"]}
+    return response(review, review.get("status") == "excluded", "")
+
+
 def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     """启动单次 pipeline；立即返回 RUNNING，由后台线程执行并回写逐阶段进度。"""
     global _QUICK_RUN_ACTIVE, _QUICK_RUN_LAST_THREAD
@@ -1486,6 +1558,9 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     options = params.get("options", {})
     if not isinstance(options, dict):
         raise ValueError("options must be an object")
+    # 方向评估是建议而非门禁：用户在看到预检分析后仍选择运行时记录确认，
+    # 仅供审计与结果页展示，不参与启动放行判断。
+    direction_acknowledged = options.get("direction_acknowledged") is True
 
     # 同步校验保持原顺序：校验失败在返回前直接抛错，不会启动后台线程。
     raw_path, job_profile_path, material_context = _quick_run_paths(job_profile_id, options)
@@ -1554,6 +1629,10 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
             "command": command,
             "exit_code": None,
             "options": options,
+            "direction_acknowledgement": {
+                "acknowledged": direction_acknowledged,
+                "acknowledged_at": started_at if direction_acknowledged else "",
+            },
             "llm_config_summary": llm_config_summary,
         },
         "progress": _stage_progress_from_events([], started_at=started_at),

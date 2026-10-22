@@ -295,6 +295,8 @@ export interface JobProfileListItem {
   fit_failures?: number;
   /** 批量适配预检结果；旧数据或未预检时可能缺失。 */
   fit_precheck?: FitPrecheck;
+  /** App 内原生 PDF 投递可用性；手工导入或未绑定已审核官方线索时为 false。 */
+  native_pdf_delivery?: { supported: boolean; reason: string };
   updated_at: string;
   business_domain: string;
   source_jd: string;
@@ -1088,7 +1090,21 @@ export interface QuickRunStartOptions {
   timeout_seconds?: number;
   use_llm?: boolean;
   require_llm?: boolean;
+  /** 用户在方向预检弹窗中选择“仍然运行”时记录确认，供审计；不参与启动放行。 */
+  direction_acknowledged?: boolean;
   [key: string]: unknown;
+}
+
+/** 启动前方向预检结果：只做分析建议，excluded 时由用户决定是否继续。 */
+export interface QuickRunDirectionCheck extends RpcResultBase {
+  direction?: (CareerDirection & {
+    preferences_revision?: string;
+    cache_hit?: boolean;
+    model_calls?: number;
+    repair_calls?: number;
+  }) | null;
+  requires_confirmation: boolean;
+  unavailable_reason?: string;
 }
 
 /** Quick Run 单个阶段的真实进度；status 与页面 StageStatus 取值一致。 */

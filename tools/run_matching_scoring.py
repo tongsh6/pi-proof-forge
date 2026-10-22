@@ -393,7 +393,6 @@ def _legacy_main() -> int:
                 return 1
         else:
             from tools.infra.semantic_matching import run_semantic_matching, write_semantic_report
-            from tools.infra.job_preferences import CareerDirectionExcluded
             try:
                 client = LLMClient(base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env(), provider=os.getenv('LLM_PROVIDER', ''))
                 result = run_semantic_matching(job_path=Path(job_profile), evidence_files=evidence_files,
@@ -405,11 +404,6 @@ def _legacy_main() -> int:
                     output_file.with_suffix('.direction.json').write_text(json.dumps(result['direction_review'],ensure_ascii=False,indent=2))
                 print(f"[matching] semantic: {len(result['reviewed_card_ids'])}/{len(evidence_files)} cards; {result['statistics']}")
                 return 0
-            except CareerDirectionExcluded as exc:
-                import json
-                output_file.with_suffix('.direction.json').write_text(json.dumps(exc.review,ensure_ascii=False,indent=2))
-                print('[matching] 岗位不符合已保存求职偏好：' + exc.review['reason'])
-                return 2
             except (ValueError, OSError, RuntimeError, TypeError, KeyError) as exc:
                 messages = {'career_direction_jd_body_missing': '请先补齐并审核完整 JD，再评估求职方向',
                             'career_direction_empty_content': '求职方向评估未返回正文，一次纠错后仍为空；请检查模型结构化输出与推理设置',

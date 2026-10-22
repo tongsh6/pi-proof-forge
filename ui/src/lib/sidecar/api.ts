@@ -55,6 +55,7 @@ import type {
   MaterialReferenceRemoveResult,
   MaterialReferenceCreateResult,
   QuickRunCancelResult,
+  QuickRunDirectionCheck,
   QuickRunStartOptions,
   QuickRunStartResult,
   ResumeExportResult,
@@ -737,6 +738,15 @@ export async function startQuickRun(payload: {
     job_profile_id: payload.job_profile_id,
     evidence_id: payload.evidence_id,
     options: payload.options ?? {},
+  });
+}
+
+/** 启动前方向预检：只读分析并给出建议；excluded 时由用户确认是否仍然运行，不阻断。 */
+export async function checkQuickRunDirection(payload: {
+  job_profile_id: string;
+}): Promise<QuickRunDirectionCheck> {
+  return client.call<QuickRunDirectionCheck>("run.quick.checkDirection", {
+    job_profile_id: payload.job_profile_id,
   });
 }
 

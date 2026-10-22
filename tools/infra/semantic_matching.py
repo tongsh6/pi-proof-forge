@@ -88,7 +88,7 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
     terms = doc['lists'].get('must_have') or doc['lists'].get('keywords') or [doc['scalars'].get('target_role', '岗位要求')]
     target = {key: doc['scalars'].get(key, '') for key in ('target_role', 'business_domain', 'jd_summary')}
     target['keywords'] = doc['lists'].get('keywords', [])
-    from tools.infra.job_preferences import load_preferences,assess_direction,CareerDirectionExcluded
+    from tools.infra.job_preferences import load_preferences,assess_direction
     from tools.infra.job_context import load_jd_source
     jd,jd_path=load_jd_source(doc['scalars'].get('source_jd',''),job_path)
     requirements=job_requirements(terms,jd,'must_have' if doc['lists'].get('must_have') else 'keyword')
@@ -105,7 +105,8 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
         direction_review=assess_direction(preferences,jd,client,model,cache_dir)
         direction_review.update(preferences_revision=preferences['revision'],inputs=dict(inputs))
         validate_inputs(inputs)
-        if direction_review['status']=='excluded':raise CareerDirectionExcluded(direction_review)
+        # 方向评估是建议而非门禁：即使明确不符也继续评审并生成结果，
+        # 由前端展示分析并由用户决定是否继续运行；不在这里替用户阻断。
     facts, cards = {}, []
     profile = load_career_profile(personal_profile) if personal_profile and personal_profile.is_file() else None
     presentation_issues = {}
