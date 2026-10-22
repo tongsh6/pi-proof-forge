@@ -29,7 +29,9 @@
 
 ## 1. 总则
 
-2026-10-12 求职偏好：`profile.get.profile.job_preferences` 返回 schema_version、items、source、revision、confirmed_at。`profile.generateJobPreferences(material_id, document_id)` 只生成 draft；items 为 kind(primary/bridge/explore/avoid)、text、quote。`profile.saveJobPreferences(draft, expected_revision, confirmed:true)` 校验来源与引用后保存；独立 revision 防止覆盖，职业档案 review 保留。Quick Run 新增可选 `career_direction`：status(aligned/needs_review/excluded)、reason、jd_quote、preference；excluded 时 run 为 SKIPPED，不进入生成与发送；无简历文件时 `resume_readiness.status=NOT_GENERATED`、`content_ready=false`，不能显示已生成。
+2026-10-23 方向评估建议化：方向判断不再硬阻断 Quick Run。`career_direction` 仍是结果字段（status=aligned/needs_review/excluded），excluded 时管线继续完成生成/评测/PDF，run 状态正常为 `DONE`，结果页展示“仅供参考”提示。新增只读 RPC `run.quick.checkDirection {job_profile_id}` 供启动前预检：返回 `direction`（同 career_direction 结构，另含 preferences_revision/cache_hit/model_calls/repair_calls）、`requires_confirmation`（仅 excluded 为 true）和 `unavailable_reason`（no_preferences/jd_missing/llm_unavailable/direction_unavailable:*，此时前端 fail-open）。`run.quick.start.options.direction_acknowledged:true` 记录用户在预检弹窗中选择“仍然运行”，写入 `run.direction_acknowledgement:{acknowledged,acknowledged_at}`，仅作审计，不参与启动放行。策略排除清单仍为硬门禁（沿用 SKIPPED），与方向建议区分。
+
+2026-10-12 求职偏好：`profile.get.profile.job_preferences` 返回 schema_version、items、source、revision、confirmed_at。`profile.generateJobPreferences(material_id, document_id)` 只生成 draft；items 为 kind(primary/bridge/explore/avoid)、text、quote。`profile.saveJobPreferences(draft, expected_revision, confirmed:true)` 校验来源与引用后保存；独立 revision 防止覆盖，职业档案 review 保留。Quick Run 新增可选 `career_direction`：status(aligned/needs_review/excluded)、reason、jd_quote、preference；方向判定为建议，不阻断生成与发送；无简历文件时 `resume_readiness.status=NOT_GENERATED`、`content_ready=false`，不能显示已生成。
 
 2026-10-12 `run.quick.start` 增量：UI 默认 `options.use_llm=true` / `require_llm=true` / `timeout_seconds=1800`，关闭语义模式时明确传 false/false/120。结果可选 `semantic_review`（旧规则结果为 null/缺失）：`mode: semantic`、`fit_score`、`resume_score`、`expression_score`、`reviewed_card_count`、`all_requirements_supported`、`requirements[]`。每项含 `requirement_id/text/status/resume_status/reason/citations[]`；引用含 `fact_id/quote/source_id/field/in_resume`。证据池状态为 supported/partial/insufficient/conflict，简历状态另允许 not_present。语义结果下 `resume_readiness.evaluation_score` 使用非关键词表达分；有任何要求未支持或未呈现时质量不通过，`deliverable=false` 和现有审批边界保持。
 
@@ -469,7 +471,8 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
     "match_score": 85,
     "fit_score": 85,
     "basis": "assessed_quick_run"
-  }
+  },
+  "native_pdf_delivery": { "supported": false, "reason": "manual_import" }
 }
 ```
 
@@ -480,6 +483,7 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 - `match_score`、`evidence_count`、`updated_at` 取同一 `job_profile_id` 最新 matching report 快照；若不存在 matching report，则返回 `0 / 0 / job_profile 文件 mtime（格式化为 ISO-8601 UTC string）`
 - `resume_count` 当前首版固定返回 `0`，后续接入 Resume 资产后再扩展
 - `tags` 当前匹配 `keywords` 字段，采用大小写不敏感的全量包含匹配
+- `native_pdf_delivery`（2026-10-23）：`supported` 表示该画像能否走 App 内原生 PDF 投递；`reason` 为 `manual_import` / `job_lead_missing` / `not_official_channel` / `job_review_required` / `job_binding_mismatch` / `jd_fingerprint_mismatch`。手工导入或未绑定已审核官方线索的画像 `supported=false`，UI 必须提前标注“仅手动投递”，不得把用户导向 `run.agent.prepareLiepinPdf`；投递门禁本身不变（`resume_target_unreviewed` / `pdf_job_review_required` 仍会拒绝）。
 
 ### 6.8 jobs.listLeads
 
@@ -522,6 +526,49 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
   "job_profile_id": "jp_001"
 }
 ```
+
+### 6.10.0 run.quick.checkDirection
+
+启动前方向预检（只读、不启动运行）。
+
+`params`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "job_profile_id": "jp_001"
+}
+```
+
+`result`
+
+```json
+{
+  "meta": { "correlation_id": "corr_001" },
+  "direction": {
+    "status": "excluded",
+    "reason": "该岗位核心职责为业务功能开发，与已确认的 Tech Lead 方向存在偏差",
+    "criterion_index": 0,
+    "jd_quote": "负责得物App电商业务系统核心开发",
+    "preference": {
+      "kind": "primary",
+      "text": "产品型公司 Tech Lead",
+      "quote": "主方向：产品 / 内部平台型 Tech Lead"
+    },
+    "preferences_revision": "sha256...",
+    "cache_hit": true,
+    "model_calls": 0,
+    "repair_calls": 0
+  },
+  "requires_confirmation": true,
+  "unavailable_reason": ""
+}
+```
+
+说明：
+- 与管线共用 `matching_reports/.semantic-cache` 方向判定缓存；同一偏好修订/JD/公共上下文命中时 `cache_hit=true`、`model_calls=0`，不额外消耗模型调用。
+- `requires_confirmation=true` 只表示 UI 应先展示分析并由用户选择「取消 / 仍然运行」，不代表服务端阻断；确认后 `run.quick.start.options.direction_acknowledged=true`，写入 `run.direction_acknowledgement` 供审计。
+- 无已确认偏好、JD 无正文、模型不可用或评估失败时返回 `direction=null`、`requires_confirmation=false` 和可读 `unavailable_reason`（`no_preferences` / `jd_missing` / `llm_unavailable` / `direction_unavailable:*`）；前端必须 fail-open，照常允许启动。
 
 ### 6.10 run.quick.start
 
@@ -574,6 +621,7 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 - 同进程一次只允许一个活跃 Quick Run：仍在运行时新 start 抛 `VALIDATION_ERROR`（message 含 `quick_run_already_running`）。
 - 原有同步校验顺序保留：job profile/证据/材料/`options` 等校验失败仍在返回前抛错，不启动后台线程。`llm_config_summary` 保持 masked，不返回 Key。
 - `status` 非终态仅 `RUNNING`；终态为 `DONE`、`SKIPPED`、`FAILED`、`TIMEOUT`、`stopped`，终态结果字段见 6.10.1。
+- `options.direction_acknowledged` 仅记录用户在方向预检确认框中选择「仍然运行」；写入 `run.direction_acknowledgement:{acknowledged,acknowledged_at}`，仅作审计，不参与启动放行。方向 excluded 不再产生 `SKIPPED`：管线继续生成/评测/PDF，终态为 `DONE` 且结果保留 `career_direction` 建议；策略排除清单命中仍按既有 `SKIPPED` 语义处理。
 
 ### 6.10.1 run.quick.get
 

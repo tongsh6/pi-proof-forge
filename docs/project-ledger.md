@@ -1,6 +1,31 @@
 # Project Ledger
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
+
+## 2026-10-23 手工导入岗位的手动投递指引（resume_target_unreviewed 可读化）
+
+- 现象（用户实测）：得物 V2EX 手工导入画像跑完 Quick Run 后，在 Submissions 点「准备 PDF」得到原始错误 `[VALIDATION_ERROR] resume_target_unreviewed`，没有可读原因或下一步指引。
+- 定位：App 内原生 PDF 投递要求目标绑定已审核的猎聘官方线索（`job_lead_id` + `source_jd_sha256`、线索 `source=liepin_official`、`reviewed_official_profile` 通过、画像与线索 JD 指纹一致）。`jp-2026-002`（得物 · Java技术专家）是 2026-10-21 从 V2EX 手工导入（`source=v2ex`、`import_mode=manual`），没有线索绑定；`tools/infra/resume_content.py::_inspect` 因而抛 `resume_target_unreviewed`。这是目标身份与审核的硬门禁，不能放宽或移除。
+- 修复（前置提示，不放宽门禁）：`jobs.listProfiles.items[]` 新增 `native_pdf_delivery:{supported,reason}`（manual_import / job_lead_missing / not_official_channel / job_review_required / job_binding_mismatch / jd_fingerprint_mismatch），复用 `reviewed_official_profile` 判定。Quick Run 目标下拉标注「仅手动投递」、输入区提前提示；结果区不再显示 App 内「准备 PDF」，改为展示已生成 PDF 路径 + 「去岗位中心记录手动投递」；官方线索+审核通过画像保持原流程。Submissions 把 `resume_target_unreviewed` / `pdf_job_review_required` 映射为可读原因与处理路径。
+- 验证：新增 jobs handler 2 项（手工导入 → `manual_import`；官方线索+审核通过 → `supported`）与 GUI 1 项（提前提示 / 无准备 PDF / 记录入口 / 切换官方画像恢复准备 PDF）；全量 **1765 通过、1 跳过、53 subtests**，`tsc --noEmit`、roadmap/v2/AIEF 门禁通过。
+- 边界：投递门禁本身不变（官方线索+审核+JD 指纹一致仍必需）；V2EX 手工目标只能手动投递并记录；`.pen` 待补；P0-026 仍唯一 `next`。
+
+## 2026-10-23 方向评估由硬阻断改为建议层（Quick Run 预检确认 + 结果提示）
+
+- 产品口径与问题：用户明确「产品可以给出分析和建议，但不能强阻断用户」。原实现把模型方向判定 `excluded` 当作硬门禁：`semantic_matching` 抛 `CareerDirectionExcluded` → `run_matching_scoring` 退出码 2 → `run_pipeline` 记 `SKIPPED/matching_excluded`，不生成简历/PDF。同一得物岗位 10-21 命中缓存判 `needs_review`（放行），10-22 档案重新确认后缓存失效判 `excluded`（阻断），说明单次判读有波动，不适合作为硬门禁。
+- 后端（建议层）：`tools/infra/semantic_matching.py` 不再抛异常，`excluded` 继续全卡评审并返回 `direction_review`；`tools/infra/job_preferences.py` 移除 `CareerDirectionExcluded`；`tools/run_matching_scoring.py` 方向不再返回 exit 2（策略排除清单仍走既有 exit 2 / `SKIPPED`，与方向建议区分）；`run_pipeline` 无需改。方向结果仍写 `.direction.json` 与运行结果。
+- 启动前预检：新增只读 RPC `run.quick.checkDirection {job_profile_id}`（`tools/sidecar/handlers/agent.py::handle_quick_check_direction`，`server.py` 注册），复用 `matching_reports/.semantic-cache` 方向缓存，返回 `direction`（同 career_direction + preferences_revision/cache_hit/model_calls/repair_calls）、`requires_confirmation`（仅 excluded）、`unavailable_reason`（no_preferences/jd_missing/llm_unavailable/direction_unavailable:*）；无偏好/JD 缺失/模型不可用/评估失败时 fail-open。`run.quick.start.options.direction_acknowledged` 写入 `run.direction_acknowledgement:{acknowledged,acknowledged_at}` 审计字段，不参与放行。
+- 前端：Quick Run 点「启动运行」先预检；`excluded` 弹确认框（原因、对应偏好、JD 原文，「取消」/「仍然运行」），确认后携带 `direction_acknowledged:true` 启动；结果区方向卡改警示色并加「仅供参考，不会阻止继续生成或投递」；`excluded` 现在正常 `DONE` 并可「查看并准备此 PDF」；中英文 i18n、RPC 契约、core spec、DESIGN 与 constitution 门禁分层原则同步。
+- 验证：全量 **1762 通过、1 跳过、53 subtests**（含新增/更新：excluded 继续评审、预检确认/失败 fail-open、start 记录确认、GUI 确认继续与取消不启动）；`tsc --noEmit`、roadmap/v2/AIEF 门禁通过。真实 App 复跑由用户在页面执行。
+- 边界：策略排除清单、职业档案确认、证据可用性、平台授权/最终发送仍为硬门禁；Agent Run 当前未接入该方向评估；`.pen` 待补；P0-026 仍唯一 `next`（待面试反馈）。
+
+## 2026-10-22 附件移除真实执行成功：补记（本地历史保留）
+
+- 用户重启 App（新 sidecar 于 23:22 启动）后，在「已成功投递」的 `.5` PDF 卡片勾选确认并点击「移除此平台附件」；`ar_20261022140520046851` 于 `2026-10-22T15:23:51Z–15:23:53Z`（23:23 CST）完成：`removal_ref=3574711c7cc34262a1a7e64cb78870a4`、`state=removed`，页面 `attachment_count=2`（目标卡 + 同字节遗留卡）。
+- 执行证据：App 先自动只读刷新附件页（15:23:51Z）；`beginPdfRemoval` 触发一次 `receipt_binding_mismatch` 本地校正并记录 `evidence_reconciliations`（log sha256 `cd797d75…` → `0fdf1047…`，旧 `287f8d2d…` → `287c8e228d…`），随后 `POST …/remove-attachment-resume` HTTP 200、flag 1，请求 `encryAttachmentId=287c8e228dM348d9c389cae`；before fileIds `[IDSZFJa0…, YAaU8ett…]`、after `[YAaU8ett…]`，`allowed_requests=1`（唯一一次移除请求）。
+- 本地历史保留：`pdf_delivery.state=success`、submission_log `status=success`（9 个必需步骤不变，仅补 `attachment_id`/`attachment_file_id`/`attachment_id_history`）、`native_receipt.json` 与 `delivery_attempts` 均不变；平台还剩 1 张同字节遗留卡 `YAaU8ett…`。
+- 验证：用户此前遇到的 `attachment_removal_success_required` 不再出现；`outputs/acceptance/attachment-removal-evidence-20261022/` 已补 `real_user_action` 与移除后状态 sha256，`replay.py` 按 queue 记录的 `log_sha256_before/after` 在副本上重建移除前日志（重建 before hash 与记录完全一致）后仍可复跑通过；本轮无重复删除、无其它平台写入。
+- 边界：`platform_attachment` 缓存仍是移除前那次检查的 `present@15:23:51`，下次只读检查会刷新，不影响 `removed` 状态与本地历史；遗留卡按需在附件维护中清理；`.pen` 待补；P0-026 仍唯一 `next`。
 
 ## 2026-10-22 附件移除误报 attachment_removal_success_required（发送前重传后回执证据附件身份过期）
 
@@ -8,7 +33,7 @@ Last updated: 2026-10-22
 - 定位：队列 `ar_20261022140520046851` 的 `pdf_delivery.state` 确实为 `success`（14:58 真实发送成功），错误来自成功证据复核而非投递状态。① 该笔 14:06 开始投递时绑定旧附件 `287f8d2d8aA348c943f9dae`；最终发送前平台附件消失，按既有恢复流程于 14:51:55 重传同一 PDF、14:54:04 绑定更新为 `…/IDSZFJa0TrmpZmA-TBXjhA.PDF` / `287c8e228dM348d9c389cae`，14:58 发送与回执核验成功；但 `handle_verify_pdf_receipt` 只补回执摘要，未把回执证明的实际发送附件身份写回 `submission_log.input_artifacts`（仍为旧 `287f8d2d…`），`inspect_submission_evidence` 因此返回 `receipt_binding_mismatch`；`_checked_removal_target` 又把“投递未成功”和“成功证据未通过”合并报成 `attachment_removal_success_required`。② 平台附件页有 2 张同字节卡片（目标 `IDSZFJa0…` + 遗留 `YAaU8ett…`），旧门禁要求页面恰好 1 行，即使证据修复也会以 `attachment_removal_identity_unverified` 阻断（`liepin_native_pdf_remove.js` 本身已按 `attachment_count`/fileId 集合支持多卡片页）。
 - 修复：① `handle_verify_pdf_receipt` 在回执归档后调用 `_record_verified_attachment_identity`，写入 `input_artifacts.attachment_id`/`attachment_file_id`，旧值追加到 `attachment_id_history`；首次核验走 recorder 原路径，幂等重核仅在变化时原子写 JSON 且不重复 consume 配额。② `_checked_removal_target`：`state!=success` 仍报 `attachment_removal_success_required`；成功但证据未过时，仅对 `receipt_binding_mismatch` 且归档回执完整自证（log/归档/队列三处 sha、run/candidate/pdf/file_id/final_send/attempt 逐项一致 + 按 binding 重算回执完全相等）的记录做一次性本地校正，写入 `pdf_delivery.evidence_reconciliations`，随后重跑严格 inspect；仍未过报 `attachment_removal_evidence_unverified[:reason]`。③ 多卡片门禁改为“观察完整（`attachment_count` 与行数一致）、fileId 非空唯一、目标卡按 fileId+encryAttachmentId+文件名恰好 1 张”，只对目标卡校验原字节，其它同字节遗留卡允许存在；finish 前后 fileId 集合校验不变。④ Submissions 页把 5 个 removal 错误码映射为可读中英文案。
 - 验证：后端先红后绿（removal 12 失败/8 通过 → 31 passed；delivery 1 失败 → 3 passed）；全量单测 **1645 通过、1 跳过、53 subtests**，GUI **140 通过**，`tsc --noEmit`、`pnpm --dir ui build`、roadmap/v2/AIEF 门禁通过。真实数据只读回放 `outputs/acceptance/attachment-removal-evidence-20261022/`：复制真实 queue/agent_runs/submission 证据/delivery_attempts.sqlite3 到临时根，证据 `incomplete/receipt_binding_mismatch` → `beginPdfRemoval` 成功 `in_flight, attachment_count=2` → log 校正 + `evidence_reconciliations` → evidence verified → `finishPdfRemoval` removed；篡改归档 file_id / 回执附件 ID 的副本均被拒绝（`attachment_removal_evidence_unverified`）且不改 log、不建占位；真实文件 sha256 前后一致，平台写入 0。
-- 边界：只本地校正“回执已证明”的日志字段；`submission_log.yaml` 不含附件身份字段故未改；真实 App 重启后仍需用户先「检查已保存附件」再勾选确认移除，平台最终删除由人确认；平台上 2 份同字节附件本轮未删除；`.pen` 待补；P0-026 仍唯一 `next`。
+- 边界：只本地校正“回执已证明”的日志字段；`submission_log.yaml` 不含附件身份字段故未改；真实 App 重启后勾选确认并点击「移除此平台附件」即可，Rust 命令会在 beginPdfRemoval 前自动只读刷新附件页检查（无需手动先点「检查已保存附件」），平台最终删除仍由人点击确认；平台上 2 份同字节附件本轮未删除；`.pen` 待补；P0-026 仍唯一 `next`。
 
 ## 2026-10-22 恢复后真实发送成功：第 19 笔（睿秀 · AI 全栈）
 
