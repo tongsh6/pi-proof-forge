@@ -170,3 +170,16 @@ def test_daily_run_does_not_borrow_unrelated_manual_batch_counter(tmp_path,monke
     result=a.handle_agent_get({'meta':{'correlation_id':'t'},'run_id':'r1'})
     assert result['delivery_batch'] is None,'每日项的进度应来自原daily历史，不借用无关手动批次'
     assert f.handle_status({})['history'][0]['confirmed']==0
+
+
+def test_deterministic_undispatched_upload_is_not_daily_recovery():
+    # 上传脚本已证明“未派发”（not_submitted 且无写请求）时，旧队列的 raw unknown 不得继续阻塞每日投递。
+    from tools.sidecar.handlers import daily_delivery
+    legacy={'pdf_upload':{'state':'unknown','observation':{'status':'not_submitted','responses':[]}}}
+    assert daily_delivery._needs_recovery(legacy) is False
+    dispatched={'pdf_upload':{'state':'unknown','observation':{'status':'not_submitted','responses':[
+        {'method':'POST','url':'https://api-c.liepin.com/api/com.liepin.cresume.attachment.save-attachment-resume','http_status':200}]}}}
+    assert daily_delivery._needs_recovery(dispatched) is True
+    timeout={'pdf_upload':{'state':'unknown','observation':{'status':'unknown','responses':[]}}}
+    assert daily_delivery._needs_recovery(timeout) is True
+    assert daily_delivery._needs_recovery({'daily_interruption':{'cycle_id':'c'}}) is True

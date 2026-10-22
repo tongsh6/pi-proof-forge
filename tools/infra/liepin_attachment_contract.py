@@ -80,8 +80,12 @@ def verify_uploaded_attachment(upload,observation,expected_sha256,expected_size)
     if has_list_reply:
         records=listed.get('data',{}).get('list',[])
     else:
-        # 新版列表合并到简历详情；只在当前卡片加平台原文件精确摘要足够时继续。
-        if len(counts)!=1 or observation_urls!=['https://c.liepin.com/resume/edit'] or len(observed)!=1:
+        # 新版列表合并到简历详情；当前页面可能有同名同字节的重复附件（App 重传/历史重复），
+        # 只要求所有观测行都是同一份 PDF 字节，且恰好一行对应本次上传 ack 的 filePath。
+        if len(counts)!=1 or observation_urls!=['https://c.liepin.com/resume/edit'] or not observed or len(observed)>50:
+            raise ValueError('attachment_current_state_mismatch')
+        if any(not isinstance(row,dict) or row.get('fileSize')!=expected_size
+               or str(row.get('originalExtension','')).lower()!='pdf' for row in observed):
             raise ValueError('attachment_current_state_mismatch')
         records=observed
     if not isinstance(records,list) or not 1<=len(records)<=50:raise ValueError('attachment_target_not_unique')
@@ -92,11 +96,18 @@ def verify_uploaded_attachment(upload,observation,expected_sha256,expected_size)
         or record.get('fileId')!=sent.get('data',{}).get('filePath') or record.get('fileSize')!=expected_size
         or sent.get('data',{}).get('fileLength')!=expected_size or not record.get('encryAttachmentId')
         or record.get('auditStatus')==2):raise ValueError('attachment_identity_mismatch')
-    if len(observed)!=1 or any(observed[0].get(k)!=record.get(k) for k in ['fileId','encryAttachmentId','fileName','fileSize','originalExtension']):
-        raise ValueError('attachment_current_state_mismatch')
-    browser_download=observed[0].get('download')
-    if not has_list_reply and (not isinstance(browser_download,dict) or browser_download.get('http_status')!=200):
-        raise ValueError('attachment_content_unverified')
+    if has_list_reply:
+        if len(observed)!=1 or any(observed[0].get(k)!=record.get(k) for k in ['fileId','encryAttachmentId','fileName','fileSize','originalExtension']):
+            raise ValueError('attachment_current_state_mismatch')
+        browser_download=observed[0].get('download')
+    else:
+        matched_local=any(isinstance(row,dict) and all(row.get(k)==record.get(k) for k in ['fileId','encryAttachmentId','fileName','fileSize','originalExtension']) for row in observed)
+        if not matched_local:
+            raise ValueError('attachment_current_state_mismatch')
+        # 同字节重复行各自带有自己的 download 观测；使用与 ack filePath 匹配的那一行校验字节。
+        browser_download=record.get('download')
+        if not isinstance(browser_download,dict) or browser_download.get('http_status')!=200:
+            raise ValueError('attachment_content_unverified')
     downloaded_sha256=''
     if browser_download is not None:
         if browser_download.get('http_status')==200:
@@ -104,7 +115,7 @@ def verify_uploaded_attachment(upload,observation,expected_sha256,expected_size)
                 raise ValueError('attachment_content_mismatch')
             downloaded_sha256=browser_download['sha256']
     else:
-        content=_download_attachment(observed[0]['accessPath'])
+        content=_download_attachment(record.get('accessPath') or (observed[0] if observed else {}).get('accessPath',''))
         if len(content)!=expected_size or hashlib.sha256(content).hexdigest()!=expected_sha256:
             raise ValueError('attachment_content_mismatch')
         downloaded_sha256=hashlib.sha256(content).hexdigest()

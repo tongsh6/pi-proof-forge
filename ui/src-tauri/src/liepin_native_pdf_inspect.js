@@ -14,7 +14,17 @@
   const hints=text.split('\n').map(s=>s.trim()).filter(s=>s.includes(payload.filename)||/上传成功|上传失败|上传完成|上传中|解析中|解析完成/.test(s)).slice(0,15).map(s=>s.slice(0,180));
   const links=Array.from(document.querySelectorAll('a')).filter(e=>e.textContent.includes(payload.filename)).slice(0,5)
     .map(e=>({label:e.textContent.trim().slice(0,180),url:cleanUrl(e.href)}));
-  const cards=Array.from(document.querySelectorAll('.attachment-view-box .resume-card-container, [class*="attachmentView--"] [class*="attachmentCard--"]'));
+  // 新版简历页附件卡片懒加载：先等待卡片出现，避免把“页面未加载”误判成“附件已不在”而清除绑定。
+  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const cardSelector='.attachment-view-box .resume-card-container, [class*="attachmentView--"] [class*="attachmentCard--"]';
+  for(let round=0;round<16 && !document.querySelectorAll(cardSelector).length;round++){
+    window.scrollTo({top:document.body.scrollHeight,behavior:'instant'});
+    for(const el of Array.from(document.querySelectorAll('div,main,section')).slice(0,400)){
+      try{if(el.scrollHeight>el.clientHeight+200)el.scrollTop=el.scrollHeight;}catch{}
+    }
+    await wait(500);
+  }
+  const cards=Array.from(document.querySelectorAll(cardSelector));
   const attachments=[];
   for(const card of cards.filter(e=>e.textContent.includes(stem))) {
     const key=Object.keys(card).find(k=>/^__react(?:Fiber|InternalInstance)\$/.test(k));

@@ -120,7 +120,7 @@ export async function diagnoseLiepinNativeAttachments(): Promise<NativeLiepinObs
   return invoke("diagnose_liepin_native_attachments");
 }
 
-export type NativePdfPreparation = {quality?:import('./types').PdfQuality;single_delivery_authorized?: boolean; verification_error?: string; meta: {correlation_id: string}; run_id: string; company: string; position: string; matching_score?: number; can_confirm_send?: boolean; account_effects_accepted?: boolean; recovery_only?: boolean;
+export type NativePdfPreparation = {quality?:import('./types').PdfQuality;single_delivery_authorized?: boolean; verification_error?: string; upload_state?: string; upload_attempts?: number; upload_hints?: string[]; can_retry_upload?: boolean; can_reupload_attachment?: boolean; attachment_bound?: boolean; meta: {correlation_id: string}; run_id: string; company: string; position: string; matching_score?: number; can_confirm_send?: boolean; account_effects_accepted?: boolean; recovery_only?: boolean;
   job_lead_id: string; pdf_sha256: string; pdf_path: string; pdf_filename?: string; phase: string; platform_filename?: string; attachment_removal_state?: string;
   ai_disclosure_enabled?: boolean; ai_disclosure_text?: string; ai_disclosure_sent?: boolean;
   platform_attachment_state?: string; platform_attachment_checked_at?: string};
@@ -744,6 +744,13 @@ export async function cancelQuickRun(
   runId: string
 ): Promise<QuickRunCancelResult> {
   return client.call<QuickRunCancelResult>("run.quick.cancel", {
+    run_id: runId,
+  });
+}
+
+/** 读取一次 Quick Run 的当前状态与阶段进度；终态时返回与 start 相同的结果字段。 */
+export async function getQuickRun(runId: string): Promise<QuickRunStartResult> {
+  return client.call<QuickRunStartResult>("run.quick.get", {
     run_id: runId,
   });
 }

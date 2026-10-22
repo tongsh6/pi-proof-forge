@@ -88,7 +88,8 @@
               const network_ok=evidence.some(item=>item.http_status===200&&String(item.request||'').includes(text));
               const dom_ok=normalize(context.innerText).includes(normalize(text));
               detail.network=evidence.slice(0,4);
-              detail.ai_disclosure={text:text,confirmed:network_ok||dom_ok,evidence:network_ok?'network':dom_ok?'dom':'',dom_confirmed:dom_ok};
+              // 后端契约同时接受 ai_disclosure.network 与顶层 network；两处都写，避免历史形状漂移。
+              detail.ai_disclosure={text:text,confirmed:network_ok||dom_ok,evidence:network_ok?'network':dom_ok?'dom':'',dom_confirmed:dom_ok,network:evidence.slice(0,4)};
               if(!(network_ok||dom_ok))detail.action.reason='disclosure_not_confirmed';
             }
             window.fetch=oldFetch;proto.open=oldOpen;proto.send=oldSend;

@@ -71,3 +71,26 @@ def test_current_card_exact_download_recovers_new_page_without_legacy_list_reply
         assert binding['attachment_id']=='current-id'
         assert binding['download_sha256']==digest
         assert binding['attachment_count']==2
+
+
+def test_duplicate_same_bytes_attachments_bind_only_uploaded_file_id():
+    """平台存在同名同字节重复附件时，只绑定本次上传 ack 对应的 fileId，不因重复拒绝。"""
+    from tools.infra import liepin_attachment_contract as contract
+    pdf=b'%PDF-1.7\nduplicate\n%%EOF';digest=hashlib.sha256(pdf).hexdigest()
+    path='/recruit-auth/resume/attachment-res/c/new.PDF'
+    record={'fileName':'童双龙-某司-岗-20261022.5','originalExtension':'pdf','fileSize':len(pdf),
+            'fileId':path,'encryAttachmentId':'new-id','auditStatus':0,'accessPath':path+'?tk=x',
+            'download':{'http_status':200,'byte_length':len(pdf),'sha256':digest}}
+    older={**record,'fileId':'/recruit-auth/resume/attachment-res/c/old.PDF','encryAttachmentId':'old-id',
+           'accessPath':'/recruit-auth/resume/attachment-res/c/old.PDF?tk=y'}
+    upload={'state':'uploaded_unverified','filename':record['fileName']+'.PDF','pdf_sha256':digest,'observation':{'responses':[
+        {'url':'https://tdoss.liepin.com/o/recruit-auth/auth-upload','http_status':200,'payload':json.dumps({'flag':1,'data':{'filePath':path,'fileLength':len(pdf)}})},
+        {'url':'https://api-c.liepin.com/api/com.liepin.cresume.attachment.save-attachment-resume','http_status':200,'payload':'{"flag":1}'}]}}
+    observation={'responses':[{'method':'OBSERVE','url':'https://c.liepin.com/resume/edit','payload':json.dumps({'attachment_count':2,'attachments':[older,record]})}]}
+    binding=contract.verify_uploaded_attachment(upload,observation,digest,len(pdf))
+    assert binding['file_id']==path and binding['attachment_id']=='new-id'
+    assert binding['attachment_count']==2 and binding['download_sha256']==digest
+    # 重复行字节不同（size 不同）时仍拒绝，避免把不同内容当成同一附件。
+    observation['responses'][0]['payload']=json.dumps({'attachment_count':2,'attachments':[older,{**record,'fileSize':len(pdf)+1}]})
+    with pytest.raises(ValueError,match='attachment_current_state_mismatch'):
+        contract.verify_uploaded_attachment(upload,observation,digest,len(pdf))

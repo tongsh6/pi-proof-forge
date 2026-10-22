@@ -2,14 +2,34 @@
   const payload=UPLOAD_PAYLOAD,nonce=UPLOAD_NONCE;
   const endpoint='https://api-c.liepin.com/api/com.liepin.cresume.attachment.remove-attachment-resume';
   const visible=e=>Boolean(e && e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
+  const classOf=e=>String(e.className?.baseVal ?? e.className ?? '');
   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const queryAll=(root,...selectors)=>{const out=[];for(const selector of selectors){try{out.push(...Array.from(root.querySelectorAll(selector)));}catch{}}return out;};
+  const queryDocument=(...selectors)=>queryAll(document,...selectors);
+  const cardNodes=()=>queryDocument('[class*="attachmentView--"] [class*="attachmentCard--"]','.attachment-view-box .resume-card-container');
+  const menuNodes=()=>queryDocument('[class*="ant-c-dropdown-menu-item"]','.ant-dropdown-menu-item');
+  const modalNodes=()=>queryDocument('[class*="ant-c-modal-root"]','.ant-modal-content');
+  const closeNodes=root=>{
+    // 旧 design-system 优先；新版 modal 用带 close 的 class 或 aria-label。
+    const legacy=queryAll(root,'button.ant-modal-close');
+    if(legacy.length)return legacy;
+    return queryAll(root,'[class*="modal-close"]','[aria-label="Close"]','[aria-label="关闭"]');
+  };
+  const pointerClick=el=>{
+    const rect=typeof el.getBoundingClientRect==='function'?el.getBoundingClientRect():{x:0,y:0,width:0,height:0};
+    const opts={bubbles:true,cancelable:true,view:window,clientX:rect.x+Math.max(1,Math.min(rect.width/2,8)),clientY:rect.y+Math.max(1,Math.min(rect.height/2,8)),button:0};
+    for(const type of ['pointerover','mouseover','mousemove','pointerdown','mousedown','pointerup','mouseup','click']){
+      // 带坐标派发 click，真实页面（新版 ant-c 组件）在该序列下可打开菜单/确认框。
+      try{el.dispatchEvent(new MouseEvent(type,opts));}catch{}
+    }
+  };
   const detail={target:{file_id:payload.file_id,attachment_id:payload.attachment_id},action:{click_issued:false,reason:'target_unverified'},before_ids:[],after_ids:[],network:[]};
   const finish=()=>{const url=new URL(location.href);url.search='';url.hash='';
     const result={filename:payload.filename,status:detail.action.click_issued?'unknown':'not_submitted',hints:[detail.action.reason],responses:[{method:'OBSERVE',url:url.href,http_status:0,payload:JSON.stringify(detail)}]};
     location.href='piproofforge-pdf://result?nonce='+encodeURIComponent(nonce)+'&payload='+encodeURIComponent(JSON.stringify(result));};
-  const readCards=()=>Array.from(document.querySelectorAll('.attachment-view-box .resume-card-container')).map(card=>{
+  const readCards=()=>cardNodes().map(card=>{
     const key=Object.keys(card).find(k=>/^__react(?:Fiber|InternalInstance)\$/.test(k));let fiber=key?card[key]:null;
-    for(let i=0;fiber && i<8;i++,fiber=fiber.return){const record=fiber.memoizedProps?.attachmentResume;if(record)return{card,record};}
+    for(let i=0;fiber && i<12;i++,fiber=fiber.return){const record=fiber.memoizedProps?.attachmentResume;if(record)return{card,record};}
     return{card,record:null};
   });
   const matches=r=>r && r.fileId===payload.file_id && r.encryAttachmentId===payload.attachment_id && r.fileName===payload.filename.replace(/\.pdf$/i,'') && String(r.originalExtension).toLowerCase()==='pdf';
@@ -17,27 +37,27 @@
   try {
     const url=new URL(location.href);
     if(url.origin!=='https://c.liepin.com' || url.pathname!=='/resume/edit' || /安全验证|人机验证|滑动验证/.test(document.body?.innerText||'')){finish();return;}
-    const previews=Array.from(document.querySelectorAll('.ant-modal-content')).filter(visible);
+    const previews=modalNodes().filter(visible);
     detail.overlay_diagnostics=previews.slice(0,4).map(e=>({class_name:String(e.className||''),
       sync_notice:(e.innerText||'').replace(/\s/g,'').includes('经历可同步至在线简历中'),
       sync_explanation:(e.innerText||'').replace(/\s/g,'').includes('无需手动填写，可直接添加到在线简历中'),
       input_count:e.querySelectorAll('input,textarea,select').length,
       buttons:Array.from(e.querySelectorAll('button')).slice(0,8).map(b=>({text:(b.textContent||'').trim().slice(0,80),label:b.getAttribute?.('aria-label')||'',class_name:String(b.className||'')})),
-      close_count:Array.from(e.querySelectorAll('button.ant-modal-close')).filter(e=>visible(e) && !e.disabled).length}));
+      close_count:closeNodes(e).filter(e=>visible(e) && !e.disabled).length}));
     if(previews.length===1){
       const text=(previews[0].innerText||'').replace(/\s/g,'');
-      const closers=Array.from(previews[0].querySelectorAll('button.ant-modal-close')).filter(e=>visible(e) && !e.disabled);
+      const closers=closeNodes(previews[0]).filter(e=>visible(e) && !e.disabled);
       if(text.includes('经历可同步至在线简历中') && text.includes('无需手动填写，可直接添加到在线简历中')
         && previews[0].querySelectorAll('input,textarea,select').length===0 && closers.length===1){
         // 关闭已核实的只读解析预览提示；不点击查看、同步或保存经历。
         closers[0].click();await wait(300);
       }
     }
-    if(Array.from(document.querySelectorAll('.ant-modal-content')).some(visible) || Array.from(document.querySelectorAll('.ant-dropdown-menu-item')).some(visible)){detail.action.reason='existing_overlay_blocks_removal';finish();return;}
+    if(modalNodes().some(visible) || menuNodes().some(visible)){detail.action.reason='existing_overlay_blocks_removal';finish();return;}
     const before=readCards(),targets=before.filter(x=>matches(x.record));
     if(before.length!==payload.attachment_count || before.some(x=>!x.record?.fileId) || new Set(before.map(x=>x.record.fileId)).size!==before.length || targets.length!==1){finish();return;}
     detail.before_ids=before.map(x=>x.record.fileId);
-    const more=Array.from(targets[0].card.querySelectorAll('.more-icon')).filter(visible);
+    const more=Array.from(targets[0].card.querySelectorAll('[class*="anticon-ellipsis"], .more-icon')).filter(visible);
     if(more.length!==1){finish();return;}
     // 只展开已核实卡片的菜单；不使用无范围的“删除”按钮。
     const requestId=body=>{
@@ -74,15 +94,15 @@
     proto.open=function(method,url){this.__ppfRemoval={method,url};return oldOpen.apply(this,arguments);};
     proto.send=function(body){const request=this.__ppfRemoval;if(!request || !allow(request.method,request.url,body))return;this.addEventListener('load',()=>{try{const r=this.__ppfRemoval;if(r)capture(r.method,r.url,body,this.status,this.responseType==='json'?this.response:JSON.parse(this.responseText));}catch{}});return oldSend.apply(this,arguments);};
     restore=()=>{window.fetch=oldFetch;proto.open=oldOpen;proto.send=oldSend;};restoreTimer=setTimeout(restore,30000);
-    more[0].dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));await wait(500);
-    const menus=Array.from(document.querySelectorAll('.ant-dropdown-menu-item')).filter(e=>visible(e) && e.textContent.trim()==='删除');
+    pointerClick(more[0]);await wait(700);
+    const menus=menuNodes().filter(e=>visible(e) && (e.textContent||'').replace(/\s/g,'')==='删除');
     if(menus.length!==1){detail.action.reason='removal_menu_not_unique';finish();return;}
-    menus[0].click();await wait(600);
-    const modals=Array.from(document.querySelectorAll('.ant-modal-content')).filter(e=>visible(e) && (e.innerText||'').replace(/\s/g,'').includes('注意：此操作不可恢复，您确定要删除吗？'));
+    pointerClick(menus[0]);await wait(700);
+    const modals=modalNodes().filter(e=>visible(e) && (e.innerText||'').replace(/\s/g,'').includes('不可恢复'));
     const current=readCards(),currentTargets=current.filter(x=>matches(x.record));
     const currentIds=current.map(x=>x.record?.fileId);
     if(modals.length!==1 || currentTargets.length!==1 || JSON.stringify([...currentIds].sort())!==JSON.stringify([...detail.before_ids].sort())){detail.action.reason='removal_confirmation_not_verified';finish();return;}
-    const buttons=Array.from(modals[0].querySelectorAll('button.ant-btn-primary')).filter(e=>visible(e) && !e.disabled && /^(确定|确认|删除|确认删除)$/.test(e.textContent.replace(/\s/g,'')));
+    const buttons=Array.from(modals[0].querySelectorAll('button')).filter(e=>visible(e) && !e.disabled && /^(确定|确认|删除|确认删除)$/.test((e.textContent||'').replace(/\s/g,'')));
     if(buttons.length!==1){detail.action.reason='removal_confirmation_not_unique';finish();return;}
     detail.action={click_issued:true,reason:'confirmed_bound_attachment_removal'};buttons[0].click();
     for(let i=0;i<20;i++){

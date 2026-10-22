@@ -62,6 +62,10 @@ type QuickRunOption = { id: string; label: string; updatedAt: string };
 
 const defaultSubmissionChannel = "liepin";
 
+type NativePdfAction = "authorizeSingle" | "preview" | "prepare" | "upload" | "inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send" | "receipt" | "remove" | "recheckRemoval";
+/** 自动推进可写出后续阶段的阶段集合；其他阶段（success/final_send_pending/unknown/in_flight 等）只允许只读诊断。 */
+const autoAdvancePhases: string[] = ["prepared", "not_submitted", "uploaded_unverified", "attachment_verified", "communication_started", "resume_interaction_pending"];
+
 /** PDF 投递步骤条：按阶段推导当前步骤；各按钮的启用逻辑不变，只决定哪一步显示为主按钮。 */
 const PDF_STEPS = ["prepare", "review", "upload", "verify", "target", "resume", "send", "receipt"] as const;
 function currentPdfStep(pdf: NativePdfPreparation | null, previewed: boolean, consented: boolean): number {
@@ -174,6 +178,13 @@ function screenshotSource(path: string): string | null {
   }
 }
 
+/** 从后端错误里解析“已固定的同岗位投递流程”，用于一键载入继续，而不是让用户重新固定新 PDF。 */
+function parseExistingPreparedRun(message: string): { quick: string; pdf: string } | null {
+  const match = /quick_run_id=([A-Za-z0-9_-]{1,160})(?:\|pdf=([^\]\s]*))?/.exec(message);
+  if (!match) return null;
+  return { quick: match[1], pdf: (match[2] || "").trim() };
+}
+
 export function SubmissionsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -205,6 +216,11 @@ export function SubmissionsPage() {
   const [acceptPdfEffects, setAcceptPdfEffects] = useState(false);
   const [acceptAttachmentRemoval, setAcceptAttachmentRemoval] = useState(false);
   const [nativePdfError, setNativePdfError] = useState("");
+  const [autoAdvanceNotice, setAutoAdvanceNotice] = useState<{ text: string; tone: "success" | "warning" } | null>(null);
+  // 清理旧附件成功后，后端仍保留上一次“已达上限”的 upload_hints；用本地一次性放行避免按钮继续锁死。
+  const [quotaCleaned, setQuotaCleaned] = useState(false);
+  // 同岗位已有进行中投递尝试时，后端会回传已固定版本；提供一键载入继续。
+  const [existingPreparedRun, setExistingPreparedRun] = useState<{ quick: string; pdf: string } | null>(null);
   const [qualityDecisionNotice, setQualityDecisionNotice] = useState("");
   const [nativePdfPreview,setNativePdfPreview]=useState("");
   const decideHighlight = useCallback(async (highlightId: string, action: "reject" | "select") => {
@@ -250,31 +266,6 @@ export function SubmissionsPage() {
       setCleanupBusy(false);
     }
   }, [t]);
-  const oneClickUpload = useCallback(async () => {
-    if (!nativePdf?.run_id) return;
-    const confirmed = await confirmAction({
-      title: "一键自动上传",
-      description: "App 将自动打开猎聘会话、进入简历附件页、打开上传弹窗并拖入当前 PDF。上传会产生平台账号效果，是否继续？",
-      confirmLabel: "自动上传",
-      tone: "default",
-    });
-    if (!confirmed) return;
-    setNativeSessionBusy(true); setNativePdfError("");
-    try {
-      await openLiepinNativeSession();
-      const session = await checkLiepinNativeSession();
-      setNativeSession(session.status);
-      if (session.status !== "authenticated") throw new Error("请先在 App 内完成猎聘登录");
-      const next = await uploadLiepinNativePdf(nativePdf.run_id, true);
-      setNativePdf(next);
-      notify("success", "自动上传完成");
-    } catch (error) {
-      setNativePdfError(getErrorMessage(error));
-      notify("error", "自动上传失败", getErrorMessage(error));
-    } finally {
-      setNativeSessionBusy(false);
-    }
-  }, [nativePdf]);
   const [previewedPdf,setPreviewedPdf]=useState("");
   useEffect(() => {
     if (nativeSessionBusy || consumedQuickRun.current === requestedQuickRun) return;
@@ -436,30 +427,226 @@ export function SubmissionsPage() {
     finally {setNativeSessionBusy(false);}
   }, [loadData]);
 
-  const handleNativePdf = useCallback(async (action: "authorizeSingle" | "preview" | "prepare" | "upload" | "inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send" | "receipt" | "remove" | "recheckRemoval") => {
-    if (nativePdf?.recovery_only && ["upload","communicate","prepareResume","send","remove"].includes(action)) return;
-    setNativeSessionBusy(true);setNativePdfError("");
-    try {
-      if (action === "prepare") {const result=await prepareLiepinPdf(pdfQuickRunId.trim());setNativePdf(result);setAcceptPdfEffects(false);setAcceptAttachmentRemoval(false);setNativePdfPreview("");setPreviewedPdf("");}
-      else if(action === "preview" && nativePdf){const result=await previewDailyPdf(nativePdf.run_id);if(result.pdf_sha256!==nativePdf.pdf_sha256)throw new Error('resume_pdf_changed');setNativePdfPreview('data:application/pdf;base64,'+result.pdf_base64);setPreviewedPdf(nativePdf.run_id);}
-      else if (action === "authorizeSingle" && nativePdf) setNativePdf(await authorizeSingleLiepinPdf(nativePdf.run_id));
-      else if (action === "inspect" && nativePdf) setNativePdf(await inspectUploadedLiepinPdf(nativePdf.run_id));
-      else if (action === "target" && nativePdf) setNativePdf(await inspectLiepinPdfTarget(nativePdf.run_id));
-      else if (action === "communicate" && nativePdf) setNativePdf(await startLiepinPdfCommunication(nativePdf.run_id));
-      else if (action === "inspectChat" && nativePdf) setNativePdf(await continueLiepinPdfDelivery(nativePdf.run_id,"inspect"));
-      else if (action === "prepareResume" && nativePdf) setNativePdf(await continueLiepinPdfDelivery(nativePdf.run_id,"prepare"));
-      else if (action === "send" && nativePdf) setNativePdf(await continueLiepinPdfDelivery(nativePdf.run_id,"send"));
-      else if (action === "receipt" && nativePdf) {setNativePdf(await verifyNativePdfReceipt(nativePdf.run_id));await loadData();}
-      else if (action === "recheckRemoval" && nativePdf) setNativePdf(await recheckLiepinNativePdfRemoval(nativePdf.run_id));
-      else if (action === "remove" && nativePdf && acceptAttachmentRemoval) setNativePdf(await removeLiepinNativePdfAttachment(nativePdf.run_id,true));
-      else if (action === "upload" && nativePdf && acceptPdfEffects && previewedPdf===nativePdf.run_id) setNativePdf(await uploadLiepinNativePdf(nativePdf.run_id,true));
-    } catch (error) {
-      const message=typeof error === "string" ? error : getErrorMessage(error);
-      const contentErrors=['career_profile_unconfirmed','resume_content_incomplete','resume_regeneration_required','resume_generation_changed','resume_pdf_source_changed','resume_evidence_changed','resume_pdf_changed','pdf_generation_trace_invalid'];
-      setNativePdfError(message.includes('daily_pdf_filename_too_long')?t('daily.reasons.daily_pdf_filename_too_long'):message.includes('daily_recovery_required')?t('pages.submissions.nativePdf.recoveryOnly'):message.includes('attachment_missing_on_platform')?t('pages.submissions.nativePdf.platformMissing'):message.includes('pdf_receipt_unconfirmed')?t('pages.submissions.nativePdf.receiptNotAvailable'):contentErrors.some(code=>message.includes(code))?t('pages.submissions.nativePdf.contentNotReady'):message);
+  const formatNativePdfError = useCallback((error: unknown): string => {
+    const message = typeof error === "string" ? error : getErrorMessage(error);
+    if (message.includes("delivery_already_attempted")) {
+      const parsed = parseExistingPreparedRun(message);
+      setExistingPreparedRun(parsed);
+      return parsed
+        ? t("pages.submissions.nativePdf.errors.delivery_already_attempted_detail", {
+            quick: parsed.quick,
+            pdf: parsed.pdf || "--",
+          })
+        : t("pages.submissions.nativePdf.errors.delivery_already_attempted");
     }
-    finally {setNativeSessionBusy(false);}
-  }, [pdfQuickRunId,nativePdf,acceptPdfEffects,acceptAttachmentRemoval,loadData,previewedPdf,t]);
+    const contentErrors = ["career_profile_unconfirmed","resume_content_incomplete","resume_regeneration_required","resume_generation_changed","resume_pdf_source_changed","resume_evidence_changed","resume_pdf_changed","pdf_generation_trace_invalid"];
+    // 后端/Host 业务错误码 → 可读说明；顺序与具体度无关，均为互斥错误码。
+    const readableErrors: Array<[string, string]> = [
+      ["pdf_upload_already_attempted", t("pages.submissions.nativePdf.errors.pdf_upload_already_attempted")],
+      ["pdf_batch_authorization_required", t("pages.submissions.nativePdf.errors.pdf_batch_authorization_required")],
+      ["account_effects_consent_required", t("pages.submissions.nativePdf.errors.account_effects_consent_required")],
+      ["attachment_verification_required", t("pages.submissions.nativePdf.errors.attachment_verification_required")],
+      ["pdf_target_verification_required", t("pages.submissions.nativePdf.errors.pdf_target_verification_required")],
+      ["attachment_quota_reached", t("pages.submissions.nativePdf.errors.attachment_quota_reached")],
+      ["attachment_current_state_mismatch", t("pages.submissions.nativePdf.errors.attachment_current_state_mismatch")],
+      ["pdf_upload_not_dispatched", t("pages.submissions.nativePdf.errors.pdf_upload_not_dispatched")],
+      ["ai_disclosure_not_confirmed", t("pages.submissions.nativePdf.errors.ai_disclosure_not_confirmed")],
+      ["NATIVE_SESSION_LOGIN_REQUIRED", t("pages.submissions.nativePdf.errors.native_session_login_required")],
+      ["NATIVE_SESSION_PAGE_NOT_READY", t("pages.submissions.nativePdf.errors.native_session_page_not_ready")],
+      // 平台附件移除失败：evidence_unverified 可能带 :reason 后缀，includes 前缀匹配即可。
+      ["attachment_removal_evidence_unverified", t("pages.submissions.nativePdf.errors.attachment_removal_evidence_unverified")],
+      ["attachment_removal_success_required", t("pages.submissions.nativePdf.errors.attachment_removal_success_required")],
+      ["attachment_removal_identity_unverified", t("pages.submissions.nativePdf.errors.attachment_removal_identity_unverified")],
+      ["attachment_removal_already_attempted", t("pages.submissions.nativePdf.errors.attachment_removal_already_attempted")],
+      ["attachment_removal_not_pending", t("pages.submissions.nativePdf.errors.attachment_removal_not_pending")],
+    ];
+    if (message.includes("daily_pdf_filename_too_long")) return t("daily.reasons.daily_pdf_filename_too_long");
+    if (message.includes("daily_recovery_required")) return t("pages.submissions.nativePdf.recoveryOnly");
+    if (message.includes("attachment_missing_on_platform")) return t("pages.submissions.nativePdf.platformMissing");
+    if (message.includes("pdf_receipt_unconfirmed")) return t("pages.submissions.nativePdf.receiptNotAvailable");
+    if (contentErrors.some((code) => message.includes(code))) return t("pages.submissions.nativePdf.contentNotReady");
+    const readable = readableErrors.find(([code]) => message.includes(code));
+    return readable ? readable[1] : message;
+  }, [t]);
+
+  /** 单步原生动作：只执行调用并落库，错误交给调用方统一映射；自动链每一步都用返回的 payload 判断。 */
+  const performNativePdf = useCallback(async (action: NativePdfAction, currentPdf: NativePdfPreparation | null): Promise<NativePdfPreparation | null> => {
+    if (currentPdf?.recovery_only && ["upload","communicate","prepareResume","send","remove"].includes(action)) return null;
+    if (action === "prepare") {
+      const result = await prepareLiepinPdf(pdfQuickRunId.trim());
+      setNativePdf(result); setAcceptPdfEffects(false); setAcceptAttachmentRemoval(false);
+      setNativePdfPreview(""); setPreviewedPdf(""); setAutoAdvanceNotice(null); setQuotaCleaned(false);
+      setExistingPreparedRun(null);
+      return result;
+    }
+    if (!currentPdf) return null;
+    if (action === "preview") {
+      const result = await previewDailyPdf(currentPdf.run_id);
+      if (result.pdf_sha256 !== currentPdf.pdf_sha256) throw new Error("resume_pdf_changed");
+      setNativePdfPreview("data:application/pdf;base64," + result.pdf_base64);
+      setPreviewedPdf(currentPdf.run_id);
+      return null;
+    }
+    if (action === "upload") {
+      if (!acceptPdfEffects || previewedPdf !== currentPdf.run_id) return null;
+      const result = await uploadLiepinNativePdf(currentPdf.run_id, true);
+      setNativePdf(result);
+      return result;
+    }
+    let result: NativePdfPreparation;
+    if (action === "authorizeSingle") result = await authorizeSingleLiepinPdf(currentPdf.run_id);
+    else if (action === "inspect") result = await inspectUploadedLiepinPdf(currentPdf.run_id);
+    else if (action === "target") result = await inspectLiepinPdfTarget(currentPdf.run_id);
+    else if (action === "communicate") result = await startLiepinPdfCommunication(currentPdf.run_id);
+    else if (action === "inspectChat") result = await continueLiepinPdfDelivery(currentPdf.run_id, "inspect");
+    else if (action === "prepareResume") result = await continueLiepinPdfDelivery(currentPdf.run_id, "prepare");
+    else if (action === "send") result = await continueLiepinPdfDelivery(currentPdf.run_id, "send");
+    else if (action === "remove") {
+      if (!acceptAttachmentRemoval) return null;
+      result = await removeLiepinNativePdfAttachment(currentPdf.run_id, true);
+    } else if (action === "recheckRemoval") result = await recheckLiepinNativePdfRemoval(currentPdf.run_id);
+    else if (action === "receipt") {
+      result = await verifyNativePdfReceipt(currentPdf.run_id);
+      setNativePdf(result);
+      await loadData();
+      return result;
+    } else return null;
+    setNativePdf(result);
+    return result;
+  }, [acceptAttachmentRemoval, acceptPdfEffects, loadData, pdfQuickRunId, previewedPdf]);
+
+  const handleNativePdf = useCallback(async (action: NativePdfAction) => {
+    setNativeSessionBusy(true); setNativePdfError(""); setAutoAdvanceNotice(null); setExistingPreparedRun(null);
+    try {
+      await performNativePdf(action, nativePdf);
+    } catch (error) {
+      setNativePdfError(formatNativePdfError(error));
+    } finally { setNativeSessionBusy(false); }
+  }, [formatNativePdfError, nativePdf, performNativePdf]);
+
+  /** 自动推进：串行执行写操作直到“等待手动最终确认”；任何一步失败立即停止，不依赖 React 旧 state。 */
+  const runAutoAdvance = useCallback(async () => {
+    if (!nativePdf) return;
+    const confirmed = await confirmAction({
+      title: t("pages.submissions.nativePdf.autoAdvanceConfirmTitle"),
+      description: t("pages.submissions.nativePdf.autoAdvanceConfirm"),
+      confirmLabel: t("pages.submissions.nativePdf.autoAdvanceConfirmLabel"),
+      tone: "default",
+    });
+    if (!confirmed) return;
+    setNativeSessionBusy(true); setNativePdfError(""); setAutoAdvanceNotice(null);
+    try {
+      let current: NativePdfPreparation = nativePdf;
+      if (nativePdf.attachment_bound === false && current.phase !== "prepared" && current.phase !== "not_submitted") {
+        throw new Error("attachment_verification_required");
+      }
+      const run = async (action: NativePdfAction) => {
+        const result = await performNativePdf(action, current);
+        if (!result) throw new Error(t("pages.submissions.nativePdf.autoAdvanceUnavailable"));
+        current = result;
+      };
+      // 可重复上传只信后端归一后的 can_retry_upload；旧后端未返回时按 phase 兼容。
+      const canRetryUpload = current.phase === "not_submitted" ? current.can_retry_upload !== false : false;
+      if (current.phase === "prepared" || canRetryUpload) {
+        // 上传前先打开/检查 App 内猎聘会话，避免用户为同一条链路再单独点“检查会话”。
+        await openLiepinNativeSession();
+        const session = await checkLiepinNativeSession();
+        setNativeSession(session.status);
+        if (session.status !== "authenticated") throw new Error("NATIVE_SESSION_LOGIN_REQUIRED");
+        await run("upload");
+        if (current.phase === "not_submitted" || current.phase === "unknown") {
+          // 上传脚本会以 not_submitted 结束而没有抛错；这里必须把“未进入后续阶段”变成可读错误，而不是静默停在原地。
+          const quotaReached = (current.upload_hints || []).some((hint) => hint.includes("attachment_quota_reached"));
+          if (quotaReached) setQuotaCleaned(false);
+          throw new Error(quotaReached ? "attachment_quota_reached" : "pdf_upload_not_dispatched");
+        }
+      }
+      if (current.phase === "uploaded_unverified") await run("inspect");
+      if (current.phase === "attachment_verified" && !current.single_delivery_authorized) await run("authorizeSingle");
+      if (current.phase === "attachment_verified") await run("communicate");
+      if (current.phase === "communication_started") await run("inspectChat");
+      if ((current.phase === "communication_started" || current.phase === "resume_interaction_pending") && !current.can_confirm_send) await run("prepareResume");
+      if (current.phase === "resume_interaction_pending" && current.can_confirm_send) {
+        setAutoAdvanceNotice({ tone: "success", text: t("pages.submissions.nativePdf.autoAdvanceReady") });
+        notify("success", t("pages.submissions.nativePdf.autoAdvanceDone"));
+      } else {
+        setAutoAdvanceNotice({ tone: "warning", text: t("pages.submissions.nativePdf.autoAdvanceStopped") });
+      }
+    } catch (error) {
+      const message = formatNativePdfError(error);
+      setNativePdfError(message);
+      notify("error", t("pages.submissions.nativePdf.autoAdvanceFailed"), message);
+    } finally { setNativeSessionBusy(false); }
+  }, [formatNativePdfError, nativePdf, performNativePdf, t]);
+
+  /** 最终发送仍由人点击；发送完成后自动只读核验业务回执并刷新投递记录，失败不伪造成功。 */
+  const confirmFinalSend = useCallback(async () => {
+    if (!nativePdf?.can_confirm_send) return;
+    setNativeSessionBusy(true); setNativePdfError(""); setAutoAdvanceNotice(null);
+    try {
+      const sent = await performNativePdf("send", nativePdf);
+      if (!sent) throw new Error(t("pages.submissions.nativePdf.autoAdvanceUnavailable"));
+      try {
+        await performNativePdf("receipt", sent);
+        notify("success", t("pages.submissions.nativePdf.finalConfirmSuccess"));
+      } catch (receiptError) {
+        const message = formatNativePdfError(receiptError);
+        setNativePdfError(message);
+        notify("error", t("pages.submissions.nativePdf.finalVerifyFailed"), message);
+      }
+    } catch (error) {
+      const message = formatNativePdfError(error);
+      setNativePdfError(message);
+      notify("error", t("pages.submissions.nativePdf.finalConfirmFailed"), message);
+    } finally { setNativeSessionBusy(false); }
+  }, [formatNativePdfError, nativePdf, performNativePdf, t]);
+
+  /** 载入后端回传的已固定投递流程，继续原来的沟通/确认进度。 */
+  const loadExistingPreparedPdf = useCallback(async () => {
+    const target = existingPreparedRun;
+    if (!target) return;
+    setNativeSessionBusy(true); setNativePdfError("");
+    try {
+      const result = await prepareLiepinPdf(target.quick);
+      setPdfQuickRunId(target.quick);
+      setNativePdf(result); setAcceptPdfEffects(false); setAcceptAttachmentRemoval(false);
+      setNativePdfPreview(""); setPreviewedPdf(""); setQuotaCleaned(false); setExistingPreparedRun(null);
+      setAutoAdvanceNotice({ tone: "success", text: t("pages.submissions.nativePdf.existingPreparedLoaded") });
+    } catch (error) {
+      setNativePdfError(formatNativePdfError(error));
+    } finally { setNativeSessionBusy(false); }
+  }, [existingPreparedRun, formatNativePdfError, t]);
+
+  /** 平台附件在最终发送前被移除：重新上传同一份已批准 PDF，核验绑定后继续原投递。 */
+  const reuploadMissingAttachment = useCallback(async () => {
+    if (!nativePdf?.run_id || !nativePdf.can_reupload_attachment) return;
+    const confirmed = await confirmAction({
+      title: t("pages.submissions.nativePdf.reuploadMissingConfirmTitle"),
+      description: t("pages.submissions.nativePdf.reuploadMissingConfirm"),
+      confirmLabel: t("pages.submissions.nativePdf.reuploadMissingAction"),
+      tone: "default",
+    });
+    if (!confirmed) return;
+    setNativeSessionBusy(true); setNativePdfError(""); setAutoAdvanceNotice(null);
+    try {
+      const uploaded = await uploadLiepinNativePdf(nativePdf.run_id, true);
+      setNativePdf(uploaded);
+      let inspected = uploaded;
+      // 投递进入沟通阶段后 phase 仍是 resume_interaction_pending；是否重新核验要看上传子状态。
+      if (uploaded.upload_state === "uploaded_unverified" || uploaded.attachment_bound === false) {
+        inspected = await inspectUploadedLiepinPdf(nativePdf.run_id);
+        setNativePdf(inspected);
+      }
+      if (inspected.attachment_bound !== true || inspected.verification_error) {
+        throw new Error("attachment_current_state_mismatch");
+      }
+      setAutoAdvanceNotice({ tone: "success", text: t("pages.submissions.nativePdf.reuploadMissingDone") });
+    } catch (error) {
+      const message = formatNativePdfError(error);
+      setNativePdfError(message);
+      notify("error", t("pages.submissions.nativePdf.reuploadMissingFailed"), message);
+    } finally { setNativeSessionBusy(false); }
+  }, [formatNativePdfError, nativePdf, t]);
 
   const handleStartSession = useCallback(async () => {
     setSessionAction("start");
@@ -631,7 +818,23 @@ export function SubmissionsPage() {
   }, []);
 
   const pdfStep = currentPdfStep(nativePdf, previewedPdf === nativePdf?.run_id, acceptPdfEffects);
-  const stepClass = (step: number) => (pdfStep === step ? buttonClass.primary : buttonClass.secondary);
+  // 自动推进可用性：错误/终态/进行中阶段不做写操作；prepared/not_submitted 需已预览并勾选（会话由自动链自行打开/检查）；
+  // not_submitted 是否可再次上传以后端 can_retry_upload 为准，不从原始上传状态自行推断。
+  const uploadHints = nativePdf?.upload_hints ?? [];
+  const quotaReached = uploadHints.some((hint) => hint.includes("attachment_quota_reached"));
+  const quotaBlocked = quotaReached && !quotaCleaned;
+  const visibleUploadHints = uploadHints.filter((hint) => !hint.startsWith("attachment_quota_reached"));
+  const cleanupQuotaAndRetry = useCallback(async () => {
+    await cleanupOldAttachments();
+    setNativePdfError("");
+    setQuotaCleaned(true);
+    setAutoAdvanceNotice({ tone: "success", text: t("pages.submissions.nativePdf.quotaCleanupDone") });
+  }, [cleanupOldAttachments, t]);
+  const autoAdvanceAvailable = nativePdf !== null && !nativePdf.recovery_only && !nativePdf.can_confirm_send && !quotaBlocked
+    && autoAdvancePhases.includes(nativePdf.phase)
+    && !(nativePdf.phase === "not_submitted" && nativePdf.can_retry_upload === false)
+    && (nativePdf.phase !== "prepared" && nativePdf.phase !== "not_submitted"
+      || (previewedPdf === nativePdf.run_id && acceptPdfEffects));
 
   // ⌘R / pipf:refresh：壳层快捷键触发当前页重新加载。
   useEffect(() => {
@@ -738,7 +941,7 @@ export function SubmissionsPage() {
                 </select>
               </label>
               <button type="button" disabled={nativeSessionBusy || !pdfQuickRunId.trim()} onClick={()=>void handleNativePdf("prepare")}
-                className={`mt-2 ${stepClass(0)}`}>{t("pages.submissions.nativePdf.prepare")}</button>
+                className={`mt-2 ${buttonClass.secondary}`}>{t("pages.submissions.nativePdf.prepare")}</button>
               {nativePdf && <div className="mt-3 space-y-2">
                 <p>{nativePdf.company} · {nativePdf.position}</p>
                 <PdfQualitySummary quality={nativePdf.quality}/>
@@ -753,58 +956,64 @@ export function SubmissionsPage() {
                     : t("pages.submissions.nativePdf.aiDisclosurePending")}
                   {nativePdf.ai_disclosure_text&&<span className="mt-1 block text-text-muted" title={nativePdf.ai_disclosure_text}>{nativePdf.ai_disclosure_text}</span>}
                 </p>}
-                {nativePdf.phase === "attachment_verified" && !nativePdf.single_delivery_authorized && !nativePdf.recovery_only &&
-                  <button type="button" disabled={nativeSessionBusy} className={buttonClass.secondary} onClick={()=>void handleNativePdf("authorizeSingle")}>{t("pages.submissions.nativePdf.authorizeSingle")}</button>}
                 {nativePdf.single_delivery_authorized&&<p>{t("pages.submissions.nativePdf.singleAuthorized")}</p>}
                 {nativePdf.verification_error&&<p role="alert" className="text-warning">{t("pages.submissions.nativePdf.verificationPending")}</p>}
                 {nativePdf.recovery_only&&<p role="status" className="text-warning">{t('pages.submissions.nativePdf.recoveryOnly')}</p>}
                 <div className="flex flex-wrap gap-2">
                   {nativePdf.phase === "prepared" && <button type="button" disabled={nativeSessionBusy} className={buttonClass.secondary}
                     onClick={() => navigate("/agent-run")}>{t("pages.submissions.nativePdf.dailyCandidates")}</button>}
-                  <button type="button" disabled={nativeSessionBusy} onClick={()=>void handleNativePdf('preview')} className={stepClass(1)}>{t('pages.submissions.nativePdf.preview')}</button>
+                  <button type="button" disabled={nativeSessionBusy} onClick={()=>void handleNativePdf('preview')} className={buttonClass.secondary}>{t('pages.submissions.nativePdf.preview')}</button>
+                  <button type="button" data-testid="pdf-auto-advance" title={t("pages.submissions.nativePdf.autoAdvanceHint")}
+                    disabled={nativeSessionBusy || !autoAdvanceAvailable} onClick={() => runAutoAdvance()} className={buttonClass.primary}>
+                    {t("pages.submissions.nativePdf.autoAdvance")}</button>
+                  {nativePdf.can_confirm_send && !nativePdf.recovery_only && <button type="button" data-testid="pdf-final-confirm" disabled={nativeSessionBusy}
+                    onClick={() => confirmFinalSend()} className={buttonClass.primary}>{t('pages.submissions.nativePdf.send')}</button>}
+                  {nativePdf.phase === "final_send_pending" && <button type="button" disabled={nativeSessionBusy}
+                    onClick={()=>void handleNativePdf("receipt")} className={buttonClass.primary}>{t("pages.submissions.nativePdf.receipt")}</button>}
                 </div>
+                <p className="text-xs text-text-muted">{t("pages.submissions.nativePdf.autoAdvanceHint")}</p>
                 {nativePdfPreview&&<iframe title={t('pages.submissions.nativePdf.preview')} src={nativePdfPreview} className="h-[650px] w-full rounded-card border border-border bg-white"/>}
                 <label className="flex items-start gap-2 text-text-secondary">
                   <input type="checkbox" aria-label={t("pages.submissions.nativePdf.consent")} checked={acceptPdfEffects} disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !["prepared","not_submitted"].includes(nativePdf.phase)}
                     onChange={event=>setAcceptPdfEffects(event.target.checked)} /><span>{t("pages.submissions.nativePdf.consentShort")}<details className="mt-1 text-xs text-text-muted"><summary className="cursor-pointer select-none text-accent">{t("common.fullTerms")}</summary><p className="mt-1">{t("pages.submissions.nativePdf.consent")}</p></details></span>
                 </label>
-                <button type="button" disabled={nativeSessionBusy || cleanupBusy || nativePdf.recovery_only}
-                  onClick={()=>void oneClickUpload()} className={`mb-2 ${buttonClass.primary || buttonClass.secondary}`}>
-                  一键自动上传（App 内操作，无需手动点猎聘）
-                </button>
-                <div className="flex flex-wrap gap-2">
-                  {pdfStep <= 1 && <button type="button" disabled={nativeSessionBusy} onClick={()=>void handleNativePdf('preview')} className={stepClass(1)}>{t('pages.submissions.nativePdf.preview')}</button>}
-                  {pdfStep === 2 && <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
-                    onClick={()=>void handleNativePdf("upload")} className={stepClass(2)}>{t("pages.submissions.nativePdf.upload")}</button>}
-                  {pdfStep === 3 && <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending"].includes(nativePdf.phase)}
-                    onClick={()=>void handleNativePdf("inspect")} className={stepClass(3)}>{t("pages.submissions.nativePdf.inspect")}</button>}
-                  {pdfStep === 4 && <button type="button" disabled={nativeSessionBusy || nativePdf.phase !== "attachment_verified"}
-                    onClick={()=>void handleNativePdf("target")} className={stepClass(4)}>{t("pages.submissions.nativePdf.target")}</button>}
-                  {pdfStep === 5 && <button type="button" disabled={nativeSessionBusy || !["communication_started","resume_interaction_pending","final_send_pending"].includes(nativePdf.phase)}
-                    onClick={()=>void handleNativePdf("inspectChat")} className={stepClass(5)}>{t("pages.submissions.nativePdf.inspectChat")}</button>}
-                  {pdfStep === 6 && <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || !nativePdf.can_confirm_send}
-                    onClick={()=>void handleNativePdf("send")} className={stepClass(6)}>{t("pages.submissions.nativePdf.send")}</button>}
-                  {pdfStep >= 7 && <button type="button" disabled={nativeSessionBusy || !["final_send_pending","success"].includes(nativePdf.phase)}
-                    onClick={()=>void handleNativePdf("receipt")} className={stepClass(7)}>{t("pages.submissions.nativePdf.receipt")}</button>}
-                </div>
+                {autoAdvanceNotice && <p role="status" data-testid="pdf-auto-advance-notice"
+                  className={`text-sm ${autoAdvanceNotice.tone === "success" ? "text-success" : "text-warning"}`}>{autoAdvanceNotice.text}</p>}
+                {(nativePdf.phase === "not_submitted" || nativePdf.phase === "unknown") && <div data-testid="pdf-upload-hints"
+                  className={`rounded-card border p-3 text-xs ${nativePdf.phase === "unknown" || nativePdf.can_retry_upload === false ? "border-error/40 bg-error/10" : "border-warning/40 bg-warning/10"}`}>
+                  <p role="status" className={`text-sm font-medium ${nativePdf.phase === "unknown" || nativePdf.can_retry_upload === false ? "text-error" : "text-warning"}`}>
+                    {nativePdf.phase === "unknown" || nativePdf.can_retry_upload === false
+                      ? t("pages.submissions.nativePdf.uploadUnknownNoRetry")
+                      : t("pages.submissions.nativePdf.uploadNotSubmittedRetry")}</p>
+                  {quotaBlocked && <div className="mt-2 rounded-card border border-error/40 bg-error/10 p-3">
+                    <p role="alert" className="text-sm font-medium text-error">{t("pages.submissions.nativePdf.quotaReached")}</p>
+                    <button type="button" disabled={nativeSessionBusy || cleanupBusy}
+                      onClick={() => void cleanupQuotaAndRetry()} className={`mt-2 ${buttonClass.secondary}`}>
+                      {t("pages.submissions.nativePdf.quotaCleanupAction")}</button>
+                  </div>}
+                  {quotaReached && quotaCleaned && <p role="status" className="mt-2 text-xs text-success">{t("pages.submissions.nativePdf.quotaCleanupDone")}</p>}
+                  {visibleUploadHints.length > 0 && <>
+                    <p className="mt-2 text-text-secondary">{t("pages.submissions.nativePdf.uploadHintsTitle")}</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-text-secondary">
+                      {visibleUploadHints.map((hint, index) => <li key={`upload-hint-${index}`} className="break-words">{hint}</li>)}
+                    </ul>
+                  </>}
+                  {typeof nativePdf.upload_attempts === "number" && nativePdf.upload_attempts > 0 &&
+                    <p className="mt-2 text-text-muted">{t("pages.submissions.nativePdf.uploadAttemptsLabel")} {nativePdf.upload_attempts}</p>}
+                  {quotaBlocked && <p className="mt-2 text-xs text-text-muted">{t("pages.submissions.nativePdf.quotaCleanupHint")}</p>}
+                </div>}
                 <details className="mt-2 rounded-card border border-border bg-bg-primary/30 p-3">
                   <summary className="cursor-pointer select-none text-xs text-text-secondary">{t("pages.submissions.nativePdf.moreActions", {defaultValue:"高级操作（诊断/重试）"})}</summary>
-                  <div className="mt-2 flex flex-wrap gap-2">                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || previewedPdf!==nativePdf.run_id || !acceptPdfEffects || !["prepared","not_submitted"].includes(nativePdf.phase) || nativeSession !== "authenticated"}
-                  onClick={()=>void handleNativePdf("upload")} className={stepClass(2)}>{t("pages.submissions.nativePdf.upload")}</button>
-                <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending"].includes(nativePdf.phase)}
-                  onClick={()=>void handleNativePdf("inspect")} className={stepClass(3)}>{t("pages.submissions.nativePdf.inspect")}</button>
-                <button type="button" disabled={nativeSessionBusy || nativePdf.phase !== "attachment_verified"}
-                  onClick={()=>void handleNativePdf("target")} className={stepClass(4)}>{t("pages.submissions.nativePdf.target")}</button>
-                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || nativePdf.phase !== "attachment_verified"}
-                  onClick={()=>void handleNativePdf("communicate")} className={stepClass(4)}>{t("pages.submissions.nativePdf.communicate")}</button>
-                <button type="button" disabled={nativeSessionBusy || !["communication_started","resume_interaction_pending","final_send_pending"].includes(nativePdf.phase)}
-                  onClick={()=>void handleNativePdf("inspectChat")} className={stepClass(5)}>{t("pages.submissions.nativePdf.inspectChat")}</button>
-                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || nativePdf.phase !== "communication_started"}
-                  onClick={()=>void handleNativePdf("prepareResume")} className={stepClass(5)}>{t("pages.submissions.nativePdf.prepareResume")}</button>
-                <button type="button" disabled={nativeSessionBusy || nativePdf.recovery_only || !nativePdf.can_confirm_send}
-                  onClick={()=>void handleNativePdf("send")} className={stepClass(6)}>{t("pages.submissions.nativePdf.send")}</button>
-                <button type="button" disabled={nativeSessionBusy || !["final_send_pending","success"].includes(nativePdf.phase)}
-                  onClick={()=>void handleNativePdf("receipt")} className={stepClass(7)}>{t("pages.submissions.nativePdf.receipt")}</button>
+                  <p className="mt-2 text-xs text-text-muted">{t("pages.submissions.nativePdf.moreActionsHint")}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" disabled={nativeSessionBusy || ["prepared","final_send_pending"].includes(nativePdf.phase)}
+                      onClick={()=>void handleNativePdf("inspect")} className={buttonClass.secondary}>{t("pages.submissions.nativePdf.inspect")}</button>
+                    <button type="button" disabled={nativeSessionBusy || nativePdf.phase !== "attachment_verified"}
+                      onClick={()=>void handleNativePdf("target")} className={buttonClass.secondary}>{t("pages.submissions.nativePdf.target")}</button>
+                    <button type="button" disabled={nativeSessionBusy || !["communication_started","resume_interaction_pending","final_send_pending"].includes(nativePdf.phase)}
+                      onClick={()=>void handleNativePdf("inspectChat")} className={buttonClass.secondary}>{t("pages.submissions.nativePdf.inspectChat")}</button>
+                    <button type="button" disabled={nativeSessionBusy || !["final_send_pending","success"].includes(nativePdf.phase)}
+                      onClick={()=>void handleNativePdf("receipt")} className={buttonClass.secondary}>{t("pages.submissions.nativePdf.receipt")}</button>
                   </div>
                 </details>
                 {nativePdf.phase === "success" && nativePdf.platform_filename && <div className="mt-3 border-t border-border pt-3">
@@ -823,6 +1032,20 @@ export function SubmissionsPage() {
 
               </div>}
               {nativePdfError && <p role="alert" className="mt-2 text-sm text-error">{nativePdfError}</p>}
+              {nativePdf?.can_reupload_attachment && !nativePdf.recovery_only && <div role="status" data-testid="pdf-reupload-missing"
+                className="mt-2 rounded-card border border-warning/40 bg-warning/10 p-3 text-sm">
+                <p className="font-medium text-warning">{t("pages.submissions.nativePdf.reuploadMissingTitle")}</p>
+                <p className="mt-1 text-text-secondary">{t("pages.submissions.nativePdf.reuploadMissingHint")}</p>
+                <button type="button" disabled={nativeSessionBusy} onClick={() => void reuploadMissingAttachment()}
+                  className={`mt-2 ${buttonClass.primary}`}>{t("pages.submissions.nativePdf.reuploadMissingAction")}</button>
+              </div>}
+              {existingPreparedRun && <div role="status" data-testid="pdf-existing-prepared"
+                className="mt-2 rounded-card border border-warning/40 bg-warning/10 p-3 text-sm">
+                <p className="text-warning">{t("pages.submissions.nativePdf.existingPreparedHint", {
+                  quick: existingPreparedRun.quick, pdf: existingPreparedRun.pdf || "--"})}</p>
+                <button type="button" disabled={nativeSessionBusy} onClick={() => void loadExistingPreparedPdf()}
+                  className={`mt-2 ${buttonClass.secondary}`}>{t("pages.submissions.nativePdf.loadPreparedPdf")}</button>
+              </div>}
             </div>
           </section>
           </div>

@@ -468,6 +468,7 @@ fn main() {
                     let parsed = serde_json::from_str::<serde_json::Value>(&raw).ok();
                     let action = parsed.as_ref().and_then(|v| v.get("action").and_then(|x| x.as_str())).unwrap_or("upload").to_string();
                     let run_id = parsed.as_ref().and_then(|v| v.get("run_id").and_then(|x| x.as_str())).map(str::to_string);
+                    let job_url = parsed.as_ref().and_then(|v| v.get("job_url").and_then(|x| x.as_str())).map(str::to_string);
                     if action != "diagnose" && run_id.is_none() {
                         let _ = std::fs::write(root.join("app-data/auto_upload_result.json"), json!({"ok":false,"error":"missing_run_id"}).to_string());
                         continue;
@@ -481,6 +482,7 @@ fn main() {
                             ("probeSnapshot", Some(window)) => liepin_webview::probe_snapshot_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("probeResumeDialog", Some(window)) => liepin_webview::probe_resume_dialog_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("probeAiDisclosureDryRun", Some(window)) => liepin_webview::probe_ai_disclosure_dry_run_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
+                            ("probeChatMessages", Some(window)) => liepin_webview::probe_chat_messages_from_trigger(handle.clone(), window, job_url.clone().unwrap_or_default()).await,
                             ("upload", Some(window)) => liepin_webview::auto_upload_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default()).await,
                             ("inspect" | "target" | "communicate" | "inspectChat" | "prepareResume" | "send" | "receipt", Some(window)) =>
                                 liepin_webview::followup_from_trigger(handle.clone(), window, run_id.clone().unwrap_or_default(), action.clone()).await,

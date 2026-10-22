@@ -151,3 +151,42 @@ def test_disabled_ai_disclosure_keeps_previous_prepare_behavior(tmp_path, monkey
     q = agent._load_queue(agent._get_queue_file("run"))
     assert q["pdf_delivery"]["resume_interaction_started"] is True
     assert flow._public(q)["ai_disclosure_sent"] is False
+
+
+def test_network_evidence_at_top_level_is_accepted(tmp_path, monkeypatch):
+    """真实附件发送脚本把 network 证据放在 observation 顶层（ai_disclosure.network 为空）时必须接受。"""
+    params, packet, sealed, c = _setup(tmp_path, monkeypatch, disclosure_enabled=True)
+    observation = _observation(c, text=AI_DISCLOSURE_TEXT, confirmed=True, evidence="network")
+    detail = json.loads(observation["responses"][0]["payload"])
+    detail["network"] = detail["ai_disclosure"]["network"]
+    detail["ai_disclosure"]["network"] = []
+    observation["responses"][0]["payload"] = json.dumps(detail, ensure_ascii=False)
+    recorded = flow.handle_record_pdf_interaction({**params, "action": "ai_disclosure",
+                                                   "delivery_ref": packet["delivery_ref"],
+                                                   "observation": observation})
+    assert recorded["ai_disclosure_sent"] is True
+    q = agent._load_queue(agent._get_queue_file("run"))
+    assert q["pdf_delivery"]["ai_disclosure"]["text"] == AI_DISCLOSURE_TEXT
+    assert flow.handle_pdf_interaction_packet({**params, "action": "prepare"}).get("requires_ai_disclosure") is not True
+
+
+def test_network_evidence_without_matching_text_or_status_is_rejected(tmp_path, monkeypatch):
+    """顶层 network 也必须是 HTTP 200 且请求里含声明原文；否则保持未确认。"""
+    params, packet, sealed, c = _setup(tmp_path, monkeypatch, disclosure_enabled=True)
+    for mutate in (
+        lambda detail: detail.update({"network": [{**detail["network"][0], "http_status": 500}]}),
+        lambda detail: detail.update({"network": [{**detail["network"][0], "request": '{"content":"other"}'}]}),
+        lambda detail: detail.update({"network": []}),
+    ):
+        observation = _observation(c, text=AI_DISCLOSURE_TEXT, confirmed=True, evidence="network")
+        detail = json.loads(observation["responses"][0]["payload"])
+        detail["ai_disclosure"]["network"] = []
+        detail["network"] = [{"method": "POST", "url": "https://api-c.liepin.com/api/com.liepin.im.c.chat.send-common-msg",
+                              "http_status": 200, "request": json.dumps({"content": AI_DISCLOSURE_TEXT}, ensure_ascii=False)}]
+        mutate(detail)
+        observation["responses"][0]["payload"] = json.dumps(detail, ensure_ascii=False)
+        flow.handle_record_pdf_interaction({**params, "action": "ai_disclosure",
+                                            "delivery_ref": packet["delivery_ref"],
+                                            "observation": observation})
+        q = agent._load_queue(agent._get_queue_file("run"))
+        assert q["pdf_delivery"].get("ai_disclosure") is None

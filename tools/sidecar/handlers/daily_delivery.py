@@ -31,9 +31,14 @@ def scope_item(run_id,*,fresh=False):
                 company=c['company'],position=c['position'],pdf_path=sealed['resume_path'],job_url=c['job_url'],matching_score=c.get('matching_score'),
                 **({'pdf_filename':c['pdf_filename']} if 'pdf_filename' in c else {}))
 
+def _effective_upload_state(queue):
+    # 与 Submissions 共用同一归一：旧队列已自证未派发（not_submitted 且无写请求）不算未决上传。
+    from tools.sidecar.handlers.native_pdf import _upload_effective_state
+    return _upload_effective_state(queue)
+
 def _needs_recovery(queue):
     if queue.get('pdf_delivery',{}).get('state')=='success':return False
-    return bool(queue.get('daily_interruption') or queue.get('pdf_upload',{}).get('state')=='unknown')
+    return bool(queue.get('daily_interruption') or _effective_upload_state(queue)=='unknown')
 
 
 def _recovery_queues():
@@ -66,12 +71,14 @@ def _progress_item(item,batch_id,batch_state,attempt_state):
         elif q.get('daily_cycle')!=batch_id:phase='not_started'
         else:
             delivery=q.get('pdf_delivery',{});upload=q.get('pdf_upload',{})
+            upload_state=_effective_upload_state(q)
             if attempt_state=='in_flight' and batch_state!='running':phase='receipt_unknown'
             elif delivery.get('final_send_started'):phase='awaiting_receipt' if batch_state=='running' else 'receipt_unknown'
             elif delivery or attempt_state=='in_flight':phase='delivery_in_progress' if batch_state=='running' else 'receipt_unknown'
-            elif upload.get('state')=='unknown':phase='upload_unconfirmed'
-            elif upload.get('state')=='in_flight':phase='uploading' if batch_state=='running' else 'upload_unconfirmed'
+            elif upload_state=='unknown':phase='upload_unconfirmed'
+            elif upload_state=='in_flight':phase='uploading' if batch_state=='running' else 'upload_unconfirmed'
             elif q.get('attachment_binding'):phase='attachment_verified'
+            elif upload_state=='not_submitted':phase='not_started'
             elif upload:phase='binding_pending'
             else:phase='not_started'
         result.update(phase=phase,recovery_required=phase not in {'success','failed'} and

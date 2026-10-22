@@ -735,6 +735,21 @@ pub async fn probe_snapshot_from_trigger(app:AppHandle,window:WebviewWindow,run_
     Ok(json!({"page_url":page_url,"observation":observation}))
 }
 
+pub async fn probe_chat_messages_from_trigger(app:AppHandle,window:WebviewWindow,job_url:String)->Result<Value,String>{
+    // 只读探测：导航到目标岗位、幂等打开沟通抽屉并读取消息/简历发送痕迹；不发送、不投递。
+    let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;
+    let target:Url=job_url.parse().map_err(|_|"INVALID_PDF_TARGET")?;
+    if !allowed_navigation(&target){return Err("INVALID_PDF_TARGET".into());}
+    ensure_probe_session(&app,&window).await?;
+    let browser=app.get_webview_window(LABEL).ok_or("NATIVE_SESSION_CLOSED")?;
+    browser.navigate(target).map_err(|_|"NATIVE_PDF_TARGET_OPEN_FAILED")?;
+    probe_sleep_ms(4000).await?;
+    let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
+    let payload=json!({"filename":"chat_probe"});
+    let observation=run_pdf_script(&app,&browser,include_str!("liepin_native_chat_messages_probe.js"),&payload,&nonce).await?;
+    Ok(json!({"page_url":browser.url().map(|u|u.to_string()).unwrap_or_default(),"observation":observation}))
+}
+
 pub async fn probe_resume_dialog_from_trigger(app:AppHandle,window:WebviewWindow,run_id:String)->Result<Value,String>{
     // 探测 2/2：在已打开的沟通页面点「发简历」，只抓确认弹窗真实字段；不选附件、不发送。
     let _guard=NativeOperationGuard::acquire(app.state::<NativeLiepinSession>().operation_busy.clone())?;

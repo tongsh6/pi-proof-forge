@@ -1091,10 +1091,29 @@ export interface QuickRunStartOptions {
   [key: string]: unknown;
 }
 
+/** Quick Run 单个阶段的真实进度；status 与页面 StageStatus 取值一致。 */
+export interface QuickRunStageProgress {
+  key: "extract" | "match" | "generate" | "evaluate" | string;
+  status: "waiting" | "running" | "done" | "error" | "skipped";
+  started_at?: string;
+  finished_at?: string;
+  elapsed_seconds?: number;
+}
+
+export interface QuickRunProgress {
+  stages: QuickRunStageProgress[];
+  current_stage?: string | null;
+  updated_at?: string;
+}
+
 export interface QuickRunStartResult extends RpcResultBase {
   career_direction?:CareerDirection|null;
   run_id: string;
   status: string;
+  started_at?: string;
+  finished_at?: string;
+  /** 后端异步执行时逐阶段回写进度；start 立即返回 RUNNING，get 轮询读取。 */
+  progress?: QuickRunProgress;
   exit_code?: number | null;
   run_record?: string;
   summary?: string;

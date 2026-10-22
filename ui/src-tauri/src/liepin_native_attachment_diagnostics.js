@@ -1,52 +1,63 @@
 (async () => {
+  // 只读诊断：确认「附件简历」区状态与上传入口；需要时点一次「+」打开上传弹窗后关闭，不选择文件。
   const nonce=UPLOAD_NONCE;
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const visible=e=>Boolean(e && e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
-  const fileInputs=()=>Array.from(document.querySelectorAll('input[type="file"]')).map(e=>({accept:String(e.accept||'').slice(0,60),disabled:e.disabled,visible:visible(e),cls:String(e.className||'').slice(0,80)}));
-  const info={url:location.href,titles:[],ancestors:[],clickables:[],clicked:null,modals:[],inputs_before:[],inputs_after:[]};
-  const finish=()=>{
-    info.inputs_after=fileInputs();
-    // 回传走 not_submitted 状态并按 ≤170 字符分片，以通过宿主侧 normalize_upload_observation 的校验（每条 hint ≤180，最多 20 条）。
-    const text=JSON.stringify(info);
-    const hints=[];
-    for(let i=0;i<text.length && hints.length<20;i+=170) hints.push(text.slice(i,i+170));
-    const result={status:'not_submitted',filename:'diagnostic',hints,responses:[]};
-    location.href='piproofforge-pdf://result?nonce='+encodeURIComponent(nonce)+'&payload='+encodeURIComponent(JSON.stringify(result));
+  const classOf=e=>String(e.className?.baseVal ?? e.className ?? '');
+  const rect=e=>{const r=e.getBoundingClientRect();return Math.round(r.x)+','+Math.round(r.y)+','+Math.round(r.width)+'x'+Math.round(r.height);};
+  const line=e=>[String(e.tagName||'').slice(0,6),classOf(e).slice(0,40),rect(e),(e.innerText||e.textContent||'').replace(/\s+/g,' ').trim().slice(0,26),(e.getAttribute('aria-label')||'').slice(0,14)].join('|');
+  const lines=[];const push=(p,v)=>lines.push(String(p)+'='+String(v).slice(0,168));
+  const pointerClick=el=>{
+    const r=typeof el.getBoundingClientRect==='function'?el.getBoundingClientRect():{x:0,y:0,width:0,height:0};
+    const opts={bubbles:true,cancelable:true,view:window,clientX:r.x+Math.max(1,Math.min(r.width/2,8)),clientY:r.y+Math.max(1,Math.min(r.height/2,8)),button:0};
+    for(const type of ['pointerover','mouseover','mousemove','pointerdown','mousedown','pointerup','mouseup','click']){try{el.dispatchEvent(new MouseEvent(type,opts));}catch{}}
+  };
+  const findSection=()=>{
+    for(const title of Array.from(document.querySelectorAll('[class*="sectionTitle"]')).filter(visible)){
+      if((title.textContent||'').trim()!=='附件简历')continue;
+      let section=title.parentElement;
+      while(section && !/section--/.test(classOf(section)))section=section.parentElement;
+      if(section)return section;
+    }
+    return null;
   };
   try{
     window.scrollTo({top:document.body.scrollHeight,behavior:'instant'});
-    for (const el of Array.from(document.querySelectorAll('div,main,section')).slice(0,400)) {
-      try { if (el.scrollHeight > el.clientHeight + 200) el.scrollTop = el.scrollHeight; } catch {}
+    for(const el of Array.from(document.querySelectorAll('div,main,section')).slice(0,400)){
+      try{if(el.scrollHeight>el.clientHeight+200)el.scrollTop=el.scrollHeight;}catch{}
     }
     await wait(1200);
-    info.inputs_before=fileInputs();
-    const all=Array.from(document.querySelectorAll('body *'));
-    const titles=all.filter(e=>visible(e) && (e.textContent||'').trim()==='附件简历' && e.children.length<=4).slice(0,3);
-    for(const title of titles){
-      info.titles.push({tag:title.tagName,cls:String(title.className||'').slice(0,80)});
-      let node=title;
-      for(let d=0;node && d<5;d++,node=node.parentElement){
-        if(d>=1) info.ancestors.push({d,tag:node.tagName,cls:String(node.className||'').slice(0,80),text:(node.innerText||'').replace(/\s+/g,' ').slice(0,80)});
-        for(const el of node.querySelectorAll('button,[role="button"],i,span,a,svg')){
-          if(!visible(el)) continue;
-          const text=(el.textContent||'').trim();
-          const cls=String(el.className?.baseVal ?? el.className ?? '');
-          if(text==='+' || text==='添加' || /plus|add|upload|attach/i.test(cls) || /添加|上传/.test(el.getAttribute('aria-label')||'')){
-            if(!info.clickables.some(c=>c.html===String(el.outerHTML||'').slice(0,160)))
-              info.clickables.push({tag:el.tagName,cls:cls.slice(0,80),text:text.slice(0,20),html:String(el.outerHTML||'').slice(0,160)});
-          }
+    push('URL',location.href);
+    const section=findSection();
+    push('SECTION',section?'found @y'+Math.round(section.getBoundingClientRect().y):'not_found');
+    if(!section){
+      const headers=Array.from(document.querySelectorAll('[class*="sectionHeader"]')).filter(visible).slice(0,4).map(line);
+      for(const item of headers)push('HDR',item);
+    }else{
+      const cards=Array.from(section.querySelectorAll('[class*="attachmentCard--"], .attachment-view-box .resume-card-container')).filter(visible);
+      const addIcon=Array.from(section.querySelectorAll('[data-nick="resume-add-icon"],[class*="addIcon"]')).filter(visible)[0];
+      push('CARDS',cards.length);
+      push('ADD_ICON',addIcon?'present':'absent');
+      if(!addIcon && cards.length>=3)push('QUOTA','attachment_quota_reached: 已达平台附件上限 3 个，上传入口不会渲染');
+      if(addIcon){
+        pointerClick(addIcon);
+        await wait(900);
+        const modal=Array.from(document.querySelectorAll('[class*="ant-c-modal-root"],[class*="modal"],[role="dialog"]')).filter(visible).filter(e=>(e.getBoundingClientRect().width||0)>100&&/上传|拖拽|选择文件|附件/.test(e.innerText||''))[0];
+        const inputs=Array.from(document.querySelectorAll('input[type="file"]')).filter(e=>!e.disabled);
+        push('UPLOAD_UI',(modal?'modal='+classOf(modal).slice(0,30):'modal=none')+' fileInputs='+inputs.length);
+        if(modal){
+          const zones=Array.from(modal.querySelectorAll('*')).filter(e=>visible(e)&&/拖拽|拖入|点击上传|选择文件/.test(e.textContent||'')&&e.children.length<=4);
+          push('DROPZONE',zones.length?(zones[zones.length-1].textContent||'').replace(/\s+/g,' ').slice(0,80):'modal_itself');
+          const closers=Array.from(modal.querySelectorAll('button')).filter(e=>visible(e)&&/取\s*消|关\s*闭|cancel/i.test(e.textContent||''));
+          if(closers.length)pointerClick(closers[closers.length-1]);
+          else document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));
+          await wait(300);
         }
       }
+      const sample=cards.slice(0,1).map(c=>(c.innerText||'').replace(/\s+/g,' ').trim().slice(0,60));
+      for(const item of sample)push('SAMPLE',item);
     }
-    // 主动点一次首个候选，记录是否弹出上传弹窗或生成 file 控件；只打开弹窗，不选择文件。
-    const target=info.clickables[0] && Array.from(document.querySelectorAll(info.clickables[0].tag.toLowerCase())).find(el=>String(el.outerHTML||'').slice(0,160)===info.clickables[0].html);
-    if(target){
-      target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
-      await wait(800);
-      info.clicked=info.clickables[0].html.slice(0,80);
-    }
-    info.modals=Array.from(document.querySelectorAll('[class*="modal"],[class*="Modal"],[class*="dialog"],[class*="Dialog"],[role="dialog"]'))
-      .filter(visible).slice(0,4).map(e=>({cls:String(e.className||'').slice(0,80),text:(e.innerText||'').replace(/\s+/g,' ').slice(0,120)}));
-    finish();
-  }catch(e){info.error=String(e).slice(0,120);finish();}
+  }catch(e){push('ERR',String(e).slice(0,160));}
+  const result={status:'not_submitted',filename:'diagnostic',hints:lines.slice(0,20),responses:[]};
+  location.href='piproofforge-pdf://result?nonce='+encodeURIComponent(nonce)+'&payload='+encodeURIComponent(JSON.stringify(result));
 })();

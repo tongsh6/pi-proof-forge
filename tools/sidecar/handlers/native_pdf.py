@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 import json
 import re
 import unicodedata
@@ -40,6 +41,114 @@ def _sanitize_observation(value, depth=0):
     return value
 
 
+_UPLOAD_WRITE_METHODS={'POST','PUT','PATCH'}
+_EMBEDDED_URL_QUERY=re.compile(r'(?i)\b(https?://[^\s?#]+)[?#][^\s]*')
+_HINT_CREDENTIAL=re.compile(r'(?i)\b(?:token|cookie|secret|password|authorization|signature|csrf|credential|accesskey|tk)=[^\s&#,;]*')
+
+
+def _upload_dispatched(observation):
+    """上传脚本只采集上传/附件请求；出现写方法响应说明已派发，结果不能算确定未提交。"""
+    if not isinstance(observation,dict):return False
+    responses=observation.get('responses')
+    if isinstance(responses,str):
+        try:responses=json.loads(responses)
+        except ValueError:return False
+    if not isinstance(responses,list):return False
+    return any(isinstance(item,dict) and str(item.get('method') or '').strip().upper() in _UPLOAD_WRITE_METHODS
+               for item in responses)
+
+
+def _upload_effective_state(queue):
+    """旧队列已证明未派发却写成 unknown 时只读归一为 not_submitted；不改写原文件。"""
+    upload=queue.get('pdf_upload') if isinstance(queue,dict) else None
+    if not isinstance(upload,dict):return ''
+    state=upload.get('state') if isinstance(upload.get('state'),str) else ''
+    observation=upload.get('observation')
+    if (state=='unknown' and isinstance(observation,dict) and observation.get('status')=='not_submitted'
+            and not _upload_dispatched(observation)):
+        return 'not_submitted'
+    return state
+
+
+def _public_upload_hints(upload):
+    observation=upload.get('observation') if isinstance(upload,dict) else None
+    hints=observation.get('hints') if isinstance(observation,dict) else None
+    if not isinstance(hints,list):return []
+    result=[]
+    for hint in hints:
+        if not isinstance(hint,str):continue
+        text=_sanitize_observation(hint)
+        if not isinstance(text,str):continue
+        # 页面提示可能夹带上传/附件 URL：去掉任意位置的 query/fragment，并遮盖文本里的凭据键值。
+        text=_EMBEDDED_URL_QUERY.sub(r'\1',text)
+        text=_HINT_CREDENTIAL.sub(lambda match:re.split(r'=',match.group(0),maxsplit=1)[0]+'=***',text)
+        result.append(text[:180])
+        if len(result)>=10:break
+    return result
+
+
+def _existing_attempt_hint(*, lead_id='', job_key=''):
+    """同岗位已有投递尝试时，返回已固定运行的 quick_run_id/PDF 名，供错误提示引导继续原流程。
+
+    优先按 attempts 表里的 job_key→run_id 精确找已占位运行（避免同岗位多个历史准备队列挑错），
+    找不到时退回只读扫描 review_queue。不读平台、不改队列，找不到返回空串。
+    """
+    def hint_from_queue(prior, candidate):
+        return f":quick_run_id={prior.get('quick_run_id')}|pdf={candidate.get('pdf_filename','')}"
+
+    def load_queue_if_valid(run_id):
+        if not isinstance(run_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',run_id):
+            return None
+        try:
+            prior=json.loads((agent._REVIEW_QUEUE_DIR/f'{run_id}.json').read_text(encoding='utf-8'))
+        except (OSError,ValueError,TypeError):
+            return None
+        return prior if isinstance(prior,dict) and prior.get('run_id')==run_id and prior.get('quick_run_id') else None
+
+    if job_key:
+        try:
+            store=DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3')
+            with store._connection() as db:
+                row=db.execute("SELECT run_id FROM attempts WHERE job_key=? ORDER BY rowid DESC LIMIT 1",(job_key,)).fetchone()
+            prior=load_queue_if_valid(row[0] if row else '')
+            if prior:
+                candidates=prior.get('candidates') if isinstance(prior.get('candidates'),list) else []
+                candidate=candidates[0] if candidates and isinstance(candidates[0],dict) else {}
+                return hint_from_queue(prior,candidate)
+        except (OSError,ValueError,TypeError,sqlite3.Error):
+            pass
+
+    entries=[]
+    try:
+        for path in agent._REVIEW_QUEUE_DIR.glob('*.json'):
+            try:
+                prior=json.loads(path.read_text(encoding='utf-8'))
+            except (OSError,ValueError,TypeError):
+                continue
+            if not isinstance(prior,dict) or prior.get('run_id')!=path.stem or not prior.get('quick_run_id'):
+                continue
+            candidates=prior.get('candidates')
+            candidate=candidates[0] if isinstance(candidates,list) and candidates and isinstance(candidates[0],dict) else {}
+            if lead_id and candidate.get('job_lead_id')!=lead_id:
+                continue
+            if job_key:
+                try:
+                    request=DeliveryRequest('',candidate.get('job_lead_id',''),'liepin','',candidate.get('job_url',''),False,candidate)
+                    if _job_key(request)!=job_key:
+                        continue
+                except (KeyError,TypeError,AttributeError):
+                    continue
+            # 优先已有上传/投递进度的队列，其次按最近修改。
+            started=1 if (prior.get('pdf_upload') or prior.get('pdf_delivery')) else 0
+            entries.append((started,path.stat().st_mtime_ns,prior,candidate))
+    except OSError:
+        return ''
+    if not entries:
+        return ''
+    entries.sort(key=lambda item:(item[0],item[1]),reverse=True)
+    _,_,prior,candidate=entries[0]
+    return hint_from_queue(prior,candidate)
+
 def _local_file(value, suffix):
     path=Path(value)
     if not path.is_absolute():path=agent._PROJECT_ROOT/path
@@ -69,8 +178,9 @@ def _validated_generation(quick_run_id):
     if match_exclusion(lead.get('company',''),lead.get('legal_entity',''),load_exclusion_policy(resolve_policy_path(agent._PROJECT_ROOT))):
         raise ValueError('pdf_target_excluded')
     request=DeliveryRequest('',lead_id,'liepin','',lead['url'],False,lead)
-    if DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3').has_attempt(_job_key(request)):
-        raise ValueError('delivery_already_attempted')
+    request_job_key=_job_key(request)
+    if DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3').has_attempt(request_job_key):
+        raise ValueError('delivery_already_attempted'+_existing_attempt_hint(lead_id=lead_id,job_key=request_job_key))
     pdf=_local_file(saved['resume_pdf'],'.pdf')
     if not pdf.resolve().is_relative_to((agent._PROJECT_ROOT/'outputs').resolve()) or pdf.stat().st_size>10_000_000:
         raise ValueError('invalid_native_pdf_artifact')
@@ -144,12 +254,35 @@ def _disclosure_observation_matches(detail,candidate):
         if sent.get('text')!=AI_DISCLOSURE_TEXT or sent.get('confirmed') is not True:return False
         evidence=sent.get('evidence')
         if evidence=='network':
-            items=sent.get('network') or []
+            # 发送脚本历史上把证据放在 observation 顶层 network；兼容两种位置，但证据要求不变。
+            items=sent.get('network') or detail.get('network') or []
             return any(isinstance(item,dict) and item.get('http_status')==200
                 and AI_DISCLOSURE_TEXT in str(item.get('request','')) for item in items)
         if evidence=='dom':return sent.get('dom_confirmed') is True
         return False
     except (KeyError,TypeError,AttributeError):return False
+
+
+def _pre_send_reupload_allowed(queue):
+    """附件在平台被移除但尚未最终发送时，允许重新上传同一份已批准 PDF 以继续本次投递。
+
+    只放行“已进入投递但 final_send_started 之前”的附件重传，不解除候选/内容/额度门禁，
+    也不改变发送阶段的一次性确认；真正 final send 开始后必须走回执核验，不能再重传。
+    """
+    delivery=queue.get('pdf_delivery') if isinstance(queue.get('pdf_delivery'),dict) else {}
+    if not delivery or delivery.get('final_send_started') or delivery.get('state')=='success':
+        return False
+    if delivery.get('state') not in {'delivery_in_flight','communication_started','resume_interaction_pending'}:
+        return False
+    if (queue.get('pdf_upload') or {}).get('state')=='in_flight':
+        return False
+    binding=queue.get('attachment_binding')
+    if isinstance(binding,dict) and binding.get('pdf_sha256'):
+        return False
+    candidates=queue.get('candidates')
+    candidate=candidates[0] if isinstance(candidates,list) and candidates and isinstance(candidates[0],dict) else {}
+    return (candidate.get('status')=='approved' and candidate.get('delivery_kind')=='generated_pdf'
+            and bool((queue.get('content_review') or {}).get('confirmed')))
 
 
 def _public(queue):
@@ -161,6 +294,10 @@ def _public(queue):
             or quality.get('pdf_sha256')!=sealed['pdf_sha256'] or quality.get('resume_sha256')!=sealed['markdown_sha256']):
         raise ValueError('quality_snapshot_changed')
     recovery_only=bool(queue.get('daily_interruption') and queue.get('pdf_delivery',{}).get('state')!='success')
+    upload=queue.get('pdf_upload') if isinstance(queue.get('pdf_upload'),dict) else {}
+    upload_state=_upload_effective_state(queue)
+    history=queue.get('pdf_upload_history')
+    history=history if isinstance(history,list) else []
     return {'run_id':queue['run_id'],'company':c['company'],'position':c['position'],
             'job_lead_id':c['job_lead_id'],'matching_score':c.get('matching_score'),
             'quality':quality if quality is not None else {'status':'unrecorded'},
@@ -168,7 +305,13 @@ def _public(queue):
             'account_effects_accepted':bool(queue.get('pdf_upload',{}).get('accepted_account_effects')),
             'verification_error':queue.get('attachment_binding_error',''),
             'single_delivery_authorized':bool(queue.get('single_delivery_authorization')),
-            'phase':queue.get('pdf_delivery',{}).get('state') or ('attachment_verified' if queue.get('attachment_binding') else queue.get('pdf_upload',{}).get('state','prepared')),
+            'phase':queue.get('pdf_delivery',{}).get('state') or ('attachment_verified' if queue.get('attachment_binding') else upload_state or 'prepared'),
+            'upload_state':upload_state,
+            'upload_attempts':len(history)+(1 if upload else 0),
+            'upload_hints':_public_upload_hints(upload),
+            'can_retry_upload':upload_state in ('','not_submitted'),
+            'can_reupload_attachment':_pre_send_reupload_allowed(queue),
+            'attachment_bound':bool(isinstance(queue.get('attachment_binding'),dict) and queue['attachment_binding'].get('pdf_sha256')),
             'can_confirm_send':not recovery_only and _confirmation_matches(queue),'recovery_only':recovery_only,
             'platform_filename':queue.get('attachment_binding',{}).get('filename',''),
             'ai_disclosure_enabled':_ai_disclosure_enabled(),
@@ -206,8 +349,15 @@ def handle_begin_upload(params):
         q=agent._load_queue(path)
         if q.get('run_id')!=run_id or not q.get('quick_run_id'):raise ValueError('pdf_review_required')
         previous=q.get('pdf_upload')
-        if previous and (previous.get('state')!='not_submitted' or previous.get('reconciliation',{}).get('reason')!='platform_client_filename_rejected'):
+        reupload_recovery=bool(previous) and _pre_send_reupload_allowed(q)
+        # 只有已证明未派发（not_submitted，含旧队列只读归一）或“已进入投递但尚未最终发送且平台附件缺失”的恢复场景才允许重传；
+        # unknown/in_flight/uploaded_unverified 的普通重试仍拒绝。
+        if previous and _upload_effective_state(q)!='not_submitted' and not reupload_recovery:
             raise ValueError('pdf_upload_already_attempted')
+        if reupload_recovery:
+            # 旧绑定的 fileId/attachmentId 已随平台附件失效，必须清掉，等新上传核验后再绑定。
+            q.pop('attachment_binding',None)
+            q.pop('attachment_binding_error',None)
         candidate=q['candidates'][0]
         if candidate.get('status') not in ({'approved'} if previous else {'pending'}) or candidate.get('delivery_kind')!='generated_pdf':raise ValueError('pdf_review_required')
         _public(q)  # 批准和释放文件前必须校验绑定，不能因质量正文被删除而跳过。
@@ -241,9 +391,13 @@ def handle_finish_upload(params):
         if upload.get('state')!='in_flight' or upload.get('upload_ref')!=params.get('upload_ref'):
             raise ValueError('pdf_upload_not_pending')
         if observation.get('filename')!=upload['filename']:raise ValueError('pdf_upload_identity_mismatch')
+        # 只有“未派发且观察自证 not_submitted”才是确定性未提交；有写请求或状态未知/超时一律按 unknown 禁止重传。
+        status=observation.get('status')
+        if status=='uploaded':state='uploaded_unverified'
+        elif status=='not_submitted' and not _upload_dispatched(observation):state='not_submitted'
+        else:state='unknown'
         # 即使页面宣称成功，仍须另行验证平台附件身份/内容，不能直接进入发送。
-        upload.update(state='uploaded_unverified' if observation.get('status')=='uploaded' else 'unknown',
-            observation=_sanitize_observation(observation),finished_at=agent._utcnow_iso())
+        upload.update(state=state,observation=_sanitize_observation(observation),finished_at=agent._utcnow_iso())
         agent._save_queue(path,q)
         return {'meta':params['meta'],**_public(q)}
 
@@ -385,7 +539,7 @@ def handle_begin_pdf_delivery(params):
             batch=attempts.active_batch()
             if not batch or batch.get('allowed_delivery_kind')!='generated_pdf':raise ValueError('pdf_batch_authorization_required')
             ref=attempts.reserve(_job_key(request),run_id,sealed['pdf_sha256'],delivery_kind='generated_pdf')
-        if not ref:raise ValueError('delivery_already_attempted')
+        if not ref:raise ValueError('delivery_already_attempted'+_existing_attempt_hint(job_key=_job_key(request)))
         from tools.submission.storage import SubmissionRecorder
         recorder=SubmissionRecorder(agent._PROJECT_ROOT/'outputs/submissions','liepin','submit',run_id='native-'+ref,transport='browser')
         recorder.run_dir.chmod(0o700)
@@ -473,8 +627,11 @@ def handle_pdf_interaction_packet(params):
         q=agent._load_queue(path);d=q.get('pdf_delivery',{});c=q['candidates'][0]
         sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,c)
         binding=q.get('attachment_binding',{})
-        if d.get('state') not in {'communication_started','resume_interaction_pending','final_send_pending'} or binding.get('pdf_sha256')!=sealed['pdf_sha256']:
+        if d.get('state') not in {'communication_started','resume_interaction_pending','final_send_pending'}:
             raise ValueError('pdf_delivery_not_pending')
+        if binding.get('pdf_sha256')!=sealed['pdf_sha256']:
+            # 状态在投递中但附件绑定缺失/失效：提示先重新核验附件，避免误报“投递流程未开始”。
+            raise ValueError('attachment_verification_required')
         if action=='prepare':
             if q.get('daily_interruption'):raise ValueError('daily_recovery_required')
             # 开关开启时，准备前必须先发出 AI 声明；声明本身是独立、可核对的一次聊天写入。
@@ -519,6 +676,26 @@ def handle_record_pdf_interaction(params):
         return {'meta':params['meta'],**_public(q)}
 
 
+def _record_verified_attachment_identity(saved,binding):
+    """把原生回执已验证的实际发送附件身份写入提交日志；只补回执证明的字段，返回是否发生变化。"""
+    try:
+        inputs=saved['input_artifacts'];attachment_id=binding['attachment_id'];file_id=binding['file_id']
+    except (KeyError,TypeError):return False
+    if (not isinstance(inputs,dict) or not isinstance(attachment_id,str) or not attachment_id
+            or not isinstance(file_id,str) or not file_id):return False
+    changed=False
+    if inputs.get('attachment_file_id')!=file_id:
+        inputs['attachment_file_id']=file_id;changed=True
+    if inputs.get('attachment_id')!=attachment_id:
+        # 发送前重传会让开始投递时的旧附件身份过期；保留旧值供审计，不删除任何既有证据。
+        history=inputs.get('attachment_id_history')
+        history=history if isinstance(history,list) else []
+        inputs['attachment_id_history']=history+[{'attachment_id':inputs.get('attachment_id',''),
+            'source':'native_receipt','reconciled_at':agent._utcnow_iso()}]
+        inputs['attachment_id']=attachment_id;changed=True
+    return changed
+
+
 def handle_verify_pdf_receipt(params):
     """仅核验已保存的 App 业务响应，不联网、不补发。"""
     from tools.infra.liepin_native_receipt import classify_native_resume_receipt
@@ -558,6 +735,8 @@ def handle_verify_pdf_receipt(params):
         saved=json.loads((directory/'submission_log.json').read_text())
         if (saved.get('input_artifacts',{}).get('delivery_attempt_id')!=d['attempt_id']
             or saved['input_artifacts'].get('resume_pdf_sha256')!=sealed['pdf_sha256']):raise ValueError('native_receipt_log_mismatch')
+        # 回执已证明实际发送的附件身份；同步进提交日志，避免发送前重传后日志身份过期。
+        identity_changed=_record_verified_attachment_identity(saved,binding)
         if saved.get('status')!='success':
             recorder=SubmissionRecorder(agent._PROJECT_ROOT/'outputs/submissions','liepin','submit',run_id=submission_id,transport='browser')
             steps=[SubmissionStep(**step) for step in saved.pop('steps')]
@@ -572,6 +751,10 @@ def handle_verify_pdf_receipt(params):
             recorder.add_step('receipt','success',json.dumps({'parser_version':1,'http_status':200,'business_flag':1,'receipt_sha256':archive_sha}))
             recorder.finish('success')
             recorder.log_json.chmod(0o600);recorder.log_yaml.chmod(0o600)
+        elif identity_changed:
+            # 幂等重复核验：只原子校正日志中的附件身份，不重复 consume 配额、不改已归档回执与步骤。
+            atomic_write_json(directory/'submission_log.json',saved)
+            (directory/'submission_log.json').chmod(0o600)
         attempts=DeliveryAttemptStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3')
         try:attempts.finish(d['attempt_id'],'success')
         except ValueError as error:
@@ -594,13 +777,50 @@ class _AttachmentMissing(Exception):
     pass
 
 
+def _reconcile_removal_evidence(q,run_id,log_path):
+    """发送前重传使日志附件身份过期时，仅在校验本地归档回执完整自证后校正日志；前提不成立返回 False。"""
+    from tools.infra.liepin_native_receipt import SEND_RESUME_URL,classify_native_resume_receipt
+    try:
+        c=q['candidates'][0];d=q.get('pdf_delivery',{});binding=q.get('attachment_binding',{})
+        raw=log_path.read_bytes();saved=json.loads(raw)
+        archive_raw=(log_path.parent/'native_receipt.json').read_bytes();archive=json.loads(archive_raw)
+        inputs=saved['input_artifacts'];receipt=archive['receipt']
+        parsed=classify_native_resume_receipt({'url':SEND_RESUME_URL,'method':'POST','http_status':receipt.get('http_status'),
+            'request':json.dumps(receipt['request']),'response':json.dumps(receipt['response'])},binding.get('attachment_id'))
+        # 逐项确认：只有“日志是同一成功投递、归档回执字节与摘要一致、队列/快照绑定一致、按当前绑定重算回执完全相等”才允许校正。
+        if not (saved.get('status')=='success' and saved.get('run_id')==d.get('submission_id')
+                and hashlib.sha256(archive_raw).hexdigest()==inputs.get('native_receipt_sha256')==d.get('native_receipt_sha256')
+                and archive.get('parent_run_id')==run_id and archive.get('candidate_id')==c.get('job_lead_id')
+                and archive.get('pdf_sha256')==inputs.get('resume_pdf_sha256')==binding.get('pdf_sha256')
+                and archive.get('file_id')==binding.get('file_id') and d.get('final_send_started') is True
+                and inputs.get('delivery_attempt_id')==d.get('attempt_id')
+                and inputs.get('attachment_id') not in (None,'',binding.get('attachment_id'))
+                and parsed.get('status')=='success' and parsed==receipt):
+            return False
+        previous=inputs.get('attachment_id')
+        if not _record_verified_attachment_identity(saved,binding):return False
+        atomic_write_json(log_path,saved);log_path.chmod(0o600)
+        d.setdefault('evidence_reconciliations',[]).append({'reason':'receipt_binding_mismatch',
+            'previous_attachment_id':previous,'attachment_id':binding['attachment_id'],'source':'native_receipt',
+            'log_sha256_before':hashlib.sha256(raw).hexdigest(),'log_sha256_after':hashlib.sha256(log_path.read_bytes()).hexdigest(),
+            'reconciled_at':agent._utcnow_iso()})
+        return True
+    except (OSError,ValueError,KeyError,TypeError,AttributeError):return False
+
+
 def _checked_removal_target(q,run_id):
     from tools.infra.liepin_attachment_contract import attachment_filename_matches
     c=q['candidates'][0];d=q.get('pdf_delivery',{});b=q.get('attachment_binding',{})
     if d.get('state')!='success':raise ValueError('attachment_removal_success_required')
     from tools.infra.submission_evidence import inspect_submission_evidence
-    proof=inspect_submission_evidence(agent._PROJECT_ROOT,agent._PROJECT_ROOT/'outputs/submissions/liepin'/_id(d['submission_id'])/'submission_log.json')
-    if proof['status']!='verified':raise ValueError('attachment_removal_success_required')
+    log_path=agent._PROJECT_ROOT/'outputs/submissions/liepin'/_id(d['submission_id'])/'submission_log.json'
+    proof=inspect_submission_evidence(agent._PROJECT_ROOT,log_path)
+    if proof['status']!='verified' and proof.get('reason')=='receipt_binding_mismatch':
+        # 唯一可自动修复的证据缺口：发送前重传后日志仍记旧附件身份。校正后必须重新复核，不自报成功。
+        _reconcile_removal_evidence(q,run_id,log_path)
+        proof=inspect_submission_evidence(agent._PROJECT_ROOT,log_path)
+    if proof['status']!='verified':
+        raise ValueError('attachment_removal_evidence_unverified'+(':'+proof['reason'] if proof.get('reason') else ''))
     sealed=ReviewSnapshotStore(agent._AGENT_RUN_DIR).load(run_id,c)
     try:
         from datetime import datetime,timezone
@@ -611,11 +831,15 @@ def _checked_removal_target(q,run_id):
                 value=json.loads(response['payload']);rows+=value.get('attachments',[]);counts.append(value.get('attachment_count'))
         if not -5<=age<=120 or len(counts)!=1 or type(counts[0]) is not int or not 0<=counts[0]<=50:raise ValueError()
         if not rows:raise _AttachmentMissing()
-        if len(rows)!=1 or counts[0]<1:raise ValueError()
-        record=rows[0];download=record.get('download',{});size=Path(sealed['resume_path']).stat().st_size
-        if (record.get('fileId')!=b['file_id'] or record.get('encryAttachmentId')!=b['attachment_id']
-            or not attachment_filename_matches(record,b['filename'])
-            or record.get('fileSize')!=size or download.get('http_status')!=200 or download.get('byte_length')!=size
+        # 页面可能保留同字节遗留卡：只要求观察完整（行数与计数一致）、fileId 非空唯一，目标卡片恰好一张。
+        if (counts[0]<1 or len(rows)!=counts[0]
+            or any(not isinstance(r,dict) or not isinstance(r.get('fileId'),str) or not r['fileId'] for r in rows)
+            or len({r['fileId'] for r in rows})!=len(rows)):raise ValueError()
+        matching=[r for r in rows if r.get('fileId')==b.get('file_id') and r.get('encryAttachmentId')==b.get('attachment_id')
+                  and attachment_filename_matches(r,b.get('filename',''))]
+        if len(matching)!=1:raise ValueError()
+        record=matching[0];download=record.get('download',{});size=Path(sealed['resume_path']).stat().st_size
+        if (record.get('fileSize')!=size or download.get('http_status')!=200 or download.get('byte_length')!=size
             or download.get('sha256')!=sealed['pdf_sha256'] or b.get('pdf_sha256')!=sealed['pdf_sha256']):raise ValueError()
     except _AttachmentMissing:
         # 页面已完整观察但没有这份附件：多半已在 App 外移除，给出可读原因，不留占位。
