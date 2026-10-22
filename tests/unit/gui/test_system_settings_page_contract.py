@@ -126,6 +126,8 @@ def test_system_settings_i18n_contract_is_complete():
         "effortHigh",
         "effortMax",
         "providerStrataHint",
+        "strataBaseUrlHint",
+        "strataModelManagedHint",
         "keyLocalOptional",
         "keyOptionalPlaceholder",
         "thinkingModeHintStrata",
@@ -155,7 +157,7 @@ def test_deepseek_provider_defaults_and_thinking_toggle_are_wired():
     assert '"https://api.deepseek.com"' in source
     assert '"deepseek-flash"' in source
     assert "model: nextDefaults.model" in source
-    assert "base_url: nextDefaults.base_url" in source
+    assert "nextDefaults.base_url" in source
     assert "thinking_enabled: current.thinking_enabled" in source
     assert 'setLlmConnection(null)' in source
     assert "thinking_enabled" in source
@@ -188,13 +190,27 @@ def test_llm_credential_contract_exposes_provider_scoped_status():
 
 def test_strata_provider_defaults_and_option_are_wired():
     source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
+    helper = (ROOT / "ui" / "src" / "lib" / "llmConfig.ts").read_text(
+        encoding="utf-8"
+    )
 
+    # Strata 不再写死模型/引擎端口：统一后台地址来自共享常量，模型由 App 管理。
     assert 'strata: {' in source
-    assert '"http://127.0.0.1:8081/v1"' in source
-    assert '"qwen3.8-flash-next-q2_0"' in source
+    assert 'export const STRATA_UNIFIED_BASE_URL = "http://127.0.0.1:47831/v1";' in helper
+    assert "import { KEYLESS_PROVIDERS, STRATA_UNIFIED_BASE_URL }" in source
+    assert '"http://127.0.0.1:8081/v1"' not in source
+    assert '"qwen3.8-flash-next-q2_0"' not in source
+    assert "model: \"\"," in source
+    assert "base_url: STRATA_UNIFIED_BASE_URL" in source
     assert (
         '{ id: "strata", label: "Strata", hintKey: "providerStrataHint" }' in source
     )
+    # 默认推理后台是 Strata App 统一入口。
+    assert 'const provider = config?.provider ?? "strata";' in source
+    # 端点与模型字段对 Strata 只读，模型需从 /v1/models 选择。
+    assert 'readOnly={llmForm.provider === "strata"}' in source
+    assert "strataBaseUrlHint" in source
+    assert "strataModelManagedHint" in source
     # Provider 顺序：LM Studio / Strata / OpenAI / DeepSeek / OpenAI Compatible。
     assert source.index('{ id: "lm_studio"') < source.index('{ id: "strata"')
     assert source.index('{ id: "strata"') < source.index('{ id: "openai"')
@@ -226,7 +242,10 @@ def test_strata_keyless_credential_status_is_wired():
     source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
 
     # LM Studio 与 Strata 的 keyless 判定收敛在共享 helper。
-    assert 'import { KEYLESS_PROVIDERS } from "@/lib/llmConfig";' in source
+    assert (
+        'import { KEYLESS_PROVIDERS, STRATA_UNIFIED_BASE_URL } from "@/lib/llmConfig";'
+        in source
+    )
     assert "KEYLESS_PROVIDERS.has(provider)" in source
     # 卡片状态点：Strata 无已保存/环境变量 Key 时按“本地服务，无需密钥（可选）”展示。
     assert "providerKeyStatusLabel" in source
@@ -237,3 +256,20 @@ def test_strata_keyless_credential_status_is_wired():
     assert "keyOptionalPlaceholder" in source
     # 清除入口仍只在本机确有凭据文件时显示。
     assert "const canClearProviderKey = configuredProviders.includes(llmForm.provider);" in source
+
+
+def test_unified_backend_address_stays_consistent_across_backend_ui_and_i18n():
+    from tools.infra.llm.client import STRATA_UNIFIED_BASE_URL
+
+    helper = (ROOT / "ui" / "src" / "lib" / "llmConfig.ts").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        f'export const STRATA_UNIFIED_BASE_URL = "{STRATA_UNIFIED_BASE_URL}";'
+        in helper
+    )
+    for i18n_file in I18N_FILES:
+        messages = json.loads(i18n_file.read_text(encoding="utf-8"))
+        llm = messages["pages"]["systemSettings"]["llm"]
+        assert "47831" in llm["providerStrataHint"]
+        assert STRATA_UNIFIED_BASE_URL in llm["strataBaseUrlHint"]

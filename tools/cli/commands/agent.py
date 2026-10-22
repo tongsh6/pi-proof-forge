@@ -116,10 +116,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     llm_client = None
     llm_model = ""
     if args.llm:
-        from tools.infra.llm.client import LLMClient, llm_timeout_from_env
+        from tools.infra.llm.client import (
+            LLMClient,
+            default_base_url,
+            llm_timeout_from_env,
+        )
         import os as _os
-        llm_base = _os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
-        llm_key = _os.getenv("LLM_API_KEY", "lm-studio")
+        provider = _os.getenv("LLM_PROVIDER", "")
+        llm_base = _os.getenv(
+            "LLM_BASE_URL", default_base_url(fallback="http://localhost:1234/v1")
+        )
+        llm_key = _os.getenv(
+            "LLM_API_KEY", "" if provider.strip().lower() == "strata" else "lm-studio"
+        )
         llm_model = args.llm_model or _os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
         llm_client = LLMClient(base_url=llm_base, api_key=llm_key, timeout=llm_timeout_from_env())
 

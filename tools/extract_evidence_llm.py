@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 
 from tools.infra.llm.client import (
     LLMClient,
+    STRATA_UNIFIED_BASE_URL,
     llm_request_available,
     llm_timeout_from_env,
     provider_is_keyless,
@@ -70,14 +71,18 @@ def main() -> int:
         print("Missing API key. Set --api-key or LLM_API_KEY.", file=sys.stderr)
         return 1
     if not base_url:
-        if provider_is_keyless(provider):
+        if provider.strip().lower() == "strata":
+            # Strata App 管理的统一推理后台有唯一固定入口，无需逐次配置地址。
+            base_url = STRATA_UNIFIED_BASE_URL
+        elif provider_is_keyless(provider):
             # keyless 本地 provider 缺少地址时不能悄悄落到 OpenAI 默认地址。
             print(
                 "Missing base URL for keyless local provider. Set --base-url or LLM_BASE_URL.",
                 file=sys.stderr,
             )
             return 1
-        base_url = DEFAULT_BASE_URL
+        else:
+            base_url = DEFAULT_BASE_URL
 
     raw_text = read_text(input_path)
     prompt = load_prompt_template(prompt_path, raw_text)
@@ -93,7 +98,12 @@ def main() -> int:
         ],
         "temperature": 0,
     }
-    client = LLMClient(base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env())
+    client = LLMClient(
+        base_url=base_url,
+        api_key=api_key,
+        timeout=llm_timeout_from_env(),
+        provider=provider,
+    )
     response = client.post_json(client.chat_completions_url, payload)
     content = client.extract_content(response)
     if not content:

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from tools.infra.llm.client import LLMClient
+from tools.infra.llm.client import LLMClient, STRATA_UNIFIED_BASE_URL
 from tools.infra.llm_credentials import LLMApiKeyStore, normalize_provider
 from tools.infra.ai_disclosure import AI_DISCLOSURE_TEXT
 from tools.infra.liepin_readonly import liepin_readonly
@@ -27,6 +27,9 @@ from tools.policy.exclusions import (
     save_legal_entity_exclusion_list,
     save_material_source_roots,
 )
+
+# 默认推理后台：Strata App 管理的统一入口（见 2026-10-22 方案修正）。
+_DEFAULT_LLM_PROVIDER = "strata"
 
 _SUPPORTED_GATE_POLICY_UPDATE_FIELDS = {"delivery_mode", "batch_review"}
 _SUPPORTED_LLM_CONFIG_UPDATE_FIELDS = {
@@ -163,6 +166,9 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
     ):
         # 切换目标 provider 但未提供地址时，不能把该 provider 的密钥发往当前生效端点。
         base_url = ""
+    if requested_provider == "strata":
+        # Strata 只有一套由 App 管理的统一推理后台：不接受页面或旧配置里的其他地址。
+        base_url = STRATA_UNIFIED_BASE_URL
     payload_key = payload.get("api_key") if isinstance(payload, dict) else None
     if isinstance(payload_key, str) and payload_key.strip():
         api_key = payload_key.strip()
@@ -236,11 +242,19 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
         )
         models = client.list_models()
         if not models:
+            if strata_local:
+                message = (
+                    f"{display_label} unified backend is reachable at {models_url} "
+                    "but no model is currently loaded; load a model in Strata App "
+                    "and check again."
+                )
+            else:
+                message = f"{display_label} returned no models from {models_url}."
             return {
                 "meta": {"correlation_id": correlation_id},
                 "status": "blocked",
                 "code": blocked_code,
-                "message": f"{display_label} returned no models from {models_url}.",
+                "message": message,
                 "base_url": base_url,
                 "model_count": 0,
                 "models": [],
@@ -249,7 +263,11 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
             "meta": {"correlation_id": correlation_id},
             "status": "pass",
             "code": "OK",
-            "message": f"{display_label} models endpoint is reachable at {models_url}.",
+            "message": (
+                f"{display_label} unified backend is reachable at {models_url}."
+                if strata_local
+                else f"{display_label} models endpoint is reachable at {models_url}."
+            ),
             "base_url": base_url,
             "model_count": len(models),
             "models": models[:20],
@@ -383,7 +401,8 @@ def handle_settings_clear_llm_api_key(params: dict[str, Any]) -> dict[str, Any]:
 
     scalars, lists = _load_policy_doc()
     active = str(
-        scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai")
+        scalars.get("llm_provider")
+        or os.environ.get("LLM_PROVIDER", _DEFAULT_LLM_PROVIDER)
     ).strip().lower()
     if active == provider:
         for key in (
@@ -431,8 +450,9 @@ def _normalize_thinking_effort(value: object) -> str:
 def _load_llm_config() -> dict[str, Any]:
     scalars, _ = _load_policy_doc()
     provider = str(
-        scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai")
-    ).strip() or "openai"
+        scalars.get("llm_provider")
+        or os.environ.get("LLM_PROVIDER", _DEFAULT_LLM_PROVIDER)
+    ).strip() or _DEFAULT_LLM_PROVIDER
     try:
         provider = normalize_provider(provider)
     except ValueError:
@@ -474,10 +494,16 @@ def _load_llm_config() -> dict[str, Any]:
     except ValueError:
         configured_providers = []
 
+    default_model = "" if provider == "strata" else "gpt-4"
+    base_url: str | None = scalars.get("llm_base_url") or os.environ.get("LLM_BASE_URL")
+    if provider == "strata":
+        # 统一推理后台端点固定；旧配置里直连引擎的 8081/8082 等地址不再生效。
+        base_url = STRATA_UNIFIED_BASE_URL
     return {
         "provider": provider,
-        "model": scalars.get("llm_model") or os.environ.get("LLM_MODEL", "gpt-4"),
-        "base_url": scalars.get("llm_base_url") or os.environ.get("LLM_BASE_URL"),
+        "model": scalars.get("llm_model")
+        or os.environ.get("LLM_MODEL", default_model),
+        "base_url": base_url,
         "api_key_configured": bool(api_key_for_request),
         "api_key_updated_at": updated_at,
         "api_key_for_request": api_key_for_request,
@@ -517,6 +543,15 @@ def _merge_llm_config_payload(
 
 def _save_llm_config(payload: dict[str, Any]) -> Path | None:
     scalars, lists = _load_policy_doc()
+    current_provider = str(
+        scalars.get("llm_provider")
+        or os.environ.get("LLM_PROVIDER", _DEFAULT_LLM_PROVIDER)
+    ).strip()
+    try:
+        current_provider = normalize_provider(current_provider)
+    except ValueError:
+        current_provider = ""
+    target_provider = current_provider
     if "provider" in payload:
         provider = _require_non_empty_str(payload["provider"], "provider")
         try:
@@ -524,6 +559,13 @@ def _save_llm_config(payload: dict[str, Any]) -> Path | None:
         except ValueError:
             raise ValueError("unsupported provider id") from None
         scalars["llm_provider"] = provider
+        target_provider = provider
+    if target_provider != current_provider:
+        # 切换 provider 时模型/端点必须跟新 provider 走；旧值不能继续生效。
+        if "model" not in payload:
+            scalars.pop("llm_model", None)
+        if "base_url" not in payload:
+            scalars.pop("llm_base_url", None)
     if "model" in payload:
         model = _require_non_empty_str(payload["model"], "model")
         scalars["llm_model"] = model
@@ -548,8 +590,8 @@ def _save_llm_config(payload: dict[str, Any]) -> Path | None:
         scalars["llm_thinking_effort"] = effort.strip().lower()
     if "api_key" in payload:
         api_key = _require_non_empty_str(payload["api_key"], "api_key")
-        effective_provider = str(
-            scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai")
+        effective_provider = target_provider or str(
+            scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "")
         )
         try:
             normalized_provider = normalize_provider(effective_provider)
@@ -571,8 +613,12 @@ def _save_llm_config(payload: dict[str, Any]) -> Path | None:
             scalars["llm_api_key_updated_at"] = _utcnow()
             scalars["llm_api_key_placeholder"] = "lm-studio"
 
-    effective_provider = str(
-        scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "openai")
+    if target_provider == "strata":
+        # 统一推理后台只有一个入口：忽略页面/旧配置地址，保存时归一为固定端点。
+        scalars["llm_base_url"] = STRATA_UNIFIED_BASE_URL
+
+    effective_provider = target_provider or str(
+        scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "")
     ).strip()
     try:
         normalized_effective = normalize_provider(effective_provider)
@@ -611,7 +657,7 @@ def _resolve_policy_path() -> Path | None:
 def _provider_label(provider: str) -> str:
     return {
         "lm_studio": "LM Studio",
-        "strata": "Strata",
+        "strata": "Strata App",
         "openai": "OpenAI",
         "deepseek": "DeepSeek",
         "openai_compatible": "OpenAI-compatible provider",

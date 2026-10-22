@@ -1,5 +1,7 @@
 # Proposal: strata-provider-integration
 
+> 2026-10-22 方案修正：下文 Problem / Goals / Non-Goals / Scope / Risks / Expected Outcomes 为 2026-10-21 首次接入的历史口径（8081 / q2_0 / 可编辑端点）；当前口径以文末「2026-10-22 方案修正」为准。
+
 ## Problem
 
 系统设置当前提供 `lm_studio`、`openai`、`deepseek`、`openai_compatible` 预设，但没有 `strata`。用户已在本机运行 Strata 桌面应用（strata-engine），它通过 OpenAI 兼容接口在 `http://127.0.0.1:8081/v1` 提供本地推理（当前模型 `qwen3.8-flash-next-q2_0`），但 App 内没有对应 preset：
@@ -48,3 +50,18 @@
 - Qwen 推理模型在结构化输出时会耗尽小输出预算；本变更对 Strata 的 `json_object` 请求默认 `reasoning_effort=none`，沿用既有阶段纠错，不新增通用重试。
 - 本机 Strata 端口/模型可能变化：页面保留可编辑 base_url/model 与 `/models` 检测，不把默认值写死为唯一事实。
 - 真实 App 页面验收需用户在本机 Strata 运行时执行；未完成前不标记深度验收通过。
+
+## 2026-10-22 方案修正（当前口径）
+
+作者指令：「修改方案 只一套由 Strata App 管理的推理后台统一连接
+`http://127.0.0.1:47831/v1`」。
+
+- **变更**：Strata 不再直连 2026-10-21 的引擎端口 `8081` / 模型 `qwen3.8-flash-next-q2_0`；
+  改为只连接 Strata App 管理的唯一统一推理后台 `http://127.0.0.1:47831/v1`。端点固定
+  （页面只读，后端读取/保存/连接检查都归一），模型由 App 管理并从 `/v1/models` 选择，
+  不写死模型。
+- **默认**：`strata` 成为默认推理后台；LM Studio / OpenAI / DeepSeek / OpenAI Compatible
+  保留为可切换 fallback，预设与行为不变。已保存的其他 provider 配置不自动改写。
+- **连接检查**：`/v1/models` 为空时提示先在 Strata App 加载模型，不把空模型当可用。
+- **不变**：keyless 语义、`reasoning_effort` 适配、按 provider 凭据隔离、RPC 字段与
+  管线 gate；不新增 SDK/客户端/平台写入；不改变 P0-026。

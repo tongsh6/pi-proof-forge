@@ -366,6 +366,7 @@ class SettingsCheckLlmConnectionTests(unittest.TestCase):
                 {
                     "meta": {"correlation_id": "corr_blocked"},
                     "payload": {
+                        "provider": "lm_studio",
                         "base_url": "http://127.0.0.1:1234/v1",
                         "api_key": "lm-studio",
                         "timeout": 1,
@@ -867,12 +868,12 @@ def test_cross_provider_check_without_base_url_does_not_use_active_endpoint() ->
 
 
 class SettingsStrataProviderTests(unittest.TestCase):
-    """Strata 本地 OpenAI 兼容服务：可选密钥 + keyless 连接检查。"""
+    """Strata App 统一推理后台：固定 47831 端点 + 可选密钥 + 模型由 App 提供。"""
 
     _STRATA_DEFAULTS: dict[str, Any] = {
         "provider": "strata",
         "model": "qwen3.8-flash-next-q2_0",
-        "base_url": "http://127.0.0.1:8081/v1",
+        "base_url": "http://127.0.0.1:47831/v1",
     }
 
     def _policy(self, tmp: str) -> Path:
@@ -921,6 +922,170 @@ class SettingsStrataProviderTests(unittest.TestCase):
         self.assertEqual(result["models"], ["qwen3.8-flash-next-q2_0"])
         self.assertEqual(captured[0]["api_key"], "")
         self.assertEqual(captured[0]["provider"], "strata")
+        # 统一推理后台只有唯一入口：即使旧配置/页面给了别处地址也强制归一。
+        self.assertEqual(captured[0]["base_url"], "http://127.0.0.1:47831/v1")
+        self.assertEqual(result["base_url"], "http://127.0.0.1:47831/v1")
+
+    def test_default_provider_is_strata_unified_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                loaded = _load_llm_config()
+                stored = handle_settings_get(
+                    {"meta": {"correlation_id": "corr_default_strata"}}
+                )
+
+        self.assertEqual(loaded["provider"], "strata")
+        self.assertEqual(loaded["base_url"], "http://127.0.0.1:47831/v1")
+        self.assertEqual(loaded["model"], "")
+        self.assertEqual(stored["llm_config"]["provider"], "strata")
+        self.assertEqual(
+            stored["llm_config"]["base_url"], "http://127.0.0.1:47831/v1"
+        )
+
+    def test_saved_strata_base_url_is_forced_to_unified_backend(self) -> None:
+        legacy = {**self._STRATA_DEFAULTS, "base_url": "http://127.0.0.1:8081/v1"}
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(legacy)
+                loaded = _load_llm_config()
+                stored = self._get()
+                policy_text = policy.read_text(encoding="utf-8")
+
+        self.assertEqual(loaded["base_url"], "http://127.0.0.1:47831/v1")
+        self.assertEqual(
+            stored["llm_config"]["base_url"], "http://127.0.0.1:47831/v1"
+        )
+        self.assertIn("http://127.0.0.1:47831/v1", policy_text)
+        self.assertNotIn("8081", policy_text)
+
+    def test_connection_check_forces_unified_backend_and_ignores_payload_url(
+        self,
+    ) -> None:
+        captured: list[dict[str, Any]] = []
+
+        class FakeClient:
+            def __init__(self, **kwargs: Any) -> None:
+                captured.append(kwargs)
+
+            def list_models(self) -> list[str]:
+                return ["iq3_s"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                with patch(
+                    "tools.sidecar.handlers.settings.LLMClient", FakeClient
+                ):
+                    result = handle_settings_check_llm_connection(
+                        {
+                            "meta": {"correlation_id": "corr_forced_backend"},
+                            "payload": {
+                                "provider": "strata",
+                                "base_url": "http://127.0.0.1:8081/v1",
+                                "timeout": 1,
+                            },
+                        }
+                    )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["base_url"], "http://127.0.0.1:47831/v1")
+        self.assertEqual(captured[0]["base_url"], "http://127.0.0.1:47831/v1")
+
+    def test_empty_models_message_tells_operator_to_load_model_in_app(self) -> None:
+        class EmptyModelsClient:
+            def __init__(self, **kwargs: Any) -> None:
+                pass
+
+            def list_models(self) -> list[str]:
+                return []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(dict(self._STRATA_DEFAULTS))
+                with patch(
+                    "tools.sidecar.handlers.settings.LLMClient", EmptyModelsClient
+                ):
+                    result = self._check()
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BLOCKED_LOCAL_PROVIDER")
+        self.assertIn("no model is currently loaded", result["message"])
+        self.assertIn("Strata App", result["message"])
+
+    def test_switching_provider_to_strata_drops_other_provider_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                    }
+                )
+                self._update({"provider": "strata"})
+                loaded = _load_llm_config()
+
+        self.assertEqual(loaded["provider"], "strata")
+        self.assertEqual(loaded["model"], "")
+        self.assertEqual(loaded["base_url"], "http://127.0.0.1:47831/v1")
+
+    def test_switching_to_provider_without_preset_clears_old_endpoint_and_model(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(dict(self._STRATA_DEFAULTS))
+                self._update({"provider": "openai_compatible"})
+                loaded = _load_llm_config()
+
+        self.assertEqual(loaded["provider"], "openai_compatible")
+        # 旧 provider 的 model/base_url 已被清除，回落到非 strata 的既有默认。
+        self.assertEqual(loaded["model"], "gpt-4")
+        self.assertIsNone(loaded["base_url"])
+
+    def test_checking_strata_from_active_deepseek_uses_unified_backend_and_no_active_key(
+        self,
+    ) -> None:
+        captured: list[dict[str, Any]] = []
+
+        class FakeClient:
+            def __init__(self, **kwargs: Any) -> None:
+                captured.append(kwargs)
+
+            def list_models(self) -> list[str]:
+                return ["iq3_s"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = self._policy(tmp)
+            with patch.dict(os.environ, {"PPF_POLICY_PATH": str(policy)}):
+                self._update(
+                    {
+                        "provider": "deepseek",
+                        "model": "deepseek-flash",
+                        "base_url": "https://api.deepseek.com",
+                        "api_key": "sk-deepseek-active-only",
+                    }
+                )
+                with patch(
+                    "tools.sidecar.handlers.settings.LLMClient", FakeClient
+                ):
+                    result = handle_settings_check_llm_connection(
+                        {
+                            "meta": {"correlation_id": "corr_active_cross"},
+                            "payload": {"provider": "strata", "timeout": 1},
+                        }
+                    )
+
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["base_url"], "http://127.0.0.1:47831/v1")
+        self.assertEqual(captured[0]["base_url"], "http://127.0.0.1:47831/v1")
+        self.assertEqual(captured[0]["api_key"], "")
+        self.assertNotIn("sk-deepseek-active-only", str(result))
 
     def test_strata_unavailable_or_empty_reports_local_provider_block(self) -> None:
         class EmptyModelsClient:

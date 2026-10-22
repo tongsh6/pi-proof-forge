@@ -9,6 +9,23 @@ from tools.prompts.context import with_job_search_context
 
 KEYLESS_PROVIDERS = frozenset({"lm_studio", "strata"})
 
+# 推理后台瞬时 5xx（如 Strata App Host 在并发长请求下 300s fetch 超时返回 502）：
+# 有限重试，不重试 4xx，也不改变调用方业务契约。
+_RETRYABLE_HTTP_STATUS = frozenset({502, 503, 504})
+_RETRY_DELAYS_SECONDS = (2.0, 5.0)
+
+# Strata App 管理的统一推理后台：产品侧只连这一个 OpenAI 兼容入口，
+# 模型由 App 加载/切换，端点固定，不在设置页另行配置。
+STRATA_UNIFIED_BASE_URL = "http://127.0.0.1:47831/v1"
+
+
+def default_base_url(provider: str = "", fallback: str = "") -> str:
+    """按 provider 选择缺省地址：Strata 统一后台固定入口，其他 provider 用调用方默认。"""
+    import os
+
+    value = (provider or os.getenv("LLM_PROVIDER", "")).strip().lower()
+    return STRATA_UNIFIED_BASE_URL if value == "strata" else fallback
+
 
 def provider_is_keyless(provider: str = "") -> bool:
     """本地 OpenAI 兼容 provider 默认无鉴权；未显式传 provider 时读 LLM_PROVIDER。"""
@@ -71,10 +88,14 @@ class LLMClient:
     ) -> None:
         import os
 
-        self._base_url = base_url.rstrip("/")
+        self._provider = (provider or os.getenv("LLM_PROVIDER", "")).strip().lower()
+        effective_base_url = str(base_url or "").strip()
+        if not effective_base_url and self._provider == "strata":
+            # Strata 统一推理后台有唯一入口；未显式给地址时不落到 OpenAI 默认地址。
+            effective_base_url = STRATA_UNIFIED_BASE_URL
+        self._base_url = effective_base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
-        self._provider = (provider or os.getenv("LLM_PROVIDER", "")).strip().lower()
         self._thinking_enabled = (
             _thinking_enabled_from_env()
             if thinking_enabled is None
@@ -93,6 +114,23 @@ class LLMClient:
     @property
     def models_url(self) -> str:
         return f"{self._base_url}/models"
+
+    def _open_with_retry(self, req: request.Request) -> HTTPResponse:
+        """对瞬时 502/503/504 做有限重试；本地/远程 provider 通用，4xx 不重试。"""
+        import time
+        from urllib.error import HTTPError
+
+        for attempt in range(len(_RETRY_DELAYS_SECONDS) + 1):
+            try:
+                return cast(HTTPResponse, request.urlopen(req, timeout=self._timeout))
+            except HTTPError as exc:
+                if (
+                    exc.code not in _RETRYABLE_HTTP_STATUS
+                    or attempt >= len(_RETRY_DELAYS_SECONDS)
+                ):
+                    raise
+                time.sleep(_RETRY_DELAYS_SECONDS[attempt])
+        raise RuntimeError("unreachable")
 
     def build_headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -177,7 +215,7 @@ class LLMClient:
             payload = {**payload, "reasoning_effort": reasoning_effort}
         data = json.dumps(payload).encode("utf-8")
         req = request.Request(url, data=data, headers=self.build_headers(), method="POST")
-        resp = cast(HTTPResponse, request.urlopen(req, timeout=self._timeout))
+        resp = self._open_with_retry(req)
         try:
             body = resp.read().decode("utf-8")
         finally:
@@ -193,7 +231,7 @@ class LLMClient:
             headers=self.build_headers(),
             method="GET",
         )
-        resp = cast(HTTPResponse, request.urlopen(req, timeout=self._timeout))
+        resp = self._open_with_retry(req)
         try:
             body = resp.read().decode("utf-8")
         finally:

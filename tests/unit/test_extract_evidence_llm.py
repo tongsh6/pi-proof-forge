@@ -26,12 +26,42 @@ def _inputs(tmp_path: Path) -> tuple[Path, Path]:
     return input_path, prompt_path
 
 
-def test_keyless_without_base_url_does_not_fall_back_to_openai(
+def test_strata_without_base_url_uses_unified_app_backend(
+    tmp_path: Path,
+) -> None:
+    input_path, prompt_path = _inputs(tmp_path)
+    captured: list[dict[str, object]] = []
+
+    class FakeClient:
+        chat_completions_url = "http://fake/v1/chat/completions"
+
+        def __init__(self, **kwargs: object) -> None:
+            captured.append(kwargs)
+
+        def post_json(self, url: str, payload: dict) -> dict:
+            return {"choices": [{"message": {"content": "{}"}}]}
+
+        @staticmethod
+        def extract_content(response: dict) -> str:
+            return response["choices"][0]["message"]["content"]
+
+    argv = ["--input", str(input_path), "--prompt", str(prompt_path)]
+    env = {"LLM_PROVIDER": "strata", "LLM_MODEL": "iq3_s"}
+
+    with mock.patch("tools.extract_evidence_llm.LLMClient", FakeClient):
+        code = _main(argv, env)
+
+    assert code == 0
+    assert captured[0]["base_url"] == "http://127.0.0.1:47831/v1"
+    assert captured[0]["provider"] == "strata"
+
+
+def test_keyless_non_strata_without_base_url_does_not_fall_back_to_openai(
     tmp_path: Path, capsys
 ) -> None:
     input_path, prompt_path = _inputs(tmp_path)
     argv = ["--input", str(input_path), "--prompt", str(prompt_path)]
-    env = {"LLM_PROVIDER": "strata", "LLM_MODEL": "qwen3.8-flash-next-q2_0"}
+    env = {"LLM_PROVIDER": "lm_studio", "LLM_MODEL": "local-model"}
 
     with mock.patch(
         "tools.extract_evidence_llm.LLMClient",

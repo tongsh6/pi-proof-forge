@@ -2,11 +2,15 @@ import copy
 import json
 import os
 import unittest
+from io import BytesIO
+from urllib.error import HTTPError
 from unittest.mock import Mock, patch
 
 from tools.infra.llm.client import (
     KEYLESS_PROVIDERS,
     LLMClient,
+    STRATA_UNIFIED_BASE_URL,
+    default_base_url,
     llm_request_available,
     provider_is_keyless,
 )
@@ -483,6 +487,54 @@ class StrataReasoningTests(unittest.TestCase):
                 self.assertNotIn("thinking", sent)
 
 
+class DefaultBaseUrlTests(unittest.TestCase):
+    """CLI/管线缺省地址：Strata 落统一入口，其他 provider 保留各自默认。"""
+
+    def test_strata_defaults_to_unified_backend(self) -> None:
+        self.assertEqual(default_base_url("strata"), STRATA_UNIFIED_BASE_URL)
+        self.assertEqual(default_base_url(" Strata "), STRATA_UNIFIED_BASE_URL)
+
+    def test_other_provider_uses_caller_fallback(self) -> None:
+        for provider in ("openai", "deepseek", "lm_studio", "openai_compatible", ""):
+            with self.subTest(provider=provider):
+                self.assertEqual(default_base_url(provider, "http://fallback/v1"), "http://fallback/v1")
+
+    def test_environment_provider_is_used(self) -> None:
+        with patch.dict(os.environ, {"LLM_PROVIDER": "strata"}):
+            self.assertEqual(
+                default_base_url(fallback="http://fallback/v1"),
+                STRATA_UNIFIED_BASE_URL,
+            )
+
+
+class StrataUnifiedBackendTests(unittest.TestCase):
+    """Strata App 统一推理后台：未显式给地址时只能用唯一入口 47831。"""
+
+    def test_strata_without_base_url_uses_unified_backend(self) -> None:
+        client = LLMClient(base_url="", api_key="", provider="strata")
+        self.assertEqual(
+            client.chat_completions_url,
+            f"{STRATA_UNIFIED_BASE_URL}/chat/completions",
+        )
+        self.assertEqual(client.models_url, f"{STRATA_UNIFIED_BASE_URL}/models")
+
+    def test_strata_explicit_base_url_is_kept_for_deployment_override(self) -> None:
+        client = LLMClient(
+            base_url="http://127.0.0.1:9999/v1", api_key="", provider="strata"
+        )
+        self.assertEqual(
+            client.chat_completions_url,
+            "http://127.0.0.1:9999/v1/chat/completions",
+        )
+
+    def test_online_provider_without_base_url_does_not_use_strata_endpoint(self) -> None:
+        client = LLMClient(base_url="", api_key="sk-test", provider="openai")
+        self.assertNotEqual(
+            client.chat_completions_url,
+            f"{STRATA_UNIFIED_BASE_URL}/chat/completions",
+        )
+
+
 class KeylessProviderTests(unittest.TestCase):
     """keyless 本地 provider 的共享判定：管线 credential gates 统一复用。"""
 
@@ -537,6 +589,98 @@ class KeylessProviderTests(unittest.TestCase):
     def test_request_availability_uses_environment_provider(self) -> None:
         with patch.dict(os.environ, {"LLM_PROVIDER": "strata"}):
             self.assertTrue(llm_request_available(model="qwen3.8-flash-next-q2_0"))
+
+
+class TransientHttpRetryTests(unittest.TestCase):
+    """推理后台瞬时 5xx（Strata App Host 并发下 300s fetch 超时返回 502）做有限重试。"""
+
+    def _error(self, code: int, reason: str) -> HTTPError:
+        return HTTPError(
+            "http://127.0.0.1:47831/v1/chat/completions",
+            code,
+            reason,
+            {},
+            BytesIO(b'{"error":{"message":"fetch failed"}}'),
+        )
+
+    def _response(self, body: bytes = b'{"choices":[]}') -> Mock:
+        response = Mock()
+        response.read.return_value = body
+        response.close.return_value = None
+        return response
+
+    def test_retries_transient_502_then_succeeds(self) -> None:
+        client = LLMClient(
+            base_url="http://127.0.0.1:47831/v1", api_key="", provider="strata"
+        )
+        with (
+            patch(
+                "tools.infra.llm.client.request.urlopen",
+                side_effect=[self._error(502, "Bad Gateway"), self._response()],
+            ) as urlopen,
+            patch("time.sleep") as sleep,
+        ):
+            result = client.post_json(
+                client.chat_completions_url, {"model": "iq3_s", "messages": []}
+            )
+
+        self.assertEqual(result, {"choices": []})
+        self.assertEqual(urlopen.call_count, 2)
+        sleep.assert_called_once()
+
+    def test_retries_apply_to_model_listing(self) -> None:
+        client = LLMClient(
+            base_url="http://127.0.0.1:47831/v1", api_key="", provider="strata"
+        )
+        with (
+            patch(
+                "tools.infra.llm.client.request.urlopen",
+                side_effect=[self._error(503, "Service Unavailable"), self._response(b'{"data":[{"id":"iq3_s"}]}')],
+            ) as urlopen,
+            patch("time.sleep"),
+        ):
+            models = client.list_models()
+
+        self.assertEqual(models, ["iq3_s"])
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_does_not_retry_client_errors(self) -> None:
+        client = LLMClient(
+            base_url="http://127.0.0.1:47831/v1", api_key="", provider="strata"
+        )
+        with (
+            patch(
+                "tools.infra.llm.client.request.urlopen",
+                side_effect=self._error(400, "Bad Request"),
+            ) as urlopen,
+            patch("time.sleep") as sleep,
+        ):
+            with self.assertRaises(HTTPError):
+                client.post_json(
+                    client.chat_completions_url, {"model": "iq3_s", "messages": []}
+                )
+
+        self.assertEqual(urlopen.call_count, 1)
+        sleep.assert_not_called()
+
+    def test_gives_up_after_bounded_retries(self) -> None:
+        client = LLMClient(
+            base_url="http://127.0.0.1:47831/v1", api_key="", provider="strata"
+        )
+        with (
+            patch(
+                "tools.infra.llm.client.request.urlopen",
+                side_effect=self._error(502, "Bad Gateway"),
+            ) as urlopen,
+            patch("time.sleep") as sleep,
+        ):
+            with self.assertRaises(HTTPError):
+                client.post_json(
+                    client.chat_completions_url, {"model": "iq3_s", "messages": []}
+                )
+
+        self.assertEqual(urlopen.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 > 设计依据：`design.md`；验收依据：`specs/llm-provider-config/spec.md`
 > TDD：每项先建立失败测试；测试不访问真实模型或用户真实凭据
 > 边界：不改变当前生效 provider，不改变 P0-026 唯一 `next`，不新增平台写入
+> 2026-10-22 注记：Phase A–E 与 C1 中的 8081 / q2_0 / 可编辑端点描述为历史口径；当前实现与验证见文末「Phase F」。
 
 ---
 
@@ -49,3 +50,14 @@
 
 - 第 1 轮：发现阻断 B1（keyless Strata 在 Quick Run 子进程被当缺凭证）；已按 Phase D 修复并由真实 matching 阶段验证。
 - 第 2 轮：确认 B1 已解决、无阻断；非阻断项已处理：gate 回归测试补齐、extract base_url 安全、跨页面 keyless 状态、`.pen`/任务文档同步；剩余 `isLlmSecretConfigured` 清理已完成。
+
+## Phase F - 2026-10-22 方案修正（Strata App 统一推理后台）
+
+- [x] F1 `client.py`：`STRATA_UNIFIED_BASE_URL = "http://127.0.0.1:47831/v1"`；strata 缺省地址回退统一入口，不落 OpenAI 默认地址
+- [x] F2 settings：默认 provider=strata；读取/保存/连接检查把 strata base_url 归一为统一入口；空 `/v1/models` 返回 `BLOCKED_LOCAL_PROVIDER` 并提示先在 App 加载模型；切换 provider 清旧 model
+- [x] F3 页面：Strata 预设改用共享常量、model 默认空、Base URL/Model 只读、提示文案与默认 provider=strata；其他 provider 预设不变
+- [x] F4 i18n：`providerStrataHint` 更新为统一后台，新增 `strataBaseUrlHint` / `strataModelManagedHint` 中英文
+- [x] F5 回归：settings 默认/固定端点/切换清 model/空模型提示、`LLMClient` 缺省地址、extract 回退、GUI 契约与 helper 测试；全量 1692 项通过、1 跳过、53 subtests，`tsc`/`pnpm --dir ui build`/三门禁通过
+- [x] F6 文档：proposal/design/spec/tasks、DESIGN、RPC 契约、roadmap、ledger 同步当前口径
+- [x] F7 真实页面验收（Chromium + 只读桥接 + 临时 policy，非 Tauri）：18 项检查字段（13 项硬断言）全部 PASS（默认 Strata、47831 只读、模型从 `/v1/models` 选 `iq3_s`、保存归一）；真实 `LLMClient` 最小 `json_object` 请求返回 `{"ok":true}`；证据 `outputs/acceptance/strata-unified-20261022/`
+- [ ] F8 真实 App 页面验收：用户在 Strata App 加载模型后完成“选 Strata → 检查连接 → 选模型 → 保存 → 运行一次实际任务”

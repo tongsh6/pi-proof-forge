@@ -1,5 +1,8 @@
 import type { LlmConfig } from "@/lib/sidecar/types";
 
+/** Strata App 管理的统一推理后台：产品侧唯一入口，模型由 App 管理。 */
+export const STRATA_UNIFIED_BASE_URL = "http://127.0.0.1:47831/v1";
+
 /** 无密钥也可用的本地 provider：LM Studio 占位密钥与 Strata 本地免鉴权。 */
 export const KEYLESS_PROVIDERS = new Set(["lm_studio", "strata"]);
 

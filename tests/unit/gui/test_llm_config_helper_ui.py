@@ -8,7 +8,8 @@ def test_llm_config_helper_keyless_and_configured_semantics():
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('./ui/node_modules/typescript');
 const exports={};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/lib/llmConfig.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021}}).outputText,{exports});
-const {isKeylessProvider,isLlmConfigured,isLlmSecretConfigured}=exports;
+const {isKeylessProvider,isLlmConfigured,isLlmSecretConfigured,STRATA_UNIFIED_BASE_URL}=exports;
+assert.equal(STRATA_UNIFIED_BASE_URL,'http://127.0.0.1:47831/v1','Strata App 统一推理后台只有唯一入口');
 const secret=(configured=false)=>({configured,masked:configured,updated_at:'',source:configured?'saved':'none'});
 const config=(provider,model,configured=false)=>({provider,model,base_url:null,timeout:60,temperature:.2,api_key:secret(configured)});
 assert.equal(isKeylessProvider('lm_studio'),true,'LM Studio 无密钥可用');

@@ -16,7 +16,12 @@ if str(ROOT) not in sys.path:
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.generation import template_assembler
 from tools.infra import evidence_provenance as provenance
-from tools.infra.llm.client import LLMClient, llm_request_available, llm_timeout_from_env
+from tools.infra.llm.client import (
+    LLMClient,
+    default_base_url,
+    llm_request_available,
+    llm_timeout_from_env,
+)
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 
@@ -458,7 +463,7 @@ def _legacy_main() -> int:
     )
     _ = parser.add_argument(
         "--base-url",
-        default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
+        default=os.getenv("LLM_BASE_URL", "") or default_base_url(fallback=DEFAULT_BASE_URL),
         help="OpenAI-compatible base URL",
     )
     _ = parser.add_argument(

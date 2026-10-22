@@ -14,7 +14,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.infra import quality_judge_cache
-from tools.infra.llm.client import LLMClient, llm_request_available, llm_timeout_from_env
+from tools.infra.llm.client import (
+    LLMClient,
+    default_base_url,
+    llm_request_available,
+    llm_timeout_from_env,
+)
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.infra.persistence.review_snapshot import read_generation_trace
 from tools.engines.evaluation import llm_judge, tiered_evaluator
@@ -511,7 +516,7 @@ def _legacy_main() -> int:
     )
     _ = parser.add_argument(
         "--base-url",
-        default=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
+        default=os.getenv("LLM_BASE_URL", "") or default_base_url(fallback=DEFAULT_BASE_URL),
         help="OpenAI-compatible base URL",
     )
     _ = parser.add_argument(

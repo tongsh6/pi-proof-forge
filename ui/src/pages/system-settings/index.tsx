@@ -17,7 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
-import { KEYLESS_PROVIDERS } from "@/lib/llmConfig";
+import { KEYLESS_PROVIDERS, STRATA_UNIFIED_BASE_URL } from "@/lib/llmConfig";
 import { confirmAction, notify } from "@/lib/ui";
 import {
   checkLlmConnection,
@@ -73,8 +73,9 @@ const LLM_PROVIDER_DEFAULTS: Record<
     api_key: "lm-studio",
   },
   strata: {
-    model: "qwen3.8-flash-next-q2_0",
-    base_url: "http://127.0.0.1:8081/v1",
+    // 模型由 Strata App 管理：不写死模型，检查连接后从 /v1/models 选择。
+    model: "",
+    base_url: STRATA_UNIFIED_BASE_URL,
     api_key: "",
   },
   openai: {
@@ -139,12 +140,16 @@ function formatShortTimestamp(value: string | null | undefined): string {
 }
 
 function toLlmForm(config: LlmConfig | null): LlmForm {
-  const provider = config?.provider ?? "lm_studio";
-  const defaults = LLM_PROVIDER_DEFAULTS[provider] ?? LLM_PROVIDER_DEFAULTS.lm_studio;
+  // 默认推理后台是 Strata App 管理的统一入口（后端同口径）。
+  const provider = config?.provider ?? "strata";
+  const defaults = LLM_PROVIDER_DEFAULTS[provider] ?? LLM_PROVIDER_DEFAULTS.strata;
   return {
     provider,
     model: config?.model ?? defaults.model,
-    base_url: config?.base_url ?? defaults.base_url,
+    base_url:
+      provider === "strata"
+        ? STRATA_UNIFIED_BASE_URL
+        : config?.base_url ?? defaults.base_url,
     api_key: "",
     timeout: String(config?.timeout ?? 60),
     temperature: String(config?.temperature ?? 0.2),
@@ -158,13 +163,16 @@ function applyProviderDefaults(
   nextProvider: string
 ): LlmForm {
   const nextDefaults =
-    LLM_PROVIDER_DEFAULTS[nextProvider] ?? LLM_PROVIDER_DEFAULTS.openai_compatible;
+    LLM_PROVIDER_DEFAULTS[nextProvider] ?? LLM_PROVIDER_DEFAULTS.strata;
 
   return {
     ...current,
     provider: nextProvider,
     model: nextDefaults.model,
-    base_url: nextDefaults.base_url,
+    base_url:
+      nextProvider === "strata"
+        ? STRATA_UNIFIED_BASE_URL
+        : nextDefaults.base_url,
     api_key: nextProvider === current.provider ? current.api_key : "",
     thinking_enabled: current.thinking_enabled,
     thinking_effort: current.thinking_effort,
@@ -930,6 +938,7 @@ export function SystemSettingsPage() {
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-card border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="settings-save"
             disabled={activeSection !== "llm" || llmSaveState === "saving"}
             title={activeSection !== "llm" ? t("reasons.systemSettings.channelsNoSave") : t("common.saveShortcut")}
             onClick={() => void handleSaveLlmConfig()}
@@ -1387,6 +1396,7 @@ export function SystemSettingsPage() {
                                 ? "border-accent bg-accent/10 text-text-primary"
                                 : "border-border bg-bg-hover text-text-secondary hover:border-accent/40 hover:text-text-primary"
                             }`}
+                            data-testid={`settings-llm-provider-${option.id}`}
                             key={option.id}
                             onClick={() => handleProviderChange(option.id)}
                             type="button"
@@ -1417,7 +1427,12 @@ export function SystemSettingsPage() {
                       {t("pages.systemSettings.llm.model")}
                     </span>
                     <input
-                      className={LLM_FIELD_INPUT_CLASS}
+                      className={`${LLM_FIELD_INPUT_CLASS}${
+                        llmForm.provider === "strata"
+                          ? " cursor-not-allowed opacity-70"
+                          : ""
+                      }`}
+                      data-testid="settings-llm-model"
                       onChange={(event) =>
                         setLlmForm((current) => ({
                           ...current,
@@ -1425,9 +1440,15 @@ export function SystemSettingsPage() {
                         }))
                       }
                       placeholder={t("pages.systemSettings.llm.modelPlaceholder")}
+                      readOnly={llmForm.provider === "strata"}
                       type="text"
                       value={llmForm.model}
                     />
+                    {llmForm.provider === "strata" ? (
+                      <p className="text-xs text-text-muted">
+                        {t("pages.systemSettings.llm.strataModelManagedHint")}
+                      </p>
+                    ) : null}
                   </label>
                   <label className="space-y-1.5">
                     <span className={LLM_FIELD_LABEL_CLASS}>
@@ -1467,7 +1488,12 @@ export function SystemSettingsPage() {
                       {t("pages.systemSettings.llm.baseUrl")}
                     </span>
                     <input
-                      className={`${LLM_FIELD_INPUT_CLASS} font-mono`}
+                      className={`${LLM_FIELD_INPUT_CLASS} font-mono${
+                        llmForm.provider === "strata"
+                          ? " cursor-not-allowed opacity-70"
+                          : ""
+                      }`}
+                      data-testid="settings-llm-base-url"
                       onChange={(event) =>
                         setLlmForm((current) => ({
                           ...current,
@@ -1478,9 +1504,15 @@ export function SystemSettingsPage() {
                         LLM_PROVIDER_DEFAULTS[llmForm.provider]?.base_url ||
                         "http://127.0.0.1:1234/v1"
                       }
+                      readOnly={llmForm.provider === "strata"}
                       type="url"
                       value={llmForm.base_url}
                     />
+                    {llmForm.provider === "strata" ? (
+                      <p className="text-xs text-text-muted">
+                        {t("pages.systemSettings.llm.strataBaseUrlHint")}
+                      </p>
+                    ) : null}
                   </label>
                   <div className="space-y-1.5 md:col-span-2">
                     <div className="flex items-center justify-between gap-3">
@@ -1660,6 +1692,7 @@ export function SystemSettingsPage() {
                   </div>
                   <button
                     className="inline-flex items-center gap-2 rounded-card border border-border px-3 py-2 text-xs font-medium text-text-primary transition-colors hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    data-testid="settings-llm-check"
                     disabled={llmCheckState === "checking"}
                     onClick={() => void handleCheckLlmConnection()}
                     type="button"
