@@ -49,16 +49,25 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
   `python3 -m tools.cli.entrypoints pipeline`），不再是阶段间调用方式。
 - 门禁：`check_v2_constraints.py` 新增 legacy 模式与根目录脚本检查。
 
-### P0-3 双引擎并存（未修复，列入剩余路线）
+### P0-3 双引擎并存（已修复）
 
-- 现象：Quick Run 走统一后的真实链路；Agent Loop 仍由 `Composer` 注入
+- 现象：Quick Run 走统一后的真实链路；Agent Loop 曾由 `Composer` 注入
   `RuleMatchingEngine` / `TemplateAssembler` / `RuleEvaluationEngine` 三个简化引擎
-  （domain model 输入，与真实 YAML 数据流并行）。
-- 影响：同一次 job 用 Agent Run 与 Quick Run 会得到不同质量与不同口径的结果。
+  （domain model 输入，与真实 YAML 数据流并行），同一次 job 会得到不同口径结果。
 - 根因：domain 模型与真实数据结构（`parse_simple_yaml` 的 scalars/lists、字段级
-  provenance、claims trace）之间存在类型鸿沟。需要先建立「真实数据 ↔ domain
-  模型」映射层，再让 Composer 注入真实引擎适配器；不在本次静态重构范围内。
-- 路线：见下文「剩余路线 R1」。
+  provenance、actions、JD 上下文）之间存在字段鸿沟。
+- 处置：扩展 domain 模型承载真实字段（`EvidenceCard.actions`、
+  `JobProfile.company/business_domain/seniority_signal/jd_text`），三个引擎类改造为
+  真实实现的 domain 适配器：
+  · `RuleMatchingEngine` → 与 Quick Run 规则报告共用 `score_rule_payload`（真实
+    K/D/S/Q/E/R 公式），分项归一后供门禁阈值使用；
+  · `TemplateAssembler` → 调用 `resume_renderer.build_template_resume` 渲染真实 A/B
+    模板（字段等级/时间精度/行动-成果配对规则一致）；
+  · `RuleEvaluationEngine` → 调用 `rule_evaluator.evaluate_rule` 产出真实规则评测。
+  `Composer` 注入 `personal_profile` / `job_context` 生成上下文；CLI agent 与
+  sidecar 引导批次同步加载（个人资料 + 岗位上下文），缺失时以空上下文渲染。
+- 验证：`agent --dry-run` 真实引擎端到端 10 状态 DONE，SCORE 0.93 / EVALUATE 0.34 /
+  GATE pass，生成正文含个人资料、工作经历与项目经历；全量测试保持 1766 通过。
 
 ### P1-1 分层错位（已修复）
 
@@ -116,6 +125,7 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 | `86d5e19` | test：按实现分层重组测试目录 |
 | `5d3fe0d` | refactor(sidecar)：拆分超大 handler 模块并消除跨模块私有依赖 |
 | `0865fc7` | refactor(sidecar)：将 agent handler 巨型模块拆为域子模块 |
+| 本次提交 | refactor(engines)：Agent 编排统一真实引擎，消除双引擎并存 |
 
 ## 验证证据（最终）
 
@@ -127,21 +137,27 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 - 项目门禁：`python3 tools/check_execution_roadmap.py --root .` PASS；
   `python3 tools/check_aief_l3.py --root . --base-dir AIEF` PASS。
 - UI：`npx tsc --noEmit` PASS；`pnpm build` PASS；GUI 契约测试 143 passed。
-- 真实端到端：`python3 -m tools.cli.entrypoints pipeline --raw tools/sample_raw.txt
-  --job-profile job_profiles/jp-2026-001.yaml` 规则模式跑通，写出统一 Run Record
-  （`PIPELINE_START/STEP_SUCCESS/DONE`）、A/B Markdown、scorecard；CLI `extract` 与
-  `match` 也已真实运行验证。
+- 真实端到端：
+  · `python3 -m tools.cli.entrypoints pipeline --raw tools/sample_raw.txt
+    --job-profile job_profiles/jp-2026-001.yaml` 规则模式跑通，写出统一 Run Record
+    （`PIPELINE_START/STEP_SUCCESS/DONE`）、A/B Markdown、scorecard；
+  · `python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run
+    --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml`
+    使用真实引擎跑通 10 状态，SCORE 0.93 / EVALUATE 0.34 / GATE pass，生成正文含
+    个人资料、工作经历与项目经历；
+  · CLI `extract` 与 `match` 也已真实运行验证。
 - 边界：本次为本地静态/单测/CLI 验证，不包含真实外部平台验收；GUI 验收仍须按
   `constitution.md` 第 5 条由外部自动化驱动真实页面，既有 roadmap 验收状态不变。
 
 ## 剩余路线（显式，不计入本次完成）
 
-- R1 统一 Agent 编排引擎：建立真实数据结构与 domain 模型的映射层，让
-  `Composer` 注入真实引擎适配器，消除「Agent Run 与 Quick Run 两套引擎」。
 - R2 提交前检查脚本归一：`check_*` / `kb` / 发布脚本仍位于 tools 根目录，后续可
   收敛为 `python3 -m tools.cli.entrypoints` 子命令（低优先级，当前不影响分层门禁）。
 - R3 UI 页面 hooks 提取：三个页面剩余行数主要来自与多状态耦合的 hooks 逻辑，后续
   可评审是否提取自定义 hook（会改变 effect 依赖结构，需独立回归）。
+- R4 Agent 生成的 LLM 改写策略接入：`Composer` 已注册 `LLMRewriter` 策略，但
+  AgentLoop 的 GENERATE 阶段固定使用 `template` 策略；如需在 Agent 链路启用受控
+  改写，需单独评审改写边界与事实校验（当前不影响主链路，Quick Run 已具备受控改写）。
 
 ## 假设与边界
 
