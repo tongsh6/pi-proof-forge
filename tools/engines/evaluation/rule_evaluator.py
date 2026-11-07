@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import datetime
 import re
 from pathlib import Path
 from typing import TypedDict
@@ -20,6 +21,7 @@ from .keyword_coverage import contains_term, keyword_coverage, unique_terms
 class RuleResult(TypedDict):
     markdown: str
     total_score: int
+    dimension_scores: dict[str, float]
     gap_tasks: list[str]
     keyword_coverage: dict
     must_have_review: list[dict]
@@ -227,6 +229,13 @@ def evaluate_rule(
 
     markdown = "\n".join(markdown_lines) + "\n"
     return {"markdown": markdown, "total_score": total_score,
+            "dimension_scores": {
+                "coverage": round(coverage_score / 100, 4),
+                "quant": round(quant_score / 100, 4),
+                "clarity": round(clarity_score / 100, 4),
+                "length": round(length_score / 100, 4),
+                "citation": round(citation_score / 100, 4),
+            },
             "expression_score": round((quant_score * .2 + clarity_score * .2 + length_score * .1 + citation_score * .2) / .7),
             "keyword_coverage": coverage, "must_have_review": requirements, "traceability": traceability,
             "quantification": {"quantified_bullets":len(quantified_bullets),"total_bullets":total_bullets,"rule":"metric_or_scope_v2"},
@@ -234,38 +243,21 @@ def evaluate_rule(
 
 
 class RuleEvaluationEngine:
+    """domain 模型适配：使用真实规则评测（覆盖/量化/空话/篇幅/追溯）。"""
+
     def evaluate(self, resume: ResumeOutput, profile: JobProfile) -> Scorecard:
-        content = resume.content
-        coverage = keyword_coverage(content, profile.keywords)["ratio"]
-        coverage = 0.5 if coverage is None else coverage
-
-        quantified_bullets = len(re.findall(r"\d", content))
-        total_lines = max(
-            len([line for line in content.splitlines() if line.strip()]), 1
+        result = evaluate_rule(
+            resume_text=resume.content,
+            must_have=list(profile.must_have),
+            keywords=list(profile.keywords),
+            now=datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+            input_name=f"{resume.version}.md",
+            job_profile_name=profile.id,
+            verified_claims=None,
         )
-        quant = min(quantified_bullets / total_lines, 1.0)
-
-        clarity = 1.0 if len(content) <= 4000 else 0.7
-        length = 1.0 if 150 <= len(content) <= 4000 else 0.6
-        citation = 1.0 if "-" in content else 0.5
-
-        total = (
-            (coverage * 0.35)
-            + (quant * 0.2)
-            + (clarity * 0.2)
-            + (length * 0.15)
-            + (citation * 0.1)
-        )
-
         return Scorecard(
             resume_version=resume.version,
             job_profile_id=profile.id,
-            total_score=round(total, 4),
-            dimension_scores={
-                "coverage": round(coverage, 4),
-                "quant": round(quant, 4),
-                "clarity": round(clarity, 4),
-                "length": round(length, 4),
-                "citation": round(citation, 4),
-            },
+            total_score=round(result["total_score"] / 100, 4),
+            dimension_scores=dict(result["dimension_scores"]),
         )

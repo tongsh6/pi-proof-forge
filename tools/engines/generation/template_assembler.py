@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import re
 from collections.abc import Sequence
 
@@ -241,6 +242,22 @@ def first_screen_priority(cards: Sequence[EvidenceCard | dict]) -> list:
 
 
 class TemplateAssembler:
+    """domain 模型适配：使用真实 A/B 简历模板渲染。
+
+    ``personal_profile`` / ``job_context`` 由 Composer 或调用方注入；缺省为空时
+    仍可渲染（只呈现证据卡事实），不引入新事实。
+    """
+
+    def __init__(
+        self,
+        personal_profile: dict | None = None,
+        job_context: dict | None = None,
+        positioning: str = "technical_depth",
+    ) -> None:
+        self._personal_profile = personal_profile or {}
+        self._job_context = job_context or {}
+        self._positioning = positioning
+
     def generate(
         self,
         report: MatchingReport,
@@ -251,19 +268,20 @@ class TemplateAssembler:
         if not visible:
             raise FabricationGuardError(version)
 
-        lines = [f"# Resume {version}", "", "## Highlights"]
-        for card in visible:
-            time_level = level_of(card, "time_range")
-            role_level = level_of(card, "role_scope")
-            period = format_time(card.period, time_level, precision_of(card))
-            lines.append(f"- {card.title}" + (f"（{period}）" if period else ""))
-            role = role_text(getattr(card, "role_scope", ""), role_level)
-            if role:
-                lines.append(f"  角色：{role}")
-            for result in card.results:
-                lines.append("  - " + downgrade_wording(result, role_level))
+        from . import resume_renderer
 
-        content = "\n".join(lines).strip() + "\n"
+        card_views = [_card_view(card) for card in visible]
+        now = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        content = resume_renderer.build_template_resume(
+            version,
+            report.job_profile_id,
+            int(round(float(report.score_breakdown.get("total", 0.0)) * 100)),
+            now,
+            card_views,
+            personal_profile=dict(self._personal_profile),
+            job_context=dict(self._job_context),
+            positioning=self._positioning,
+        )
         check_no_fabrication(content, visible)
 
         return ResumeOutput(
@@ -272,3 +290,36 @@ class TemplateAssembler:
             content=content,
             format="markdown",
         )
+
+
+def _card_view(card: EvidenceCard) -> dict:
+    """domain EvidenceCard → 渲染层 CardView（保留字段等级与 provenance）。"""
+    return {
+        "id": card.id,
+        "title": card.title,
+        "raw_source": card.raw_source,
+        "time_range": card.period,
+        "context": card.context,
+        "role_scope": card.role_scope,
+        "actions": list(card.actions),
+        "results": list(card.results),
+        "stack": list(card.stack),
+        "artifacts": list(card.artifacts),
+        "source_sha256": "",
+        "time_range_provenance": card.time_range_provenance,
+        "role_scope_provenance": card.role_scope_provenance,
+        "time_range_level": _field_level(card.time_range_provenance, card.period),
+        "role_scope_level": _field_level(card.role_scope_provenance, card.role_scope),
+    }
+
+
+def _field_level(provenance: dict | None, value: str) -> str:
+    """字段等级：有 provenance 用其等级；否则按值存在与否给 L1/L5。
+
+    domain EvidenceCard 是没有字段级溯源的历史载体：有值按 L1 呈现，空值按 L5
+    不进入正文；带 provenance 的卡严格使用溯源等级。
+    """
+    if isinstance(provenance, dict) and provenance.get("level"):
+        return str(provenance["level"])
+    # 旧数据（无字段级溯源）保持 L1 可见；时间/职责有值才呈现，空则自然不显示。
+    return "L1"

@@ -58,16 +58,20 @@ class Composer:
         *,
         llm_client: object | None = None,
         llm_model: str = "",
+        personal_profile: dict | None = None,
+        job_context: dict | None = None,
     ) -> object:
         """Build a fully wired AgentLoop.
 
         Without llm_client: uses rule-mode engines (fast, deterministic).
         With llm_client: uses hybrid matching + LLM evaluator (semantic).
 
-        Caller provides data inputs (evidence_cards, job_profile, candidates).
+        Caller provides data inputs (evidence_cards, job_profile, candidates) and
+        optional generation context (personal_profile/job_context). 生成上下文缺省
+        为空时仍可渲染，仅不包含个人资料与 JD 细节。
         """
         matching_reg = self.build_matching_registry()
-        generation_reg = self.build_generation_registry()
+        generation_reg = self.build_generation_registry(personal_profile, job_context)
         evaluation_reg = self.build_evaluation_registry()
         discovery_reg = self.build_discovery_registry()
 
@@ -146,12 +150,19 @@ class Composer:
         )
         return registry
 
-    def build_generation_registry(self) -> _RegistryLike:
+    def build_generation_registry(
+        self,
+        personal_profile: dict | None = None,
+        job_context: dict | None = None,
+    ) -> _RegistryLike:
         registry = _new_registry()
         registry.register(
             "template",
             lambda: _construct(
-                "tools.engines.generation.template_assembler", "TemplateAssembler"
+                "tools.engines.generation.template_assembler",
+                "TemplateAssembler",
+                personal_profile,
+                job_context,
             ),
         )
         return registry

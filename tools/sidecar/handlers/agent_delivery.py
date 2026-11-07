@@ -104,7 +104,26 @@ def _read_domain_job_profile(job_profile_id: str) -> Any:
         tone=doc["scalars"].get("tone", ""),
         must_have=tuple(doc["lists"].get("must_have", [])),
         nice_to_have=tuple(doc["lists"].get("nice_to_have", [])),
+        company=doc["scalars"].get("company", ""),
+        business_domain=doc["scalars"].get("business_domain", ""),
+        seniority_signal=tuple(doc["lists"].get("seniority_signal", [])),
+        jd_text=doc["scalars"].get("source_jd", ""),
     )
+
+
+def _generation_context(job_profile_id: str) -> tuple[dict, dict]:
+    """加载个人资料与岗位上下文供真实生成/评测引擎使用；缺失时返回空上下文。"""
+    from tools.engines.generation.resume_renderer import load_generation_context
+
+    root = _facade()._PROJECT_ROOT
+    profile_path = root / "personal_profile.yaml"
+    job_path = root / "job_profiles" / f"{job_profile_id}.yaml"
+    if not profile_path.is_file() or not job_path.is_file():
+        return {}, {}
+    try:
+        return load_generation_context(profile_path, job_path)
+    except (OSError, ValueError):
+        return {}, {}
 
 
 def _domain_evidence_cards(options: dict[str, Any]) -> tuple[Any, ...]:

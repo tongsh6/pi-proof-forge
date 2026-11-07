@@ -14,6 +14,7 @@ from typing import Any
 from ._shared.agent_runtime import _coerce_positive_int, _utcnow_iso
 from .agent_delivery import (
     _domain_evidence_cards,
+    _generation_context,
     _job_lead_candidates,
     _read_domain_job_profile,
 )
@@ -188,6 +189,7 @@ def _execute_guided_batch_run(
     with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
         try:
             os.chdir(_facade()._PROJECT_ROOT)
+            personal_profile, job_context = _generation_context(job_profile_id)
             result = composer.build_agent_loop(
                 run_id=run_id,
                 dry_run=True,
@@ -195,6 +197,8 @@ def _execute_guided_batch_run(
                 evidence_cards=evidence_cards,
                 job_profile=job_profile,
                 candidates=candidates,
+                personal_profile=personal_profile,
+                job_context=job_context,
             ).run()
         finally:
             os.chdir(cwd)

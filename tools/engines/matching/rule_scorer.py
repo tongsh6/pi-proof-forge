@@ -1,19 +1,19 @@
 """匹配与评分引擎（规则实现）。
 
-包含两部分：
-1. 主链路规则报告：从岗位画像与证据卡生成可解释的 K/D/S/Q/E/R 评分报告
-   （确定性、零模型调用），供 Quick Run matching 阶段与 LLM 候选预筛使用。
-2. ``RuleMatchingEngine``：domain 模型适配的引擎实现，供 Agent 编排的
-   策略注册表使用。
-
-规则公式只在第 1 部分维护一份；入口层不得复制同一套打分逻辑。
+唯一规则公式在此维护：
+- ``score_rule_payload``：对岗位画像与证据卡做 K/D/S/Q/E/R 可解释评分，返回结构化
+  结果（分项/总分/top 卡/缺口）。Quick Run 的规则报告、CLI 与 Agent 编排的
+  ``RuleMatchingEngine`` 共用同一实现。
+- ``build_rule_report``：把评分结果渲染为匹配报告 YAML 文本（历史产物格式）；
+- ``rank_cards_by_rule`` / ``select_llm_candidate_files``：语义评审前的规则预筛；
+- ``RuleMatchingEngine``：domain 模型适配，供 Agent 编排的策略注册表使用。
 """
 
 from __future__ import annotations
 
 import datetime
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -33,6 +33,17 @@ class ParsedDoc(TypedDict):
 class ScoreItem(TypedDict):
     score: int
     reason: str
+
+
+class RulePayload(TypedDict):
+    score_total: int
+    score_breakdown: dict[str, ScoreItem]
+    evidence_card_ids: list[str]
+    top_cards: list[dict[str, object]]
+    gaps: list[str]
+    gap_tasks: list[str]
+    metrics: dict[str, float]
+    generated_at: str
 
 
 def read_text(path: str | Path) -> str:
@@ -66,34 +77,41 @@ def _join_card_text(doc: ParsedDoc) -> str:
     return "\n".join(text_parts)
 
 
-def build_rule_report(
-    job_profile_path: str | Path,
-    evidence_files: Sequence[Path],
+def score_rule_payload(
     *,
-    version_id: str,
-) -> str:
-    """生成规则匹配报告 YAML 文本（与历史产物格式保持兼容）。"""
-    now_dt = datetime.datetime.now().astimezone()
-    now_iso = now_dt.isoformat(timespec="seconds")
-    job_doc = parse_simple_yaml(read_text(job_profile_path))
+    job_scalars: Mapping[str, str],
+    job_lists: Mapping[str, Sequence[str]],
+    cards: Sequence[Mapping[str, object]],
+    now: datetime.datetime | None = None,
+) -> RulePayload:
+    """对岗位画像与证据卡做可解释规则评分。
 
-    keywords = job_doc["lists"].get("keywords", [])
-    seniority_signals = job_doc["lists"].get("seniority_signal", [])
-    business_domain = job_doc["scalars"].get("business_domain", "")
+    ``cards`` 每项结构：``{"id": str, "scalars": Mapping[str,str], "lists": Mapping[str, Sequence[str]]}``。
+    返回分项得分、总分（0-100 整数）、top 卡与缺口；不写文件、不调用模型。
+    """
+    now_dt = now or datetime.datetime.now().astimezone()
+    keywords = [str(item) for item in job_lists.get("keywords", [])]
+    seniority_signals = [str(item) for item in job_lists.get("seniority_signal", [])]
+    business_domain = str(job_scalars.get("business_domain", ""))
 
     evidence_ids: list[str] = []
     card_docs: list[ParsedDoc] = []
     card_texts: list[str] = []
     latest_months_ago: int | None = None
 
-    for card_file in evidence_files:
-        card_doc = parse_simple_yaml(read_text(str(card_file)))
-        evidence_ids.append(card_file.stem)
-        card_docs.append(card_doc)
-        card_texts.append(_join_card_text(card_doc))
+    for card in cards:
+        card_id = str(card.get("id", ""))
+        scalars = cast(Mapping[str, str], card.get("scalars", {}))
+        lists = cast(Mapping[str, Sequence[str]], card.get("lists", {}))
+        doc = ParsedDoc(
+            scalars={key: str(value) for key, value in scalars.items()},
+            lists={key: [str(item) for item in value] for key, value in lists.items()},
+        )
+        evidence_ids.append(card_id)
+        card_docs.append(doc)
+        card_texts.append(_join_card_text(doc))
 
-        time_range = card_doc["scalars"].get("time_range", "")
-        end_month = parse_end_month(time_range)
+        end_month = parse_end_month(doc["scalars"].get("time_range", ""))
         if end_month is not None:
             diff = months_ago(end_month[0], end_month[1], now_dt)
             latest_months_ago = (
@@ -205,7 +223,10 @@ def build_rule_report(
         card_rank.append((card_id, card_score, card_reason))
 
     card_rank.sort(key=lambda x: x[1], reverse=True)
-    top_cards = card_rank[:3]
+    top_cards = [
+        {"id": card_id, "score": score, "reason": reason}
+        for card_id, score, reason in card_rank[:3]
+    ]
 
     gaps: list[str] = []
     gap_tasks: list[str] = []
@@ -229,35 +250,71 @@ def build_rule_report(
         gaps.append("暂无明显缺口")
         gap_tasks.append("保持当前证据完整度，按新 JD 微调关键词")
 
+    return RulePayload(
+        score_total=total_score,
+        score_breakdown=score_breakdown,
+        evidence_card_ids=evidence_ids,
+        top_cards=top_cards,
+        gaps=gaps,
+        gap_tasks=gap_tasks,
+        metrics={
+            "keyword_coverage": round(keyword_cov, 4),
+            "domain_ratio": round(domain_ratio, 4),
+            "seniority_ratio": round(seniority_ratio, 4),
+        },
+        generated_at=now_dt.isoformat(timespec="seconds"),
+    )
+
+
+def build_rule_report(
+    job_profile_path: str | Path,
+    evidence_files: Sequence[Path],
+    *,
+    version_id: str,
+) -> str:
+    """生成规则匹配报告 YAML 文本（与历史产物格式保持兼容）。"""
+    job_doc = parse_simple_yaml(read_text(job_profile_path))
+    cards: list[dict[str, object]] = []
+    for card_file in evidence_files:
+        card_doc = parse_simple_yaml(read_text(str(card_file)))
+        cards.append(
+            {"id": card_file.stem, "scalars": card_doc["scalars"], "lists": card_doc["lists"]}
+        )
+
+    payload = score_rule_payload(
+        job_scalars=job_doc["scalars"],
+        job_lists=job_doc["lists"],
+        cards=cards,
+    )
     lines = [
         f'job_profile_id: "{Path(job_profile_path).stem}"',
         "evidence_card_ids:",
     ]
-    for evidence_id in evidence_ids:
+    for evidence_id in payload["evidence_card_ids"]:
         lines.append(f'  - "{evidence_id}"')
 
-    lines.append(f"score_total: {total_score}")
+    lines.append(f"score_total: {payload['score_total']}")
     lines.append("score_breakdown:")
     for key in ["K", "D", "S", "Q", "E", "R"]:
-        item = score_breakdown[key]
+        item = payload["score_breakdown"][key]
         lines.append(
             f'  {key}: {{ score: {item["score"]}, reason: "{item["reason"]}" }}'
         )
 
     lines.append("top_cards:")
-    for card_id, _score, reason in top_cards:
-        lines.append(f'  - id: "{card_id}"')
-        lines.append(f'    reason: "{reason}"')
+    for item in payload["top_cards"]:
+        lines.append(f'  - id: "{item["id"]}"')
+        lines.append(f'    reason: "{item["reason"]}"')
 
     lines.append("gaps:")
-    for gap in gaps:
+    for gap in payload["gaps"]:
         lines.append(f'  - "{gap}"')
 
     lines.append("gap_tasks:")
-    for task in gap_tasks:
+    for task in payload["gap_tasks"]:
         lines.append(f'  - "{task}"')
 
-    lines.append(f'generated_at: "{now_iso}"')
+    lines.append(f'generated_at: "{payload["generated_at"]}"')
     lines.append(f'version_id: "{version_id}"')
     return "\n".join(lines) + "\n"
 
@@ -279,7 +336,9 @@ def rank_cards_by_rule(
         artifacts = len(doc["lists"].get("artifacts", []))
         role_bonus = (
             2
-            if contains_any(doc["scalars"].get("role_scope", ""), ["Owner", "Tech Lead", "负责人"])
+            if contains_any(
+                doc["scalars"].get("role_scope", ""), ["Owner", "Tech Lead", "负责人"]
+            )
             else 0
         )
         ranked.append(
@@ -301,8 +360,48 @@ def select_llm_candidate_files(
     ]
 
 
+# 分项满分：用于把真实规则分归一化为 0-1，供 Agent 门禁阈值比较。
+_SCORE_MAX = {"K": 25, "D": 15, "S": 15, "Q": 20, "E": 15, "R": 10}
+
+
+def _domain_card_payload(card: EvidenceCard) -> dict[str, object]:
+    return {
+        "id": card.id,
+        "scalars": {
+            "title": card.title,
+            "raw_source": card.raw_source,
+            "time_range": card.period,
+            "context": card.context,
+            "role_scope": card.role_scope,
+        },
+        "lists": {
+            "actions": list(card.actions),
+            "results": list(card.results),
+            "stack": list(card.stack),
+            "artifacts": list(card.artifacts),
+            "tags": list(card.tags),
+        },
+    }
+
+
+def _domain_job_payload(profile: JobProfile) -> tuple[dict[str, str], dict[str, list[str]]]:
+    scalars = {
+        "target_role": profile.title,
+        "company": profile.company,
+        "business_domain": profile.business_domain,
+        "level": profile.level,
+    }
+    lists = {
+        "keywords": list(profile.keywords),
+        "seniority_signal": list(profile.seniority_signal),
+        "must_have": list(profile.must_have),
+        "nice_to_have": list(profile.nice_to_have),
+    }
+    return scalars, lists
+
+
 class RuleMatchingEngine:
-    """domain 模型适配的规则引擎（供 Agent 编排策略注册表使用）。"""
+    """domain 模型适配：使用真实 K/D/S/Q/E/R 规则评分。"""
 
     def __init__(self) -> None:
         self._builder = ReportBuilder()
@@ -312,73 +411,55 @@ class RuleMatchingEngine:
         evidence_cards: Sequence[EvidenceCard],
         profile: JobProfile,
     ) -> MatchingReport:
-        if not evidence_cards:
-            return self._builder.build(
-                job_profile_id=profile.id,
-                card_ids=(),
-                score_breakdown={"K": 0.0, "Q": 0.0, "E": 0.0, "total": 0.0},
-                gap_tasks=_build_gap_tasks(profile, normalized_signals=""),
+        job_scalars, job_lists = _domain_job_payload(profile)
+        payload = score_rule_payload(
+            job_scalars=job_scalars,
+            job_lists=job_lists,
+            cards=[_domain_card_payload(card) for card in evidence_cards],
+        )
+        breakdown = payload["score_breakdown"]
+        metrics = payload["metrics"]
+        normalized = {
+            key: round(breakdown[key]["score"] / _SCORE_MAX[key], 4)
+            for key in _SCORE_MAX
+        }
+        # K 使用未四舍五入的覆盖率，避免 18.75/25 被整数分舍入成 0.76。
+        normalized["K"] = metrics["keyword_coverage"]
+        normalized["total"] = round(payload["score_total"] / 100, 4)
+
+        covered_text = "\n".join(
+            "\n".join(
+                [
+                    card.title,
+                    card.context,
+                    card.role_scope,
+                    *card.tags,
+                    *card.stack,
+                    *card.results,
+                ]
             )
-
-        keyword_hits = 0
-        all_signals: list[str] = []
-        card_ids: list[str] = []
-        quantified_cards = 0
-        artifact_cards = 0
-
-        for card in evidence_cards:
-            card_ids.append(card.id)
-            all_signals.extend(card.tags)
-            all_signals.extend(card.stack)
-            all_signals.append(card.title)
-            all_signals.extend(card.results)
-            if card.results:
-                quantified_cards += 1
-            if card.artifacts:
-                artifact_cards += 1
-
-        normalized_signals = " ".join(all_signals).casefold()
+            for card in evidence_cards
+        ).casefold()
+        gap_tasks: list[str] = list(payload["gap_tasks"])
+        seen: set[str] = {task.casefold() for task in gap_tasks}
         for keyword in profile.keywords:
-            if keyword.casefold() in normalized_signals:
-                keyword_hits += 1
-
-        k_score = keyword_hits / max(len(profile.keywords), 1)
-        q_score = quantified_cards / len(evidence_cards)
-        e_score = artifact_cards / len(evidence_cards)
-        total = (k_score * 0.5) + (q_score * 0.25) + (e_score * 0.25)
+            if keyword.casefold() in covered_text:
+                continue
+            task = f"补充 {keyword} 相关技术栈或经验证据"
+            if task.casefold() not in seen:
+                gap_tasks.append(task)
+                seen.add(task.casefold())
+        for must_have in profile.must_have:
+            if must_have.casefold() in covered_text:
+                continue
+            task = f"补充 {must_have} 相关证据"
+            if task.casefold() not in seen:
+                gap_tasks.append(task)
+                seen.add(task.casefold())
 
         return self._builder.build(
             job_profile_id=profile.id,
-            card_ids=tuple(card_ids),
-            score_breakdown={
-                "K": round(k_score, 4),
-                "Q": round(q_score, 4),
-                "E": round(e_score, 4),
-                "total": round(total, 4),
-            },
-            gap_tasks=_build_gap_tasks(profile, normalized_signals=normalized_signals),
+            card_ids=tuple(payload["evidence_card_ids"]),
+            score_breakdown=normalized,
+            gap_tasks=tuple(gap_tasks),
         )
-
-
-def _build_gap_tasks(
-    profile: JobProfile, *, normalized_signals: str
-) -> tuple[str, ...]:
-    gap_tasks: list[str] = []
-    seen_terms: set[str] = set()
-
-    for must_have in profile.must_have:
-        normalized = must_have.casefold()
-        if normalized and normalized not in normalized_signals:
-            gap_tasks.append(f"补充 {must_have} 相关证据")
-            seen_terms.add(normalized)
-
-    for keyword in profile.keywords:
-        normalized = keyword.casefold()
-        if (
-            normalized
-            and normalized not in normalized_signals
-            and normalized not in seen_terms
-        ):
-            gap_tasks.append(f"补充 {keyword} 相关技术栈或经验证据")
-
-    return tuple(gap_tasks)

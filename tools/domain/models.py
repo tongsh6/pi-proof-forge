@@ -15,6 +15,7 @@ class EvidenceCard:
     period: str = ""
     context: str = ""
     role_scope: str = ""
+    actions: tuple[str, ...] = ()
     time_range_provenance: dict | None = None
     role_scope_provenance: dict | None = None
 
@@ -31,6 +32,10 @@ class JobProfile:
     tone: str = ""
     must_have: tuple[str, ...] = ()
     nice_to_have: tuple[str, ...] = ()
+    company: str = ""
+    business_domain: str = ""
+    seniority_signal: tuple[str, ...] = ()
+    jd_text: str = ""
 
 
 @dataclass(frozen=True)
