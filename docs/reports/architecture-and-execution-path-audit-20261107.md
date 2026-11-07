@@ -103,6 +103,20 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 - 处置：按实现分层重组（domain/engines/orchestration/cli/config/errors/channels/
   submission/tooling），纯移动不改测试内容。
 
+### P2-3 工具入口不统一（已修复）
+
+- 现象：`tools/` 根目录混放业务入口、发布运维与门禁/检查脚本
+  （`check_aief_l3.py`、`check_execution_roadmap.py`、`check_submission_readiness.py`、
+  `check_boss_agent_cli.py`、`check_v2_constraints.py`、`kb.py`），与「统一 CLI 入口」
+  声明不一致，CI 与发布脚本也直接调用脚本路径。
+- 处置：新增 `tools/tooling/`（工具与门禁实现层）承接六个脚本，统一改为
+  `python3 -m tools.cli.entrypoints check <arch|roadmap|aief|submission-readiness|
+  boss-cli>` 与 `... kb <command>`；`tools/` 根目录仅保留发布运维脚本
+  （`run_gitflow_release.py`、`run_github_publish.py`、`setup_liepin_session.py`）。
+  CI workflow、`run_github_publish` 子进程调用、4 个测试导入与当前事实文档同步更新；
+  分层门禁新增 `tooling` 层白名单与 `cli → tooling` 依赖方向。
+- 验证：`check arch/roadmap/aief` 全部 PASS；全量测试 1766 通过。
+
 ### P2-2 文档引用漂移（已修复当前事实文档）
 
 - README、tools/README、OpenSpec core spec、AIEF 当前技术文档、sidecar RPC 契约
@@ -130,6 +144,7 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 | `0865fc7` | refactor(sidecar)：将 agent handler 巨型模块拆为域子模块 |
 | `7fc066c` | refactor(engines)：Agent 编排统一真实引擎，消除双引擎并存 |
 | `88705f7` | refactor(evaluation)：四层质量评估器拆分为 tiers 子包 |
+| 本次提交 | refactor(tooling)：检查脚本归一为 CLI `check`/`kb` 子命令 |
 
 ## 验证证据（最终）
 
@@ -157,8 +172,6 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 
 ## 剩余路线（显式，不计入本次完成）
 
-- R2 提交前检查脚本归一：`check_*` / `kb` / 发布脚本仍位于 tools 根目录，后续可
-  收敛为 `python3 -m tools.cli.entrypoints` 子命令（低优先级，当前不影响分层门禁）。
 - R3 UI 页面 hooks 提取：三个页面剩余行数主要来自与多状态耦合的 hooks 逻辑，后续
   可评审是否提取自定义 hook（会改变 effect 依赖结构，需独立回归）。
 - R4 Agent 生成的 LLM 改写策略接入：`Composer` 已注册 `LLMRewriter` 策略，但
