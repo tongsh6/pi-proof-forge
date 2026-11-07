@@ -113,6 +113,12 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 - 四层质量评估器：`tiered_evaluator.py` 1399 行按层拆为
   `tiers/common|eligible|fit|strong|distinct|report`（144–333 行），门面 76 行
   保留原全部符号 re-export；既有 import 与测试无需修改。
+- 其余产品大体量模块：`orchestration/agent_loop.py` 754 → 574 行
+  （投递执行辅助 → `agent_delivery_runner.py` 181 行、审批队列写入 →
+  `review_queue_writer.py` 69 行，均 re-export 兼容既有调用与测试）；
+  `submission/liepin.py` 872 → 329 行（页内交互 → `liepin_browser.py` 512 行、
+  类型与选择器 → `liepin_types.py` 69 行，`_extract_liepin_job_id` 等外部引用
+  由 liepin re-export 保持）。
 
 ### P2-1 测试组织与分层不对应（已修复）
 
@@ -164,7 +170,8 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 | `88705f7` | refactor(evaluation)：四层质量评估器拆分为 tiers 子包 |
 | `27ac474` | refactor(tooling)：检查脚本归一为 CLI `check`/`kb` 子命令 |
 | `73b9899` | refactor(ui)：证据/投递页逻辑提取为页面 hook，页面均 ≤600 行 |
-| 本次提交 | refactor(generation)：Agent 生成接入 LLM 受控改写（事实防线） |
+| `ca47dd7` | feat(generation)：Agent 生成接入 LLM 受控改写（事实防线） |
+| 本次提交 | refactor(orchestration/submission)：拆分 agent_loop 与 liepin 大体量模块 |
 
 ## 验证证据（最终）
 
@@ -195,14 +202,12 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 - R3 已收尾：evidence/submissions 的逻辑已提取为页面 hook，页面均 ≤600 行；两个
   hook 文件（758/804 行）是单一页面状态机、状态高度耦合，再拆分需重新设计状态边界，
   暂不继续（如后续出现高频修改再拆）。
-- R5 其余大体量模块（本轮不拆，理由如下）：
-  · `tools/submission/liepin.py` 872 行：猎聘浏览器渠道实现，选择器与页内操作紧
-    耦合真实平台，patch 语义密集；当前无高频修改瓶颈，拆分风险高于可读性收益。
-  · `tools/orchestration/agent_loop.py` 754 行：状态机主循环与交付辅助内聚，超阈值
-    有限。
-  · `tools/acceptance/external_l3.py` 4988 行、`acceptance_runner.py` 4031 行：
-    验收证据工具层，被 P0 验收条目依赖；拆分需同步改造验收用例与证据契约，应在
-    修改这些验收流程时按「门面 + 子模块」模式逐步收敛，而非单独重构。
+- R5 已收尾：`agent_loop.py`（754→574）与 `liepin.py`（872→329）已按门面 + 子模块
+  拆分，产品代码中不再有 >600 行的非验收模块。
+- R6 `tools/acceptance/external_l3.py`（4988 行）、`acceptance_runner.py`（4031 行）
+  仍保留：属验收证据工具层，被 P0 验收条目与 journey matrix 依赖；拆分需同步改造
+  验收用例与证据契约，应在修改这些验收流程时按门面 + 子模块模式逐步收敛，而非
+  单独重构（当前无高频修改瓶颈）。
 
 ## 假设与边界
 
