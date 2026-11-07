@@ -46,6 +46,36 @@ class ComposerTests(unittest.TestCase):
             self.assertIn("rule", evaluation.list())
             self.assertIn("rule", discovery.list())
 
+    def test_llm_mode_registers_controlled_rewrite_generation_strategy(self) -> None:
+        """LLM 模式的生成策略是受控改写（模板基线 + 事实校验回退），不是自由改写。"""
+        from tools.infra.llm.client import LLMClient
+
+        class FakeClient(LLMClient):
+            def __init__(self) -> None:  # noqa: D107 - 测试替身不调用父类
+                pass
+
+        with TemporaryDirectory() as tmp:
+            policy_path = Path(tmp) / "policy.yaml"
+            policy_path.write_text(_VALID_POLICY, encoding="utf-8")
+            composer = Composer.from_policy_path(str(policy_path))
+            generation = composer.build_generation_registry(
+                {"name": "候选人"}, {"target_role": "后端"}
+            )
+            composer.add_llm_strategies(
+                FakeClient(),  # type: ignore[arg-type]
+                "test-model",
+                composer.build_evidence_registry(),
+                composer.build_matching_registry(),
+                generation,
+                composer.build_evaluation_registry(),
+                personal_profile={"name": "候选人"},
+                job_context={"target_role": "后端"},
+            )
+            self.assertIn("llm_rewrite", generation.list())
+            engine = generation.create("llm_rewrite")
+            self.assertTrue(hasattr(engine, "generate"))
+            self.assertFalse(hasattr(engine, "rewrite_content"))  # 没有自由改写入口
+
 
 if __name__ == "__main__":
     _ = unittest.main()

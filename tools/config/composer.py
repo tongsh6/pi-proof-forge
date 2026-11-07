@@ -81,10 +81,14 @@ class Composer:
                 llm_client, llm_model,
                 self.build_evidence_registry(),
                 matching_reg, generation_reg, evaluation_reg,
+                personal_profile=personal_profile,
+                job_context=job_context,
             )
 
         matching_engine = matching_reg.create("hybrid" if use_llm else "rule")
-        generation_engine = generation_reg.create("template")
+        generation_engine = generation_reg.create(
+            "llm_rewrite" if use_llm else "template"
+        )
         evaluation_engine = evaluation_reg.create("llm" if use_llm else "rule")
         discovery_engine = discovery_reg.create("rule")
 
@@ -197,6 +201,9 @@ class Composer:
         matching_registry: _RegistryLike,
         generation_registry: _RegistryLike,
         evaluation_registry: _RegistryLike,
+        *,
+        personal_profile: dict | None = None,
+        job_context: dict | None = None,
     ) -> None:
         evidence_registry.register(
             "llm",
@@ -227,12 +234,14 @@ class Composer:
             ),
         )
         generation_registry.register(
-            "llm",
+            "llm_rewrite",
             lambda: _construct(
                 "tools.engines.generation.llm_rewriter",
                 "LLMRewriter",
                 llm_client,
                 model,
+                personal_profile,
+                job_context,
             ),
         )
         evaluation_registry.register(
