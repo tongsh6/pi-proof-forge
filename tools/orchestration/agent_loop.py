@@ -20,6 +20,22 @@ from tools.domain.value_objects import Candidate, ChannelFailure, DeliveryResult
 from tools.infra.logging import make_logger
 
 
+# 兼容导出：投递执行与审批队列写入已拆分到子模块，保留原模块符号供外部引用。
+from .agent_delivery_runner import (  # noqa: E402
+    _delivery_platform,
+    _gate_engine_for_round,
+    _rank_candidate_batch,
+    deliver_mock,
+    run_delivery,
+)
+from .review_queue_writer import (  # noqa: E402
+    _build_review_candidate_payload,
+    _review_queue_path,
+    _utcnow_iso,
+    _write_review_queue,
+)
+
+
 @dataclass(frozen=True)
 class AgentLoopResult:
     run_id: str
@@ -164,19 +180,7 @@ class AgentLoop:
         )
 
     def _deliver_mock(self, round_index: int):
-        from tools.channels.email import EmailChannel
-        from tools.channels.liepin import LiepinChannel
-
-        request = DeliveryRequest(
-            run_id=self._run_id,
-            candidate_id=f"candidate-{round_index}",
-            channel="liepin",
-            resume_path="outputs/resume_latest.pdf",
-            job_url="https://example.com/job",
-            dry_run=True,
-            metadata={"round": round_index},
-        )
-        return deliver_with_fallback(request, [LiepinChannel(), EmailChannel()])
+        return deliver_mock(self._run_id, round_index)
 
     # ------------------------------------------------------------------
     # full pipeline (engines injected via Composer)
@@ -514,75 +518,15 @@ class AgentLoop:
         round_index: int,
         resume: ResumeOutput,
     ) -> Result[DeliveryResult, ChannelFailure]:
-        route = _delivery_platform(candidate)
-        if isinstance(route, Err):
-            return route
-        platform = route.value
-        if candidate.source == "liepin_official":
-            return Err(ChannelFailure(
-                channel_id=platform, reason="official_delivery_contract_unverified",
-                details="官方投递的发送版本与回执契约尚未验证，禁止转入旧浏览器投递",
-            ))
-
-        if not self._channels:
-            from tools.channels.email import EmailChannel
-            from tools.channels.liepin import LiepinChannel
-            channels: list[DeliveryChannel] = [LiepinChannel(), EmailChannel()]
-        else:
-            channels = list(self._channels)
-
-        if not any(channel.channel_id == platform for channel in channels):
-            return Err(ChannelFailure(
-                channel_id=platform, reason="no_channel",
-                details="未配置与目标平台匹配的投递通道",
-            ))
-
-        from tools.engines.generation.exporter import ResumeExporter
-        from tools.infra.export.pdf_exporter import markdown_to_pdf
-
-        # 每次尝试保留独立附件，重试或同名版本不能覆盖前次文件。
-        try:
-            output_root = Path("outputs") / "agent_runs" / self._run_id / "deliveries"
-            output_root.mkdir(parents=True, exist_ok=True)
-            attempt_dir = Path(tempfile.mkdtemp(prefix=f"round-{round_index}-", dir=output_root))
-            markdown_path = ResumeExporter().export_markdown(resume, str(attempt_dir))
-            pdf_path = markdown_path.with_suffix(".pdf")
-            markdown_to_pdf(markdown_path, pdf_path)
-            metadata = {
-                "round": round_index,
-                "platform": platform,
-                "platform_job_id": candidate.platform_job_id,
-                "platform_job_type": candidate.platform_job_type,
-                "job_profile_id": candidate.job_profile_id,
-                "jd_status": candidate.jd_status,
-                "source": candidate.source,
-                "source_jd_sha256": candidate.source_jd_sha256,
-                "resume_version": resume.version,
-                "resume_markdown_path": str(markdown_path.resolve()),
-                "resume_markdown_sha256": hashlib.sha256(markdown_path.read_bytes()).hexdigest(),
-                "resume_pdf_sha256": hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
-            }
-            resume_path = str(pdf_path.resolve())
-            self._append_event("resume_exported", round_index, {
-                **metadata, "resume_path": resume_path, "candidate_id": candidate.candidate_id,
-            })
-        except (OSError, RuntimeError) as exc:
-            self._logger.warning("agent_loop.resume_pdf_export_failed", error=str(exc))
-            return Err(ChannelFailure(
-                channel_id="none", reason="resume_pdf_export_failed", details=str(exc),
-            ))
-
-        request = DeliveryRequest(
+        return run_delivery(
             run_id=self._run_id,
-            candidate_id=candidate.candidate_id,
-            channel=platform,
-            resume_path=resume_path,
-            job_url=candidate.job_url,
-            dry_run=False,
-            metadata=metadata,
+            candidate=candidate,
+            round_index=round_index,
+            resume=resume,
+            channels=self._channels,
+            append_event=self._append_event,
+            logger=self._logger,
         )
-        from tools.orchestration.approved_delivery import deliver_once
-        return deliver_once(request, channels, source=candidate.source)
 
     # ------------------------------------------------------------------
     # shared helpers
@@ -628,127 +572,3 @@ class AgentLoop:
                 transition=transition_event,
             )
             return current
-
-
-def _delivery_platform(candidate: Candidate) -> Result[str, ChannelFailure]:
-    """使用显式平台或可信 HTTPS 域名，业务方向不参与渠道选择。"""
-    platform_domains = {
-        "liepin": "liepin.com",
-        "boss": "zhipin.com",
-        "zhilian": "zhaopin.com",
-        "51job": "51job.com",
-    }
-    platform = candidate.platform
-    try:
-        if "\\" in candidate.job_url or any(char.isspace() for char in candidate.job_url):
-            raise ValueError("invalid_job_url")
-        url = urlsplit(candidate.job_url)
-        if (
-            url.scheme != "https" or not url.hostname
-            or url.username is not None or url.password is not None
-            or url.port not in (None, 443)
-        ):
-            raise ValueError("invalid_job_url")
-    except ValueError:
-        return Err(ChannelFailure(
-            channel_id=platform or "none", reason="invalid_job_url",
-            details="岗位链接须为不含认证信息的 HTTPS 平台地址",
-        ))
-
-    url_platform = next((
-        name for name, domain in platform_domains.items()
-        if url.hostname == domain or url.hostname.endswith("." + domain)
-    ), "")
-    if platform and (url_platform or platform in platform_domains) and platform != url_platform:
-        return Err(ChannelFailure(
-            channel_id=platform, reason="platform_url_mismatch",
-            details="候选平台与岗位链接所属平台不一致",
-        ))
-    if not platform:
-        platform = url_platform
-    if not platform:
-        return Err(ChannelFailure(
-            channel_id="none", reason="unknown_platform",
-            details="岗位未声明平台，且链接不属于已知招聘平台",
-        ))
-    return Ok(platform)
-
-
-def _gate_engine_for_round(
-    policy: PolicyConfig, run_id: str, round_index: int
-) -> object:
-    from tools.orchestration.gate_engine import GateEngine
-    return GateEngine(policy, run_id, round_index)
-
-
-def _rank_candidate_batch(
-    candidates: Sequence[Candidate],
-    selected_candidate_ids: set[str],
-) -> list[Candidate]:
-    remaining = [
-        candidate for candidate in candidates
-        if candidate.candidate_id not in selected_candidate_ids
-    ]
-    return sorted(
-        remaining,
-        key=lambda candidate: (-candidate.confidence, candidate.candidate_id),
-    )
-
-
-def _review_queue_path(run_id: str) -> Path:
-    return Path("outputs") / "review_queue" / f"{run_id}.json"
-
-
-def _utcnow_iso() -> str:
-    return (
-        datetime.datetime.now(datetime.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-
-
-def _build_review_candidate_payload(
-    *,
-    candidate: Candidate | None,
-    matching_score: float,
-    evaluation_score: float,
-    round_index: int,
-    resume_version: str,
-) -> dict[str, object]:
-    return {
-        "job_lead_id": candidate.candidate_id if candidate else "",
-        "company": candidate.company if candidate else "",
-        "legal_entity": candidate.legal_entity if candidate else "",
-        "position": candidate.direction if candidate else "",
-        "matching_score": matching_score,
-        "evaluation_score": evaluation_score,
-        "round_index": round_index,
-        "resume_version": resume_version,
-        "job_url": candidate.job_url if candidate else "",
-        "platform": candidate.platform if candidate else "",
-        "platform_job_id": candidate.platform_job_id if candidate else "",
-        "platform_job_type": candidate.platform_job_type if candidate else "",
-        "job_profile_id": candidate.job_profile_id if candidate else "",
-        "jd_status": candidate.jd_status if candidate else "",
-        "source_jd_sha256": candidate.source_jd_sha256 if candidate else "",
-        "source": candidate.source if candidate else "",
-        "status": "pending",
-        "created_at": _utcnow_iso(),
-    }
-
-
-def _write_review_queue(run_id: str, candidates: Sequence[dict[str, object]]) -> Path:
-    queue_path = _review_queue_path(run_id)
-    queue_path.parent.mkdir(parents=True, exist_ok=True)
-    queue = {
-        "run_id": run_id,
-        "candidates": list(candidates),
-        "created_at": _utcnow_iso(),
-    }
-    from tools.infra.persistence.review_queue import atomic_write_json, locked_review_queue
-    with locked_review_queue(queue_path):
-        if queue_path.exists():
-            raise ValueError('review_queue_already_exists')
-        atomic_write_json(queue_path, queue)
-    return queue_path
