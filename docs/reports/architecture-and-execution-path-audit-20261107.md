@@ -89,9 +89,12 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
   `quick_run` / `quick_run_progress` / `quick_run_results` / `agent_run` /
   `agent_delivery` / `agent_review` 六个域子模块。拆分后 sidecar handlers 全部 ≤600 行；
   patch 语义兼容（路径常量、Popen、运行态仍由门面持有，子模块运行时读取）。
-- UI 页面：evidence 1755 → 833、submissions 1473 → 866、quick-run 894 → 509；
-  新增 21 个区块组件与 3 个 helpers，子组件纯展示、扁平依赖；配套 21 个 GUI 契约
-  测试 harness 适配（模块 loader / jsx 展开 / 页面目录聚合源码），断言内容未弱化。
+- UI 页面：evidence 1755 →（拆组件后 833）→ 页面 256 + `use-evidence-page.ts` 758
+  （状态/副作用/回调集中为页面逻辑 hook，渲染与逻辑分离）；submissions 1473 →
+  （866）→ 页面 241 + `use-submissions-page.ts` 804；quick-run 894 → 509。
+  三个页面 index.tsx 均 ≤600；新增 21 个区块组件、3 个 helpers 与 2 个页面 hook；
+  子组件纯展示、扁平依赖；配套 GUI 契约测试 harness 适配（模块 loader / jsx 展开 /
+  页面目录聚合源码），断言内容未弱化。
 - 四层质量评估器：`tiered_evaluator.py` 1399 行按层拆为
   `tiers/common|eligible|fit|strong|distinct|report`（144–333 行），门面 76 行
   保留原全部符号 re-export；既有 import 与测试无需修改。
@@ -144,7 +147,8 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 | `0865fc7` | refactor(sidecar)：将 agent handler 巨型模块拆为域子模块 |
 | `7fc066c` | refactor(engines)：Agent 编排统一真实引擎，消除双引擎并存 |
 | `88705f7` | refactor(evaluation)：四层质量评估器拆分为 tiers 子包 |
-| 本次提交 | refactor(tooling)：检查脚本归一为 CLI `check`/`kb` 子命令 |
+| `27ac474` | refactor(tooling)：检查脚本归一为 CLI `check`/`kb` 子命令 |
+| 本次提交 | refactor(ui)：证据/投递页逻辑提取为页面 hook，页面均 ≤600 行 |
 
 ## 验证证据（最终）
 
@@ -172,8 +176,9 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 
 ## 剩余路线（显式，不计入本次完成）
 
-- R3 UI 页面 hooks 提取：三个页面剩余行数主要来自与多状态耦合的 hooks 逻辑，后续
-  可评审是否提取自定义 hook（会改变 effect 依赖结构，需独立回归）。
+- R3 已收尾：evidence/submissions 的逻辑已提取为页面 hook，页面均 ≤600 行；两个
+  hook 文件（758/804 行）是单一页面状态机、状态高度耦合，再拆分需重新设计状态边界，
+  暂不继续（如后续出现高频修改再拆）。
 - R4 Agent 生成的 LLM 改写策略接入：`Composer` 已注册 `LLMRewriter` 策略，但
   AgentLoop 的 GENERATE 阶段固定使用 `template` 策略；如需在 Agent 链路启用受控
   改写，需单独评审改写边界与事实校验（当前不影响主链路，Quick Run 已具备受控改写）。
