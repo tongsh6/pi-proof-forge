@@ -5,7 +5,17 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_reference_management_lives_in_settings():
-    evidence = (ROOT / "ui/src/pages/evidence/index.tsx").read_text(encoding="utf-8")
+    evidence_page_dir = ROOT / "ui/src/pages/evidence"
+    evidence = "\n".join(
+        [
+            (evidence_page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (evidence_page_dir / "evidence-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((evidence_page_dir / "components").rglob("*.tsx"))
+        ]
+    )
     settings = (ROOT / "ui/src/pages/system-settings/index.tsx").read_text(encoding="utf-8")
 
     # 证据页只剩抽屉入口与设置跳转，不再有引用目录管理面板。

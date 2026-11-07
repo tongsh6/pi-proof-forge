@@ -11,7 +11,7 @@ const hooks=[];let index=0,effects=[],tree;const same=(a,b)=>a&&b&&a.length===b.
 const react={useState(v){const i=index++;if(!hooks[i])hooks[i]={v:typeof v==='function'?v():v};return[hooks[i].v,n=>{hooks[i].v=typeof n==='function'?n(hooks[i].v):n}]},
 useMemo(fn,deps){const i=index++;if(!hooks[i]||!same(hooks[i].deps,deps))hooks[i]={v:fn(),deps};return hooks[i].v},useCallback(fn,deps){return react.useMemo(()=>fn,deps)},useRef(v){return react.useMemo(()=>({current:v}),[])},
 useEffect(fn,deps){const i=index++;if(!hooks[i]||!same(hooks[i].deps,deps)){hooks[i]={deps};effects.push(fn)}}};
-const exports={},jsx=(type,props)=>({type,props:props||{}});
+const exports={};const jsx=(type,props)=>typeof type==='function'?type(props||{}):({type,props:props||{}});
 const llmConfig={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/lib/llmConfig.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021}}).outputText,{exports:llmConfig});
 const nodes=v=>Array.isArray(v)?v.flatMap(nodes):v&&typeof v==='object'?[v,...nodes(v.props.children)]:[];
 const text=v=>Array.isArray(v)?v.map(text).join(' '):v&&typeof v==='object'?text(v.props.children):String(v??'');
@@ -50,9 +50,14 @@ console.log('tracker ok');
 STAGE_FUNCTION_TEST = COMMON_PRELUDE + r'''
 const stageState={tasks:{},getState:()=>stageState};
 const api={};const navigations=[];
+const baseRequire=n=>{if(n==='react-router-dom')return{useSearchParams:()=>[new URLSearchParams()],useNavigate:()=>()=>{}};if(n==='react')return react;if(n==='react/jsx-runtime')return{jsx,jsxs:jsx};if(n==='react-i18next')return{useTranslation:()=>({t:k=>k})};if(n==='lucide-react')return new Proxy({},{get:(_,k)=>k});if(n==='@/lib/errors')return{getErrorMessage:e=>String(e)};if(n==='@/lib/llmConfig')return llmConfig;if(n==='@/lib/quick-run-tracker')return{isQuickRunTerminal:()=>false,trackQuickRun:async()=>null};if(n==='@/lib/sidecar/api')return api;if(n==='@/lib/ui')return{notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};if(n==='@/state/task-store')return{useTaskStore:Object.assign(sel=>sel(stageState),{getState:()=>stageState})};if(n==='@/components/pdf-quality-summary')return{PdfQualitySummary:()=>null};if(n==='@/components/quality-report')return{QualityReportPanel:()=>null};return undefined};
+const nodePath=require('node:path'),moduleCache={};
+function loadPageModule(spec,fromDir){const abs=spec.startsWith('@/')?nodePath.resolve('ui/src',spec.slice(2)):nodePath.resolve(fromDir,spec);let file=abs;for(const ext of['','.tsx','.ts','.js']){if(fs.existsSync(abs+ext)){file=abs+ext;break}}if(moduleCache[file])return moduleCache[file];const out={};moduleCache[file]=out;const dir=nodePath.dirname(file),code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{exports:out,console,Intl,Date,Map,Set,URLSearchParams,window:{setInterval:()=>0,clearInterval:()=>{}},require:n=>resolvePageModule(n,dir)});return out}
+function resolvePageModule(spec,fromDir){const pageRoot=nodePath.resolve('ui/src/pages/quick-run'),abs=spec.startsWith('@/')?nodePath.resolve('ui/src',spec.slice(2)):nodePath.resolve(fromDir,spec),pageSpec='./'+nodePath.relative(pageRoot,abs).split(nodePath.sep).join('/'),stub=baseRequire(pageSpec);if(stub!==undefined)return stub;if(spec.startsWith('.')||spec.startsWith('@/pages/'))return loadPageModule(spec,fromDir);const hit=baseRequire(spec);if(hit!==undefined)return hit;throw Error(spec)}
+const pageRequire=n=>resolvePageModule(n,'ui/src/pages/quick-run');
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/quick-run/index.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText,
 {exports,console,Intl,Date,Map,Set,URLSearchParams,window:{setInterval:()=>0,clearInterval:()=>{}},
-require:(n=>{if(n==='react-router-dom')return{useSearchParams:()=>[new URLSearchParams()],useNavigate:()=>()=>{}};if(n==='react')return react;if(n==='react/jsx-runtime')return{jsx,jsxs:jsx};if(n==='react-i18next')return{useTranslation:()=>({t:k=>k})};if(n==='lucide-react')return new Proxy({},{get:(_,k)=>k});if(n==='@/lib/errors')return{getErrorMessage:e=>String(e)};if(n==='@/lib/llmConfig')return llmConfig;if(n==='@/lib/quick-run-tracker')return{isQuickRunTerminal:()=>false,trackQuickRun:async()=>null};if(n==='@/lib/sidecar/api')return api;if(n==='@/lib/ui')return{notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};if(n==='@/state/task-store')return{useTaskStore:Object.assign(sel=>sel(stageState),{getState:()=>stageState})};if(n==='@/components/pdf-quality-summary')return{PdfQualitySummary:()=>null};if(n==='@/components/quality-report')return{QualityReportPanel:()=>null};throw Error(n)})});
+require:pageRequire});
 const {getStageStatus}=exports;const progress={stages:[{key:'extract',status:'done'},{key:'match',status:'running'},{key:'generate',status:'waiting'},{key:'evaluate',status:'waiting'}]};
 assert.equal(getStageStatus('running',null,'',0,progress.stages,'extract'),'done');
 assert.equal(getStageStatus('running',null,'',1,progress.stages,'match'),'running');
@@ -87,15 +92,20 @@ listEvidenceMaterialSources:async()=>({items:[{material_id:'work',label:'工作'
 listJobProfiles:async()=>({items:[{job_profile_id:'job-a',status:'active',title:'目标A',company:'A公司',source_jd:'完整要求A'},{job_profile_id:'job-b',status:'active',title:'目标B',company:'B公司',source_jd:'完整要求B'}],next_cursor:null}),
 getSettings:async()=>({llm_config:{api_key:{configured:false}}}),startQuickRun:startQuickRunMock,
 checkQuickRunDirection:async()=>({direction:null,requires_confirmation:false})};
-vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/quick-run/index.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText,
-{exports,console,Intl,Date,Map,Set,URLSearchParams,window:{setInterval:()=>0,clearInterval:()=>{}},
-require:(n=>{if(n==='react-router-dom')return{useSearchParams:()=>[searchParams,p=>searchParams=new URLSearchParams(p)],useNavigate:()=>url=>navigations.push(url)};
+const baseRequire=n=>{if(n==='react-router-dom')return{useSearchParams:()=>[searchParams,p=>searchParams=new URLSearchParams(p)],useNavigate:()=>url=>navigations.push(url)};
 if(n==='react')return react;if(n==='react/jsx-runtime')return{jsx,jsxs:jsx};if(n==='react-i18next')return{useTranslation:()=>({t:k=>k})};if(n==='lucide-react')return new Proxy({},{get:(_,k)=>k});
 if(n==='@/lib/errors')return{getErrorMessage:e=>String(e)};if(n==='@/lib/llmConfig')return llmConfig;
 if(n==='@/lib/quick-run-tracker')return{isQuickRunTerminal:s=>['DONE','SKIPPED','FAILED','TIMEOUT','stopped'].includes(s),trackQuickRun:trackQuickRunMock};
 if(n==='@/lib/sidecar/api')return api;if(n==='@/lib/ui')return{notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})};
 if(n==='@/state/task-store')return{useTaskStore:Object.assign(sel=>sel(taskStore),{getState:()=>taskStore})};
-if(n==='@/components/pdf-quality-summary')return{PdfQualitySummary:()=>null};if(n==='@/components/quality-report')return{QualityReportPanel:()=>null};throw Error(n)})});
+if(n==='@/components/pdf-quality-summary')return{PdfQualitySummary:()=>null};if(n==='@/components/quality-report')return{QualityReportPanel:()=>null};return undefined};
+const nodePath=require('node:path'),moduleCache={};
+function loadPageModule(spec,fromDir){const abs=spec.startsWith('@/')?nodePath.resolve('ui/src',spec.slice(2)):nodePath.resolve(fromDir,spec);let file=abs;for(const ext of['','.tsx','.ts','.js']){if(fs.existsSync(abs+ext)){file=abs+ext;break}}if(moduleCache[file])return moduleCache[file];const out={};moduleCache[file]=out;const dir=nodePath.dirname(file),code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{exports:out,console,Intl,Date,Map,Set,URLSearchParams,window:{setInterval:()=>0,clearInterval:()=>{}},require:n=>resolvePageModule(n,dir)});return out}
+function resolvePageModule(spec,fromDir){const pageRoot=nodePath.resolve('ui/src/pages/quick-run'),abs=spec.startsWith('@/')?nodePath.resolve('ui/src',spec.slice(2)):nodePath.resolve(fromDir,spec),pageSpec='./'+nodePath.relative(pageRoot,abs).split(nodePath.sep).join('/'),stub=baseRequire(pageSpec);if(stub!==undefined)return stub;if(spec.startsWith('.')||spec.startsWith('@/pages/'))return loadPageModule(spec,fromDir);const hit=baseRequire(spec);if(hit!==undefined)return hit;throw Error(spec)}
+const pageRequire=n=>resolvePageModule(n,'ui/src/pages/quick-run');
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/quick-run/index.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText,
+{exports,console,Intl,Date,Map,Set,URLSearchParams,window:{setInterval:()=>0,clearInterval:()=>{}},
+require:pageRequire});
 async function settle(){for(let i=0;i<12;i++){index=0;tree=exports.QuickRunPage();const pending=effects;effects=[];for(const fn of pending)fn();await Promise.resolve();await Promise.resolve()}}
 const startButton=()=>nodes(tree).find(n=>n.props['data-automation-id']==='quick-run-start');
 (async()=>{await settle();

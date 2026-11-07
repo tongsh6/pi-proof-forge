@@ -88,11 +88,31 @@ def test_quality_report_component_renders_tiers_failures_and_legacy_scores():
 
 
 def test_quick_run_and_approval_pages_consume_quality_report():
-    quick = _source("ui/src/pages/quick-run/index.tsx")
+    page_dir = ROOT / "ui/src/pages/quick-run"
+    quick = "\n".join(
+        [
+            (page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (page_dir / "quick-run-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((page_dir / "components").rglob("*.tsx"))
+        ]
+    )
     assert "QualityReportPanel" in quick
     assert "quickRunResult?.quality_report" in quick
     assert "decideQualityHighlight" in quick and "onHighlightDecision" in quick
-    submissions = _source("ui/src/pages/submissions/index.tsx")
+    page_dir = ROOT / "ui/src/pages/submissions"
+    submissions = "\n".join(
+        [
+            (page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (page_dir / "submissions-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((page_dir / "components").rglob("*.tsx"))
+        ]
+    )
     assert "QualityReportPanel" in submissions
     assert "nativePdf.quality?.quality_report" in submissions
     assert "decideQualityHighlight" in submissions and "onHighlightDecision" in submissions

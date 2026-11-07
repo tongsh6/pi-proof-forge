@@ -11,7 +11,17 @@ I18N_FILES = [
 
 
 def test_quick_run_page_renders_product_pipeline_contract():
-    source = QUICK_RUN_PAGE.read_text(encoding="utf-8")
+    page_dir = ROOT / "ui/src/pages/quick-run"
+    source = "\n".join(
+        [
+            (page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (page_dir / "quick-run-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((page_dir / "components").rglob("*.tsx"))
+        ]
+    )
 
     for marker in (
         "stageStatusClass",

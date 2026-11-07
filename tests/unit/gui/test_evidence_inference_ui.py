@@ -10,7 +10,17 @@ def _source(path: str) -> str:
 
 
 def test_evidence_page_renders_inference_candidates_with_actions():
-    evidence = _source("ui/src/pages/evidence/index.tsx")
+    evidence_page_dir = ROOT / "ui/src/pages/evidence"
+    evidence = "\n".join(
+        [
+            (evidence_page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (evidence_page_dir / "evidence-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((evidence_page_dir / "components").rglob("*.tsx"))
+        ]
+    )
     for token in (
         "evidence-inference-run",
         "evidence-inference-batch",

@@ -12,7 +12,17 @@ I18N_FILES = [
 
 
 def test_evidence_page_matches_product_card_contract():
-    source = EVIDENCE_PAGE.read_text(encoding="utf-8")
+    evidence_page_dir = ROOT / "ui/src/pages/evidence"
+    source = "\n".join(
+        [
+            (evidence_page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (evidence_page_dir / "evidence-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((evidence_page_dir / "components").rglob("*.tsx"))
+        ]
+    )
     api_source = API_FILE.read_text(encoding="utf-8")
 
     for marker in (

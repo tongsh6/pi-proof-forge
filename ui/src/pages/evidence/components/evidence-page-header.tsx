@@ -1,8 +1,7 @@
-import type { TFunction } from "react-i18next";
 import { Plus, RefreshCw, Sparkles } from "lucide-react";
 
 type EvidencePageHeaderProps = {
-  t: TFunction;
+  t: (key: string) => string;
   busy: boolean;
   refreshing: boolean;
   onRefresh: () => void;

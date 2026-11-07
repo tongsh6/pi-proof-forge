@@ -7,10 +7,15 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 let hooks=[],cursor=0,effects=[],tree;const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>v===b[i]);
 const react={useState(v){let i=cursor++;if(!hooks[i])hooks[i]={v:typeof v==='function'?v():v};return[hooks[i].v,n=>hooks[i].v=typeof n==='function'?n(hooks[i].v):n]},useMemo(fn,deps){let i=cursor++;if(!hooks[i]||!same(hooks[i].deps,deps))hooks[i]={v:fn(),deps};return hooks[i].v},useCallback(fn,deps){return react.useMemo(()=>fn,deps)},useRef(v){return react.useMemo(()=>({current:v}),[])},useEffect(fn,deps){let i=cursor++;if(!hooks[i]||!same(hooks[i].deps,deps)){hooks[i]={deps};effects.push(fn)}}};
 const card=id=>({evidence_id:id,title:'标题'+id,time_range:'2024-01 ~ 2024-06',role_scope:'负责人',status:'saved_eligible',candidate_pool_eligible:true,score:80,updated_at:'',time_range_level:'L1',role_scope_level:'L1',source_document_count:1});
-const jsx=(type,props)=>({type,props:props||{}});
+const jsx=(type,props)=>typeof type==='function'?type(props||{}):({type,props:props||{}}),runtime={jsx,jsxs:jsx},exports={};
 const nodes=v=>Array.isArray(v)?v.flatMap(nodes):v&&typeof v==='object'?[v,...nodes(v.props.children)]:[];
 const text=v=>Array.isArray(v)?v.map(text).join(' '):v&&typeof v==='object'?text(v.props.children):String(v??'');
-function load(api){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/evidence/index.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,console,Intl,Date,Set,Map,document:{querySelector:()=>null},require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx,jsxs:jsx}:n==='react-i18next'?{useTranslation:()=>({t:k=>k})}:n==='lucide-react'?new Proxy({},{get:(_,k)=>k}):n==='@/lib/errors'?{getErrorMessage:String}:n==='@/lib/ui'?{notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})}:n==='react-router-dom'?{useSearchParams:()=>[{get:()=>null}],useNavigate:()=>()=>{}}:n==='@/lib/sidecar/api'?api:n==='./material-document-picker'?{MaterialDocumentPicker:()=>null}:{}});return exports}
+const baseRequire=n=>n==='react'?react:n==='react/jsx-runtime'?runtime:n==='react-i18next'?{useTranslation:()=>({t:k=>k})}:n==='lucide-react'?new Proxy({},{get:(_,k)=>k}):n==='@/lib/errors'?{getErrorMessage:String}:n==='@/lib/ui'?{notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})}:n==='react-router-dom'?{useSearchParams:()=>[{get:()=>null}],useNavigate:()=>()=>{}}:n==='@/lib/sidecar/api'?api:n==='./material-document-picker'?{MaterialDocumentPicker:()=>null}:undefined;
+const nodePath=require('node:path'),moduleCache={};
+function loadPageModule(spec,fromDir){const abs=spec.startsWith('@/')?nodePath.resolve('ui/src',spec.slice(2)):nodePath.resolve(fromDir,spec);let file=abs;for(const ext of['','.tsx','.ts','.js']){if(fs.existsSync(abs+ext)){file=abs+ext;break}}if(moduleCache[file])return moduleCache[file];const out={};moduleCache[file]=out;const dir=nodePath.dirname(file),code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{exports:out,console,Intl,Date,Map,Set,URLSearchParams,require:n=>resolvePageModule(n,dir)});return out}
+function resolvePageModule(spec,fromDir){const pageRoot=nodePath.resolve('ui/src/pages/evidence'),abs=spec.startsWith('@/')?nodePath.resolve('ui/src',spec.slice(2)):nodePath.resolve(fromDir,spec),pageSpec='./'+nodePath.relative(pageRoot,abs).split(nodePath.sep).join('/'),stub=baseRequire(pageSpec);if(stub!==undefined)return stub;if(spec.startsWith('.')||spec.startsWith('@/pages/'))return loadPageModule(spec,fromDir);const hit=baseRequire(spec);if(hit!==undefined)return hit;throw Error(spec)}
+const pageRequire=n=>resolvePageModule(n,'ui/src/pages/evidence');
+function load(api){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/evidence/index.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,console,Intl,Date,Set,Map,document:{querySelector:()=>null},require:pageRequire});return exports}
 async function settle(page){for(let i=0;i<12;i++){cursor=0;tree=page();let e=effects;effects=[];e.forEach(f=>f());await Promise.resolve();await Promise.resolve()}}
 const tid=id=>nodes(tree).find(n=>n.props&&n.props['data-testid']===id);
 '''
@@ -60,7 +65,17 @@ const {EvidencePage}=load(api);
 
 def test_redesign_deviations_closed():
     """2026-10-18 复核遗留三项：抽屉层级高于侧栏、保存为文字+图标、推断操作为按钮组。"""
-    src = (Path(__file__).resolve().parents[3] / "ui/src/pages/evidence/index.tsx").read_text(encoding="utf-8")
+    evidence_page_dir = Path(__file__).resolve().parents[3] / "ui/src/pages/evidence"
+    src = "\n".join(
+        [
+            (evidence_page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (evidence_page_dir / "evidence-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((evidence_page_dir / "components").rglob("*.tsx"))
+        ]
+    )
     tokens = (Path(__file__).resolve().parents[3] / "ui/src/styles/tokens.css").read_text(encoding="utf-8")
     assert "--z-drawer: 150" in tokens and "--z-nav: 100" in tokens and "--z-modal: 200" in tokens
     assert "z-[var(--z-drawer)]" in src and 'z-40 flex justify-end' not in src

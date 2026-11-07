@@ -215,7 +215,17 @@ def test_fit_precheck_pages_are_wired_to_component_and_sorting():
     ):
         assert token in jobs, token
 
-    quick_run = _source("ui/src/pages/quick-run/index.tsx")
+    page_dir = ROOT / "ui/src/pages/quick-run"
+    quick_run = "\n".join(
+        [
+            (page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (page_dir / "quick-run-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((page_dir / "components").rglob("*.tsx"))
+        ]
+    )
     for token in (
         "fit_precheck",
         'source === "rule"',

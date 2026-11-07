@@ -35,7 +35,17 @@ def test_api_and_types_expose_ai_disclosure_contract():
 
 
 def test_submissions_shows_disclosure_state_before_send():
-    page = _source("ui/src/pages/submissions/index.tsx")
+    page_dir = ROOT / "ui/src/pages/submissions"
+    page = "\n".join(
+        [
+            (page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (page_dir / "submissions-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((page_dir / "components").rglob("*.tsx"))
+        ]
+    )
     for token in ("native-pdf-ai-disclosure", "aiDisclosureSent", "aiDisclosurePending",
                   "nativePdf.ai_disclosure_enabled"):
         assert token in page, token

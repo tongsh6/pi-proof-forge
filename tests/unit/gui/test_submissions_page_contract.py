@@ -11,7 +11,17 @@ I18N_FILES = [
 
 
 def test_submissions_page_matches_product_log_contract():
-    source = SUBMISSIONS_PAGE.read_text(encoding="utf-8")
+    page_dir = SUBMISSIONS_PAGE.parent
+    source = "\n".join(
+        [
+            (page_dir / "index.tsx").read_text(encoding="utf-8"),
+            (page_dir / "submissions-helpers.ts").read_text(encoding="utf-8"),
+        ]
+        + [
+            page.read_text(encoding="utf-8")
+            for page in sorted((page_dir / "components").rglob("*.tsx"))
+        ]
+    )
 
     for marker in (
         "listSubmissions",
