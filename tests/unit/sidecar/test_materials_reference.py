@@ -229,7 +229,7 @@ def test_roots_removal_blocks_validation_and_kb(env):
 
 
 def test_kb_single_file_reference_read_roundtrip(env):
-    from tools import kb
+    from tools.tooling import knowledge as kb
     tmp, vault, _ = env
     (vault / "single.md").write_text("# 单档\n\n单档正文。\n", encoding="utf-8")
     created = _create(root_id="msr_test", relpath="single.md", label="引用·单档")

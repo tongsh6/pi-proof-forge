@@ -343,7 +343,7 @@ python3 -m tools.cli.entrypoints agent --policy profiles/agent_policy.example.ya
 - 阶段命令（extract/match/generate/evaluate）与单次 pipeline 共用同一套引擎实现；
   阶段之间是进程内调用，不存在按阶段拆分的独立脚本或 subprocess 串联。
 - 新增能力优先通过 `tools/cli/entrypoints.py` 暴露；分层方向与唯一实现由
-  `python3 tools/check_v2_constraints.py --root .` 强制。
+  `python3 -m tools.cli.entrypoints check arch --root .` 强制。
 
 ---
 

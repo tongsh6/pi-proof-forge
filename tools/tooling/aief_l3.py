@@ -31,11 +31,11 @@ def check_min_files(root: Path, rel_dir: str, pattern: str, min_count: int, labe
     return False, f"MISS {rel_dir} ({label}: {count}<{min_count})"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check AIEF L3 readiness")
     _ = parser.add_argument("--root", default=".", help="Project root path")
     _ = parser.add_argument("--base-dir", default="AIEF", help="AIEF base directory under root")
-    args = parser.parse_args()
+    args = parser.parse_args(list(argv) if argv is not None else None)
 
     root = Path(cast(str, args.root)).resolve()
     base_dir = cast(str, args.base_dir).strip()

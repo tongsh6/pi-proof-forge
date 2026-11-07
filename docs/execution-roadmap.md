@@ -742,4 +742,4 @@ Expected evidence:
 
 机器可读真源是 `acceptance/journey_implementation_matrix.yaml`。
 
-本文件和矩阵的基本约束由 `python3 tools/check_execution_roadmap.py --root .` 与 `tests/acceptance/test_journey_implementation_matrix.py` 锁定。
+本文件和矩阵的基本约束由 `python3 -m tools.cli.entrypoints check roadmap --root .` 与 `tests/acceptance/test_journey_implementation_matrix.py` 锁定。

@@ -30,7 +30,7 @@ Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -
 - GUI 终版路线：`Tauri desktop app + React/TypeScript frontend + Python sidecar`
 - 设计原则：高内聚、低耦合、组合优于继承、扩展优于修改、evidence-first
 - 执行链路：所有命令统一走 `python3 -m tools.cli.entrypoints`；阶段间为进程内纯 Python 调用，不再保留 legacy 脚本与 subprocess 串联
-- 分层门禁：`python3 tools/check_v2_constraints.py --root .` 强制依赖方向与唯一实现
+- 分层门禁：`python3 -m tools.cli.entrypoints check arch --root .` 强制依赖方向与唯一实现
 
 关键文档：
 
@@ -236,7 +236,7 @@ Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -
 - Final GUI path: `Tauri desktop app + React/TypeScript frontend + Python sidecar`
 - Design principles: high cohesion, low coupling, composition over inheritance, extension over modification, evidence-first
 - Execution path: every command goes through `python3 -m tools.cli.entrypoints`; stages are in-process Python calls with no legacy scripts or subprocess chaining
-- Layering gate: `python3 tools/check_v2_constraints.py --root .` enforces dependency direction and single implementations
+- Layering gate: `python3 -m tools.cli.entrypoints check arch --root .` enforces dependency direction and single implementations
 
 Key docs:
 

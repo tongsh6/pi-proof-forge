@@ -66,7 +66,7 @@
 - run-pipeline-llm: python3 -m tools.cli.entrypoints pipeline --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm
 - run-pipeline-llm-strict: python3 -m tools.cli.entrypoints pipeline --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
 - run-agent-dry: python3 -m tools.cli.entrypoints agent --policy profiles/agent_policy.example.yaml --dry-run
-- arch-gate: python3 tools/check_v2_constraints.py --root .
+- arch-gate: python3 -m tools.cli.entrypoints check arch --root .
 
 ## AIEF Entry
 - AGENTS.md

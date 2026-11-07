@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tools.check_execution_roadmap import RoadmapError, check_execution_roadmap
+from tools.tooling.roadmap import RoadmapError, check_execution_roadmap
 
 
 ROOT = Path(__file__).resolve().parents[2]

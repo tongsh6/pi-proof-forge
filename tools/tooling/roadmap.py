@@ -237,13 +237,14 @@ def _require_str(raw: dict[str, Any], key: str) -> str:
     return value
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", default=".")
-    args = parser.parse_args()
+    args = parser.parse_args(list(argv) if argv is not None else None)
     check_execution_roadmap(Path(args.root).resolve())
     print("PASS execution roadmap")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

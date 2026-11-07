@@ -28,7 +28,7 @@
 
 5. 校验与收口
    - `lsp_diagnostics` 对修改文件零报错
-   - `python3 tools/check_aief_l3.py --root . --base-dir AIEF` 通过
+   - `python3 -m tools.cli.entrypoints check aief --root . --base-dir AIEF` 通过
 
 ## 本轮完成定义
 - 可直接运行：

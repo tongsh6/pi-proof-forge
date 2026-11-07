@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from tools.infra import knowledge_index as ki
-from tools import kb
+from tools.tooling import knowledge as kb
 
 
 @pytest.fixture

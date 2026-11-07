@@ -47,6 +47,7 @@ LAYER_DEPENDENCIES: dict[str, set[str]] = {
         "errors",
         "policy",
         "prompts",
+        "tooling",
     },
     "sidecar": {
         "domain",
@@ -99,7 +100,7 @@ FORBIDDEN_ROOT_SCRIPTS: tuple[str, ...] = (
 )
 # 允许出现在 tools 根目录的运维/检查脚本模式。
 ROOT_SCRIPT_ALLOWED = re.compile(
-    r"^(check_|run_gitflow_release|run_github_publish|setup_liepin_session|kb\.py)"
+    r"^(run_gitflow_release|run_github_publish|setup_liepin_session)"
 )
 
 _IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+(tools\.[\w.]+)", re.MULTILINE)
@@ -150,7 +151,7 @@ def check_single_implementations(root: Path, failures: list[str]) -> None:
         p
         for p in tools_files
         if "tools/infra/" not in p.as_posix()
-        and not p.name.startswith("check_v2_constraints")
+        and p.name != "arch_constraints.py"
     ]
     duplicate_llm_defs = count_definitions(
         non_infra_tools, "def post_json("
@@ -221,7 +222,7 @@ def check_legacy_entries(root: Path, failures: list[str]) -> None:
     tools_files = [
         p
         for p in collect_py_files(root / "tools")
-        if p.name != "check_v2_constraints.py"
+        if p.name != "arch_constraints.py"
     ]
     for pattern in FORBIDDEN_LEGACY_PATTERNS:
         hits = find_pattern(tools_files, pattern)
@@ -244,10 +245,10 @@ def check_legacy_entries(root: Path, failures: list[str]) -> None:
             )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check v2 architecture static constraints")
     _ = parser.add_argument("--root", default=".", help="Repository root path")
-    args = parser.parse_args()
+    args = parser.parse_args(list(argv) if argv is not None else None)
 
     root = Path(args.root).resolve()
     failures: list[str] = []

@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import cast
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check submission readiness gates")
     _ = parser.add_argument("--root", default="outputs/submissions")
     _ = parser.add_argument("--platform", default="liepin")
     _ = parser.add_argument("--require-status", default="success")
     _ = parser.add_argument("--min-screenshots", type=int, default=1)
-    return parser.parse_args()
+    return parser.parse_args(list(argv) if argv is not None else None)
 
 
 def latest_run_dir(root: Path, platform: str) -> Path | None:
@@ -27,8 +27,8 @@ def latest_run_dir(root: Path, platform: str) -> Path | None:
     return runs[0]
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     root = Path(cast(str, args.root))
     platform = cast(str, args.platform)
     require_status = cast(str, args.require_status)

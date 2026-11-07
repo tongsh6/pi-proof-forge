@@ -8,15 +8,24 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPT = Path("tools/check_v2_constraints.py").resolve()
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _run(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--root", str(root)],
+        [
+            sys.executable,
+            "-m",
+            "tools.cli.entrypoints",
+            "check",
+            "arch",
+            "--root",
+            str(root),
+        ],
         check=False,
         capture_output=True,
         text=True,
+        cwd=str(REPO_ROOT),
     )
 
 
@@ -47,10 +56,19 @@ def _minimal_repo(root: Path) -> None:
 class CheckV2ConstraintsTests(unittest.TestCase):
     def test_constraints_script_passes_on_repo(self) -> None:
         result = subprocess.run(
-            [sys.executable, "tools/check_v2_constraints.py", "--root", "."],
+            [
+                sys.executable,
+                "-m",
+                "tools.cli.entrypoints",
+                "check",
+                "arch",
+                "--root",
+                ".",
+            ],
             check=False,
             capture_output=True,
             text=True,
+            cwd=str(REPO_ROOT),
         )
         self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
         self.assertIn("PASS v2 constraints", result.stdout)

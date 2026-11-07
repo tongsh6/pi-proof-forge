@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tools import kb
+from tools.tooling import knowledge as kb
 from tools.infra.material_documents import split_material_documents
 
 BUNDLE = (

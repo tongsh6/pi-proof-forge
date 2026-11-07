@@ -40,7 +40,7 @@ main -> feature -> develop -> release -> main
 - 所有 `feature/*` 必须通过 PR 合并到 `develop`
 - 所有 `release/*` / `hotfix/*` 必须通过 PR 合并到 `main`
 - 合并前至少满足：
-  1. `python3 tools/check_aief_l3.py --root .` 通过
+  1. `python3 -m tools.cli.entrypoints check aief --root .` 通过
   2. 相关脚本验证通过（如匹配/生成/评测路径）
   3. 文档与索引更新完整（涉及新流程或新标准时）
 

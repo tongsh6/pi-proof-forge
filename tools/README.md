@@ -9,11 +9,15 @@
 python3 -m tools.cli.entrypoints <command> [args]
 ```
 
-命令：`extract` / `match` / `generate` / `evaluate` / `pipeline` / `agent`
+命令：`extract` / `match` / `generate` / `evaluate` / `pipeline` / `agent` / `check` / `kb`
 
-入口只做参数解析并调用编排层（`tools/orchestration/`），业务实现位于
-`tools/engines/`，外部 IO/模型适配位于 `tools/infra/`。分层约束由
-`python3 tools/check_v2_constraints.py --root .` 强制。
+- 业务命令：入口只做参数解析并调用编排层（`tools/orchestration/`），业务实现位于
+  `tools/engines/`，外部 IO/模型适配位于 `tools/infra/`。
+- `check` 子命令：`arch`（分层/唯一实现/legacy 残留）、`roadmap`（路线图契约）、
+  `aief`（AIEF L3）、`submission-readiness`（投递就绪）、`boss-cli`（外部 CLI
+  live smoke），实现位于 `tools/tooling/`。
+- `kb` 子命令：知识索引构建与查询（实现位于 `tools/tooling/knowledge.py`）。
+- 分层约束由 `python3 -m tools.cli.entrypoints check arch --root .` 强制。
 
 ### 证据提炼（规则模式）
 
@@ -127,16 +131,16 @@ DELIVER → LEARN → DONE。manual REVIEW 会写 `outputs/review_queue/<run_id>
 
 ## 知识索引与来源覆盖
 
-`kb` 复用材料库和已配置来源根，提供确定性目录、字面检索及原文回读。正文引用使用
+`kb` 子命令复用材料库和已配置来源根，提供确定性目录、字面检索及原文回读。正文引用使用
 material_id/document_id/sha256；附件目录、日期线索和设计计划不能直接当作个人实绩。
 
 ```bash
-python3 tools/kb.py build
-python3 tools/kb.py verify --json
-python3 tools/kb.py coverage --status unindexed
-python3 tools/kb.py coverage --status metadata_only --path '00-EC+/' --json
-python3 tools/kb.py find --title-token 'DAG' --json
-python3 tools/kb.py read <material_id> <document_id>
+python3 -m tools.cli.entrypoints kb build
+python3 -m tools.cli.entrypoints kb verify --json
+python3 -m tools.cli.entrypoints kb coverage --status unindexed
+python3 -m tools.cli.entrypoints kb coverage --status metadata_only --path '00-EC+/' --json
+python3 -m tools.cli.entrypoints kb find --title-token 'DAG' --json
+python3 -m tools.cli.entrypoints kb read <material_id> <document_id>
 ```
 
 `coverage` 区分正文已收录、未纳入、来源不一致、规则过滤和仅目录；附件会标记本地
@@ -159,7 +163,7 @@ python3 -m tools.submission.run_submission \
   --browser-channel chrome --timeout-ms 45000
 
 # 投递就绪门禁（要求最新一次 run 为 submit + success + 至少 1 张截图）
-python3 tools/check_submission_readiness.py \
+python3 -m tools.cli.entrypoints check submission-readiness \
   --root outputs/submissions --platform liepin --require-status success --min-screenshots 1
 
 # 从已验证 Job Lead 生成 External L3 确认包（默认脱敏 JSON，不触发外部提交）
@@ -243,8 +247,8 @@ filters:
 ## CI 校验
 
 - `.github/workflows/aief-l3-check.yml`：在 `pull_request` 与 `develop/main/master` push
-  时触发；仅当 `.github/workflows/aief-l3-check.yml`、`AIEF/**`、`tools/check_aief_l3.py`
-  变更时运行 `python3 tools/check_aief_l3.py --root . --base-dir AIEF`。
+  时触发；仅当 `.github/workflows/aief-l3-check.yml`、`AIEF/**`、`tools/tooling/**`、`tools/cli/**`
+  变更时运行 `python3 -m tools.cli.entrypoints check aief --root . --base-dir AIEF`。
 - `.github/workflows/ui-packaged-smoke.yml`：在 `pull_request` 与 `develop/main/master`
   push 时触发；仅当 `ui/**`、`tools/**`、`tests/**`、`evidence_cards/**`、
   `matching_reports/**`、`job_profiles/**` 或 workflow 自身变更时运行

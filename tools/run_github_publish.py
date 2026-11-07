@@ -100,10 +100,10 @@ def main() -> int:
             print("[DRY-RUN] release notes: GitHub auto-generated")
         if require_submission_ready:
             print(
-                f"[DRY-RUN] python3 tools/check_submission_readiness.py --platform {submission_platform} --require-status success --min-screenshots 1"
+                f"[DRY-RUN] python3 -m tools.cli.entrypoints check submission-readiness --platform {submission_platform} --require-status success --min-screenshots 1"
             )
         if not skip_check:
-            print(f"[DRY-RUN] python3 tools/check_aief_l3.py --root . --base-dir {base_dir}")
+            print(f"[DRY-RUN] python3 -m tools.cli.entrypoints check aief --root . --base-dir {base_dir}")
         print(f"[DRY-RUN] python3 tools/run_gitflow_release.py --feature {feature} --release {release}")
         print("[DRY-RUN] git checkout main && git pull --ff-only origin main")
         print(f"[DRY-RUN] git tag {version} (if not exists) && git push origin {version}")
@@ -120,7 +120,10 @@ def main() -> int:
             run(
                 [
                     "python3",
-                    "tools/check_submission_readiness.py",
+                    "-m",
+                    "tools.cli.entrypoints",
+                    "check",
+                    "submission-readiness",
                     "--platform",
                     submission_platform,
                     "--require-status",
@@ -131,7 +134,19 @@ def main() -> int:
             )
 
         if not skip_check:
-            run(["python3", "tools/check_aief_l3.py", "--root", ".", "--base-dir", base_dir])
+            run(
+                [
+                    "python3",
+                    "-m",
+                    "tools.cli.entrypoints",
+                    "check",
+                    "aief",
+                    "--root",
+                    ".",
+                    "--base-dir",
+                    base_dir,
+                ]
+            )
 
         run(["python3", "tools/run_gitflow_release.py", "--feature", feature, "--release", release])
 

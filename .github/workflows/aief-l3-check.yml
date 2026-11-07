@@ -5,7 +5,8 @@ on:
     paths:
       - .github/workflows/aief-l3-check.yml
       - AIEF/**
-      - tools/check_aief_l3.py
+      - tools/tooling/**
+      - tools/cli/**
   push:
     branches:
       - develop
@@ -14,7 +15,8 @@ on:
     paths:
       - .github/workflows/aief-l3-check.yml
       - AIEF/**
-      - tools/check_aief_l3.py
+      - tools/tooling/**
+      - tools/cli/**
 
 jobs:
   aief-l3-check:
@@ -29,4 +31,4 @@ jobs:
           python-version: "3.11"
 
       - name: Run AIEF L3 checker
-        run: python3 tools/check_aief_l3.py --root . --base-dir AIEF
+        run: python3 -m tools.cli.entrypoints check aief --root . --base-dir AIEF

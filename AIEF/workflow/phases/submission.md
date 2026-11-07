@@ -79,7 +79,7 @@ python3 -m tools.submission.run_submission \
   --submit
 
 # 5) 发布前门禁
-python3 tools/check_submission_readiness.py \
+python3 -m tools.cli.entrypoints check submission-readiness \
   --root outputs/submissions \
   --platform liepin \
   --require-status success \

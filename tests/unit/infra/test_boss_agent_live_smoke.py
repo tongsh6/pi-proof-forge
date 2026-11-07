@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from tools import check_boss_agent_cli
+from tools.tooling import boss_agent_cli as check_boss_agent_cli
 from tools.infra.discovery.boss_agent_cli import BossAgentCliError
 
 
