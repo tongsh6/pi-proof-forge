@@ -1,0 +1,391 @@
+"""证据卡 CRUD、导入与列表/详情 handler。
+
+从 ``evidence.py`` 拆出；证据卡目录与卡片加载/详情函数经原模块运行时读取，
+保证测试对 ``evidence._EVIDENCE_DIR``、``evidence._load_evidence_cards``、
+``evidence._load_evidence_detail`` 的 patch 生效。
+"""
+from __future__ import annotations
+
+import json
+import mimetypes
+import shutil
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from tools.infra import evidence_provenance as provenance
+from tools.infra.evidence_sources import read_source_documents
+from tools.infra.persistence.yaml_io import parse_simple_yaml
+from tools.sidecar.handlers import evidence as _origin
+from tools.sidecar.handlers._shared.material_sources import selected_text_materials
+from tools.sidecar.handlers.evidence import (
+    SOURCE_FIELDS,
+    _UPDATABLE_FIELDS,
+    _artifact_dir,
+    _artifact_meta_path,
+    _find_evidence_path,
+    _parse_cursor,
+    _parse_date_range,
+    _parse_page_size,
+    _parse_sort_field,
+    _parse_sort_order,
+    _preserved_blocks,
+    _safe_parse_iso_datetime,
+    _split_multiline_text,
+    _validate_string_list,
+    _write_evidence_file,
+)
+
+
+def _store_artifact(evidence_id: str, source: Path) -> str:
+    resource_id = f"res_{uuid4().hex[:8]}"
+    dest_dir = _artifact_dir(evidence_id)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / f"{resource_id}_{source.name}"
+    shutil.copy2(source, dest_path)
+    mime_type, _ = mimetypes.guess_type(dest_path.name)
+    created_at = _origin._utcnow_iso()
+    meta = {
+        "resource_id": resource_id,
+        "filename": source.name,
+        "mime_type": mime_type or "",
+        "size_bytes": dest_path.stat().st_size,
+        "created_at": created_at,
+    }
+    _artifact_meta_path(evidence_id, resource_id).write_text(
+        json.dumps(meta, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return resource_id
+
+
+def handle_evidence_list(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    cursor = _parse_cursor(params.get("cursor"))
+    page_size = _parse_page_size(params.get("page_size"))
+    sort = params.get("sort") or {}
+    filters = params.get("filters") or {}
+    cards = _origin._load_evidence_cards()
+
+    query_filter = str(filters.get("query") or "").strip().casefold()
+    status_filter = str(filters.get("status") or "").strip()
+    role_filter = str(filters.get("role") or "").strip().casefold()
+    tags_filter = filters.get("tags")
+    date_start, date_end = _parse_date_range(filters.get("date_range"))
+
+    normalized_tags: list[str] = []
+    if isinstance(tags_filter, list):
+        normalized_tags = [
+            str(tag).casefold() for tag in tags_filter if str(tag).strip()
+        ]
+
+    filtered: list[dict[str, Any]] = []
+    for card in cards:
+        if status_filter and card["status"] != status_filter:
+            continue
+        if role_filter and role_filter not in str(card["role_scope"]).casefold():
+            continue
+        if query_filter:
+            haystack = " ".join(
+                [
+                    str(card["title"]),
+                    str(card["role_scope"]),
+                    str(card["time_range"]),
+                ]
+            ).casefold()
+            if query_filter not in haystack:
+                continue
+        if normalized_tags:
+            card_tags = {str(tag).casefold() for tag in card.get("tags", [])}
+            if not all(tag in card_tags for tag in normalized_tags):
+                continue
+        if date_start or date_end:
+            updated_at = _safe_parse_iso_datetime(str(card.get("updated_at", "")))
+            if updated_at is None:
+                continue
+            if date_start and updated_at < date_start:
+                continue
+            if date_end and updated_at > date_end:
+                continue
+        filtered.append(card)
+
+    sort_field = _parse_sort_field(sort.get("field"))
+    sort_order = _parse_sort_order(sort.get("order"))
+    reverse = sort_order != "asc"
+    if sort_field == "score":
+        filtered.sort(
+            key=lambda item: (int(item.get("score", 0)), item.get("updated_at", "")),
+            reverse=reverse,
+        )
+    else:
+        filtered.sort(
+            key=lambda item: item.get("updated_at", ""),
+            reverse=reverse,
+        )
+
+    paginated = filtered[cursor : cursor + page_size]
+    next_offset = cursor + page_size
+    next_cursor = str(next_offset) if next_offset < len(filtered) else None
+
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "items": [
+            {
+                "evidence_id": item["evidence_id"],
+                "title": item["title"],
+                "time_range": item["time_range"],
+                "role_scope": item["role_scope"],
+                "score": item["score"],
+                "status": item["status"],
+                "candidate_pool_eligible": item.get("candidate_pool_eligible",False),
+                "updated_at": item["updated_at"],
+                "time_range_level": item.get("time_range_level", "L1"),
+                "role_scope_level": item.get("role_scope_level", "L1"),
+                "source_document_count": item.get("source_document_count", 0),
+            }
+            for item in paginated
+        ],
+        "next_cursor": next_cursor,
+    }
+
+
+def handle_evidence_get(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    evidence_id = params["evidence_id"]
+
+    detail = _origin._load_evidence_detail(evidence_id)
+    if detail is None:
+        raise KeyError(f"NOT_FOUND: {evidence_id}")
+
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "evidence": detail,
+    }
+
+
+def handle_evidence_create(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    title = str(params.get("title", "")).strip()
+    if not title:
+        raise ValueError("title is required")
+    if len(title) > 200:
+        raise ValueError("title must not exceed 200 characters")
+
+    created_at = _origin._utcnow_iso()
+    evidence_id = f"ec_{uuid4().hex[:8]}"
+    fields = {
+        "id": evidence_id,
+        "title": title,
+        "time_range": str(params.get("time_range", "")),
+        "context": str(params.get("context", "")),
+        "role_scope": str(params.get("role_scope", "")),
+        "status": "draft",
+        "created_at": created_at,
+        "updated_at": created_at,
+        "actions": _split_multiline_text(str(params.get("actions", ""))),
+        "results": _split_multiline_text(str(params.get("results", ""))),
+        "stack": _validate_string_list("stack", params.get("stack", [])),
+        "artifacts": [],
+        "tags": _validate_string_list("tags", params.get("tags", [])),
+    }
+    _write_evidence_file(_origin._EVIDENCE_DIR / f"{evidence_id}.yaml", fields)
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "evidence_id": evidence_id,
+        "status": "draft",
+        "created_at": created_at,
+    }
+
+
+def handle_evidence_update(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    evidence_id = str(params["evidence_id"])
+    patch = params.get("patch", {})
+    if not isinstance(patch, dict):
+        raise ValueError("patch must be an object")
+
+    unsupported_fields = set(patch) - _UPDATABLE_FIELDS
+    if unsupported_fields:
+        unsupported = ", ".join(sorted(unsupported_fields))
+        raise ValueError(f"unsupported evidence patch fields: {unsupported}")
+
+    path = _find_evidence_path(evidence_id)
+    if path is None:
+        raise KeyError(f"NOT_FOUND: {evidence_id}")
+
+    text = path.read_text(encoding="utf-8")
+    doc = parse_simple_yaml(text)
+    s = doc["scalars"]
+    l = doc["lists"]
+    preserved_blocks = _preserved_blocks(text)
+
+    title = str(patch.get("title", s.get("title", ""))).strip()
+    if not title:
+        raise ValueError("title must not be empty")
+    if len(title) > 200:
+        raise ValueError("title must not exceed 200 characters")
+
+    updated_at = _origin._utcnow_iso()
+    fields = {
+        "id": s.get("id", evidence_id),
+        "title": title,
+        "time_range": str(patch.get("time_range", s.get("time_range", ""))),
+        "context": str(patch.get("context", s.get("context", ""))),
+        "role_scope": str(patch.get("role_scope", s.get("role_scope", ""))),
+        "status": s.get("status", "draft"),
+        "created_at": s.get("created_at", updated_at),
+        "updated_at": updated_at,
+        "actions": _split_multiline_text(
+            str(patch.get("actions", "\n".join(l.get("actions", []))))
+        ),
+        "results": _split_multiline_text(
+            str(patch.get("results", "\n".join(l.get("results", []))))
+        ),
+        "stack": _validate_string_list("stack", patch.get("stack", l.get("stack", []))),
+        "artifacts": _validate_string_list(
+            "artifacts", patch.get("artifacts", l.get("artifacts", []))
+        ),
+        "tags": _validate_string_list("tags", patch.get("tags", l.get("tags", []))),
+    }
+    # 来源与审核记录不能在普通字段编辑时静默丢失；事实变化必须重新审核。
+    for key in ('raw_source','review_decision','reviewed_at','source_documents_json','field_sources_json','source_material_fingerprints_json','reviewed_facts_json','source_whole_material_ids_json','time_range_provenance_json','role_scope_provenance_json'):
+        if key in s:fields[key]=s[key]
+    for key in ('source_material_ids','missing_items'):
+        if key in l:fields[key]=l[key]
+    if 'candidate_pool_eligible' in s:
+        fields['candidate_pool_eligible']=s['candidate_pool_eligible']=='true'
+    # 手工修改时间/角色字段：没有显式 provenance 时降级为 L4（本人陈述）。
+    for field in ("time_range", "role_scope"):
+        patch_key = f"{field}_provenance"
+        patch_value = patch.get(patch_key)
+        if patch_value is not None:
+            normalized_provenance = provenance.normalize_provenance(patch_value, field=field)
+            if normalized_provenance is None:
+                raise ValueError("evidence_provenance_invalid")
+            fields[provenance.PROVENANCE_SCALARS[field]] = provenance.provenance_json(normalized_provenance)
+            continue
+        if field in patch and str(fields[field]) != str(s.get(field, "")):
+            manual = {"level": "L4", "evidence": [], "confirmed_by_user": True, "confirmed_at": updated_at}
+            fields[provenance.PROVENANCE_SCALARS[field]] = provenance.provenance_json(manual) if str(fields[field]).strip() else ""
+    changed=any(fields.get(key)!=(l.get(key,[]) if isinstance(fields.get(key),list) else s.get(key,'')) for key in patch if key not in {"time_range_provenance","role_scope_provenance"})
+    if changed and (s.get('review_decision')=='approved' or s.get('status')=='saved_eligible'):
+        if not fields.get('reviewed_facts_json'):
+            previous={**s,**l}
+            fields['reviewed_facts_json']=json.dumps({key:previous.get(key,[]) if key in {'actions','results'} else previous.get(key,'') for key in SOURCE_FIELDS},ensure_ascii=False)
+        fields.update(status='needs_review',review_decision='pending',candidate_pool_eligible=False)
+    if s.get('source_documents_json'):
+        references=json.loads(s['source_documents_json'])
+        records=selected_text_materials(l.get('source_material_ids',[]))
+        _,source=read_source_documents(records,references,json.loads(s.get('source_whole_material_ids_json') or '[]'))
+        if any(result.casefold() not in source.casefold() for result in fields['results']):
+            raise ValueError('no_fabrication_guard: result is not traceable to selected document')
+    _write_evidence_file(path, fields, preserved_blocks=preserved_blocks)
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "evidence_id": evidence_id,
+        "updated_at": updated_at,
+    }
+
+
+def handle_evidence_delete(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    evidence_id = str(params["evidence_id"])
+
+    path = _find_evidence_path(evidence_id)
+    if path is None:
+        raise KeyError(f"NOT_FOUND: {evidence_id}")
+    if _origin._is_evidence_referenced_by_active_run(evidence_id):
+        raise RuntimeError(f"CONFLICT: active run references {evidence_id}")
+
+    path.rename(path.with_suffix(".yaml.deleted"))
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "evidence_id": evidence_id,
+        "deleted": True,
+    }
+
+
+def handle_evidence_import(params: dict[str, Any]) -> dict[str, Any]:
+    correlation_id = params["meta"]["correlation_id"]
+    source_paths = params.get("source_paths")
+    if not isinstance(source_paths, list) or not source_paths:
+        raise ValueError("source_paths must be a non-empty list")
+
+    mode = str(params.get("mode") or "create").strip()
+    if mode not in {"create", "append", "replace"}:
+        raise ValueError(f"unsupported import mode: {mode}")
+
+    target_id = str(params.get("target_evidence_id") or "").strip()
+    evidence_id = target_id
+    preserved_blocks: list[list[str]] | None = None
+    target_path: Path | None = None
+    existing_artifacts: list[str] = []
+    if mode in {"append", "replace"}:
+        if not evidence_id:
+            raise ValueError("target_evidence_id is required for append/replace")
+        target_path = _find_evidence_path(evidence_id)
+        if target_path is None:
+            raise KeyError(f"NOT_FOUND: {evidence_id}")
+        text = target_path.read_text(encoding="utf-8")
+        doc = parse_simple_yaml(text)
+        preserved_blocks = _preserved_blocks(text)
+        s = doc["scalars"]
+        l = doc["lists"]
+        existing_artifacts = l.get("artifacts", [])
+        fields = {
+            "id": s.get("id", evidence_id),
+            "title": s.get("title", ""),
+            "time_range": s.get("time_range", ""),
+            "context": s.get("context", ""),
+            "role_scope": s.get("role_scope", ""),
+            "status": s.get("status", "draft"),
+            "created_at": s.get("created_at", _origin._utcnow_iso()),
+            "updated_at": _origin._utcnow_iso(),
+            "actions": l.get("actions", []),
+            "results": l.get("results", []),
+            "stack": l.get("stack", []),
+            "tags": l.get("tags", []),
+        }
+    else:
+        evidence_id = f"ec_{uuid4().hex[:8]}"
+        created_at = _origin._utcnow_iso()
+        first_name = Path(str(source_paths[0])).stem
+        title = first_name[:200] if first_name else "Imported evidence"
+        fields = {
+            "id": evidence_id,
+            "title": title,
+            "time_range": "",
+            "context": "",
+            "role_scope": "",
+            "status": "draft",
+            "created_at": created_at,
+            "updated_at": created_at,
+            "actions": [],
+            "results": [],
+            "stack": [],
+            "tags": [],
+        }
+
+    imported_resources: list[str] = []
+    for raw in source_paths:
+        source = Path(str(raw))
+        if not source.exists() or not source.is_file():
+            raise ValueError(f"source path not found: {source}")
+        imported_resources.append(_store_artifact(evidence_id, source))
+
+    if mode == "replace":
+        artifacts = imported_resources
+    elif mode == "append":
+        artifacts = existing_artifacts + imported_resources
+    else:
+        artifacts = imported_resources
+
+    fields["artifacts"] = artifacts
+    destination = target_path or (_origin._EVIDENCE_DIR / f"{evidence_id}.yaml")
+    _write_evidence_file(destination, fields, preserved_blocks)
+
+    return {
+        "meta": {"correlation_id": correlation_id},
+        "evidence_id": evidence_id,
+        "imported_resources": imported_resources,
+    }

@@ -10,7 +10,7 @@ from typing import Any
 
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.infra.career_profile import inspect_career, normalize_career, suggest_evidence_links, eligible_cards_for_linking
-from tools.sidecar.handlers import materials as materials_handler
+from tools.sidecar.handlers.materials import list_material_source_items as _list_material_source_items
 from tools.infra.persistence.review_queue import locked_review_queue
 
 _PROFILE_PATH = Path("personal_profile.yaml")
@@ -124,7 +124,7 @@ def handle_profile_auto_link_evidence(params):
     with locked_review_queue(_PROFILE_PATH):
         fields=_load_profile();current=inspect_career(fields,evidence_dir)
         if apply and params.get('expected_revision')!=current['revision']:raise ValueError('profile_changed')
-        labels={str(item.get('material_id','')):str(item.get('label','')) for item in materials_handler.list_material_source_items()}
+        labels={str(item.get('material_id','')):str(item.get('label','')) for item in _list_material_source_items()}
         result=suggest_evidence_links(current['career'],eligible_cards_for_linking(evidence_dir),labels)
         result['applied']=0;result['revision']=current['revision'];result['career_status']=current['career_status']
         if apply and result['suggestions']:

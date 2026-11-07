@@ -3,9 +3,19 @@ import json
 from tools.infra.job_preferences import preferences_from_fields,validate_items
 from tools.infra.llm.client import LLMClient
 from tools.infra.persistence.review_queue import locked_review_queue
-from tools.sidecar.handlers import materials as materials_handler
-from tools.sidecar.handlers import profile,settings as settings_handler
-from tools.sidecar.handlers.evidence import _selected_text_materials,_documents
+from tools.sidecar.handlers import settings as settings_handler
+from tools.sidecar.handlers._shared.llm_config import load_llm_config
+from tools.sidecar.handlers._shared.material_sources import (
+    documents,
+    materials_dir,
+    selected_text_materials,
+)
+from tools.sidecar.handlers._shared.profile_state import (
+    load_profile,
+    profile_path,
+    utcnow_iso,
+    write_profile,
+)
 
 
 def get_preferences(fields):
@@ -13,19 +23,19 @@ def get_preferences(fields):
 
 
 def _source(material_id,document_id=None):
-    record=_selected_text_materials([material_id])[0];docs=_documents(record)
+    record=selected_text_materials([material_id])[0];docs=documents(record)
     if document_id:
         docs=[d for d in docs if d['document_id']==document_id]
     if len(docs)!=1:raise ValueError('job_preferences_select_one_document')
     doc=docs[0]
-    relative=record['path'].relative_to(materials_handler._MATERIALS_DIR).as_posix()
+    relative=record['path'].relative_to(materials_dir()).as_posix()
     return {'material_id':material_id,'filename':relative,'label':record.get('label',''),
             'document_id':doc['document_id'],'sha256':doc['sha256']},doc['text']
 
 
 def handle_generate(params):
     source,text=_source(params.get('material_id'),params.get('document_id'))
-    config=settings_handler._load_llm_config()
+    config=load_llm_config()
     client=LLMClient(config['base_url'],config['api_key_for_request'],timeout=config['timeout'],provider=config['provider'],thinking_enabled=bool(config.get('thinking_enabled',False)),reasoning_effort=str(config.get('thinking_effort','high')))
     schema={'type':'object','properties':{'items':{'type':'array','maxItems':24,'items':{'type':'object','properties':{
         'kind':{'type':'string','enum':['primary','bridge','explore','avoid']},'text':{'type':'string'},'quote':{'type':'string'}},
@@ -49,9 +59,9 @@ def handle_save(params):
     except (ValueError,OSError,KeyError):raise ValueError('job_preferences_source_changed') from None
     if source!=actual:raise ValueError('job_preferences_source_changed')
     items=validate_items(draft.get('items'),text)
-    with locked_review_queue(profile._PROFILE_PATH):
-        fields=profile._load_profile()
+    with locked_review_queue(profile_path()):
+        fields=load_profile()
         if params.get('expected_revision')!=get_preferences(fields)['revision']:raise ValueError('preferences_changed')
-        fields['job_preferences_json']=json.dumps({'schema_version':1,'source':actual,'items':items,'confirmed_at':profile._utcnow_iso()},ensure_ascii=False)
-        profile._write_profile(fields)
+        fields['job_preferences_json']=json.dumps({'schema_version':1,'source':actual,'items':items,'confirmed_at':utcnow_iso()},ensure_ascii=False)
+        write_profile(fields)
     return {'meta':params.get('meta',{}),'preferences':get_preferences(fields)}

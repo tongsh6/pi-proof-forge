@@ -9,8 +9,8 @@ from typing import Any
 
 from tools.infra.persistence.review_queue import atomic_write_json
 from tools.infra.persistence.yaml_io import parse_simple_yaml, unquote
-from tools.sidecar.handlers import submission as _submission
-from tools.sidecar.handlers.native_pdf import _sanitize_observation
+from tools.sidecar.handlers._shared import submission_state
+from tools.sidecar.handlers._shared.observations import sanitize_observation as _sanitize_observation
 
 SCHEMA_VERSION = 1
 DISCOVERY = {"start_url": "https://c.liepin.com/", "link_keywords": ["投递"], "allowed_hosts": ["c.liepin.com", "www.liepin.com"]}
@@ -80,7 +80,7 @@ def normalize_status(label: str) -> str:
 
 
 def _lead_identity(candidate_id: str) -> dict[str, str]:
-    path = _submission._JOB_LEAD_DIR / f"{candidate_id}.yaml"
+    path = submission_state.job_lead_dir() / f"{candidate_id}.yaml"
     if not candidate_id or not re.fullmatch(r"[A-Za-z0-9_-]+", candidate_id) or not path.is_file():
         return {}
     scalars = parse_simple_yaml(path.read_text(encoding="utf-8")).get("scalars", {})
@@ -89,9 +89,9 @@ def _lead_identity(candidate_id: str) -> dict[str, str]:
 
 def _managed_success_submissions() -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
-    for log_path in _submission._submission_log_paths():
-        payload = _submission._load_submission_log(log_path)
-        if not _submission._managed_delivery(payload) or str(payload.get("status")) != "success":
+    for log_path in submission_state.submission_log_paths():
+        payload = submission_state.load_submission_log(log_path)
+        if not submission_state.managed_delivery(payload) or str(payload.get("status")) != "success":
             continue
         inputs = payload.get("input_artifacts", {}) if isinstance(payload.get("input_artifacts"), dict) else {}
         lead = _lead_identity(str(inputs.get("candidate_id") or ""))
@@ -195,7 +195,7 @@ def handle_record_platform_status(params: dict[str, Any]) -> dict[str, Any]:
                 "rows_total": len(observation["rows"]), "matched": len(matched), "unmatched_rows": unmatched[:20],
                 "updated_submissions": [m["submission_id"] for m in matched], "discovery_links": observation["discovery_links"],
                 "submissions_total": len(submissions), "page_hints": observation["page_hints"], "read_only": True}
-    atomic_write_json(_submission._SUBMISSIONS_DIR / "liepin" / "platform_feedback_sync.json", sync_log)
+    atomic_write_json(submission_state.submissions_dir() / "liepin" / "platform_feedback_sync.json", sync_log)
     return {"meta": {"correlation_id": params["meta"]["correlation_id"]}, "status": observation["status"], "page_url": observation["page_url"],
             "matched": matched, "unmatched_rows": len(unmatched), "submissions_total": len(submissions), "synced_at": observed_at}
 

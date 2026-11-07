@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
-from tools.infra.llm.client import LLMClient, STRATA_UNIFIED_BASE_URL
-from tools.infra.llm_credentials import LLMApiKeyStore, normalize_provider
 from tools.infra.ai_disclosure import AI_DISCLOSURE_TEXT
+from tools.infra.llm.client import LLMClient
 from tools.infra.liepin_readonly import liepin_readonly
+from tools.infra.llm_credentials import LLMApiKeyStore, normalize_provider
 from tools.infra.liepin_token_file import CredentialStorageError
 from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
 from tools.policy.exclusions import (
@@ -27,9 +25,12 @@ from tools.policy.exclusions import (
     save_legal_entity_exclusion_list,
     save_material_source_roots,
 )
-
-# 默认推理后台：Strata App 管理的统一入口（见 2026-10-22 方案修正）。
-_DEFAULT_LLM_PROVIDER = "strata"
+from tools.sidecar.handlers._shared.llm_config import (
+    DEFAULT_LLM_PROVIDER as _DEFAULT_LLM_PROVIDER,
+    load_llm_config_impl as _load_llm_config,
+    save_llm_config_impl as _save_llm_config,
+    utcnow as _utcnow,
+)
 
 _SUPPORTED_GATE_POLICY_UPDATE_FIELDS = {"delivery_mode", "batch_review"}
 _SUPPORTED_LLM_CONFIG_UPDATE_FIELDS = {
@@ -141,152 +142,6 @@ def handle_settings_liepin_credential(params: dict[str, Any]) -> dict[str, Any]:
 def handle_settings_liepin_resume(params: dict[str, Any]) -> dict[str, Any]:
     return {"meta": {"correlation_id": params["meta"]["correlation_id"]},
             **liepin_readonly.read_resume()}
-
-
-def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, Any]:
-    correlation_id = params["meta"]["correlation_id"]
-    payload = params.get("payload")
-    active = _load_llm_config()
-    config = _merge_llm_config_payload(active, payload)
-    requested_provider = str(config.get("provider") or "").strip()
-    try:
-        requested_provider = normalize_provider(requested_provider)
-    except ValueError:
-        pass
-    label = _provider_label(requested_provider)
-    base_url = str(config["base_url"] or "").strip()
-    payload_provider = payload.get("provider") if isinstance(payload, dict) else None
-    payload_base_url = payload.get("base_url") if isinstance(payload, dict) else None
-    active_provider = str(active.get("provider") or "").strip().lower()
-    if (
-        isinstance(payload_provider, str)
-        and payload_provider.strip()
-        and requested_provider != active_provider
-        and not (isinstance(payload_base_url, str) and payload_base_url.strip())
-    ):
-        # 切换目标 provider 但未提供地址时，不能把该 provider 的密钥发往当前生效端点。
-        base_url = ""
-    if requested_provider == "strata":
-        # Strata 只有一套由 App 管理的统一推理后台：不接受页面或旧配置里的其他地址。
-        base_url = STRATA_UNIFIED_BASE_URL
-    payload_key = payload.get("api_key") if isinstance(payload, dict) else None
-    if isinstance(payload_key, str) and payload_key.strip():
-        api_key = payload_key.strip()
-    elif requested_provider == str(active.get("provider") or "").strip().lower():
-        api_key = str(active.get("api_key_for_request") or "").strip()
-    else:
-        # 不同 provider 之间不得复用当前生效的密钥；只读取该 provider 自己的文件。
-        api_key = _saved_api_key_for_provider(requested_provider)
-    if requested_provider == "lm_studio" and not api_key:
-        api_key = "lm-studio"
-
-    models_url = _models_url(base_url)
-    try:
-        host = (urlparse(base_url).hostname or "").lower()
-    except ValueError:
-        host = ""
-    local_host = host in ("127.0.0.1", "localhost", "::1")
-    strata_local = requested_provider == "strata"
-    lm_studio_compat = requested_provider == "lm_studio" or api_key == "lm-studio"
-    local_endpoint = local_host and (
-        requested_provider == "openai_compatible" or lm_studio_compat
-    )
-    # Strata 与 LM Studio 同为本地服务：无 Key 时正常探测 /models，不报凭证缺失。
-    keyless_local = strata_local or lm_studio_compat
-    display_label = "LM Studio" if lm_studio_compat and not strata_local else label
-    blocked_code = "BLOCKED_LOCAL_PROVIDER" if keyless_local else "BLOCKED_PROVIDER"
-
-    if api_key and not _valid_api_key(api_key):
-        return {
-            "meta": {"correlation_id": correlation_id},
-            "status": "blocked",
-            "code": "BLOCKED_PROVIDER_CREDENTIAL",
-            "message": f"{label} API key format is invalid.",
-            "base_url": base_url,
-            "model_count": 0,
-            "models": [],
-        }
-
-    if not models_url:
-        return {
-            "meta": {"correlation_id": correlation_id},
-            "status": "blocked",
-            "code": blocked_code,
-            "message": f"{display_label} base_url is not configured.",
-            "base_url": base_url,
-            "model_count": 0,
-            "models": [],
-        }
-
-    if not api_key and not (keyless_local or local_endpoint):
-        return {
-            "meta": {"correlation_id": correlation_id},
-            "status": "blocked",
-            "code": "BLOCKED_PROVIDER_CREDENTIAL",
-            "message": f"{label} API key is not configured.",
-            "base_url": base_url,
-            "model_count": 0,
-            "models": [],
-        }
-
-    try:
-        client = LLMClient(
-            base_url=base_url,
-            api_key=api_key,
-            timeout=int(config["timeout"]),
-            provider=requested_provider,
-            thinking_enabled=bool(config.get("thinking_enabled", False)),
-            reasoning_effort=_normalize_thinking_effort(
-                config.get("thinking_effort", "high")
-            ),
-        )
-        models = client.list_models()
-        if not models:
-            if strata_local:
-                message = (
-                    f"{display_label} unified backend is reachable at {models_url} "
-                    "but no model is currently loaded; load a model in Strata App "
-                    "and check again."
-                )
-            else:
-                message = f"{display_label} returned no models from {models_url}."
-            return {
-                "meta": {"correlation_id": correlation_id},
-                "status": "blocked",
-                "code": blocked_code,
-                "message": message,
-                "base_url": base_url,
-                "model_count": 0,
-                "models": [],
-            }
-        return {
-            "meta": {"correlation_id": correlation_id},
-            "status": "pass",
-            "code": "OK",
-            "message": (
-                f"{display_label} unified backend is reachable at {models_url}."
-                if strata_local
-                else f"{display_label} models endpoint is reachable at {models_url}."
-            ),
-            "base_url": base_url,
-            "model_count": len(models),
-            "models": models[:20],
-        }
-    except Exception as exc:
-        message = str(exc)
-        if api_key:
-            message = message.replace(api_key, "***")
-        return {
-            "meta": {"correlation_id": correlation_id},
-            "status": "blocked",
-            "code": blocked_code,
-            "message": (
-                f"{display_label} models endpoint is unavailable at {models_url}: {message}"
-            ),
-            "base_url": base_url,
-            "model_count": 0,
-            "models": [],
-        }
 
 
 def handle_settings_update(params: dict[str, Any]) -> dict[str, Any]:
@@ -424,223 +279,6 @@ def handle_settings_clear_llm_api_key(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _saved_api_key_for_provider(provider: str) -> str:
-    try:
-        return LLMApiKeyStore().load(provider) or ""
-    except (ValueError, CredentialStorageError):
-        return ""
-
-
-def _valid_api_key(value: str) -> bool:
-    return (
-        bool(value.strip())
-        and len(value) <= 8192
-        and not any(ord(char) < 32 or ord(char) == 127 for char in value)
-    )
-
-
-_THINKING_EFFORTS = ("low", "high", "max")
-
-
-def _normalize_thinking_effort(value: object) -> str:
-    effort = str(value or "").strip().lower()
-    return effort if effort in _THINKING_EFFORTS else "high"
-
-
-def _load_llm_config() -> dict[str, Any]:
-    scalars, _ = _load_policy_doc()
-    provider = str(
-        scalars.get("llm_provider")
-        or os.environ.get("LLM_PROVIDER", _DEFAULT_LLM_PROVIDER)
-    ).strip() or _DEFAULT_LLM_PROVIDER
-    try:
-        provider = normalize_provider(provider)
-    except ValueError:
-        pass
-    store = LLMApiKeyStore()
-    saved_key = ""
-    storage_failed = False
-    try:
-        saved_key = store.load(provider) or ""
-    except CredentialStorageError:
-        storage_failed = True
-    except ValueError:
-        # 旧配置可能使用不在白名单内的 provider 字符串；不读写其凭据文件。
-        storage_failed = False
-
-    env_api_key = os.environ.get("LLM_API_KEY", "").strip()
-
-    if saved_key:
-        api_key_for_request, api_key_source = saved_key, "saved"
-    elif env_api_key:
-        api_key_for_request, api_key_source = env_api_key, "environment"
-    elif provider == "lm_studio":
-        api_key_for_request, api_key_source = "lm-studio", "legacy"
-    else:
-        api_key_for_request, api_key_source = "", "none"
-
-    if storage_failed:
-        api_key_for_request, api_key_source = "", "storage_error"
-
-    if saved_key:
-        updated_at = str(store.status(provider).get("updated_at", ""))
-    elif api_key_source == "legacy":
-        updated_at = str(scalars.get("llm_api_key_updated_at", ""))
-    else:
-        updated_at = ""
-
-    try:
-        configured_providers = store.configured_providers()
-    except ValueError:
-        configured_providers = []
-
-    default_model = "" if provider == "strata" else "gpt-4"
-    base_url: str | None = scalars.get("llm_base_url") or os.environ.get("LLM_BASE_URL")
-    if provider == "strata":
-        # 统一推理后台端点固定；旧配置里直连引擎的 8081/8082 等地址不再生效。
-        base_url = STRATA_UNIFIED_BASE_URL
-    return {
-        "provider": provider,
-        "model": scalars.get("llm_model")
-        or os.environ.get("LLM_MODEL", default_model),
-        "base_url": base_url,
-        "api_key_configured": bool(api_key_for_request),
-        "api_key_updated_at": updated_at,
-        "api_key_for_request": api_key_for_request,
-        "api_key_source": api_key_source,
-        "configured_providers": configured_providers,
-        "thinking_enabled": _to_bool(scalars.get("llm_thinking_enabled", ""), False),
-        "thinking_effort": _normalize_thinking_effort(
-            scalars.get("llm_thinking_effort", "high")
-        ),
-        "timeout": _to_int(scalars.get("llm_timeout", ""), 60),
-        "temperature": _to_float(scalars.get("llm_temperature", ""), 0.2),
-    }
-
-
-def _merge_llm_config_payload(
-    config: dict[str, Any],
-    payload: object,
-) -> dict[str, Any]:
-    merged = dict(config)
-    if isinstance(payload, dict):
-        for key in (
-            "provider",
-            "model",
-            "base_url",
-            "timeout",
-            "temperature",
-            "thinking_enabled",
-            "thinking_effort",
-        ):
-            if key in payload:
-                merged[key] = payload[key]
-        if isinstance(payload.get("api_key"), str) and payload["api_key"]:
-            merged["api_key_for_request"] = payload["api_key"]
-            merged["api_key_configured"] = True
-    return merged
-
-
-def _save_llm_config(payload: dict[str, Any]) -> Path | None:
-    scalars, lists = _load_policy_doc()
-    current_provider = str(
-        scalars.get("llm_provider")
-        or os.environ.get("LLM_PROVIDER", _DEFAULT_LLM_PROVIDER)
-    ).strip()
-    try:
-        current_provider = normalize_provider(current_provider)
-    except ValueError:
-        current_provider = ""
-    target_provider = current_provider
-    if "provider" in payload:
-        provider = _require_non_empty_str(payload["provider"], "provider")
-        try:
-            provider = normalize_provider(provider)
-        except ValueError:
-            raise ValueError("unsupported provider id") from None
-        scalars["llm_provider"] = provider
-        target_provider = provider
-    if target_provider != current_provider:
-        # 切换 provider 时模型/端点必须跟新 provider 走；旧值不能继续生效。
-        if "model" not in payload:
-            scalars.pop("llm_model", None)
-        if "base_url" not in payload:
-            scalars.pop("llm_base_url", None)
-    if "model" in payload:
-        model = _require_non_empty_str(payload["model"], "model")
-        scalars["llm_model"] = model
-    if "base_url" in payload:
-        base_url = _require_non_empty_str(payload["base_url"], "base_url")
-        scalars["llm_base_url"] = base_url
-    if "timeout" in payload:
-        scalars["llm_timeout"] = str(_require_positive_int(payload["timeout"], "timeout"))
-    if "temperature" in payload:
-        scalars["llm_temperature"] = str(
-            _require_float_in_range(payload["temperature"], "temperature", 0.0, 2.0)
-        )
-    if "thinking_enabled" in payload:
-        enabled = payload["thinking_enabled"]
-        if not isinstance(enabled, bool):
-            raise ValueError("thinking_enabled must be a boolean")
-        scalars["llm_thinking_enabled"] = "true" if enabled else "false"
-    if "thinking_effort" in payload:
-        effort = payload["thinking_effort"]
-        if not isinstance(effort, str) or effort.strip().lower() not in _THINKING_EFFORTS:
-            raise ValueError("thinking_effort must be low, high or max")
-        scalars["llm_thinking_effort"] = effort.strip().lower()
-    if "api_key" in payload:
-        api_key = _require_non_empty_str(payload["api_key"], "api_key")
-        effective_provider = target_provider or str(
-            scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "")
-        )
-        try:
-            normalized_provider = normalize_provider(effective_provider)
-        except ValueError:
-            raise ValueError("unsupported provider id") from None
-        if not (normalized_provider == "lm_studio" and api_key == "lm-studio"):
-            try:
-                LLMApiKeyStore().save(normalized_provider, api_key)
-            except CredentialStorageError:
-                raise ValueError("本机凭据文件保存失败。") from None
-            for legacy_key in (
-                "llm_api_key_configured",
-                "llm_api_key_updated_at",
-                "llm_api_key_placeholder",
-            ):
-                scalars.pop(legacy_key, None)
-        else:
-            scalars["llm_api_key_configured"] = "true"
-            scalars["llm_api_key_updated_at"] = _utcnow()
-            scalars["llm_api_key_placeholder"] = "lm-studio"
-
-    if target_provider == "strata":
-        # 统一推理后台只有一个入口：忽略页面/旧配置地址，保存时归一为固定端点。
-        scalars["llm_base_url"] = STRATA_UNIFIED_BASE_URL
-
-    effective_provider = target_provider or str(
-        scalars.get("llm_provider") or os.environ.get("LLM_PROVIDER", "")
-    ).strip()
-    try:
-        normalized_effective = normalize_provider(effective_provider)
-    except ValueError:
-        normalized_effective = ""
-    if normalized_effective != "lm_studio":
-        # 旧版 LM Studio 占位不能继续为在线 provider 提供“已配置”假象。
-        for legacy_key in (
-            "llm_api_key_configured",
-            "llm_api_key_updated_at",
-            "llm_api_key_placeholder",
-        ):
-            scalars.pop(legacy_key, None)
-
-    policy_path = _resolve_policy_path()
-    if policy_path is None:
-        return None
-    policy_path.parent.mkdir(parents=True, exist_ok=True)
-    policy_path.write_text(dump_yaml(scalars, lists), encoding="utf-8")
-    return policy_path
-
-
 def _load_policy_doc() -> tuple[dict[str, str], dict[str, list[str]]]:
     policy_path = _resolve_policy_path()
     if policy_path is None or not policy_path.exists():
@@ -654,68 +292,7 @@ def _resolve_policy_path() -> Path | None:
     return resolve_policy_path()
 
 
-def _provider_label(provider: str) -> str:
-    return {
-        "lm_studio": "LM Studio",
-        "strata": "Strata App",
-        "openai": "OpenAI",
-        "deepseek": "DeepSeek",
-        "openai_compatible": "OpenAI-compatible provider",
-    }.get(provider, provider or "Provider")
-
-
-def _models_url(base_url: str) -> str:
-    cleaned = base_url.strip().rstrip("/")
-    if not cleaned:
-        return ""
-    return f"{cleaned}/models"
-
-
-def _require_non_empty_str(value: object, field: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{field} must be a non-empty string")
-    return value.strip()
-
-
-def _require_positive_int(value: object, field: str) -> int:
-    if not isinstance(value, int) or value <= 0:
-        raise ValueError(f"{field} must be a positive integer")
-    return value
-
-
-def _require_float_in_range(value: object, field: str, minimum: float, maximum: float) -> float:
-    if not isinstance(value, (float, int)):
-        raise ValueError(f"{field} must be a number")
-    number = float(value)
-    if number < minimum or number > maximum:
-        raise ValueError(f"{field} must be between {minimum} and {maximum}")
-    return number
-
-
-def _to_bool(value: str, default: bool) -> bool:
-    lowered = value.strip().lower()
-    if lowered in ("true", "1", "yes", "on"):
-        return True
-    if lowered in ("false", "0", "no", "off"):
-        return False
-    return default
-
-
-def _to_int(value: str, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _to_float(value: str, default: float) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
-        "+00:00", "Z"
-    )
+# 兼容旧路径：探测逻辑已拆到 settings_llm_connection，这里继续 re-export。
+from tools.sidecar.handlers.settings_llm_connection import (  # noqa: E402
+    handle_settings_check_llm_connection,
+)
