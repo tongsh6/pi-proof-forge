@@ -69,3 +69,23 @@ def test_explicit_project_date_formats(period):
     p=complete_profile();p['career_status']={'reviewed':True,'missing':[]}
     c=card();c['time_range']=period
     assert resume_renderer.career_generation_issues(p,[c])==[]
+
+def test_core_skills_capped_at_three_groups_in_complete_policy():
+    """完整版式也限制核心能力展示 3 组（一页优先密度），完整技能仍在档案中。"""
+    from tools.engines.generation.resume_renderer import build_template_resume
+
+    profile = {
+        "name": "测试候选人",
+        "career": {
+            "skills": [
+                {"id": f"s{i}", "category": f"能力{i}", "description": f"描述{i}。"}
+                for i in range(5)
+            ],
+            "education_visibility": "omit", "education": [], "extras": [],
+            "work": [{"id": "w1", "company": "公司", "title": "工程师", "start": "2020-01",
+                      "current": True, "end": "", "scope": "平台", "contributions": ["负责开发"]}],
+        },
+    }
+    text = build_template_resume("A", "r", 60, "now", [], personal_profile=profile)
+    shown = [line for line in text.splitlines() if line.startswith("- 能力")]
+    assert len(shown) == 3

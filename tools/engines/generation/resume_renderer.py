@@ -254,10 +254,10 @@ def build_template_resume(
         lines.extend(['','## 职业概述',personal(profile.get('current_position',''),'current_position')+'。'+personal(work[0]['scope'],f"career.work.{work[0]['id']}.scope")])
     groups=[item for item in career.get('skills',[]) if item.get('category') and item.get('description')]
     skills_start = len(lines)
-    if targeted:
-        selected_ids={c['id'] for c in cards}
-        groups.sort(key=lambda g:(not any(field.startswith(f"career.skills.{g['id']}.") for field in preferred_profile),not bool(selected_ids.intersection(g.get('evidence_ids',[])))))
-        groups=groups[:3]
+    # 版式上限：核心能力最多展示 3 组（两种版式一致，控制一页优先密度；完整事实仍在档案中）。
+    selected_ids={c['id'] for c in cards}
+    groups.sort(key=lambda g:(not any(field.startswith(f"career.skills.{g['id']}.") for field in preferred_profile),not bool(selected_ids.intersection(g.get('evidence_ids',[])))))
+    groups=groups[:3]
     if groups:
         lines.extend(['','## 核心能力'])
         for item in groups:
