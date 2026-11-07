@@ -107,6 +107,7 @@ def test_quick_run_and_approval_pages_consume_quality_report():
         [
             (page_dir / "index.tsx").read_text(encoding="utf-8"),
             (page_dir / "submissions-helpers.ts").read_text(encoding="utf-8"),
+            (page_dir / "use-submissions-page.ts").read_text(encoding="utf-8"),
         ]
         + [
             page.read_text(encoding="utf-8")

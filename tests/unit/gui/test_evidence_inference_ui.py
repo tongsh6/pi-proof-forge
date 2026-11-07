@@ -15,6 +15,7 @@ def test_evidence_page_renders_inference_candidates_with_actions():
         [
             (evidence_page_dir / "index.tsx").read_text(encoding="utf-8"),
             (evidence_page_dir / "evidence-helpers.ts").read_text(encoding="utf-8"),
+            (evidence_page_dir / "use-evidence-page.ts").read_text(encoding="utf-8"),
         ]
         + [
             page.read_text(encoding="utf-8")

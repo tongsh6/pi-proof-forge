@@ -16,6 +16,7 @@ def test_submissions_page_matches_product_log_contract():
         [
             (page_dir / "index.tsx").read_text(encoding="utf-8"),
             (page_dir / "submissions-helpers.ts").read_text(encoding="utf-8"),
+            (page_dir / "use-submissions-page.ts").read_text(encoding="utf-8"),
         ]
         + [
             page.read_text(encoding="utf-8")
