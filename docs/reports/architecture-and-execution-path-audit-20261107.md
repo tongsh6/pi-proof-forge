@@ -69,6 +69,21 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 - 验证：`agent --dry-run` 真实引擎端到端 10 状态 DONE，SCORE 0.93 / EVALUATE 0.34 /
   GATE pass，生成正文含个人资料、工作经历与项目经历；全量测试保持 1766 通过。
 
+### P0-4 Agent 生成 LLM 受控改写未接线（已修复）
+
+- 现象：`Composer` 注册了 generation `"llm"` → `LLMRewriter`，但 AgentLoop 的
+  GENERATE 阶段固定使用 `template` 策略，注册的策略从未被消费；`LLMRewriter`
+  仅有「角色强度/时间精度不得升级」的等级校验，缺少数字与实体级事实防线。
+- 处置：把 `LLMRewriter` 扩展为生成引擎实现 `generate(report, cards, version)`：
+  先由真实模板拼装事实基线，再请求模型只改措辞；程序化事实防线校验「数字与英文
+  实体集合不新增/不丢失、长度在基线 0.6–1.6 倍内」，空响应或违规一律回退模板
+  基线（回退即安全）；等级防线（D2）保留。`Composer` 在 LLM 模式注入
+  `llm_rewrite` 策略（携带 personal_profile/job_context），非 LLM 模式仍走
+  `template`；OpenSpec 生成阶段新增「Agent 编排受控改写」条款。
+- 验证：新增 9 项测试（保留数字通过、数字新增/丢失回退、英文实体新增回退、
+  空响应回退、长度超限回退、空卡守卫、既有 rewrite 契约、Composer 策略注册）；
+  全量 1775 passed, 1 skipped, 53 subtests。
+
 ### P1-1 分层错位（已修复）
 
 - `tools/infra/semantic_matching.py`（语义匹配引擎，369 行）→
@@ -148,7 +163,8 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 | `7fc066c` | refactor(engines)：Agent 编排统一真实引擎，消除双引擎并存 |
 | `88705f7` | refactor(evaluation)：四层质量评估器拆分为 tiers 子包 |
 | `27ac474` | refactor(tooling)：检查脚本归一为 CLI `check`/`kb` 子命令 |
-| 本次提交 | refactor(ui)：证据/投递页逻辑提取为页面 hook，页面均 ≤600 行 |
+| `73b9899` | refactor(ui)：证据/投递页逻辑提取为页面 hook，页面均 ≤600 行 |
+| 本次提交 | refactor(generation)：Agent 生成接入 LLM 受控改写（事实防线） |
 
 ## 验证证据（最终）
 
@@ -179,9 +195,6 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 - R3 已收尾：evidence/submissions 的逻辑已提取为页面 hook，页面均 ≤600 行；两个
   hook 文件（758/804 行）是单一页面状态机、状态高度耦合，再拆分需重新设计状态边界，
   暂不继续（如后续出现高频修改再拆）。
-- R4 Agent 生成的 LLM 改写策略接入：`Composer` 已注册 `LLMRewriter` 策略，但
-  AgentLoop 的 GENERATE 阶段固定使用 `template` 策略；如需在 Agent 链路启用受控
-  改写，需单独评审改写边界与事实校验（当前不影响主链路，Quick Run 已具备受控改写）。
 - R5 其余大体量模块（本轮不拆，理由如下）：
   · `tools/submission/liepin.py` 872 行：猎聘浏览器渠道实现，选择器与页内操作紧
     耦合真实平台，patch 语义密集；当前无高频修改瓶颈，拆分风险高于可读性收益。
