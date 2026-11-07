@@ -65,11 +65,23 @@ class RuleExtractorTests(unittest.TestCase):
     def test_extract_rule_card(self) -> None:
         extractor = _rule_extractor_class()()
         card = extractor.extract(
-            "Performance optimization\nresult: latency -30%\nartifact: pr-100\ntag: python"
+            "\n".join(
+                [
+                    "# 性能优化",
+                    "结果：",
+                    "- 接口 P99 时延下降 30%",
+                    "证据：",
+                    "- pr-100",
+                    "技术栈：",
+                    "Python",
+                ]
+            )
         )
-        self.assertIn("latency -30%", card.results)
+        self.assertEqual(card.title, "性能优化")
+        self.assertIn("接口 P99 时延下降 30%", card.results)
         self.assertIn("pr-100", card.artifacts)
-        self.assertIn("python", card.tags)
+        self.assertIn("Python", card.stack)
+        self.assertIn("性能", card.tags)
 
 
 class EvidenceStoreTests(unittest.TestCase):

@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 from unittest import mock
 
-from tools import extract_evidence_llm
+from tools.cli.commands import extract as extract_cli
+from tools.engines.evidence import llm_extractor
 
 
 def _main(argv: list[str], env: dict[str, str]) -> int:
-    with (
-        mock.patch.dict(os.environ, env, clear=True),
-        mock.patch.object(sys, "argv", ["extract_evidence_llm.py", *argv]),
-    ):
-        return extract_evidence_llm.main()
+    with mock.patch.dict(os.environ, env, clear=True):
+        return extract_cli.main(["--use-llm", *argv])
 
 
 def _inputs(tmp_path: Path) -> tuple[Path, Path]:
@@ -48,7 +45,7 @@ def test_strata_without_base_url_uses_unified_app_backend(
     argv = ["--input", str(input_path), "--prompt", str(prompt_path)]
     env = {"LLM_PROVIDER": "strata", "LLM_MODEL": "iq3_s"}
 
-    with mock.patch("tools.extract_evidence_llm.LLMClient", FakeClient):
+    with mock.patch("tools.cli.commands.extract.LLMClient", FakeClient):
         code = _main(argv, env)
 
     assert code == 0
@@ -64,7 +61,7 @@ def test_keyless_non_strata_without_base_url_does_not_fall_back_to_openai(
     env = {"LLM_PROVIDER": "lm_studio", "LLM_MODEL": "local-model"}
 
     with mock.patch(
-        "tools.extract_evidence_llm.LLMClient",
+        "tools.cli.commands.extract.LLMClient",
         side_effect=AssertionError(
             "keyless provider without base_url must not construct LLMClient"
         ),
@@ -110,7 +107,7 @@ def test_keyless_with_base_url_runs_without_api_key(tmp_path: Path) -> None:
         "LLM_BASE_URL": "http://127.0.0.1:8081/v1",
     }
 
-    with mock.patch("tools.extract_evidence_llm.LLMClient", FakeClient):
+    with mock.patch("tools.cli.commands.extract.LLMClient", FakeClient):
         code = _main(argv, env)
 
     assert code == 0
@@ -127,7 +124,7 @@ def test_online_provider_without_api_key_reports_missing_key(
     env = {"LLM_PROVIDER": "openai", "LLM_MODEL": "gpt-4"}
 
     with mock.patch(
-        "tools.extract_evidence_llm.LLMClient",
+        "tools.cli.commands.extract.LLMClient",
         side_effect=AssertionError("missing key must not construct LLMClient"),
     ) as client_class:
         code = _main(argv, env)
@@ -164,9 +161,9 @@ def test_online_provider_with_api_key_keeps_openai_default_base_url(
         "LLM_API_KEY": "sk-test-only",
     }
 
-    with mock.patch("tools.extract_evidence_llm.LLMClient", FakeClient):
+    with mock.patch("tools.cli.commands.extract.LLMClient", FakeClient):
         code = _main(argv, env)
 
     assert code == 0
-    assert captured[0]["base_url"] == extract_evidence_llm.DEFAULT_BASE_URL
+    assert captured[0]["base_url"] == llm_extractor.DEFAULT_BASE_URL
     assert captured[0]["api_key"] == "sk-test-only"

@@ -3,19 +3,12 @@ from unittest.mock import patch
 
 from tools.run_agent import main as legacy_agent_main
 from tools.run_evaluation import main as legacy_evaluate_main
-from tools.run_evidence_extraction import main as legacy_main
 from tools.run_generation import main as legacy_generate_main
 from tools.run_matching_scoring import main as legacy_match_main
 from tools.run_pipeline import main as legacy_pipeline_main
 
 
 class LegacyEntrypointRedirectTests(unittest.TestCase):
-    def test_run_evidence_extraction_redirects_to_cli_command(self) -> None:
-        with patch("tools.run_evidence_extraction.cli_main", return_value=7) as mocked:
-            code = legacy_main()
-            self.assertEqual(code, 7)
-            mocked.assert_called_once()
-
     def test_run_agent_redirects_to_cli_command(self) -> None:
         with patch("tools.run_agent.cli_main", return_value=3) as mocked:
             code = legacy_agent_main()
