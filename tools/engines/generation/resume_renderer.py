@@ -20,6 +20,10 @@ from tools.infra import evidence_provenance as provenance
 from tools.infra.career_profile import career_generation_issues
 
 
+# 一页优先的版式上限：每段工作经历最多展示的职责条数（完整事实仍保留在
+# trace/证据卡中，可追溯；此处只控制候选人正文的展示密度）。
+MAX_WORK_DUTIES_PER_ITEM = 2
+
 _TECH_TERM_CASES = {
     "spring": "Spring", "springboot": "SpringBoot", "boot": "Boot", "java": "Java",
     "redis": "Redis", "mysql": "MySQL", "oracle": "Oracle", "jenkins": "Jenkins",
@@ -292,15 +296,20 @@ def build_template_resume(
                 if item.get('scope'):
                     # 已确认档案的任职范围是事实；targeted 模式不复制未引用贡献，但保留任职范围让工作经历可读。
                     lines.append('场景：'+personal(item['scope'],base+'.scope'))
-                for contribution in item.get('contributions',[]):
-                    if any(f['source_id']=='personal_profile' and f['field']==base+'.contributions' and f['text']==contribution for f in (preferred_facts or [])) and not any(c['text']==contribution for c in claims):
-                        # 工作经历没有可核验的成果段，职责以非 bullet 行呈现，避免把职责伪装成成果。
-                        lines.append('职责：'+personal(contribution,base+'.contributions'))
+                cited_contributions = [
+                    contribution for contribution in item.get('contributions',[])
+                    if any(f['source_id']=='personal_profile' and f['field']==base+'.contributions' and f['text']==contribution for f in (preferred_facts or []))
+                    and not any(c['text']==contribution for c in claims)
+                ]
+                for contribution in cited_contributions[:MAX_WORK_DUTIES_PER_ITEM]:
+                    # 工作经历没有可核验的成果段，职责以非 bullet 行呈现，避免把职责伪装成成果。
+                    lines.append('职责：'+personal(contribution,base+'.contributions'))
                 continue
             lines.append('### '+personal(item['company'],base+'.company')+'（'+career_period(item,'work')+'）')
             lines.append('角色：'+' · '.join(v for v in (personal(item.get('department',''),base+'.department'),personal(item['title'],base+'.title')) if v))
             if item.get('scope'):lines.append('场景：'+personal(item['scope'],base+'.scope'))
-            for contribution in item.get('contributions',[]):lines.append('职责：'+personal(contribution,base+'.contributions'))
+            for contribution in item.get('contributions',[])[:MAX_WORK_DUTIES_PER_ITEM]:
+                lines.append('职责：'+personal(contribution,base+'.contributions'))
     deferred_work=lines[work_start:] if targeted else []
     if targeted:del lines[work_start:]
     lines.extend(["", "## 项目经历"])
