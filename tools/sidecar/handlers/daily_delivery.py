@@ -33,8 +33,8 @@ def scope_item(run_id,*,fresh=False):
 
 def _effective_upload_state(queue):
     # 与 Submissions 共用同一归一：旧队列已自证未派发（not_submitted 且无写请求）不算未决上传。
-    from tools.sidecar.handlers.native_pdf import _upload_effective_state
-    return _upload_effective_state(queue)
+    from tools.sidecar.handlers._shared.delivery_state import upload_effective_state
+    return upload_effective_state(queue)
 
 def _needs_recovery(queue):
     if queue.get('pdf_delivery',{}).get('state')=='success':return False
