@@ -18,6 +18,28 @@ from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.generation import template_assembler
 from tools.infra import evidence_provenance as provenance
 from tools.infra.career_profile import career_generation_issues
+
+
+_TECH_TERM_CASES = {
+    "spring": "Spring", "springboot": "SpringBoot", "boot": "Boot", "java": "Java",
+    "redis": "Redis", "mysql": "MySQL", "oracle": "Oracle", "jenkins": "Jenkins",
+    "docker": "Docker", "kubernetes": "Kubernetes", "nacos": "Nacos", "maven": "Maven",
+    "gradle": "Gradle", "linux": "Linux", "jpa": "JPA", "hibernate": "Hibernate",
+    "mybatis": "MyBatis", "kafka": "Kafka", "rabbitmq": "RabbitMQ", "nginx": "Nginx",
+    "git": "Git", "http": "HTTP", "rest": "REST", "json": "JSON", "api": "API",
+    "sql": "SQL", "jvm": "JVM", "ci": "CI", "cd": "CD",
+}
+
+
+def _normalize_tech_terms(text: str) -> str:
+    """统一技术术语大小写（只替换 ASCII 词边界内的独立词，不改变事实表述）。"""
+
+    def replace(match: "re.Match[str]") -> str:
+        term = match.group(1)
+        canonical = _TECH_TERM_CASES.get(term.casefold()) if term.isascii() else None
+        return canonical or term
+
+    return re.sub(r"(?<![A-Za-z])([A-Za-z][A-Za-z0-9+#./-]*)(?![A-Za-z])", replace, text)
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 
@@ -186,7 +208,7 @@ def build_template_resume(
     def fact(text: str, kind: str, field: str, evidence_id: str = "", field_provenance: dict[str, Any] | None = None) -> str:
         # 证据字段可能带 Markdown 强调标记；候选人正文不保留这些标记，避免 PDF 出现 ** / ` 等噪声。
         text = re.sub(r"\*\*|__|`", "", str(text))
-        text = " ".join(text.split())
+        text = _normalize_tech_terms(" ".join(text.split()))
         if re.search(r"Evidence trace|Source report|(?:/Users/|/private/|/tmp/)|\bec[-_][\w-]+", text, re.I):
             raise ValueError("internal_metadata_in_resume_fact")
         if text:
