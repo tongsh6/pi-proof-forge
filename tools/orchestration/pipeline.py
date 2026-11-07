@@ -187,7 +187,7 @@ def _policy_exclusion_check(
     exclusions = load_exclusion_list()
     legal_entity_exclusions = load_legal_entity_exclusion_list()
 
-    from tools.discovery.filters import filter_candidates_by_policy
+    from tools.engines.discovery.filters import filter_candidates_by_policy
 
     policy = PolicyExclusions(
         company_rules=tuple(exclusions),

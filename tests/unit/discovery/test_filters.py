@@ -1,6 +1,6 @@
 import unittest
 
-from tools.discovery.filters import filter_candidates_by_policy
+from tools.engines.discovery.filters import filter_candidates_by_policy
 from tools.domain.value_objects import Candidate
 
 

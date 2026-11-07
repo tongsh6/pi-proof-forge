@@ -41,6 +41,19 @@ def current_career(root):
     return profile
 
 
+def _load_evidence_cards(evidence_dir,card_ids):
+    """只读加载已落盘证据卡，供内容完整性校验；不依赖生成引擎。"""
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+    cards=[]
+    for card_id in card_ids:
+        path=evidence_dir/f'{card_id}.yaml'
+        if not path.is_file():raise ValueError('resume_evidence_changed')
+        doc=parse_simple_yaml(path.read_text(encoding='utf-8'))
+        cards.append({**doc['scalars'],**doc['lists'],'id':card_id,
+                      'source_sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
+    return cards
+
+
 def _inspect(root,run_id):
     root=Path(root).resolve();run_id=_id(run_id)
     record_path=_file(root,f'outputs/quick_runs/{run_id}.json');record=json.loads(record_path.read_text())
@@ -52,8 +65,7 @@ def _inspect(root,run_id):
     if trace.get('career_revision')!=profile['revision']:raise ValueError('resume_generation_changed')
     if any(trace['inputs'][ref].get('sha256')!=profile['evidence_hashes'].get(ref) for ref in trace['evidence_card_ids']):
         raise ValueError('resume_evidence_changed')
-    from tools.engines.generation.resume_renderer import load_cards
-    cards=load_cards(root/f'outputs/quick_runs/{run_id}/evidence_cards',trace['evidence_card_ids'],root/'materials')
+    cards=_load_evidence_cards(root/f'outputs/quick_runs/{run_id}/evidence_cards',trace['evidence_card_ids'])
     if career_generation_issues(profile,cards) or any(not c[k] for c in cards for k in ('context','role_scope','time_range','actions','results','artifacts')):
         raise ValueError('resume_content_incomplete')
     readiness=trace.get('readiness',{})
