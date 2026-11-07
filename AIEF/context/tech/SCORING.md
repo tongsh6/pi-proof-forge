@@ -26,7 +26,7 @@
 - 补证据任务（例如补压测结果、补监控截图、补复盘链接）
 
 ## LLM 辅助模式
-- CLI：`tools/run_matching_scoring.py --use-llm`
+- CLI：`python3 -m tools.cli.entrypoints match --use-llm`
 - Prompt：`tools/prompts/matching-scoring.md`
 - 严格模式：`--use-llm --require-llm`（LLM 不可用即失败）
 

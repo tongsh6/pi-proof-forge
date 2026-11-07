@@ -26,14 +26,14 @@
 快速命令：
 - build: n/a（暂未设置）
 - test: n/a（暂未设置）
-- run: python3 tools/run_evidence_extraction.py --input <file>
-- pipeline: python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
+- run: python3 -m tools.cli.entrypoints extract --input <file> --output <card.yaml>
+- pipeline: python3 -m tools.cli.entrypoints pipeline --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
 
 上下文入口：
 - context/INDEX.md
 
 说明：
-- `tools/run_evidence_extraction.py` 是推荐工作流入口；`tools/extract_evidence.py` 仍保留为底层规则实现/兼容脚本。
+- 所有业务命令统一走 `python3 -m tools.cli.entrypoints`（extract/match/generate/evaluate/pipeline/agent）；阶段实现位于 engines/orchestration，入口层不再保留按阶段拆分的脚本。
 
 知识库：
 

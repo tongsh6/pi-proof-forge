@@ -19,12 +19,12 @@
 
 ## 执行脚本映射
 - 职位发现（规划）：tools/discovery/run_job_discovery.py
-- 证据提炼：tools/run_evidence_extraction.py
-- 匹配评分：tools/run_matching_scoring.py
-- 简历生成：tools/run_generation.py
-- 质量评测：tools/run_evaluation.py
+- 证据提炼：python3 -m tools.cli.entrypoints extract
+- 匹配评分：python3 -m tools.cli.entrypoints match
+- 简历生成：python3 -m tools.cli.entrypoints generate
+- 质量评测：python3 -m tools.cli.entrypoints evaluate
 - 自动投递（规划）：tools/submission/run_submission.py
-- 一键流水线：tools/run_pipeline.py
+- 一键流水线：python3 -m tools.cli.entrypoints pipeline
 
 ## 使用方式
 当任务涉及新功能/修复/重构时，先选择对应流程，再执行。

@@ -24,7 +24,7 @@
 - 数字或技术词不等于引用。Quick Run 缺失或过期 trace 的引用分为零；岗位描述/自定义求职定位不作个人事实来源。JSON 与 Markdown 同步输出关键词命中/缺失、硬性条件待核对和逐条追溯结果。
 
 ## LLM 辅助模式
-- CLI：`tools/run_evaluation.py --use-llm`
+- CLI：`python3 -m tools.cli.entrypoints evaluate --use-llm`
 - Prompt：`tools/prompts/evaluation.md`
 - 严格模式：`--use-llm --require-llm`（LLM 不可用即失败）
 

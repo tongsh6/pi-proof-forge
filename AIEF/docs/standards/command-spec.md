@@ -9,10 +9,10 @@
 - LLM 模式统一使用 `--use-llm`
 
 ## 标准命令
-- 提炼：`tools/run_evidence_extraction.py`
-- 匹配：`tools/run_matching_scoring.py`
-- 生成：`tools/run_generation.py`
-- 评测：`tools/run_evaluation.py`
-- 一键：`tools/run_pipeline.py`
+- 提炼：`python3 -m tools.cli.entrypoints extract`
+- 匹配：`python3 -m tools.cli.entrypoints match`
+- 生成：`python3 -m tools.cli.entrypoints generate`
+- 评测：`python3 -m tools.cli.entrypoints evaluate`
+- 一键：`python3 -m tools.cli.entrypoints pipeline`
 - GitFlow：`tools/run_gitflow_release.py`
 - 发布：`tools/run_github_publish.py`

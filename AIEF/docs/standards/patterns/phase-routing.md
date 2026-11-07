@@ -10,8 +10,8 @@
 - 输入含“评测/scorecard/质量” -> `workflow/phases/evaluation.md`
 
 ## 执行映射
-- evidence-extraction -> `tools/run_evidence_extraction.py`
-- matching-scoring -> `tools/run_matching_scoring.py`
-- generation -> `tools/run_generation.py`
-- evaluation -> `tools/run_evaluation.py`
-- end-to-end -> `tools/run_pipeline.py`
+- evidence-extraction -> `python3 -m tools.cli.entrypoints extract`
+- matching-scoring -> `python3 -m tools.cli.entrypoints match`
+- generation -> `python3 -m tools.cli.entrypoints generate`
+- evaluation -> `python3 -m tools.cli.entrypoints evaluate`
+- end-to-end -> `python3 -m tools.cli.entrypoints pipeline`
