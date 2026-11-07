@@ -92,6 +92,9 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 - UI 页面：evidence 1755 → 833、submissions 1473 → 866、quick-run 894 → 509；
   新增 21 个区块组件与 3 个 helpers，子组件纯展示、扁平依赖；配套 21 个 GUI 契约
   测试 harness 适配（模块 loader / jsx 展开 / 页面目录聚合源码），断言内容未弱化。
+- 四层质量评估器：`tiered_evaluator.py` 1399 行按层拆为
+  `tiers/common|eligible|fit|strong|distinct|report`（144–333 行），门面 76 行
+  保留原全部符号 re-export；既有 import 与测试无需修改。
 
 ### P2-1 测试组织与分层不对应（已修复）
 
@@ -125,7 +128,8 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 | `86d5e19` | test：按实现分层重组测试目录 |
 | `5d3fe0d` | refactor(sidecar)：拆分超大 handler 模块并消除跨模块私有依赖 |
 | `0865fc7` | refactor(sidecar)：将 agent handler 巨型模块拆为域子模块 |
-| 本次提交 | refactor(engines)：Agent 编排统一真实引擎，消除双引擎并存 |
+| `7fc066c` | refactor(engines)：Agent 编排统一真实引擎，消除双引擎并存 |
+| `88705f7` | refactor(evaluation)：四层质量评估器拆分为 tiers 子包 |
 
 ## 验证证据（最终）
 
@@ -146,6 +150,8 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
     使用真实引擎跑通 10 状态，SCORE 0.93 / EVALUATE 0.34 / GATE pass，生成正文含
     个人资料、工作经历与项目经历；
   · CLI `extract` 与 `match` 也已真实运行验证。
+- Rust 桌面壳：`cargo check` PASS（本次未改 Rust 侧，验证 sidecar 模块结构变化未
+  影响 Tauri 构建）。
 - 边界：本次为本地静态/单测/CLI 验证，不包含真实外部平台验收；GUI 验收仍须按
   `constitution.md` 第 5 条由外部自动化驱动真实页面，既有 roadmap 验收状态不变。
 
@@ -158,6 +164,14 @@ handlers 中，并通过 `PPF_FORCE_LEGACY_MAIN` 双路由与 `subprocess` 串�
 - R4 Agent 生成的 LLM 改写策略接入：`Composer` 已注册 `LLMRewriter` 策略，但
   AgentLoop 的 GENERATE 阶段固定使用 `template` 策略；如需在 Agent 链路启用受控
   改写，需单独评审改写边界与事实校验（当前不影响主链路，Quick Run 已具备受控改写）。
+- R5 其余大体量模块（本轮不拆，理由如下）：
+  · `tools/submission/liepin.py` 872 行：猎聘浏览器渠道实现，选择器与页内操作紧
+    耦合真实平台，patch 语义密集；当前无高频修改瓶颈，拆分风险高于可读性收益。
+  · `tools/orchestration/agent_loop.py` 754 行：状态机主循环与交付辅助内聚，超阈值
+    有限。
+  · `tools/acceptance/external_l3.py` 4988 行、`acceptance_runner.py` 4031 行：
+    验收证据工具层，被 P0 验收条目依赖；拆分需同步改造验收用例与证据契约，应在
+    修改这些验收流程时按「门面 + 子模块」模式逐步收敛，而非单独重构。
 
 ## 假设与边界
 
