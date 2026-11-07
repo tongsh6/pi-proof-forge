@@ -154,7 +154,7 @@ def test_source_fingerprints_invalidate_confirmed_career(sample):
 def test_generation_trace_binds_original_materials_for_staged_cards(sample, monkeypatch):
     root, path, params = sample
     evidence.handle_evidence_save_draft(params)
-    from tools import run_generation
+    from tools.cli.commands import generate as generate_cli
     from tools.infra.persistence.review_snapshot import read_generation_trace
     output = root.parent / 'generated'; staged = root.parent / 'staged'; staged.mkdir()
     (staged / path.name).write_bytes(path.read_bytes())
@@ -162,14 +162,14 @@ def test_generation_trace_binds_original_materials_for_staged_cards(sample, monk
     report = root.parent / 'matching.yaml'; report.write_text(f'top_cards:\n  - id: "{path.stem}"\n')
     monkeypatch.setattr('sys.argv', ['generate', '--matching-report', str(report), '--evidence-dir', str(staged),
                                    '--personal-profile', str(profile), '--output-dir', str(output)])
-    assert run_generation._legacy_main() == 0
+    assert generate_cli.main() == 0
     md = output / 'resume_matching_A.md'
     trace, valid = read_generation_trace(md)
     assert valid
     assert str((root / 'm2.txt').resolve()) in [v['path'] for v in trace['inputs'].values()]
     (root / 'm2.txt').write_text('材料已变更')
     assert read_generation_trace(md)[1] is False
-    assert run_generation._legacy_main() != 0
+    assert generate_cli.main() != 0
 
 
 def test_quick_run_rejects_merged_card_when_material_changed(sample):
@@ -185,7 +185,7 @@ def test_quick_run_rejects_merged_card_when_material_changed(sample):
 def test_semantic_report_binds_merged_sources_before_model_calls(sample):
     root, path, params = sample
     evidence.handle_evidence_save_draft(params)
-    from tools.infra.semantic_matching import run_semantic_matching, validate_inputs
+    from tools.engines.matching.semantic_matching import run_semantic_matching, validate_inputs
     job = root.parent / 'job.yaml'; job.write_text('target_role: "平台"\nmust_have:\n  - "模块验收"\n')
     cite = {'fact_id': path.stem + ':results:0', 'quote': '模块验收通过。'}
     class Client:

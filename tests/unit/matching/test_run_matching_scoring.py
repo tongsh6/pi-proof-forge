@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from tools.run_matching_scoring import main
+from tools.cli.commands.match import main
 
 
 class RunMatchingScoringExclusionTests(unittest.TestCase):
@@ -47,8 +47,7 @@ class RunMatchingScoringExclusionTests(unittest.TestCase):
                     "--output",
                     str(output_path),
                 ]
-                with mock.patch("sys.argv", argv):
-                    code = main()
+                code = main(argv[1:])
             log_path = output_path.parent / "run_log.json"
             log_text = log_path.read_text(encoding="utf-8")
         self.assertEqual(code, 2)
@@ -93,8 +92,7 @@ class RunMatchingScoringExclusionTests(unittest.TestCase):
                     "--output",
                     str(output_path),
                 ]
-                with mock.patch("sys.argv", argv):
-                    code = main()
+                code = main(argv[1:])
         self.assertEqual(code, 2)
 
 
@@ -104,7 +102,7 @@ if __name__ == "__main__":
 
 def test_llm_candidate_prefilter_keeps_rule_ranked_top_cards(tmp_path):
     """证据池超过上限时只把规则分最高的卡交给模型；不超过上限时原样返回。"""
-    from tools.run_matching_scoring import rank_cards_by_rule, select_llm_candidate_files
+    from tools.engines.matching.rule_scorer import rank_cards_by_rule, select_llm_candidate_files
 
     profile = tmp_path / "jp.yaml"
     profile.write_text('target_role: "Java"\nkeywords:\n  - "Java"\n  - "MongoDB"\n', encoding="utf-8")
@@ -188,18 +186,17 @@ class RunMatchingScoringKeylessLlmTests(unittest.TestCase):
                     },
                     clear=True,
                 ),
-                mock.patch("tools.run_matching_scoring.LLMClient", FakeClient),
+                mock.patch("tools.infra.llm.client.LLMClient", FakeClient),
                 mock.patch(
-                    "tools.infra.semantic_matching.run_semantic_matching",
+                    "tools.engines.matching.semantic_matching.run_semantic_matching",
                     fake_run_semantic_matching,
                 ),
                 mock.patch(
-                    "tools.infra.semantic_matching.write_semantic_report",
+                    "tools.engines.matching.semantic_matching.write_semantic_report",
                     fake_write_semantic_report,
                 ),
-                mock.patch("sys.argv", self._argv(job_profile, evidence_dir, output_path)),
             ):
-                code = main()
+                code = main(self._argv(job_profile, evidence_dir, output_path)[1:])
 
         self.assertEqual(code, 0)
         self.assertEqual(captured[0]["api_key"], "")
@@ -235,9 +232,9 @@ class RunMatchingScoringKeylessLlmTests(unittest.TestCase):
                     },
                     clear=True,
                 ),
-                mock.patch("tools.run_matching_scoring.LLMClient"),
+                mock.patch("tools.infra.llm.client.LLMClient"),
                 mock.patch(
-                    "tools.infra.semantic_matching.run_semantic_matching",
+                    "tools.engines.matching.semantic_matching.run_semantic_matching",
                     fake_run_semantic_matching,
                 ),
                 mock.patch("sys.argv", self._argv(job_profile, evidence_dir, output_path)),
@@ -264,9 +261,8 @@ class RunMatchingScoringKeylessLlmTests(unittest.TestCase):
                     },
                     clear=True,
                 ),
-                mock.patch("sys.argv", self._argv(job_profile, evidence_dir, output_path)),
             ):
-                code = main()
+                code = main(self._argv(job_profile, evidence_dir, output_path)[1:])
 
         self.assertEqual(code, 1)
         self.assertFalse(output_path.exists())

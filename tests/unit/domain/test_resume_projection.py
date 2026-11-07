@@ -1,5 +1,5 @@
 import copy
-from tools.run_generation import build_template_resume
+from tools.engines.generation.resume_renderer import build_template_resume
 from tools.infra.resume_content import content_body_issues
 
 
@@ -108,7 +108,7 @@ def test_fact_priority_prefers_new_requirements_not_duplicate_citations():
 
 
 def test_generation_retains_positive_child_citations_without_promoting_unsupported_children():
-    from tools.run_generation import semantic_preferred_facts
+    from tools.engines.generation.resume_renderer import semantic_preferred_facts
     facts={str(i):{'source_id':'a','field':'actions','text':f'原文行动{i}。'} for i in range(3)}
     review={'facts':facts,'assessments':[{'requirement_id':'d1','status':'conflict','citations':[{'fact_id':str(i)} for i in range(3)],
             'checks':[{'requirement_id':'d1.c1','status':'supported','citations':[{'fact_id':'0'}]},

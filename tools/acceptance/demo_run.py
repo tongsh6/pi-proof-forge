@@ -71,7 +71,9 @@ def run_demo_pipeline(
 ) -> tuple[int, tuple[str, ...], str, str]:
     command = (
         sys.executable,
-        str(root / "tools" / "run_pipeline.py"),
+        "-m",
+        "tools.cli.entrypoints",
+        "pipeline",
         "--raw",
         raw_path,
         "--job-profile",

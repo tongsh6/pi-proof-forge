@@ -65,7 +65,7 @@ def test_app_matching_continues_on_excluded_direction_as_advisory(tmp_path,monke
     module,_,_=setup(tmp_path,monkeypatch)
     draft=module.handle_generate({'meta':{},'material_id':'mat_p'})['draft']
     module.handle_save({'meta':{},'draft':draft,'confirmed':True,'expected_revision':module.get_preferences(profile._load_profile())['revision']})
-    from tools.infra import semantic_matching
+    from tools.engines.matching import semantic_matching
     job=tmp_path/'job.yaml';job.write_text('target_role: "Java交付负责人"\nsource_jd: "负责客户驻场实施与交付"\nkeywords:\n  - "Java"\n')
     card=tmp_path/'ec1.yaml';card.write_text('title: "Java项目"\nresults:\n  - "完成接口"\nartifacts:\n  - "报告"\n')
     calls=[]
@@ -96,7 +96,7 @@ def test_direction_binds_material_and_file_jd_to_reused_report(tmp_path,monkeypa
     module,root,_=setup(tmp_path,monkeypatch)
     draft=module.handle_generate({'meta':{},'material_id':'mat_p'})['draft']
     module.handle_save({'meta':{},'draft':draft,'confirmed':True,'expected_revision':module.get_preferences(profile._load_profile())['revision']})
-    from tools.infra import semantic_matching as infra
+    from tools.engines.matching import semantic_matching as infra
     monkeypatch.setattr(infra,'_profile_facts',lambda _: {})
     jd=tmp_path/'job.txt';jd.write_text('负责产品平台长期架构建设')
     job=tmp_path/'job.yaml';job.write_text('target_role: "平台负责人"\nsource_jd: "job.txt"\nmust_have:\n  - "平台建设"\n')
@@ -139,11 +139,11 @@ def test_direction_binds_material_and_file_jd_to_reused_report(tmp_path,monkeypa
     with pytest.raises(ValueError,match='career_direction_jd_body_missing'):infra.run_semantic_matching(**options)
     assert len(calls)==before
 
-    from tools import run_matching_scoring
+    from tools.cli.commands import match as match_cli
     pool=tmp_path/'pool';pool.mkdir();(pool/card.name).write_bytes(card.read_bytes())
     monkeypatch.setattr('sys.argv',['matching','--job-profile',str(job),'--evidence-dir',str(pool),'--personal-profile',str(profile._PROFILE_PATH),
         '--output',str(report),'--use-llm','--require-llm','--model','test','--api-key','local'])
-    assert run_matching_scoring._legacy_main()==1
+    assert match_cli.main()==1
     assert '请先补齐并审核完整 JD' in capsys.readouterr().out
 
 
@@ -231,8 +231,8 @@ def test_direction_empty_response_blocks_cli_with_readable_error(tmp_path, monke
     monkeypatch.setattr('sys.argv',['matching','--job-profile',str(job),'--evidence-dir',str(pool),
         '--personal-profile',str(profile._PROFILE_PATH),'--output',str(output),
         '--use-llm','--require-llm','--model','test','--api-key','local'])
-    from tools import run_matching_scoring
-    assert run_matching_scoring._legacy_main()==1
+    from tools.cli.commands import match as match_cli
+    assert match_cli.main()==1
     assert '求职方向评估未返回正文' in capsys.readouterr().out
     assert len(calls)==2
     assert not output.exists()

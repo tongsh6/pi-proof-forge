@@ -457,7 +457,9 @@ class ProcessRequestTests(unittest.TestCase):
                     )
                 )
                 command = run_mock.call_args.args[0]
-                self.assertTrue(command[1].endswith("tools/run_pipeline.py"))
+                self.assertEqual(
+                    command[1:4], ["-m", "tools.cli.entrypoints", "pipeline"]
+                )
                 self.assertIn(str(profile_path), command)
                 self.assertIn("cwd", run_mock.call_args.kwargs)
 

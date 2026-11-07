@@ -26,7 +26,7 @@ from tools.sidecar.handlers.resume import read_generation_trace
 
 def _find_project_root(start: Path) -> Path:
     for parent in start.parents:
-        if (parent / "tools" / "run_pipeline.py").exists():
+        if (parent / "tools" / "cli" / "entrypoints.py").exists():
             return parent
     return start.parents[3] if len(start.parents) > 3 else start.parent
 
@@ -1250,7 +1250,7 @@ def _quick_run_result_details(
         direction_path=matching_path.with_suffix('.direction.json')
         if direction_path.is_file():
             try:
-                from tools.infra.semantic_matching import load_direction_report
+                from tools.engines.matching.semantic_matching import load_direction_report
                 career_direction=load_direction_report(direction_path)
             except (ValueError,OSError,KeyError,TypeError):pass
     else:
@@ -1585,10 +1585,11 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     evidence_dir = Path("outputs") / "quick_runs" / run_id / "evidence_cards"
     _stage_selected_evidence(selected_evidence_cards, evidence_dir)
     started_at = _utcnow_iso()
-    pipeline_script = _PROJECT_ROOT / "tools" / "run_pipeline.py"
     command = [
         sys.executable,
-        str(pipeline_script),
+        "-m",
+        "tools.cli.entrypoints",
+        "pipeline",
         "--raw",
         str(raw_path),
         "--job-profile",

@@ -1,7 +1,7 @@
 import json
 import pytest
 from pathlib import Path
-from tools import run_generation
+from tools.engines.generation import resume_renderer
 
 
 def complete_profile():
@@ -19,7 +19,7 @@ def card():
 
 def test_complete_resume_uses_existing_template_and_keeps_employer_project_separate():
     claims=[]
-    text=run_generation.build_template_resume('A','r',90,'now',[card()],personal_profile=complete_profile(),job_context={'company':'目标公司','target_role':'Java工程师'},claims=claims)
+    text=resume_renderer.build_template_resume('A','r',90,'now',[card()],personal_profile=complete_profile(),job_context={'company':'目标公司','target_role':'Java工程师'},claims=claims)
     sections=['职业概述','核心能力','工作经历','项目经历','教育经历','补充成果']
     assert all('## '+x in text for x in sections)
     assert [text.index('## '+x) for x in sections]==sorted(text.index('## '+x) for x in sections)
@@ -33,7 +33,7 @@ def test_complete_resume_uses_existing_template_and_keeps_employer_project_separ
 
 def test_education_omission_and_summary_from_existing_facts():
     profile=complete_profile();profile['career']['education_visibility']='omit';profile['career']['summary']=''
-    text=run_generation.build_template_resume('B','r',90,'now',[card()],personal_profile=profile)
+    text=resume_renderer.build_template_resume('B','r',90,'now',[card()],personal_profile=profile)
     assert '## 教育经历' not in text and '示例大学' not in text
     assert '## 职业概述' in text and '订单与库存服务' in text
 
@@ -46,26 +46,26 @@ def test_generation_context_reads_confirmed_career_and_checks_work_link(tmp_path
     fields={**profile,'career_json':json.dumps(career,ensure_ascii=False)}
     state=inspect_career(fields,evidence);fields['career_review_json']=json.dumps({'revision':state['revision']})
     path.write_text('\n'.join(k+': '+json.dumps(v,ensure_ascii=False) for k,v in fields.items())+'\n')
-    loaded,_=run_generation.load_generation_context(path,None)
+    loaded,_=resume_renderer.load_generation_context(path,None)
     assert loaded['career_status']['reviewed'] is True
     selected=card();selected['source_sha256']=loaded['evidence_hashes']['ec-1']
-    missing=run_generation.career_generation_issues(loaded,[selected])
+    missing=resume_renderer.career_generation_issues(loaded,[selected])
     assert missing==[]
     outside=card();outside['time_range']='2020-01 ~ 2020-06'
-    assert any('时间' in r for r in run_generation.career_generation_issues(loaded,[outside]))
+    assert any('时间' in r for r in resume_renderer.career_generation_issues(loaded,[outside]))
     unlinked=card();unlinked['id']='ec-other'
-    assert any('关联' in r for r in run_generation.career_generation_issues(loaded,[unlinked]))
+    assert any('关联' in r for r in resume_renderer.career_generation_issues(loaded,[unlinked]))
 
 
 @pytest.mark.parametrize('period',['待补充','2024-06 ~ 2024-01','2024.01 ~ 2027.06','2024-01 ~ 至今','测试验收：2026-04-21'])
 def test_project_period_must_be_a_valid_interval_inside_employment(period):
     p=complete_profile();p['career_status']={'reviewed':True,'missing':[]}
     c=card();c['time_range']=period
-    assert any('时间' in r for r in run_generation.career_generation_issues(p,[c]))
+    assert any('时间' in r for r in resume_renderer.career_generation_issues(p,[c]))
 
 
 @pytest.mark.parametrize('period',['2024-01 ~ 2024-06','2024.01 至 2024.06','2024年1月—2024年6月'])
 def test_explicit_project_date_formats(period):
     p=complete_profile();p['career_status']={'reviewed':True,'missing':[]}
     c=card();c['time_range']=period
-    assert run_generation.career_generation_issues(p,[c])==[]
+    assert resume_renderer.career_generation_issues(p,[c])==[]

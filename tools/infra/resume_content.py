@@ -52,7 +52,7 @@ def _inspect(root,run_id):
     if trace.get('career_revision')!=profile['revision']:raise ValueError('resume_generation_changed')
     if any(trace['inputs'][ref].get('sha256')!=profile['evidence_hashes'].get(ref) for ref in trace['evidence_card_ids']):
         raise ValueError('resume_evidence_changed')
-    from tools.run_generation import load_cards
+    from tools.engines.generation.resume_renderer import load_cards
     cards=load_cards(root/f'outputs/quick_runs/{run_id}/evidence_cards',trace['evidence_card_ids'],root/'materials')
     if career_generation_issues(profile,cards) or any(not c[k] for c in cards for k in ('context','role_scope','time_range','actions','results','artifacts')):
         raise ValueError('resume_content_incomplete')

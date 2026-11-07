@@ -13,7 +13,7 @@ def test_demo_report_passes_when_pipeline_artifacts_are_traceable(tmp_path: Path
     report = build_demo_report(
         root=tmp_path,
         run_id=run_id,
-        command=("python3", "tools/run_pipeline.py"),
+        command=("python3", "-m", "tools.cli.entrypoints", "pipeline"),
         exit_code=0,
         stdout="[pipeline] done",
         stderr="",
@@ -32,7 +32,7 @@ def test_demo_report_fails_when_required_artifact_is_missing(tmp_path: Path) -> 
     report = build_demo_report(
         root=tmp_path,
         run_id=run_id,
-        command=("python3", "tools/run_pipeline.py"),
+        command=("python3", "-m", "tools.cli.entrypoints", "pipeline"),
         exit_code=0,
         stdout="[pipeline] done",
         stderr="",
@@ -49,7 +49,7 @@ def test_write_demo_report_outputs_json_and_markdown(tmp_path: Path) -> None:
     report = build_demo_report(
         root=tmp_path,
         run_id=run_id,
-        command=("python3", "tools/run_pipeline.py"),
+        command=("python3", "-m", "tools.cli.entrypoints", "pipeline"),
         exit_code=0,
         stdout="[pipeline] done",
         stderr="",

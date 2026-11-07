@@ -1,7 +1,7 @@
 import hashlib,json,sys
 from pathlib import Path
 import pytest
-from tools import run_generation
+from tools.cli.commands import generate as generate_cli
 from tools.infra.career_profile import inspect_career
 
 
@@ -18,7 +18,7 @@ def ready_run(root,monkeypatch):
     report=root/f'mr-{run}.yaml';report.write_text('score_total: 80\ntop_cards:\n  - id: "ec1"\n')
     output=root/'outputs'/run
     monkeypatch.setattr(sys,'argv',['generate','--matching-report',str(report),'--output-dir',str(output),'--evidence-dir',str(stage),'--personal-profile',str(profile),'--job-profile',str(job)])
-    assert run_generation._legacy_main()==0
+    assert generate_cli.main()==0
     pdf=root/f'outputs/quick_runs/{run}/exports/resume_mr-{run}_A.pdf';pdf.parent.mkdir();pdf.write_bytes(b'%PDF-1.7\nfixture\n%%EOF')
     record={'run':{'run_id':run,'status':'DONE'},'resume_pdf':str(pdf.relative_to(root)),'artifacts':{'resume_pdf_sha256':hashlib.sha256(pdf.read_bytes()).hexdigest(), 'resume_pdf_source_sha256':hashlib.sha256((output/f'resume_mr-{run}_A.md').read_bytes()).hexdigest(), 'resume_pdf_trace_sha256':hashlib.sha256((output/f'resume_mr-{run}_A.trace.json').read_bytes()).hexdigest()}}
     (root/f'outputs/quick_runs/{run}.json').write_text(json.dumps(record))
@@ -58,7 +58,7 @@ def test_new_markdown_cannot_reuse_old_pdf(tmp_path,monkeypatch):
     from tools.infra.resume_content import validate_generated_content
     run,_,_=ready_run(tmp_path,monkeypatch)
     monkeypatch.setattr(sys,'argv',sys.argv+['--resume-positioning','custom','--custom-positioning','架构工程师'])
-    assert run_generation._legacy_main()==0
+    assert generate_cli.main()==0
     with pytest.raises(ValueError,match='resume_pdf_source_changed'):
         validate_generated_content(tmp_path,run)
 
@@ -68,7 +68,7 @@ def test_staged_evidence_must_match_confirmed_source_version(tmp_path,monkeypatc
     run,_,_=ready_run(tmp_path,monkeypatch)
     staged=tmp_path/f'outputs/quick_runs/{run}/evidence_cards/ec1.yaml'
     staged.write_text(staged.read_text().replace('回归验证通过','未经档案确认的新结果'))
-    assert run_generation._legacy_main()==0
+    assert generate_cli.main()==0
     md=tmp_path/f'outputs/{run}/resume_mr-{run}_A.md'
     trace=json.loads(md.with_suffix('.trace.json').read_text())
     assert trace['readiness']['content_ready'] is False

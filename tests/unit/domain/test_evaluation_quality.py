@@ -5,13 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from tools import run_evaluation
+from tools.cli.commands import evaluate as evaluate_cli
+from tools.engines.evaluation import quality_report
+from tools.engines.evaluation import rule_evaluator
 from tools.domain.models import JobProfile, ResumeOutput
 from tools.engines.evaluation.rule_evaluator import RuleEvaluationEngine
 
 
 def evaluate(text, must_have=(), keywords=(), **kwargs):
-    return run_evaluation.evaluate_rule(text, list(must_have), list(keywords), "now", "resume.md", "job.yaml", **kwargs)
+    return rule_evaluator.evaluate_rule(text, list(must_have), list(keywords), "now", "resume.md", "job.yaml", **kwargs)
 
 
 def test_requirements_are_not_in_keyword_denominator():
@@ -110,12 +112,12 @@ def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypa
     resume.with_suffix(".trace.json").write_text(json.dumps(trace))
     output = tmp_path / "scorecard.md"
     monkeypatch.setattr("sys.argv", ["evaluate", "--input", str(resume), "--output", str(output)])
-    assert run_evaluation._legacy_main() == 0
+    assert evaluate_cli.main() == 0
     result = json.loads(output.with_suffix(".json").read_text())
     assert result["traceability"]["verified_bullets"] == 1
     assert "证据引用检查: 100% (1/1)" in output.read_text()
     source.write_text('results:\n  - "只完成接口开发"\n')
-    assert run_evaluation._legacy_main() == 0
+    assert evaluate_cli.main() == 0
     result = json.loads(output.with_suffix(".json").read_text())
     assert result["traceability"]["status"] == "unverified"
     assert result["traceability"]["verified_bullets"] == 0
@@ -179,7 +181,7 @@ def test_cli_writes_four_tier_quality_report_and_legacy_scores(tmp_path, monkeyp
         "sys.argv",
         ["evaluate", "--input", str(resume), "--output", str(output), "--job-profile", str(job)],
     )
-    assert run_evaluation._legacy_main() == 0
+    assert evaluate_cli.main() == 0
     result = json.loads(output.with_suffix(".json").read_text())
     report = result["quality_report"]
     assert set(report["tiers"]) == {"eligible", "fit", "strong", "distinct"}
@@ -224,7 +226,7 @@ class _FakeJudgeClient:
 
 def _judge_fixture(tmp_path, monkeypatch):
     monkeypatch.setenv("PPF_QUALITY_JUDGE_CACHE_DIR", str(tmp_path / "judge-cache"))
-    monkeypatch.setattr(run_evaluation, "_load_quality_cards", lambda trace: {"ec_1": {"title": "统一平台"}})
+    monkeypatch.setattr(quality_report, "_load_quality_cards", lambda trace: {"ec_1": {"title": "统一平台"}})
     resume = (
         "# 张三\n13800000000 | a@b.com | 上海\n当前定位：平台负责人\n\n"
         "## 职业概述\n负责平台架构与交付。\n\n<!-- first-screen-end -->\n\n"
@@ -253,14 +255,14 @@ def _judge_fixture(tmp_path, monkeypatch):
 def test_quality_judge_cache_hit_avoids_second_model_call(tmp_path, monkeypatch):
     resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient(content)
-    first, meta_first, _decisions = run_evaluation._run_quality_judge(
+    first, meta_first, _decisions = quality_report._run_quality_judge(
         resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
     )
     assert first is not None and meta_first["cache"] == "miss" and client.calls == 1
     assert "遵守" not in meta_first.get("error", "")
-    second, meta_second, _ = run_evaluation._run_quality_judge(
+    second, meta_second, _ = quality_report._run_quality_judge(
         resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
@@ -273,14 +275,14 @@ def test_quality_judge_cache_hit_avoids_second_model_call(tmp_path, monkeypatch)
 def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path, monkeypatch):
     resume, semantic, _content = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient("not-json")
-    judgments, meta, _ = run_evaluation._run_quality_judge(
+    judgments, meta, _ = quality_report._run_quality_judge(
         resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
     )
     assert judgments is None
     assert meta["cache"] == "miss" and meta.get("error") == "invalid_judge_response"
-    _judgments2, meta2, _ = run_evaluation._run_quality_judge(
+    _judgments2, meta2, _ = quality_report._run_quality_judge(
         resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
@@ -314,7 +316,7 @@ def test_quality_judge_retries_only_missing_sections_in_second_call(tmp_path, mo
     first = json.dumps({"r1_4": payload["r1_4"]}, ensure_ascii=False)
     second = json.dumps({key: payload[key] for key in ("r2_1", "r3_1", "r3_5", "r4_1")}, ensure_ascii=False)
     client = _SequencedJudgeClient([first, second])
-    judgments, meta, _ = run_evaluation._run_quality_judge(
+    judgments, meta, _ = quality_report._run_quality_judge(
         resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
@@ -328,14 +330,14 @@ def test_quality_judge_retries_only_missing_sections_in_second_call(tmp_path, mo
 
 def test_quality_judge_disabled_without_llm_or_semantic_review(tmp_path, monkeypatch):
     resume, semantic, _content = _judge_fixture(tmp_path, monkeypatch)
-    judgments, meta, decisions = run_evaluation._run_quality_judge(
+    judgments, meta, decisions = quality_report._run_quality_judge(
         resume_text=resume, trace={}, semantic_review=None, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient("{}"),
     )
     assert judgments is None and meta["cache"] == "disabled"
     assert decisions == {"rejected": [], "selected": []}
-    judgments, meta, _ = run_evaluation._run_quality_judge(
+    judgments, meta, _ = quality_report._run_quality_judge(
         resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=False, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient("{}"),
@@ -349,7 +351,7 @@ def test_quality_judge_loads_user_highlight_decisions(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     resume_sha = hashlib.sha256(resume.encode("utf-8")).hexdigest()
     quality_judge_cache.save_highlight_decision(Path.cwd(), resume_sha, "hl_b1_d1", "reject")
-    _judgments, _meta, decisions = run_evaluation._run_quality_judge(
+    _judgments, _meta, decisions = quality_report._run_quality_judge(
         resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient(content),
@@ -363,9 +365,9 @@ def test_quality_cache_invalidates_when_same_job_content_changes(tmp_path, monke
     args = dict(resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
                 use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
                 client_factory=lambda: client)
-    run_evaluation._run_quality_judge(**args)
+    quality_report._run_quality_judge(**args)
     semantic["requirements"][0]["text"] = "负责数据平台交付"
-    run_evaluation._run_quality_judge(**args)
+    quality_report._run_quality_judge(**args)
     assert client.calls == 2
 
 
@@ -377,7 +379,7 @@ def test_quality_missing_jd_coverage_repairs_once_and_does_not_cache_pending(tmp
     args = dict(resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
                 use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
                 client_factory=lambda: client)
-    judgments, meta, _ = run_evaluation._run_quality_judge(**args)
+    judgments, meta, _ = quality_report._run_quality_judge(**args)
     assert client.calls == 2 and "r2_1" not in judgments["judged_sections"]
     assert meta["repair_calls"] == 1
     assert not list((tmp_path / "judge-cache").glob("*.json"))
@@ -388,18 +390,18 @@ def test_quality_judge_uses_configured_provider_adapter(tmp_path, monkeypatch):
     client = _FakeJudgeClient(content)
     created = []
     monkeypatch.setenv("LLM_PROVIDER", "lm_studio")
-    monkeypatch.setattr(run_evaluation, "LLMClient", lambda **kwargs: created.append(kwargs) or client)
-    run_evaluation._run_quality_judge(resume_text=resume, trace={}, semantic_review=semantic,
+    monkeypatch.setattr(quality_report, "LLMClient", lambda **kwargs: created.append(kwargs) or client)
+    quality_report._run_quality_judge(resume_text=resume, trace={}, semantic_review=semantic,
         job_profile_path="job.yaml", use_llm=True, model="m", api_key="k", base_url="http://localhost/v1")
     assert created[0]["provider"] == "lm_studio"
 
 
 def test_quality_judge_only_receives_evidence_used_in_actual_resume(tmp_path, monkeypatch):
     resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_evaluation, "_load_quality_cards",
+    monkeypatch.setattr(quality_report, "_load_quality_cards",
                         lambda _: {"ec_1": {"title": "统一平台"}, "unused": {"results": ["未呈现的百万级成果"]}})
     client = _FakeJudgeClient(content)
-    run_evaluation._run_quality_judge(resume_text=resume,
+    quality_report._run_quality_judge(resume_text=resume,
         trace={"claims": [{"evidence_id": "ec_1", "text": "负责完成平台抽象"}]},
         semantic_review=semantic, job_profile_path="job.yaml", use_llm=True, model="m", api_key="k",
         base_url="http://fake/v1", client_factory=lambda: client)

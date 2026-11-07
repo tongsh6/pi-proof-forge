@@ -384,7 +384,7 @@ class TestQuickRunStart:
         assert started["progress"]["stages"][0]["key"] == "extract"
         assert result["status"] == "DONE"
         command = run_mock.call_args.args[0]
-        assert command[1] == str(project_root / "tools" / "run_pipeline.py")
+        assert command[1:4] == ["-m", "tools.cli.entrypoints", "pipeline"]
         assert command[command.index("--personal-profile") + 1] == str(project_root / "personal_profile.yaml")
         assert run_mock.call_args.kwargs["cwd"] == str(project_root)
 

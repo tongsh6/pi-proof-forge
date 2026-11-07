@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tools import run_generation
+from tools.cli.commands import generate as generate_cli
+from tools.engines.generation.resume_renderer import build_template_resume, load_generation_context
 
 
 @pytest.fixture
@@ -43,7 +44,7 @@ def run_generation_cli(monkeypatch, inputs, *extra):
         "--evidence-dir", str(evidence), "--personal-profile", str(profile),
         "--job-profile", str(job), *extra,
     ])
-    return run_generation._legacy_main()
+    return generate_cli.main()
 
 
 def test_generation_uses_profile_and_target_without_internal_metadata(monkeypatch, generation_inputs):
@@ -90,7 +91,7 @@ def test_unknown_selected_evidence_does_not_fall_back(monkeypatch, generation_in
     json.dumps({"evidence_ids": ["ec-invented"]}),
 ])
 def test_required_llm_rejects_unverifiable_output(monkeypatch, generation_inputs, response):
-    monkeypatch.setattr(run_generation.LLMClient, "post_json", lambda *a: {
+    monkeypatch.setattr("tools.infra.llm.client.LLMClient.post_json", lambda *a: {
         "choices": [{"message": {"content": response}}],
     })
     assert run_generation_cli(
@@ -161,13 +162,13 @@ def test_gui_multiline_jd_round_trips_into_generation(generation_inputs):
         "target_role": "Java专家", "company": "目标公司", "source_jd": jd,
         "keywords": ["Java", "Redis", "Kafka"], "status": "active",
     })
-    _, target = run_generation.load_generation_context(profile, job)
+    _, target = load_generation_context(profile, job)
     assert target["jd_text"] == jd
     assert target["keywords"] == ["Java", "Redis", "Kafka"]
 
 
 def test_high_score_without_real_gaps_is_quality_passed_but_needs_review(monkeypatch, generation_inputs):
-    from tools import run_evaluation
+    from tools.cli.commands import evaluate as evaluate_cli
     from tools.sidecar.handlers import agent
 
     profile, job, evidence, report, output = generation_inputs
@@ -191,7 +192,7 @@ def test_high_score_without_real_gaps_is_quality_passed_but_needs_review(monkeyp
     resume = output / "resume_mr-target_A.md"
     scorecard = output / "scorecard.md"
     monkeypatch.setattr("sys.argv", ["evaluate", "--input", str(resume), "--output", str(scorecard), "--job-profile", str(job)])
-    assert run_evaluation._legacy_main() == 0
+    assert evaluate_cli.main() == 0
     # Phase A 尚未接入 LLM 判项，这里预置一份四层全通过的 quality_report，
     # 验证审批门禁只消费 auto_pass，而不是旧版 78 参考线。
     score_data = json.loads(scorecard.with_suffix(".json").read_text())
@@ -239,7 +240,7 @@ def test_generation_keeps_context_and_prioritizes_relevant_actions_without_inven
           'actions':['整理接口文档','使用 Redis 缓存订单查询','通过压测分析数据库瓶颈','设置灰度回滚流程'],
           'results':['请求延迟降低 20%'],'stack':['Redis'],'artifacts':['材料']}
     claims=[]
-    text=run_generation.build_template_resume('A','report',80,'now',[card],personal_profile={'name':'测试候选人'},job_context={'keywords':['Redis']},claims=claims)
+    text=build_template_resume('A','report',80,'now',[card],personal_profile={'name':'测试候选人'},job_context={'keywords':['Redis']},claims=claims)
     assert '场景：高峰期订单查询慢' in text
     assert text.index('使用 Redis 缓存订单查询')<text.index('整理接口文档')
     assert any(c['field']=='context' and c['text']=='高峰期订单查询慢' for c in claims)
@@ -251,7 +252,7 @@ def test_generation_prioritizes_semantically_cited_action_over_literal_keyword_o
           'actions':['Java接口开发','Java文档整理','Java单元测试','实现幂等去重与故障恢复'],
           'results':['成功率99%'],'stack':['Java'],'artifacts':['报告']}
     claims=[]
-    text=run_generation.build_template_resume('A','r',80,'now',[card],job_context={'keywords':['Java']},claims=claims,
+    text=build_template_resume('A','r',80,'now',[card],job_context={'keywords':['Java']},claims=claims,
         preferred_facts=[{'source_id':'ec-1','field':'actions','text':'实现幂等去重与故障恢复'}])
     assert '实现幂等去重与故障恢复' in text
     assert text.index('实现幂等去重与故障恢复') < text.index('Java接口开发')
@@ -266,7 +267,7 @@ def test_actions_without_lexical_result_match_are_not_paired_as_bullets():
             'stack': ['Java'], 'artifacts': ['报告']}
     profile = {'career': {'skills': [{'id': 's1', 'category': '技术', 'description': '后端开发'}]}}
     claims = []
-    text = run_generation.build_template_resume('A', 'r', 50, 'now', [card],
+    text = build_template_resume('A', 'r', 50, 'now', [card],
              personal_profile=profile, claims=claims)
     bullets = [line for line in text.splitlines() if line.startswith('- ')]
     assert not any(any(a in line for a in card['actions']) and any(r in line for r in card['results']) for line in bullets)
@@ -284,7 +285,7 @@ def test_targeted_generation_preserves_measured_improvement_over_repeated_scale(
             'stack': [], 'artifacts': ['报告']}
     refs = [{'source_id': 'ec-1', 'field': 'results', 'text': r, 'requirement_id': 'r1', 'support_weight': 2}
             for r in card['results'][:2]]
-    text = run_generation.build_template_resume('A', 'r', 50, 'now', [card], preferred_facts=refs)
+    text = build_template_resume('A', 'r', 50, 'now', [card], preferred_facts=refs)
     assert card['results'][2] in text
 
 
@@ -310,8 +311,8 @@ def test_empty_role_placeholder_is_not_a_personal_responsibility(monkeypatch, ge
 
 
 def test_generation_and_evaluation_reuse_verified_semantic_selection(monkeypatch, generation_inputs):
-    from tools.infra.semantic_matching import run_semantic_matching, write_semantic_report
-    from tools import run_evaluation
+    from tools.engines.matching.semantic_matching import run_semantic_matching, write_semantic_report
+    from tools.cli.commands import evaluate as evaluate_cli
     profile, job, evidence, report, output = generation_inputs
     class Client:
         chat_completions_url = 'http://localhost/v1/chat/completions'
@@ -329,14 +330,14 @@ def test_generation_and_evaluation_reuse_verified_semantic_selection(monkeypatch
     review = run_semantic_matching(job_path=job, evidence_files=list(evidence.glob('*.yaml')), personal_profile=profile,
                                    client=Client(), model='test', cache_dir=output.parent/'cache')
     write_semantic_report(report, review)
-    monkeypatch.setattr(run_generation.LLMClient, 'post_json', lambda *args, **kwargs: pytest.fail('不得重复调用模型选材/解释'))
+    monkeypatch.setattr('tools.infra.llm.client.LLMClient.post_json', lambda *args, **kwargs: pytest.fail('不得重复调用模型选材/解释'))
     assert run_generation_cli(monkeypatch, generation_inputs, '--use-llm', '--require-llm') == 0
     resume = output/'resume_mr-target_A.md'
     trace = json.loads(resume.with_suffix('.trace.json').read_text())
     assert trace['generation_strategy'] == 'semantic_selection_locked_evidence_fields'
     assert 'semantic_matching' in trace['inputs']
     monkeypatch.setattr('sys.argv', ['evaluate', '--input', str(resume), '--output', str(output/'score.md'), '--job-profile', str(job), '--use-llm', '--require-llm'])
-    assert run_evaluation._legacy_main() == 0
+    assert evaluate_cli.main() == 0
     score = json.loads((output/'score.json').read_text())
     assert score['semantic_review']['mode'] == 'semantic'
     assert score['semantic_review']['requirements'][0]['resume_status'] == 'supported'
@@ -352,7 +353,7 @@ def test_generation_and_evaluation_reuse_verified_semantic_selection(monkeypatch
     other_profile.write_text(profile.read_text().replace('测试候选人', '另一候选人'))
     assert run_generation_cli(monkeypatch, (other_profile, job, evidence, report, output/'changed-profile'), '--use-llm', '--require-llm') == 1
     report.unlink()
-    monkeypatch.setattr(run_generation.LLMClient, 'post_json', lambda *args, **kwargs: {'choices': [{'message': {'content': '旧解释不能替代丢失的语义结果'}}]})
+    monkeypatch.setattr('tools.infra.llm.client.LLMClient.post_json', lambda *args, **kwargs: {'choices': [{'message': {'content': '旧解释不能替代丢失的语义结果'}}]})
     monkeypatch.setattr('sys.argv', ['evaluate', '--input', str(resume), '--output', str(output/'invalid.md'), '--job-profile', str(job), '--use-llm', '--require-llm', '--model', 'test', '--api-key', 'local'])
-    assert run_evaluation._legacy_main() == 1
+    assert evaluate_cli.main() == 1
     assert not (output/'invalid.md').exists()

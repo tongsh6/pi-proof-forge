@@ -300,7 +300,9 @@ excluded_legal_entities: []
             result = subprocess.run(
                 [
                     "python3",
-                    "tools/run_agent.py",
+                    "-m",
+                    "tools.cli.entrypoints",
+                    "agent",
                     "--policy",
                     str(policy_path),
                     "--dry-run",

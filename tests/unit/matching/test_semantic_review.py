@@ -157,7 +157,7 @@ def test_final_selection_does_not_fill_three_slots_with_uncited_projects():
 
 
 def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path,monkeypatch):
-    infra = importlib.import_module('tools.infra.semantic_matching')
+    infra = importlib.import_module('tools.engines.matching.semantic_matching')
     job = tmp_path / 'jp.yaml'
     job.write_text('target_role: "后端"\nmust_have:\n  - "Distributed system reliability"\nkeywords:\n  - "Distributed"\n')
     paths = []
@@ -273,7 +273,7 @@ def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path,monkeypatc
 
 
 def test_required_llm_invalid_semantic_output_does_not_publish_success(tmp_path, monkeypatch):
-    from tools import run_matching_scoring
+    from tools.cli.commands import match as match_cli
     from tools.infra.llm.client import LLMClient
     job = tmp_path / 'job.yaml'
     job.write_text('target_role: "后端"\ncompany: "Test"\nkeywords:\n  - "恢复能力"\n')
@@ -284,14 +284,14 @@ def test_required_llm_invalid_semantic_output_does_not_publish_success(tmp_path,
     monkeypatch.setattr(LLMClient, 'post_json', lambda *args, **kwargs: {'choices': [{'message': {'content': '{"cards":[]}'}}]})
     monkeypatch.setattr('sys.argv', ['match', '--job-profile', str(job), '--evidence-dir', str(evidence), '--output', str(output),
                                    '--use-llm', '--require-llm', '--model', 'test', '--api-key', 'local'])
-    assert run_matching_scoring._legacy_main() == 1
+    assert match_cli.main() == 1
     assert not output.exists()
 
 
 @pytest.mark.parametrize('always_invalid', [False, True])
 @pytest.mark.parametrize('fault', ['invalid_quote','missing_citations'])
 def test_invalid_quote_gets_only_one_validated_repair(tmp_path, always_invalid, fault):
-    infra = importlib.import_module('tools.infra.semantic_matching')
+    infra = importlib.import_module('tools.engines.matching.semantic_matching')
     job = tmp_path/'job.yaml'
     job.write_text('target_role: "恢复能力"\nkeywords:\n  - "故障恢复"\n')
     evidence = tmp_path/'e1.yaml'
@@ -349,7 +349,7 @@ def test_positive_requirement_evidence_can_recover_zero_recall_card():
 
 
 def test_confirmed_personal_achievements_are_facts_without_employer_attribution(tmp_path,monkeypatch):
-    infra=importlib.import_module('tools.infra.semantic_matching')
+    infra=importlib.import_module('tools.engines.matching.semantic_matching')
     from tools.infra.career_profile import empty_career
     profile=tmp_path/'personal_profile.yaml'
     # 本测试仅隔离档案加载；确认状态与成果内容通过原有接口进入事实表。
@@ -387,7 +387,7 @@ def test_assessment_allows_real_shortfall_and_explicit_production_requirement():
 
 
 def test_reuse_revalidates_previously_published_invalid_assessment(tmp_path):
-    infra=importlib.import_module('tools.infra.semantic_matching')
+    infra=importlib.import_module('tools.engines.matching.semantic_matching')
     _,facts,_=fixtures()
     result={'method':infra.VERSION,'inputs':{},'job_profile_id':'job','fit_score':50,'facts':facts,
         'requirements':[{'id':'r1','text':'3年以上负责人经验'}],

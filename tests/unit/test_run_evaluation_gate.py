@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tools import run_evaluation
+from tools.engines.evaluation import quality_report
 
 
 class _FakeJudgeClient:
@@ -40,14 +40,14 @@ def _gate_kwargs() -> dict:
 
 def _patch_judge_deps(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("PPF_QUALITY_JUDGE_CACHE_DIR", str(tmp_path / "judge-cache"))
-    monkeypatch.setattr(run_evaluation, "_load_quality_cards", lambda trace: {})
+    monkeypatch.setattr(quality_report, "_load_quality_cards", lambda trace: {})
     monkeypatch.setattr(
-        run_evaluation.quality_judge_cache,
+        quality_report.quality_judge_cache,
         "load_decisions",
         lambda *args, **kwargs: {"rejected": [], "selected": []},
     )
     monkeypatch.setattr(
-        run_evaluation.quality_judge_cache,
+        quality_report.quality_judge_cache,
         "load_judgment",
         lambda *args, **kwargs: None,
     )
@@ -60,7 +60,7 @@ def test_keyless_local_provider_does_not_disqualify_quality_judge(
     monkeypatch.setenv("LLM_PROVIDER", "strata")
     client = _FakeJudgeClient()
 
-    judgments, meta, decisions = run_evaluation._run_quality_judge(
+    judgments, meta, decisions = quality_report._run_quality_judge(
         client_factory=lambda: client, **_gate_kwargs()
     )
 
@@ -83,7 +83,7 @@ def test_online_provider_without_key_disables_quality_judge(
         created.append({})
         raise AssertionError("缺 Key 的在线 provider 不得调用模型")
 
-    judgments, meta, decisions = run_evaluation._run_quality_judge(
+    judgments, meta, decisions = quality_report._run_quality_judge(
         client_factory=forbidden_factory, **_gate_kwargs()
     )
 

@@ -11,7 +11,7 @@ from tools.engines.generation import template_assembler as ta
 from tools.engines.generation.llm_rewriter import LLMRewriter
 from tools.engines.generation.template_assembler import TemplateAssembler
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
-from tools.run_generation import build_template_resume, load_cards
+from tools.engines.generation.resume_renderer import build_template_resume, load_cards
 
 
 PROFILE = {

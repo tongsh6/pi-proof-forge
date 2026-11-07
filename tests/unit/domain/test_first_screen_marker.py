@@ -4,7 +4,7 @@ from __future__ import annotations
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.evaluation import tiered_evaluator as te
 from tools.infra.export.resume_html import parse_resume_markdown, render_resume_html
-from tools.run_generation import build_template_resume
+from tools.engines.generation.resume_renderer import build_template_resume
 
 
 CARD = {

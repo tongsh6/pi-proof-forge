@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from tools import run_generation
+from tools.cli.commands import generate as generate_cli
 from tools.infra.career_profile import inspect_career
 
 _RUN_ID = "qr_gate"
@@ -150,9 +150,9 @@ def test_keyless_strata_allows_llm_selection_without_api_key(
     monkeypatch.setenv("LLM_BASE_URL", "http://127.0.0.1:8081/v1")
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.setattr(sys, "argv", _argv(paths, "--use-llm", "--require-llm"))
-    monkeypatch.setattr(run_generation, "LLMClient", FakeClient)
+    monkeypatch.setattr("tools.infra.llm.client.LLMClient", FakeClient)
 
-    assert run_generation._legacy_main() == 0
+    assert generate_cli.main() == 0
 
     assert captured[0]["api_key"] == ""
     assert captured[0]["base_url"] == "http://127.0.0.1:8081/v1"
@@ -178,8 +178,8 @@ def test_online_provider_without_api_key_blocks_required_llm(
     monkeypatch.setenv("LLM_MODEL", "gpt-4")
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.setattr(sys, "argv", _argv(paths, "--use-llm", "--require-llm"))
-    monkeypatch.setattr(run_generation, "LLMClient", ForbiddenClient)
+    monkeypatch.setattr("tools.infra.llm.client.LLMClient", ForbiddenClient)
 
-    assert run_generation._legacy_main() == 1
+    assert generate_cli.main() == 1
     assert constructed == []
     assert not (paths["output"] / f"resume_mr-{_RUN_ID}_A.md").exists()
