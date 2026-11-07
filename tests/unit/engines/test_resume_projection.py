@@ -168,3 +168,13 @@ def test_extra_selection_accounts_for_requirements_already_in_project_body():
     text = build_template_resume('A', 'r', 50, 'now', [c], personal_profile=p, preferred_facts=refs)
     assert 'Python 内容生成' in text and '个人工具一' in text
     assert '个人工具二' not in text
+
+def test_targeted_work_history_keeps_confirmed_scope_without_uncited_contributions():
+    import re
+
+    p, text, claims = render()
+    sections = re.split(r"^## ", text, flags=re.M)
+    work_section = next(part for part in sections if part.startswith("工作经历"))
+    assert '场景：' in work_section
+    assert '早期的低相关功能开发。' not in work_section
+    assert any(c['field'] == 'career.work.recent.scope' for c in claims)

@@ -184,7 +184,9 @@ def build_template_resume(
     preferred_profile={f['field'] for f in (preferred_facts or []) if f['source_id']=='personal_profile'}
 
     def fact(text: str, kind: str, field: str, evidence_id: str = "", field_provenance: dict[str, Any] | None = None) -> str:
-        text = " ".join(str(text).split())
+        # 证据字段可能带 Markdown 强调标记；候选人正文不保留这些标记，避免 PDF 出现 ** / ` 等噪声。
+        text = re.sub(r"\*\*|__|`", "", str(text))
+        text = " ".join(text.split())
         if re.search(r"Evidence trace|Source report|(?:/Users/|/private/|/tmp/)|\bec[-_][\w-]+", text, re.I):
             raise ValueError("internal_metadata_in_resume_fact")
         if text:
@@ -265,6 +267,9 @@ def build_template_resume(
             base=f"career.work.{item['id']}"
             if targeted:
                 lines.append('### '+personal(item['company'],base+'.company')+' · '+personal(item['title'],base+'.title')+'（'+career_period(item,'work')+'）')
+                if item.get('scope'):
+                    # 已确认档案的任职范围是事实；targeted 模式不复制未引用贡献，但保留任职范围让工作经历可读。
+                    lines.append('场景：'+personal(item['scope'],base+'.scope'))
                 for contribution in item.get('contributions',[]):
                     if any(f['source_id']=='personal_profile' and f['field']==base+'.contributions' and f['text']==contribution for f in (preferred_facts or [])) and not any(c['text']==contribution for c in claims):
                         # 工作经历没有可核验的成果段，职责以非 bullet 行呈现，避免把职责伪装成成果。
