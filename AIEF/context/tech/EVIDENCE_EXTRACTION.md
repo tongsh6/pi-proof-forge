@@ -20,9 +20,9 @@
 4. 生成缺口任务：提示用户补证据
 
 ## CLI 入口
-- 推荐工作流入口：`tools/run_evidence_extraction.py`
-- 底层规则脚本：`tools/extract_evidence.py`
-- LLM 版：`tools/extract_evidence_llm.py`
+- 统一入口：`python3 -m tools.cli.entrypoints extract`
+- 规则模式（默认）：确定性分节抽取，缺失字段写入 gaps
+- LLM 模式：`--use-llm`，provider/base_url 安全规则由引擎层统一解析
 
 ## 规则约束
 - 不允许编造指标或 artifacts。

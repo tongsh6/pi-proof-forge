@@ -77,7 +77,7 @@ required_fields:
 
 **输入**: 原始材料文件（txt/md/pdf）  
 **输出**: Evidence Cards（YAML 格式）  
-**工具**: `tools/run_evidence_extraction.py`（推荐入口） / `tools/extract_evidence.py`（底层规则脚本）  
+**工具**: `python3 -m tools.cli.entrypoints extract`（规则或 `--use-llm`）  
 **约束**:
 - 不得推断或补充原材料中没有的信息
 - 每个 Evidence Card 必须有明确的 `raw_source` 引用
@@ -326,22 +326,24 @@ P0-017A 首片（2026-09-28）：
 - 本增量只收口单次投递前置能力；每日调度、每日成功计数、持续授权及跨运行去重按路线图后续阶段实施。
 
 ```bash
-# 证据提炼（推荐入口）
-python3 tools/run_evidence_extraction.py --input <raw_file>
+# 证据提炼
+python3 -m tools.cli.entrypoints extract --input <raw_file> --output <card.yaml>
 
 # 完整 pipeline
-python3 tools/run_pipeline.py \
+python3 -m tools.cli.entrypoints pipeline \
   --raw tools/sample_raw.txt \
   --job-profile job_profiles/jp-2026-001.yaml
 
-# Agent loop（统一核心引擎入口）
-python3 tools/run_agent.py --policy profiles/agent_policy.example.yaml --dry-run
+# Agent loop
+python3 -m tools.cli.entrypoints agent --policy profiles/agent_policy.example.yaml --dry-run
 ```
 
 说明：
-- `tools/run_evidence_extraction.py` 是面向工作流和文档约定的推荐入口；`tools/extract_evidence.py` 保留为底层规则实现/兼容脚本。
-- `tools/run_pipeline.py` 属于兼容入口，在迁移期内部转调 `tools/config/composer.py` 组装出的新 pipeline / orchestration 层。
-- 新增能力优先通过 `tools/run_agent.py` 与 `tools/cli/entrypoints.py` 暴露。
+- 所有业务命令统一走 `python3 -m tools.cli.entrypoints`；入口只解析参数并调用编排层。
+- 阶段命令（extract/match/generate/evaluate）与单次 pipeline 共用同一套引擎实现；
+  阶段之间是进程内调用，不存在按阶段拆分的独立脚本或 subprocess 串联。
+- 新增能力优先通过 `tools/cli/entrypoints.py` 暴露；分层方向与唯一实现由
+  `python3 tools/check_v2_constraints.py --root .` 强制。
 
 ---
 

@@ -1,8 +1,134 @@
 # 工具说明
 
+本文件是 `tools/` 的命令行文档唯一真源。所有业务命令统一通过 v2 CLI 入口调用；
+`tools/` 根目录不再保留按阶段拆分的脚本。
+
+## 统一 CLI 入口
+
+```bash
+python3 -m tools.cli.entrypoints <command> [args]
+```
+
+命令：`extract` / `match` / `generate` / `evaluate` / `pipeline` / `agent`
+
+入口只做参数解析并调用编排层（`tools/orchestration/`），业务实现位于
+`tools/engines/`，外部 IO/模型适配位于 `tools/infra/`。分层约束由
+`python3 tools/check_v2_constraints.py --root .` 强制。
+
+### 证据提炼（规则模式）
+
+```bash
+python3 -m tools.cli.entrypoints extract \
+  --input tools/sample_raw.txt \
+  --output evidence_cards/ec-2026-010.yaml \
+  --id ec-2026-010
+```
+
+- `--input`：原始语料路径，`-` 表示 stdin。
+- `--output`：输出 YAML；省略时打印到 stdout。
+- `--id` / `--title`：覆盖卡 id / 标题。
+- 规则抽取是确定性的：识别「背景/动作/结果/证据/技术栈」分节与常见技术栈/标签词，
+  缺失字段写入 `gaps`，不编造内容。
+
+### 证据提炼（LLM 模式）
+
+```bash
+python3 -m tools.cli.entrypoints extract \
+  --input tools/sample_raw.txt \
+  --output evidence_cards/ec-2026-011.yaml \
+  --use-llm \
+  --prompt tools/prompts/evidence-extraction.md
+```
+
+- `--model`：模型名，默认取 `LLM_MODEL`。
+- `--base-url`：OpenAI-compatible 地址，默认按 provider 选择；Strata 固定使用
+  App 管理的统一入口 `http://127.0.0.1:47831/v1`。
+- `--api-key`：默认取 `LLM_API_KEY`；本地 keyless provider 无需密钥。
+- keyless 本地 provider 缺少 base_url 时必须显式提供，不会静默落到 OpenAI 地址。
+
+### 匹配评分
+
+```bash
+# 规则评分（确定性，不调用模型）
+python3 -m tools.cli.entrypoints match \
+  --job-profile job_profiles/jp-2026-001.yaml \
+  --evidence-dir evidence_cards \
+  --output matching_reports/mr-2026-002.yaml
+
+# 语义评审（逐批调用模型，结果带缓存与输入指纹）
+python3 -m tools.cli.entrypoints match ... --use-llm
+
+# 严格 LLM：任何语义失败都返回非零，不回退规则报告
+python3 -m tools.cli.entrypoints match ... --use-llm --require-llm
+```
+
+- 证据池超过 `--llm-max-cards`（默认 8）时，只把规则分最高的前 N 张交给模型，
+  但全部证据仍会分批评审。
+- 退出码：`0` 成功；`1` LLM 必需但不可用/失败；`2` 岗位命中企业例外清单。
+
+### 简历生成
+
+```bash
+python3 -m tools.cli.entrypoints generate \
+  --matching-report matching_reports/mr-2026-002.yaml \
+  --output-dir outputs \
+  --evidence-dir evidence_cards \
+  --job-profile job_profiles/jp-2026-001.yaml
+```
+
+- 产出 A/B 两版 Markdown 与 `.trace.json`：两版都通过校验后才落盘，避免 LLM
+  中途失败留下看似完整的单版结果。
+- `--resume-positioning technical_depth|delivery_owner|custom` 控制定位；
+  `--use-llm` 时模型只选择证据卡，不改写证据字段；`--require-llm` 下选择失败即阻断。
+- 生成阶段禁止引入新事实：字段等级、时间精度与措辞降级由
+  `tools/engines/generation/template_assembler.py` 决定。
+
+### 质量评测
+
+```bash
+python3 -m tools.cli.entrypoints evaluate \
+  --input outputs/resume_mr-2026-002_A.md \
+  --output outputs/scorecards/scorecard_mr-2026-002_A.md \
+  --job-profile job_profiles/jp-2026-001.yaml
+```
+
+- 规则分项：关键词覆盖、量化占比、空话/重复、篇幅、逐条追溯；规则分数不可被
+  模型改写。
+- `--use-llm` 时补充语义评审合并与四层质量报告（合格/对位/优质/突出），
+  LLM 判项带缓存与一次缺项纠错。
+- 质量结论属于建议层，不拦截投递（投递硬门禁只涉及事实、授权与不可逆外部副作用）。
+
+### 单次 pipeline（Quick Run 使用同一入口）
+
+```bash
+python3 -m tools.cli.entrypoints pipeline \
+  --raw tools/sample_raw.txt \
+  --job-profile job_profiles/jp-2026-001.yaml
+```
+
+- 四阶段进程内串联：证据提炼 → 匹配评分 → 简历生成 → 质量评测。
+- 每次运行写统一 Run Record：`outputs/agent_runs/<run_id>/run_log.json` 与
+  `summary.json`，事件含 `PIPELINE_START` / `PIPELINE_STEP_*` / `PIPELINE_DONE`。
+- `--skip-evidence-extraction`：使用给定证据目录，不再提炼（Quick Run 使用）。
+- `--use-llm` / `--require-llm` 语义与各阶段命令一致。
+- 命中企业例外清单返回退出码 `2`（并写兼容审计文件 `outputs/<run_id>/run_log.json`）。
+
+### Agent Loop
+
+```bash
+# dry-run：只生成执行计划与日志，不打开浏览器
+python3 -m tools.cli.entrypoints agent \
+  --policy policy.yaml --dry-run --run-id run-001 --output-dir outputs/agent_runs
+```
+
+10 状态机：INIT → DISCOVER → SCORE → GENERATE → EVALUATE → GATE → REVIEW →
+DELIVER → LEARN → DONE。manual REVIEW 会写 `outputs/review_queue/<run_id>.json`
+并返回 `REVIEW_PENDING`，不会未经审批进入投递。
+
 ## 知识索引与来源覆盖
 
-`kb` 复用材料库和已配置来源根，提供确定性目录、字面检索及原文回读。正文引用使用 material_id/document_id/sha256；附件目录、日期线索和设计计划不能直接当作个人实绩。
+`kb` 复用材料库和已配置来源根，提供确定性目录、字面检索及原文回读。正文引用使用
+material_id/document_id/sha256；附件目录、日期线索和设计计划不能直接当作个人实绩。
 
 ```bash
 python3 tools/kb.py build
@@ -13,107 +139,64 @@ python3 tools/kb.py find --title-token 'DAG' --json
 python3 tools/kb.py read <material_id> <document_id>
 ```
 
-`coverage` 区分正文已收录、未纳入、来源不一致、规则过滤和仅目录；附件会标记本地实体或 Git LFS 指针。不会自动下载、转换或纳入正文。`verify` 发现来源目录/已登记资产变化后要求重建导航，冻结材料的刷新仍沿用原有确认流程。详见 `AIEF/docs/plans/2026-10-17-knowledge-index.md`。
+`coverage` 区分正文已收录、未纳入、来源不一致、规则过滤和仅目录；附件会标记本地
+实体或 Git LFS 指针。不会自动下载、转换或纳入正文。`verify` 发现来源目录/已登记
+资产变化后要求重建导航，冻结材料的刷新仍沿用原有确认流程。详见
+`AIEF/docs/plans/2026-10-17-knowledge-index.md`。
 
-## 证据提炼 CLI
-
-从原始语料提炼 evidence card（基于规则的最小实现）。
-
-说明：
-- `tools/run_evidence_extraction.py` 是推荐工作流入口。
-- `tools/extract_evidence.py` 是底层规则脚本，适合直接调试或最小调用。
-
-### 用法
-```bash
-python3 tools/extract_evidence.py --input tools/sample_raw.txt --id ec-2026-010 --output evidence_cards/ec-2026-010.yaml
-```
-
-### 参数
-- `--input` 原始语料文件路径（或 `-` 读取 stdin）
-- `--id` 证据卡 id（可选）
-- `--title` 标题覆盖（可选）
-- `--output` 输出 YAML（可选，缺省打印到 stdout）
-
-## 证据提炼 CLI（LLM 版）
-
-基于 OpenAI-compatible 接口调用 LLM 生成结构化 YAML。
-
-### 用法
-```bash
-export LLM_API_KEY="your_key"
-export LLM_MODEL="gpt-4o-mini"
-python3 tools/extract_evidence_llm.py --input tools/sample_raw.txt --output evidence_cards/ec-2026-011.yaml
-```
-
-### 参数
-- `--input` 原始语料文件路径（或 `-` 读取 stdin）
-- `--prompt` 提示词模板路径（默认 `tools/prompts/evidence-extraction.md`）
-- `--model` 模型名（或环境变量 `LLM_MODEL`）
-- `--base-url` OpenAI-compatible 基础地址（默认 `https://api.openai.com/v1`，或 `LLM_BASE_URL`）
-- `--api-key` API Key（或环境变量 `LLM_API_KEY`）
-- `--output` 输出 YAML（可选，缺省打印到 stdout）
-
-## Workflow 脚本
-
-## 用户旅程验收报告
-
-从 `acceptance/journey_contract.yaml` 生成 baseline JSON/Markdown 验收报告：
+## 投递与渠道工具
 
 ```bash
-python3 -m tools.acceptance.journey_report --run-id journey-report-local
+# dry-run：仅生成执行计划与日志
+python3 -m tools.submission.run_submission \
+  --platform liepin --job-url "https://www.liepin.com/job/xxxx" \
+  --resume outputs/resume_mr-2026-005_A.pdf \
+  --profile profiles/candidate_profile.yaml --dry-run
+
+# 共享登录态刷新：写入 outputs/submissions/liepin/session/liepin
+.venv/bin/python3 tools/setup_liepin_session.py \
+  --session-dir outputs/submissions/liepin/session \
+  --browser-channel chrome --timeout-ms 45000
+
+# 投递就绪门禁（要求最新一次 run 为 submit + success + 至少 1 张截图）
+python3 tools/check_submission_readiness.py \
+  --root outputs/submissions --platform liepin --require-status success --min-screenshots 1
+
+# 从已验证 Job Lead 生成 External L3 确认包（默认脱敏 JSON，不触发外部提交）
+python3 -m tools.acceptance.external_l3_job_lead_bridge \
+  --lead-source job_leads/jl-validated-20260513.yaml \
+  --lead-index 1 \
+  --resume-pdf uploaded_resumes/rv_49ab4b78.pdf \
+  --profile profiles/candidate_profile.yaml \
+  --session-dir outputs/submissions
 ```
 
-输出：
-
-- `outputs/acceptance/<run_id>/journey-report.json`
-- `outputs/acceptance/<run_id>/journey-report.md`
-
-运行 Case 1（首次配置 LM Studio）的 L1 headless 验收：
-
-```bash
-python3 -m pytest tests/acceptance/test_scenario_first_launch_configure_lm_studio.py -q
-```
-
-## v2 CLI 薄入口（新增）
-
-统一入口：
-
-```bash
-python3 -m tools.cli.entrypoints <command> [args]
-```
-
-可用命令：`extract` / `match` / `generate` / `evaluate` / `pipeline` / `agent`
-
-示例：
-
-```bash
-python3 -m tools.cli.entrypoints extract --input tools/sample_raw.txt --output evidence_cards/ec-2026-010.yaml
-python3 -m tools.cli.entrypoints match --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-002.yaml
-python3 -m tools.cli.entrypoints generate --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs
-python3 -m tools.cli.entrypoints evaluate --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml
-python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id run-001 --output-dir outputs/agent_runs
-```
+真实猎聘搜索默认关闭，避免 dry-run / 单元测试意外触发平台访问；需要搜索真实职位时
+显式开启：`export PPF_ENABLE_LIEPIN_SEARCH=1`。
 
 ## 企业例外清单
 
-可以在仓库根目录放置 `policy.yaml`（或设置环境变量 `PPF_POLICY_PATH` 指向文件）来定义需要排除的企业名单。
+可以在仓库根目录放置 `policy.yaml`（或设置环境变量 `PPF_POLICY_PATH` 指向文件）
+来定义需要排除的企业名单。
 
-生效的策略文件按以下顺序解析：环境变量 `PPF_POLICY_PATH` > 仓库根目录已存在的 `policy.local.yaml`（已被 .gitignore 忽略）> 仓库默认 `policy.yaml`。sidecar 设置页的读写、排除名单加载和投递前的排除检查都使用同一规则。
+生效的策略文件按以下顺序解析：环境变量 `PPF_POLICY_PATH` > 仓库根目录已存在的
+`policy.local.yaml`（已被 .gitignore 忽略）> 仓库默认 `policy.yaml`。sidecar 设置页的
+读写、排除名单加载和投递前的排除检查都使用同一规则。
 
-本机 LLM、投递模式等只适合当前机器的运行配置应写入 `policy.local.yaml`：只要该文件存在，App 就不会再把本机配置写回仓库跟踪的 `policy.yaml`（首次可 `cp policy.yaml policy.local.yaml`）。也可以用环境变量显式指定：
+本机 LLM、投递模式等只适合当前机器的运行配置应写入 `policy.local.yaml`：只要该文件
+存在，App 就不会再把本机配置写回仓库跟踪的 `policy.yaml`（首次可
+`cp policy.yaml policy.local.yaml`）。也可以用环境变量显式指定：
 
 ```bash
 PPF_POLICY_PATH=policy.local.yaml ./app start
 PPF_POLICY_PATH=policy.local.yaml python3 -m tools.cli.entrypoints agent --policy policy.local.yaml --dry-run --run-id run-001 --output-dir outputs/agent_runs
 ```
 
-根目录 `policy.yaml` 是仓库默认策略文件；提交前应避免把本机 provider、base_url 或个人运行状态混入默认策略。
-
 支持以下字段（均为字符串列表）：
 
-- `exclusion_list`: 简单名单，按精确匹配处理。
-- `excluded_companies`: 支持 `exact:` / `contains:` 前缀。
-- `excluded_legal_entities`: 简单名单，按精确匹配处理。
+- `exclusion_list`：简单名单，按精确匹配处理。
+- `excluded_companies`：支持 `exact:` / `contains:` 前缀。
+- `excluded_legal_entities`：简单名单，按精确匹配处理。
 - 也兼容 OpenSpec 中的 `filters.excluded_companies` / `filters.excluded_legal_entities` 结构。
 
 匹配优先级：
@@ -144,167 +227,27 @@ filters:
     - "某某人力资源有限公司"
 ```
 
-退出码约定：
-
-- `tools/run_pipeline.py` 与 `tools/run_matching_scoring.py` 若命中企业例外清单，返回退出码 `2`。
-- `tools/run_pipeline.py` 每次运行会写统一 Run Record：`outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`。
-- 命中排除时会额外保留兼容审计文件：`outputs/<run_id>/run_log.json`（pipeline）或 `matching_reports/run_log.json`（matching）写入 `excluded_by_policy` 事件。
+> BOSS/智联只读职位发现是项目旧 adapter 接口，尚未适配上游 2.0.0；该路径只调用外部
+> `boss-agent-cli` 的 schema/status/search/detail 读操作，不启用投递写操作。默认关闭，
+> 需要时显式设置 `PPF_ENABLE_BOSS_AGENT_SEARCH=1` 与 `PPF_BOSS_AGENT_CLI`。版本/命令/
+> 字段迁移见 `AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md`。
 
 ## 打包副本约定
 
 - `tools/README.md` 是工具文档的 source of truth。
-- `ui/src-tauri/resources/tools/README.md` 是由 `python3 ui/scripts/stage_python_runtime.py` 在打包前 staging 出来的资源副本。
-- 需要更新工具说明时，只修改 `tools/README.md`，然后重新执行 staging / build；不要直接修改 `ui/src-tauri/resources/tools/README.md`。
-
-```bash
-# 职位发现（规划，多源渠道）
-python3 -m tools.discovery.run_job_discovery --city 上海 --cbd "陆家嘴,漕河泾" --output job_leads/jl-2026-001.yaml
-
-# 证据提炼
-python3 tools/run_evidence_extraction.py --input tools/sample_raw.txt --output evidence_cards/ec-2026-010.yaml
-
-# 匹配评分
-python3 tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-002.yaml
-
-# 说明：默认规则打分（K/D/S/Q/E/R），可复现
-
-# 匹配评分（LLM 版）
-export LLM_API_KEY="your_key"
-export LLM_MODEL="gpt-4o-mini"
-python3 tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-003.yaml --use-llm
-
-# 匹配评分（严格 LLM，不允许回退）
-python3 tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-003.yaml --use-llm --require-llm
-
-# 简历生成（模板输出）
-python3 tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs
-
-# 简历生成（LLM 版）
-export LLM_API_KEY="your_key"
-export LLM_MODEL="gpt-4o-mini"
-python3 tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs --use-llm
-
-# 简历生成（严格 LLM，不允许回退）
-python3 tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs --use-llm --require-llm
-
-# 质量评测（占位输出）
-python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml
-
-# 质量评测（LLM 版）
-export LLM_API_KEY="your_key"
-export LLM_MODEL="gpt-4o-mini"
-python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml --use-llm
-
-# 质量评测（严格 LLM，不允许回退）
-python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
-
-# 自动投递（Liepin）
-# 参考流程文档：AIEF/workflow/phases/submission.md
-# 真实猎聘搜索默认关闭，避免 dry-run / 单元测试意外触发平台访问；需要搜索真实职位时显式开启：
-export PPF_ENABLE_LIEPIN_SEARCH=1
-
-# BOSS/智联只读职位发现（可选）
-# 2026-09-27：以下为项目旧 adapter 接口，尚未适配上游 2.0.0；不能直接用最新版验证。
-# 上游 master 已移除智联；版本/命令/字段迁移见 AIEF/docs/plans/2026-09-27-recruitment-platform-integration.md。
-# 该路径只调用外部 boss-agent-cli 的 schema/status/search/detail 读操作，不启用投递写操作。
-# 默认关闭，避免 dry-run / 单元测试意外启动外部浏览器或平台访问。
-export PPF_ENABLE_BOSS_AGENT_SEARCH=1
-export PPF_BOSS_AGENT_CLI="boss"  # 可改为外部 CLI 实际命令，例如 boss-agent
-
-# 外部 CLI live smoke：只读校验 schema/status/search/detail JSON envelope 与 mapper 兼容性
-python3 tools/check_boss_agent_cli.py --cli "$PPF_BOSS_AGENT_CLI" --keyword "Java Redis" --city 上海 --platforms boss,zhilian --limit 3
-
-# Agent Loop 无显式 candidates 时会把 Job Profile keywords 映射到只读 search，并把返回 URL 映射为 Candidate。
-python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id boss-agent-discovery-smoke --output-dir outputs/agent_runs --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml
-
-# dry-run：仅生成执行计划与日志，不打开浏览器
-python3 -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --dry-run
-
-# check mode：打开页面、校验登录态、确认主职位 jobId、执行"聊一聊 -> 发简历"，但停在最终确认发送前
-.venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/v1.md --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions --timeout-ms 45000 --browser-channel chrome --no-headless
-
-# 频控参数默认值：每批最多 5 个，批间冷却 900 秒，日上限 30 个；传 0 可关闭对应限制
-# --rate-limit-max-per-batch 5 --rate-limit-cooldown-seconds 900 --rate-limit-daily-limit 30
-
-# 共享登录态刷新：会写入 outputs/submissions/liepin/session/liepin
-.venv/bin/python3 tools/setup_liepin_session.py --session-dir outputs/submissions/liepin/session --browser-channel chrome --timeout-ms 45000
-
-# Agent Loop check mode：复用同一共享登录态，submit 默认关闭，停在最终确认发送前
-PPF_LIEPIN_SESSION_DIR=outputs/submissions PPF_OUTPUT_DIR=outputs/submissions PPF_HEADLESS=0 PPF_BROWSER_CHANNEL=chrome .venv/bin/python -m tools.cli.entrypoints agent --policy policy.yaml --run-id run-agent-liepin-chat-005 --output-dir outputs/agent_runs --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml
-
-# 从已验证 Job Lead 生成 External L3 确认包（默认脱敏 JSON，不触发外部提交）
-python3 -m tools.acceptance.external_l3_job_lead_bridge \
-  --lead-source job_leads/jl-validated-20260513.yaml \
-  --lead-index 1 \
-  --resume-pdf uploaded_resumes/rv_49ab4b78.pdf \
-  --profile profiles/candidate_profile.yaml \
-  --session-dir outputs/submissions
-
-# 生成 shell-safe export 模板；AUTHORIZED / FINAL_SUBMIT_CONFIRMED / SESSION_READY_CONFIRMED 默认均为 false
-python3 -m tools.acceptance.external_l3_job_lead_bridge \
-  --lead-source job_leads/jl-validated-20260513.yaml \
-  --lead-index 1 \
-  --resume-pdf uploaded_resumes/rv_49ab4b78.pdf \
-  --profile profiles/candidate_profile.yaml \
-  --session-dir outputs/submissions \
-  --format env
-
-# 真实小批量频控验证：同一 output-dir 共享 rate-limit 状态；第 3 次应返回 batch_cooldown
-.venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/v1.md --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions/batch-rate-limit-001 --timeout-ms 45000 --browser-channel chrome --no-headless --rate-limit-max-per-batch 2 --rate-limit-cooldown-seconds 900 --rate-limit-daily-limit 30
-
-# submit mode：真实点击投递（要求 PDF，并显式确认目标 jobId + recruiter；不匹配会在 submit_safety 阶段阻断）
-.venv/bin/python -m tools.submission.run_submission --platform liepin --job-url "https://www.liepin.com/job/xxxx" --resume outputs/resume_mr-2026-005_A.pdf --profile profiles/candidate_profile.yaml --session-dir outputs/submissions --output-dir outputs/submissions --browser-channel chrome --no-headless --submit --confirm-submit-job-id "xxxx" --confirm-submit-recruiter "招聘者姓名"
-
-# 投递就绪门禁（要求最新一次 run 为 submit + success + 至少 1 张截图）
-python3 tools/check_submission_readiness.py --root outputs/submissions --platform liepin --require-status success --min-screenshots 1
-
-# 一键流水线（rule 模式）
-python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
-
-# 一键流水线（LLM 模式）
-export LLM_API_KEY="your_key"
-export LLM_MODEL="gpt-4o-mini"
-python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm
-
-# 一键流水线（严格 LLM，不允许任何阶段回退）
-python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml --use-llm --require-llm
-
-# AIEF L3 检查
-python3 tools/check_aief_l3.py --root . --base-dir AIEF
-
-# GitFlow 自动发布（跨平台）
-# 流程：main -> feature -> develop -> release -> main
-# 默认策略：feature 合并后删除，release 保留
-python3 tools/run_gitflow_release.py --feature auto-submission-liepin --release v0.3.0 --create-feature
-
-# 预演模式（不执行）
-python3 tools/run_gitflow_release.py --feature auto-submission-liepin --release v0.3.0 --create-feature --dry-run
-
-# GitHub 版本发布（打 tag + 创建 release）
-git checkout main
-git pull --ff-only origin main
-git tag v0.3.0
-git push origin v0.3.0
-gh release create v0.3.0 --title "v0.3.0" --notes-file release-notes/v0.3.0.md
-
-# 一键发布（GitFlow + tag + GitHub Release + release notes）
-python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --release-notes-file release-notes/v0.3.0.md
-
-# 一键发布（启用自动投递门禁）
-python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --release-notes-file release-notes/v0.3.0.md --require-submission-ready --submission-platform liepin
-
-# 一键发布预演
-python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --release-notes-file release-notes/v0.3.0.md --dry-run
-
-# 无 notes 文件时可显式允许自动生成（不推荐）
-python3 tools/run_github_publish.py --feature auto-submission-liepin --release v0.3.0 --version v0.3.0 --allow-generate-notes
-```
+- `ui/src-tauri/resources/tools/README.md` 是由 `python3 ui/scripts/stage_python_runtime.py`
+  在打包前 staging 出来的资源副本。
+- 需要更新工具说明时，只修改 `tools/README.md`，然后重新执行 staging / build；
+  不要直接修改 `ui/src-tauri/resources/tools/README.md`。
 
 ## CI 校验
 
-- GitHub Actions:
-  - `.github/workflows/aief-l3-check.yml`
-  - `.github/workflows/ui-packaged-smoke.yml`
-- `aief-l3-check.yml`：在 `pull_request` 与 `develop/main/master` push 时触发；仅当 `.github/workflows/aief-l3-check.yml`、`AIEF/**`、`tools/check_aief_l3.py` 变更时运行 `python3 tools/check_aief_l3.py --root . --base-dir AIEF`
-- `ui-packaged-smoke.yml`：在 `pull_request` 与 `develop/main/master` push 时触发；仅当 `ui/**`、`tools/**`、`tests/**`、`evidence_cards/**`、`matching_reports/**`、`job_profiles/**` 或 workflow 自身变更时运行 `npm run smoke:app`
-- `release-notes/**` 变更不会单独触发上述 workflow；当前策略默认只对会影响门禁结果的路径执行 CI
+- `.github/workflows/aief-l3-check.yml`：在 `pull_request` 与 `develop/main/master` push
+  时触发；仅当 `.github/workflows/aief-l3-check.yml`、`AIEF/**`、`tools/check_aief_l3.py`
+  变更时运行 `python3 tools/check_aief_l3.py --root . --base-dir AIEF`。
+- `.github/workflows/ui-packaged-smoke.yml`：在 `pull_request` 与 `develop/main/master`
+  push 时触发；仅当 `ui/**`、`tools/**`、`tests/**`、`evidence_cards/**`、
+  `matching_reports/**`、`job_profiles/**` 或 workflow 自身变更时运行
+  `npm run smoke:app`。
+- `release-notes/**` 变更不会单独触发上述 workflow；当前策略默认只对会影响门禁结果的
+  路径执行 CI。

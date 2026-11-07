@@ -71,7 +71,7 @@
 - 受控改写的允许变更清单
 
 ## LLM 辅助模式
-- CLI：`tools/run_generation.py --use-llm`
+- CLI：`python3 -m tools.cli.entrypoints generate --use-llm`
 - Prompt：`tools/prompts/generation.md`
 - 严格模式：`--use-llm --require-llm`（LLM 不可用即失败）
 - 当前 Quick Run 增量将 LLM 输出约束为现有证据 ID 的选材/排序；正文由选定事实字段拼装，禁止将自由生成文本直接发布为简历。

@@ -25,11 +25,12 @@ Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -
 
 ## 架构状态
 
-- 当前规范目标：统一核心引擎 v2（组件层已落地，CLI 主链路仍保留 legacy 兼容串联）
+- 当前规范目标：统一核心引擎 v2（已落地：engines 为唯一业务实现，CLI 薄入口，无 legacy 兼容路径）
 - 架构方向：`domain/` + `infra/` + `engines/` + `orchestration/` + `config/` + `channels/` + `cli/`
 - GUI 终版路线：`Tauri desktop app + React/TypeScript frontend + Python sidecar`
 - 设计原则：高内聚、低耦合、组合优于继承、扩展优于修改、evidence-first
-- 迁移策略：旧 CLI 保持兼容；`agent` 入口已使用 Composer/AgentLoop，`pipeline` 入口仍会转入 legacy subprocess 兼容路径
+- 执行链路：所有命令统一走 `python3 -m tools.cli.entrypoints`；阶段间为进程内纯 Python 调用，不再保留 legacy 脚本与 subprocess 串联
+- 分层门禁：`python3 tools/check_v2_constraints.py --root .` 强制依赖方向与唯一实现
 
 关键文档：
 
@@ -90,7 +91,7 @@ pnpm --dir ui run prepare:python-runtime
 ### 一键跑通样例
 
 ```bash
-python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
+python3 -m tools.cli.entrypoints pipeline --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
 ```
 
 ### 本地 Demo 验收
@@ -116,37 +117,26 @@ bash scripts/acceptance/run-demo-readiness.sh
 
 演示顺序和排障清单见 `docs/demo-runbook.md`。
 
-### 分阶段执行
+### 分阶段执行（v2 统一入口）
 
 ```bash
-# 证据提炼
-python3 tools/run_evidence_extraction.py --input tools/sample_raw.txt --output evidence_cards/ec-2026-010.yaml
+# 统一 CLI：extract / match / generate / evaluate / pipeline / agent
+python3 -m tools.cli.entrypoints extract --input tools/sample_raw.txt --output evidence_cards/ec-2026-010.yaml
 
 # 匹配评分
-python3 tools/run_matching_scoring.py --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-002.yaml
+python3 -m tools.cli.entrypoints match --job-profile job_profiles/jp-2026-001.yaml --evidence-dir evidence_cards --output matching_reports/mr-2026-002.yaml
 
 # 简历生成
-python3 tools/run_generation.py --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs
+python3 -m tools.cli.entrypoints generate --matching-report matching_reports/mr-2026-002.yaml --output-dir outputs --evidence-dir evidence_cards --job-profile job_profiles/jp-2026-001.yaml
 
 # 质量评测
-python3 tools/run_evaluation.py --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml
+python3 -m tools.cli.entrypoints evaluate --input outputs/resume_mr-2026-002_A.md --output outputs/scorecards/scorecard_mr-2026-002_A.md --job-profile job_profiles/jp-2026-001.yaml
+
+# 单次 pipeline（Quick Run 使用同一入口）
+python3 -m tools.cli.entrypoints pipeline --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
 ```
 
-更多命令示例：`tools/README.md`
-
-### v2 CLI 统一入口（新增）
-
-```bash
-python3 -m tools.cli.entrypoints <command> [args]
-```
-
-命令包括：`extract`、`match`、`generate`、`evaluate`、`pipeline`、`agent`。
-
-例如：
-
-```bash
-python3 -m tools.cli.entrypoints agent --policy policy.yaml --dry-run --run-id run-001 --output-dir outputs/agent_runs
-```
+每个命令的参数、LLM 模式与退出码约定见 `tools/README.md`。
 
 ### AIEF 单目录模式（--base-dir）
 
@@ -193,7 +183,7 @@ tools/
 
 - AIEF Level: L3
 - extraction/matching/generation/evaluation 已可从 CLI 端到端运行，默认产物是 Markdown 简历与 Scorecard
-- 普通 `tools/run_pipeline.py` 可跑通，并会写统一 Run Record 到 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`；内部仍保留 legacy subprocess 串联
+- `python3 -m tools.cli.entrypoints pipeline` 可跑通，并会写统一 Run Record 到 `outputs/agent_runs/<run_id>/run_log.json` 与 `summary.json`；四个阶段在进程内顺序调用，无 legacy 脚本
 - Agent manual REVIEW 会在审批点写入 `outputs/review_queue/<run_id>.json` 并返回 `REVIEW_PENDING`，不会未经审批进入投递
 - Markdown 简历通过共享 HTML 模板导出 PDF；原纯文本 writer 已退役。当前本机已验证现有 Chromium Headless Shell，WeasyPrint 可选依赖见 `requirements-pdf.txt`，安装仍须遵守本机策略
 - job-discovery 和 submission 属于支撑系统；当前项目主线仍以 evidence-first 求职材料工程为准
@@ -241,11 +231,12 @@ Job discovery (optional) -> Raw materials -> Evidence cards -> Matching report -
 
 ### Architecture Status
 
-- Current target spec: Unified Core Engine v2 (component layer implemented; CLI pipeline still keeps a legacy subprocess compatibility path)
+- Current target spec: Unified Core Engine v2 (engines are the single implementation, CLI entrypoints are thin, no legacy compatibility path)
 - Architecture direction: `domain/` + `infra/` + `engines/` + `orchestration/` + `config/` + `channels/` + `cli/`
 - Final GUI path: `Tauri desktop app + React/TypeScript frontend + Python sidecar`
 - Design principles: high cohesion, low coupling, composition over inheritance, extension over modification, evidence-first
-- Migration strategy: keep legacy CLI compatible; the `agent` entrypoint uses Composer/AgentLoop, while the `pipeline` entrypoint still falls back to the legacy subprocess path
+- Execution path: every command goes through `python3 -m tools.cli.entrypoints`; stages are in-process Python calls with no legacy scripts or subprocess chaining
+- Layering gate: `python3 tools/check_v2_constraints.py --root .` enforces dependency direction and single implementations
 
 Key docs:
 
@@ -306,7 +297,7 @@ Runtime logs are written to `.app-runtime/piproofforge-app.log`.
 Run the full sample pipeline:
 
 ```bash
-python3 tools/run_pipeline.py --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
+python3 -m tools.cli.entrypoints pipeline --raw tools/sample_raw.txt --job-profile job_profiles/jp-2026-001.yaml
 ```
 
 For phase-by-phase commands, see `tools/README.md`.
@@ -342,7 +333,7 @@ ui/design/          GUI design mainline (Pencil design assets + design docs)
 
 - AIEF level: L3
 - End-to-end extraction/matching/generation/evaluation is runnable from the CLI and currently produces Markdown resumes plus scorecards by default
-- `tools/run_pipeline.py` is runnable and writes a unified run record under `outputs/agent_runs/<run_id>/run_log.json` plus `summary.json`; internally it still keeps the legacy subprocess chain
+- `python3 -m tools.cli.entrypoints pipeline` is runnable and writes a unified run record under `outputs/agent_runs/<run_id>/run_log.json` plus `summary.json`; the four stages run in-process with no legacy scripts
 - Agent manual REVIEW writes `outputs/review_queue/<run_id>.json` and returns `REVIEW_PENDING` instead of delivering without approval
 - Markdown-to-PDF uses the shared HTML template; the plain-text writer is retired. Existing local Chromium Headless Shell has been verified. Optional WeasyPrint dependencies are listed in `requirements-pdf.txt`, subject to the machine's installation policy.
 - Job discovery and submission are supporting systems; the project mainline remains evidence-first career-material engineering
