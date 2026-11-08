@@ -250,5 +250,8 @@
   - 材料库 24 → **36**；知识索引 6,601 → **7,441** 文档（`kb build` 重建完成）。
   - `00-EC+/10-projects/亚玛芬/fila-golf` 无可扫描文本（空目录），未导入；`04-编程` 为技术笔记，未导入。
 - 证据卡提炼（执行两轮，2026-11-08）：第一轮 7 张（模型改写原文触发事实校验拒绝）；加「actions/results 必须逐字复制原文、无依据不编造」约束后重跑，产出 **32 张 draft 卡**（工作汇总 6、个人汇总 1、Salomon 2、Kolon 1、Peak Performance 2、WSE 3、数据库读写分离 3、运动中心 1、安踏 1、众安 6、九恒星 3、个人求职 3），全部有可审核事实（含「核心查询 2–3s → 300–400ms」等原文量化）。
-- 后处理：清洗时间格式（残缺时间置空）、过滤目录/表格行等弱事实；draft 卡 `status=draft`、`review_decision=pending`、未入池，**需用户在 App 证据页审核后才可用于生成**。
+- 后处理：清洗时间格式（残缺时间置空）、过滤目录/表格行等弱事实；draft 卡 `status=draft`、`review_decision=pending`、未入池。
+- **审核可用性修复**：首版 draft 卡的 `source_documents_json` 中 `document_id/sha256` 为空，App 审核（saveDraft）会以 `material_document_reference_invalid` 拒绝，实际无法入池。已按知识索引为 32 张卡重绑真实文档（document_id/sha256/label），并逐卡通过 `read_source_documents` 校验（32/32）；用户路径：App 证据页打开卡 →「重新审核」→「保存为合格」。
+- 补导入遗漏：`04-编程/个人项目`（8 文件，含个人项目/技术实验记录）→ 材料库 36 → **37**；知识索引 7,441 → **8,673** 文档。
+- 待用户：`mat_0eb6c626`（始祖鸟引用材料）内容变化需在 App 材料库点「刷新」确认（`material_reference_confirmation_required`，系统不代确认）；29 张缺时间卡的时间需按任职窗口人工确认。
 - 产物：`outputs/evidence_extract_candidates_20261108.json/.md`；知识索引重建后 cards=124（原 85 + 32 draft + 已合并项）。
