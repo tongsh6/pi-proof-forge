@@ -249,5 +249,6 @@
   - `01-ZA`（116）、`02-NSTC`（216）、`03-个人`（33）
   - 材料库 24 → **36**；知识索引 6,601 → **7,441** 文档（`kb build` 重建完成）。
   - `00-EC+/10-projects/亚玛芬/fila-golf` 无可扫描文本（空目录），未导入；`04-编程` 为技术笔记，未导入。
-- 证据卡提炼（第一轮，2026-11-08）：对 12 个材料分块批量提炼，产出 **7 张 draft 卡**（安踏 1、众安 3、03-个人 3），主因 `no_traceable_facts`（模型改写原文导致事实校验拒绝）大量跳过；已用「actions/results 必须逐字复制原文」约束重跑。
-- 产物：`outputs/evidence_extract_candidates_20261108.json/.md`；draft 卡进入证据页待审核（status=draft，未入池）。
+- 证据卡提炼（执行两轮，2026-11-08）：第一轮 7 张（模型改写原文触发事实校验拒绝）；加「actions/results 必须逐字复制原文、无依据不编造」约束后重跑，产出 **32 张 draft 卡**（工作汇总 6、个人汇总 1、Salomon 2、Kolon 1、Peak Performance 2、WSE 3、数据库读写分离 3、运动中心 1、安踏 1、众安 6、九恒星 3、个人求职 3），全部有可审核事实（含「核心查询 2–3s → 300–400ms」等原文量化）。
+- 后处理：清洗时间格式（残缺时间置空）、过滤目录/表格行等弱事实；draft 卡 `status=draft`、`review_decision=pending`、未入池，**需用户在 App 证据页审核后才可用于生成**。
+- 产物：`outputs/evidence_extract_candidates_20261108.json/.md`；知识索引重建后 cards=124（原 85 + 32 draft + 已合并项）。
