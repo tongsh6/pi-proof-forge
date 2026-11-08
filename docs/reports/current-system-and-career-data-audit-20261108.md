@@ -253,5 +253,8 @@
 - 后处理：清洗时间格式（残缺时间置空）、过滤目录/表格行等弱事实；draft 卡 `status=draft`、`review_decision=pending`、未入池。
 - **审核可用性修复**：首版 draft 卡的 `source_documents_json` 中 `document_id/sha256` 为空，App 审核（saveDraft）会以 `material_document_reference_invalid` 拒绝，实际无法入池。已按知识索引为 32 张卡重绑真实文档（document_id/sha256/label），并逐卡通过 `read_source_documents` 校验（32/32）；用户路径：App 证据页打开卡 →「重新审核」→「保存为合格」。
 - 补导入遗漏：`04-编程/个人项目`（8 文件，含个人项目/技术实验记录）→ 材料库 36 → **37**；知识索引 7,441 → **8,673** 文档。
-- 待用户：`mat_0eb6c626`（始祖鸟引用材料）内容变化需在 App 材料库点「刷新」确认（`material_reference_confirmation_required`，系统不代确认）；29 张缺时间卡的时间需按任职窗口人工确认。
+- 待用户：`mat_0eb6c626`（始祖鸟引用材料）内容变化需在 App 材料库点「刷新」确认（`material_reference_confirmation_required`，系统不代确认）。
+- **项目时间分析（2026-11-08，用户追问「可以分析出来吧」）**：可从原始日期记录可靠分析的部分已补 **10 张卡**（众安日志类 4 张：2018-11/2019-03；九恒星会议/问题记录类 4 张：2016-12~2017-03；近期记录 2 张：2026-07~2026-10），provenance 写 L3 推断 + 日志摘录依据。
+  但 **EC+ 25 张项目卡无法从材料可靠推导**：工作汇总 247 个文档中仅 1 个含日期；亚玛芬子目录（Salomon/Kolon/WSE/运动中心/安踏）0% 含日期；文档内容为业务/架构速读卡，无项目起止；文件 mtime 与 git 提交时间均为 2026-08 整理时间（不能当项目期间）；历史简历与时间线只有公司级时间（2021.03~至今）。
+  待用户确认清单：`outputs/missing_time_cards_20261108.json`（入池缺时间 36 张：EC+ 25、众安 6、九恒星 3、来源未知 2）。
 - 产物：`outputs/evidence_extract_candidates_20261108.json/.md`；知识索引重建后 cards=124（原 85 + 32 draft + 已合并项）。
