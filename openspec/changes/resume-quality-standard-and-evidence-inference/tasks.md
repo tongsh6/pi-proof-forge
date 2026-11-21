@@ -26,10 +26,10 @@
 
 ## Phase B - LLM 判项与突出点提名
 
-- [x] B1 受控 JSON 判项通道：输入 bullet 列表 + 卡摘要 + JD 条目，输出带引用；无引用项按失败处理；缓存键 `resume_sha256 + job_profile_id + cards_fingerprint`
-  - 实现：`tools/engines/evaluation/llm_judge.py`（提示词 + 受控 JSON 校验，无引用项丢弃、无 JSON 视为无效）+ `tools/infra/quality_judge_cache.py`（键 `resume_sha256 + job_profile_id + cards_fingerprint + model + prompt_version`，只缓存通过校验结果）。
-- [x] B2 R1.4 角色措辞强度判定（结合 C 阶段等级；C 未完成前只检测"负责/主导"是否有 L1 支撑）
-  - 实现：R1.4 强措辞 bullet 必须出现在判项中；`supported=false` 或无判项都记失败，不静默通过。
+- [x] B1 受控 JSON 判项通道：现合同沿 L6/L7 保完整实际正文、精确采用事实、原卡语境和 JD，引用及当前输入逐次核验。
+  - 实现：原 llm_judge/quality_report 共用任务执行器，实际完整请求预算、URL/body 与输入 SHA 绑定缓存；坏 JSON/引用/缺项不授完整信用，受控修复保已核组，partial 不缓存。旧卡摘要及仅三项键的历史实现已被替换。
+- [x] B2 R1.4 职责适用性与完整句语义：现 L10 以实际 render_line/三态覆盖结构事实，不以动词触发或整卡角色等级替代判断。
+  - 实现：同次 career 原 Fact 身份/值/实际行先核共享 trace；supported 引当前独立来源，unsupported 失败，缺项/坏引用/重复保持 pending。原 bool/bullet 合同退役，schema 2/prompt 10，无兼容转换；详见 L10 受限实际对照。
 - [x] B3 R2.1 状态细化（supported/weak/absent + bullet_ref）、R3.1 三段判定、R3.5 摘要判定
   - 实现：R2.1 必须覆盖全部 JD 条目才生效（覆盖后回写矩阵状态/bullet_ref/首屏）；R3.1 逐经历 bullet 三段判定，缺失按失败；R3.5 摘要行数/角色规模匹配/通用形容词。
 - [x] B4 R4.1 突出点提名：`exceeds` 四维度、top-2、理由与引用；否决写 `app-data/quality_decisions.json` 并在重算时排除
@@ -125,7 +125,7 @@
 - [x] **L7 质量判项完整输入与精确采用范围（限定工程与合成输入验收完成）**：复用实际 trace.claims、原位置/完整值、当前 result_reviews 同 row 与现 fact_scope_review；完整语境不补正文信用，撤除字符/前 N 裁剪，超限沿L6 pending，无新账本/业务脚本。四个独立RED转绿，相关98 passed，全量3040 passed、1 skipped、101 subtests passed（56.96秒）。实际新鲜合成App22 RPC/6次Splash，质量一次13664字符，结果5及完整限定保留，量化0、不借未选同事成果；R1.4合法主导正控一条支持一条遗漏，元数据仍完成并缓存，失败记录保留，不宣称全语义通过。
 - [x] **L8 判项覆盖与完成状态（限定工程与合成覆盖验收完成）**：复用 eligible 唯一职责和 H 同版 career，非空目标逐项唯一合法判断才完成，漏/坏/重复沿 L6 一次组修复，仍缺 pending/不缓存；空集合不额外问 R1，确定失败保持，旧缺字段缓存不补空升级。17 个业务 RED 与 9 个正控转绿，相关 187 passed，全量 3066 passed、1 skipped、101 subtests passed（56.84 秒）。同源合成 App 11 RPC/5 次 Splash，质量一次/13769 字符，两项职责均支持，原正文及来源保持，量化 0、auto_pass=false；无来源“初级”说明保留，不宣称全部职责语义完成。
 - [x] **L9 项目职责的精确生成来源（限定工程与合成来源链验收完成）**：复用真实 role_fact、block/plan.fact_ids、唯一结构绑定与 from_fact；正式/guided 和内部预览保完整来源及行，角色无来源回退退役，preview只计实际动作/成果。15 个业务 RED 与 4 个正控转绿，相关 141 passed，全量 3085 passed、1 skipped、101 subtests passed（58.20秒）。同源 Quick Run 12 RPC/5次Splash，role_scope:0在实际第19行进入trace/quality，正文及五项来源保持，量化0、auto_pass=false；不宣称非bullet/隐含职责语义已完成。
-- [ ] **L10 职责适用性与完整句语义（查重与规范对齐）**：复用现行级正文、精确claims、当前职责/范围/结果证据与已确认档案；先独立定义主体、否定、隐含职责、同文不同档案身份及非bullet边界，统一现R1目标与判断合同，退役词面触发和整卡归因，不新增来源账本或并行规则。
+- [x] **L10 职责适用性与完整句语义（限定工程与合成语义对照验收完成）**：共享覆盖核同版 career 精确身份，R1 实际行/三态替代词面目标及跨字段整卡否定；完整来源同次送 judge，新增行域不扩 R2/R3，无新账本/模型任务/RPC。36 个业务 RED/8 个正控转绿，相关 340 passed，最终全量 3129 passed、1 skipped、101 subtests passed（59.80 秒）。p10 合成 App A/B 共 42 RPC/11 次 Splash：自然专业定位支持、他人职责越界拒绝，未变真实摘要均支持；量化0、auto_pass=false。首份重复 JSON 键整份拒绝后一次重试，历史 p8/p9 说明及跨目标误判不覆盖；自然 not_applicable、原生及真实验收仍未完成，详见台账。
 - [x] 既有事实扩大引文接入来源复审 GUI：保持事实位置、文字和同一来源版本，多行引文不拆为新事实；已有范围由原显式采纳/撤销维护，无目标范围的引用补全可普通保存。实际主页面转发范围指令，普通保存与不完整/待审核状态往返不能清除既有约束；组件、真实草稿操作到保存处理器的合成跨边界验证通过，未完成原生页面深验。
 - [x] 保存状态与事实约束分离：不完整/待审核阶段不授予范围权威；当前精确事实与来源未改时复审保留原范围，改引文或事实不能通过普通保存洗掉旧记录。复用同一审核快照，没有新增状态字段或账本。
 - [x] 完整事实数组往返：统一现有创建/编辑/草稿/复审/读取 API 的 `actions/results` 有序数组，修复换行拆项及序列化丢失；逐项 UI、来源与范围绑定、正文和内部片段复用原事实身份。拒绝非法类型/空白项，不增加影子字段或兼容支路；结构保真不作为实测语义核定完成。
