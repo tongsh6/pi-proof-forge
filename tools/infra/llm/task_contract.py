@@ -132,6 +132,14 @@ SEMANTIC_MATCHING = TaskContract(
     degrade_note="语义评审不可用时回退规则模式，简历仍可生成但与 JD 对位精度下降",
 )
 
+QUALITY_JUDGE = TaskContract(
+    name="quality_judge",
+    capability=Capability(needs_json=True, max_output_tokens=6000, max_input_chars=24_000),
+    on_unavailable="degrade",
+    degrade_note="质量判项未完成时保留已核完整组，其余继续 pending，不提升为质量通过",
+)
+
+
 BACKGROUND_REDUNDANCY = TaskContract(
     name="background_redundancy",
     capability=Capability(
@@ -188,6 +196,7 @@ def default_registry() -> ContractRegistry:
     registry = ContractRegistry()
     for contract in (
         SEMANTIC_MATCHING,
+        QUALITY_JUDGE,
         BACKGROUND_REDUNDANCY,
         DIRECTION_REVIEW,
         JOB_PROFILE_DRAFT,

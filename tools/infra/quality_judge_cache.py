@@ -8,10 +8,11 @@ from tools.infra.persistence.atomic_io import atomic_write_text
 import os
 import tempfile
 from pathlib import Path
-from tools.prompts.context import context_fingerprint
+from urllib.request import Request
+from tools.infra.llm.task_runner import parse_json_response
 from tools.infra.evidence_provenance import parse_provenance
 
-JUDGE_CACHE_SCHEMA_VERSION = 1
+JUDGE_CACHE_SCHEMA_VERSION = 2
 
 
 def cards_fingerprint(cards: dict[str, dict]) -> str:
@@ -36,26 +37,26 @@ def cards_fingerprint(cards: dict[str, dict]) -> str:
 
 def judge_cache_key(
     *,
+    prepared_request: Request,
+    trace_inputs: dict,
     resume_sha256: str,
     job_profile_id: str,
     cards: dict[str, dict],
-    model: str,
     prompt_version: int,
-    prompt_sha256: str = "",
 ) -> str:
-    material = "|".join(
-        [
-            str(resume_sha256),
-            str(job_profile_id),
-            cards_fingerprint(cards),
-            str(model),
-            str(prompt_version),
-            context_fingerprint(),
-            prompt_sha256,
-        ]
-    )
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
-
+    if not isinstance(prepared_request, Request) or not isinstance(prepared_request.data, bytes):
+        raise ValueError("invalid_prepared_request")
+    material = {
+        "request_url": prepared_request.full_url,
+        "request_sha256": hashlib.sha256(prepared_request.data).hexdigest(),
+        "inputs": trace_inputs,
+        "resume_sha256": resume_sha256,
+        "job_profile_id": job_profile_id,
+        "cards_sha256": cards_fingerprint(cards),
+        "prompt_version": prompt_version,
+    }
+    encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 def cache_path(cache_dir: Path, key: str) -> Path:
     return Path(cache_dir) / f"{key}.json"
@@ -66,7 +67,7 @@ def load_judgment(cache_dir: Path, key: str) -> dict | None:
     if not path.is_file() or path.is_symlink():
         return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = parse_json_response(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(payload, dict) or payload.get("cache_schema_version") != JUDGE_CACHE_SCHEMA_VERSION:

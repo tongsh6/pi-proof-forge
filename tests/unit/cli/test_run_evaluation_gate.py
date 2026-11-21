@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
+from urllib.request import Request
+
+from tools.infra.llm.client import LLMClient
 from tools.engines.evaluation import quality_report
 
 
-class _FakeJudgeClient:
-    chat_completions_url = "http://127.0.0.1:8081/v1/chat/completions"
-
+class _FakeJudgeClient(LLMClient):
     def __init__(self) -> None:
+        super().__init__(base_url="http://127.0.0.1:8081/v1", api_key="",
+                         provider="strata", thinking_enabled=None)
         self.calls = 0
 
-    def post_json(self, url: str, payload: dict) -> dict:
+    def send_request(self, prepared: Request) -> dict:
+        assert isinstance(prepared, Request)
         self.calls += 1
-        return {"choices": [{"message": {"content": "{}"}}]}
-
-    @staticmethod
-    def extract_content(response: dict) -> str:
-        return response["choices"][0]["message"]["content"]
+        return {"choices": [{"finish_reason": "stop", "message": {"content": "{}"}}]}
 
 
 def _gate_kwargs() -> dict:

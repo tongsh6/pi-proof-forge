@@ -12,6 +12,7 @@ from tools.engines.evaluation import quality_report
 from tools.engines.evaluation import rule_evaluator
 from tools.domain.models import JobProfile, ResumeOutput
 from tools.engines.evaluation.rule_evaluator import RuleEvaluationEngine
+from tools.infra.llm.client import LLMClient
 
 
 def evaluate(text, must_have=(), keywords=(), **kwargs):
@@ -281,21 +282,17 @@ def test_cli_writes_four_tier_quality_report_and_legacy_scores(tmp_path, monkeyp
         assert action in markdown
 
 
-class _FakeJudgeClient:
-    chat_completions_url = "http://fake/v1/chat/completions"
-
+class _FakeJudgeClient(LLMClient):
     def __init__(self, content):
+        super().__init__("http://fake/v1", "synthetic", provider="openai_compatible",
+                         thinking_enabled=None)
         self.calls = 0
         self.content = content
 
-    def post_json(self, url, payload):
+    def send_request(self, prepared):
         self.calls += 1
-        self.last_prompt = payload["messages"][-1]["content"]
+        self.last_prompt = json.loads(prepared.data)["messages"][-1]["content"]
         return {"choices": [{"message": {"content": self.content}}]}
-
-    @staticmethod
-    def extract_content(response):
-        return response["choices"][0]["message"]["content"]
 
 
 def _judge_fixture(tmp_path, monkeypatch):
@@ -394,7 +391,7 @@ def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path
         client_factory=lambda: client,
     )
     assert judgments is None
-    assert meta["cache"] == "miss" and meta.get("error") == "invalid_judge_response"
+    assert meta["cache"] == "miss" and meta.get("error", "").split(":", 1)[0] == "invalid_json"
     _judgments2, meta2, _ = quality_report._run_quality_judge(
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
@@ -404,23 +401,17 @@ def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path
     assert client.calls == 4, "每次最多纠错一次，无效结果不得写入缓存"
 
 
-class _SequencedJudgeClient:
-    chat_completions_url = "http://fake/v1/chat/completions"
-
+class _SequencedJudgeClient(_FakeJudgeClient):
     def __init__(self, contents):
+        super().__init__("{}")
         self.contents = list(contents)
-        self.calls = 0
         self.prompts = []
 
-    def post_json(self, url, payload):
-        self.calls += 1
-        self.prompts.append(payload["messages"][-1]["content"])
-        content = self.contents.pop(0) if self.contents else "{}"
-        return {"choices": [{"message": {"content": content}}]}
-
-    @staticmethod
-    def extract_content(response):
-        return response["choices"][0]["message"]["content"]
+    def send_request(self, prepared):
+        self.content = self.contents.pop(0) if self.contents else "{}"
+        response = super().send_request(prepared)
+        self.prompts.append(self.last_prompt)
+        return response
 
 
 def test_quality_judge_retries_only_missing_sections_in_second_call(tmp_path, monkeypatch):
@@ -1064,3 +1055,248 @@ def test_agent_explicit_llm_keeps_the_source_bound_four_layer_report(generation,
     assert score.quality_report["auto_pass"] is False
     assert score.quality_report["resume_version"] == hashlib.sha256(resume.content.encode()).hexdigest()
     assert score.quality_report["job_profile_id"] == profile.id
+
+
+def _quality_wire_transport(tmp_path, monkeypatch):
+    """Use the shared adapter unchanged; observe preparations and replace only final HTTP."""
+    import io
+    from tools.infra.llm.client import LLMClient
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LLM_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("LLM_THINKING", "default")
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
+    state = {"sent": [], "prepared": [], "prepare_attempts": 0,
+             "contents": [], "default_content": content, "after_send": None,
+             "fail_prepare": None, "fail_send": None}
+    prepare = LLMClient.prepare_request
+
+    def observe_prepare(client, url, payload, *, response_schema=None):
+        state["prepare_attempts"] += 1
+        if state["prepare_attempts"] == state["fail_prepare"]:
+            raise ValueError("synthetic request construction failed")
+        prepared = prepare(client, url, payload, response_schema=response_schema)
+        state["prepared"].append({
+            "request": prepared,
+            "raw_chars": len(json.dumps(payload, ensure_ascii=False)),
+            "logical_chars": len(json.dumps(json.loads(prepared.data), ensure_ascii=False)),
+        })
+        return prepared
+
+    def respond(request, **kwargs):
+        assert request is state["prepared"][-1]["request"]
+        assert request.full_url.startswith("http://127.0.0.1:")
+        state["sent"].append(request)
+        if state["after_send"]:
+            state["after_send"]()
+        if len(state["sent"]) == state["fail_send"]:
+            raise OSError("synthetic HTTP unavailable")
+        content = state["contents"].pop(0) if state["contents"] else state["default_content"]
+        return io.BytesIO(json.dumps({
+            "choices": [{"message": {"content": content}, "finish_reason": "stop"}]
+        }).encode())
+
+    monkeypatch.setattr(LLMClient, "prepare_request", observe_prepare)
+    monkeypatch.setattr("tools.infra.llm.client.request.urlopen", respond)
+    args = dict(
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic,
+        job_profile_path="job.yaml", use_llm=True, model="synthetic-quality-model",
+        api_key="synthetic-key", base_url="http://127.0.0.1:9000/v1")
+    return args, state
+
+
+@pytest.mark.parametrize("provider", ["openai_compatible", "lm_studio"])
+def test_quality_prepared_budget_keeps_actual_flow_pending_without_http(tmp_path, monkeypatch, provider):
+    from dataclasses import replace
+    from tools.orchestration.evaluation_flow import run_evaluation_flow
+    from tools.prompts import context
+
+    config, _report, _semantic = _semantic_quality_fixture(tmp_path, monkeypatch)
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER", provider)
+    monkeypatch.setattr(context, "JOB_SEARCH_CONTEXT", context.JOB_SEARCH_CONTEXT + "\n" + "合成共同语境" * 5000)
+    config = replace(config, use_llm=True, require_llm=True, model=args["model"],
+                     base_url=args["base_url"], api_key=args["api_key"])
+    assert run_evaluation_flow(config) == 0
+    assert state["prepared"]
+    initial = state["prepared"][0]
+    assert initial["raw_chars"] < 24_000 < initial["logical_chars"]
+    assert state["sent"] == [], "the complete prepared request must be checked before HTTP"
+    result = json.loads(config.output_path.with_suffix(".json").read_text())
+    quality = result["quality_report"]
+    meta = quality["quality_judge"]
+    assert meta["model_calls"] == 0 and meta["repair_calls"] == 0
+    assert "input_budget_exceeded" in json.dumps(meta)
+    assert quality["llm_pending"] and quality["auto_pass"] is False
+    assert quality["tiers"]["strong"]["metrics"]["quant_total"] == 1.0
+    assert result["traceability"]["status"] == "verified"
+    assert not list((tmp_path / "judge-cache").glob("*.json"))
+
+
+@pytest.mark.parametrize("change", ["endpoint", "thinking", "header_only"])
+def test_quality_cache_identity_uses_actual_prepared_request(tmp_path, monkeypatch, change):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    first, first_meta, _ = quality_report._run_quality_judge(**args)
+    assert first is not None and len(state["sent"]) == 1
+    assert first_meta["cache"] == "miss"
+    first_request = state["sent"][0]
+    if change == "endpoint":
+        args["base_url"] = "http://127.0.0.1:9001/v1"
+    elif change == "thinking":
+        monkeypatch.setenv("LLM_THINKING", "off")
+    else:
+        args["api_key"] = "another-synthetic-key"
+    second, second_meta, _ = quality_report._run_quality_judge(**args)
+    expected_calls = 1 if change == "header_only" else 2
+    assert len(state["sent"]) == expected_calls
+    assert second == first
+    assert second_meta["cache"] == ("hit" if change == "header_only" else "miss")
+    if change == "header_only":
+        assert second_meta["key"] == first_meta["key"]
+    else:
+        second_request = state["sent"][-1]
+        assert (second_request.full_url, second_request.data) != (first_request.full_url, first_request.data)
+        assert second_meta["key"] != first_meta["key"]
+    third, third_meta, _ = quality_report._run_quality_judge(**args)
+    assert third == second and third_meta["cache"] == "hit"
+    assert len(state["sent"]) == expected_calls
+
+
+@pytest.mark.parametrize("change_source", [False, True])
+def test_quality_repair_budget_preserves_verified_sections_and_source_fence(
+        tmp_path, monkeypatch, change_source):
+    from dataclasses import replace
+    from tools.orchestration.evaluation_flow import run_evaluation_flow
+    from tools.prompts import context
+
+    config, _report, _semantic = _semantic_quality_fixture(tmp_path, monkeypatch)
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    trace = json.loads(config.input_path.with_suffix(".trace.json").read_text())
+    card = Path(trace["inputs"]["ec-1"]["path"])
+    original = card.read_bytes()
+    old_md, old_json = b"existing report\n", b'{"existing":true}\n'
+    config.output_path.write_bytes(old_md)
+    config.output_path.with_suffix(".json").write_bytes(old_json)
+    state["contents"] = [json.dumps({"r1_4": []}), "{}"]
+
+    def after_first_http():
+        if len(state["sent"]) == 1:
+            monkeypatch.setattr(context, "JOB_SEARCH_CONTEXT", context.JOB_SEARCH_CONTEXT + "\n" + "合成共同语境" * 5000)
+            if change_source:
+                card.write_bytes(original + b"\n# source changed during actual judgment\n")
+
+    state["after_send"] = after_first_http
+    config = replace(config, use_llm=True, require_llm=True, model=args["model"],
+                     base_url=args["base_url"], api_key=args["api_key"])
+    assert run_evaluation_flow(config) == (1 if change_source else 0)
+    if change_source:
+        assert card.read_bytes() != original
+        assert config.output_path.read_bytes() == old_md
+        assert config.output_path.with_suffix(".json").read_bytes() == old_json
+    else:
+        quality = json.loads(config.output_path.with_suffix(".json").read_text())["quality_report"]
+        assert quality["tiers"]["strong"]["metrics"]["quant_total"] == 1.0
+        assert "R1.4" not in quality["llm_pending"] and "R2.1" in quality["llm_pending"]
+        assert quality["auto_pass"] is False
+    assert len(state["prepared"]) == 2
+    assert state["prepared"][0]["logical_chars"] <= 24_000 < state["prepared"][1]["logical_chars"]
+    assert len(state["sent"]) == 1, "an oversized repair must not send a second HTTP request"
+    assert not list((tmp_path / "judge-cache").glob("*.json"))
+    if not change_source:
+        meta = quality["quality_judge"]
+        assert meta["model_calls"] == 1 and meta["repair_calls"] == 0
+        assert "input_budget_exceeded" in json.dumps(meta)
+        assert meta["judged_sections"] == ["r1_4"]
+
+
+@pytest.mark.parametrize("failure", ["initial_prepare", "repair_prepare", "repair_send"])
+def test_quality_local_and_transport_failure_preserve_only_verified_partial(
+        tmp_path, monkeypatch, failure):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    full = json.loads(state["default_content"])
+    first = {"r1_4": full["r1_4"]}
+    state["contents"] = [json.dumps(first)]
+    if failure == "initial_prepare":
+        state["fail_prepare"] = 1
+        expected_calls = 0
+    elif failure == "repair_prepare":
+        state["fail_prepare"] = 2
+        expected_calls = 1
+    else:
+        state["fail_send"] = 2
+        expected_calls = 2
+    judgments, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == expected_calls
+    assert meta["model_calls"] == expected_calls
+    assert meta["repair_calls"] == max(0, expected_calls - 1)
+    if failure == "initial_prepare":
+        assert judgments is None
+    else:
+        assert judgments is not None, "repair failure must retain already validated first-round sections"
+        assert judgments["judged_sections"] == ["r1_4"]
+        assert judgments["r1_4"] == first["r1_4"]
+        assert "r2_1" not in judgments["judged_sections"]
+    if failure.endswith("prepare"):
+        assert "invalid_request" in json.dumps(meta)
+    else:
+        assert meta.get("error")
+    assert not list((tmp_path / "judge-cache").glob("*.json"))
+
+
+@pytest.mark.parametrize("corruption", ["unknown_citation", "missing_jd_coverage", "malformed_section"])
+def test_quality_cache_revalidates_current_citations_and_full_coverage(tmp_path, monkeypatch, corruption):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    first, meta_first, _ = quality_report._run_quality_judge(**args)
+    assert first is not None and len(state["sent"]) == 1
+    cache, = (tmp_path / "judge-cache").glob("*.json")
+    stored = json.loads(cache.read_text())
+    judgments = stored["judgments"]
+    assert set(judgments["judged_sections"]) == {"r1_4", "r2_1", "r3_1", "r3_5", "r4_1"}
+    if corruption == "unknown_citation":
+        judgments["r2_1"][0]["citations"] = ["ec_not_in_the_current_request"]
+    elif corruption == "missing_jd_coverage":
+        judgments["r2_1"] = []
+    else:
+        judgments["r3_5"]["summary_lines"] = "not a count"
+    cache.write_text(json.dumps(stored))
+    second, meta_second, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 2, "a cached completion marker cannot authorize invalid current judgments"
+    assert meta_second["cache"] == "miss"
+    assert meta_second["key"] == meta_first["key"]
+    assert second == first
+    assert "ec_not_in_the_current_request" not in json.dumps(second)
+
+
+def test_quality_repair_cannot_replace_an_already_verified_section(tmp_path, monkeypatch):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    full = json.loads(state["default_content"])
+    first = {"r1_4": full["r1_4"]}
+    conflicting_repair = json.loads(state["default_content"])
+    conflicting_repair["r1_4"][0].update(supported=False, reason="第二轮返回相反的未请求判项")
+    state["contents"] = [json.dumps(first), json.dumps(conflicting_repair)]
+    judgments, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 2
+    repair_prompt = json.loads(state["sent"][1].data)["messages"][-1]["content"]
+    assert "EXACTLY these keys: r2_1, r3_1, r3_5, r4_1" in repair_prompt
+    assert judgments is not None
+    assert judgments["r1_4"] == first["r1_4"], "repair may fill missing sections, not overwrite verified ones"
+    assert set(judgments["judged_sections"]) == {"r1_4", "r2_1", "r3_1", "r3_5", "r4_1"}
+    assert meta["model_calls"] == 2 and meta["repair_calls"] == 1
+
+
+def test_quality_normalized_partial_cache_cannot_gain_default_empty_sections(tmp_path, monkeypatch):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    first, _first_meta, _ = quality_report._run_quality_judge(**args)
+    assert first is not None and len(state["sent"]) == 1
+    cache, = (tmp_path / "judge-cache").glob("*.json")
+    stored = json.loads(cache.read_text())
+    judgments = stored["judgments"]
+    judgments["judged_sections"] = ["r2_1", "r3_1", "r3_5"]
+    judgments["r1_4"] = []
+    judgments["r4_1"] = []
+    cache.write_text(json.dumps(stored))
+    second, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 2, "normalized default arrays do not prove those sections were judged"
+    assert meta["cache"] == "miss"
+    assert second == first
+    assert second["r1_4"], "freshly validated ownership judgment must survive cache replacement"

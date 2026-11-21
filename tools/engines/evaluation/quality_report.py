@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,10 @@ from tools.infra.llm.client import (
     llm_request_available,
     llm_timeout_from_env,
 )
+from tools.infra.llm.task_contract import (
+    QUALITY_JUDGE, REASON_INVALID_JSON, REASON_PARTIAL_COVERAGE, partial, unavailable,
+)
+from tools.infra.llm.task_runner import execute
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 from . import llm_judge, tiered_evaluator
@@ -119,7 +124,7 @@ def _run_quality_judge(
     base_url: str,
     client_factory: Any = None,
 ) -> tuple[dict | None, dict[str, Any], dict[str, list[str]]]:
-    """复用完整缓存；内容缺项最多纠错一次，不缓存未完成判项。"""
+    """同份完整请求决定准入和缓存；只修未完成组，失败保留已核 partial。"""
     resume_sha256 = hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
     decisions = quality_judge_cache.load_decisions(Path.cwd(), resume_sha256)
     if isinstance(trace.get("claims"), list):
@@ -133,84 +138,143 @@ def _run_quality_judge(
     if not (use_llm and llm_available and jd_items):
         return None, meta, decisions
     bullets = tiered_evaluator.extract_bullets(resume_text)
-    prompt = llm_judge.build_judge_prompt(bullets=bullets, cards=cards, jd_items=jd_items,
-                                         resume_text=resume_text)
     job_profile_id = Path(job_profile_path).stem if job_profile_path else ""
-    key = quality_judge_cache.judge_cache_key(
-        resume_sha256=resume_sha256,
-        job_profile_id=job_profile_id,
-        cards=cards,
-        model=model,
-        prompt_version=llm_judge.PROMPT_VERSION,
-        prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-    )
-    meta = {"cache": "miss", "model": model, "prompt_version": llm_judge.PROMPT_VERSION, "key": key}
-    cached = quality_judge_cache.load_judgment(_judge_cache_root(), key)
-    if cached is not None:
-        meta["cache"] = "hit"
-        meta["judged_sections"] = cached.get("judged_sections")
-        return cached, meta, decisions
+    all_sections = tuple(llm_judge._RULES)
+    requested = all_sections
+    merged: dict[str, Any] = {
+        "schema_version": llm_judge.JUDGE_SCHEMA_VERSION,
+        "prompt_version": llm_judge.PROMPT_VERSION,
+        "judged_sections": [],
+        "rejected_items": 0,
+    }
+    meta = {
+        "cache": "miss", "model": model, "prompt_version": llm_judge.PROMPT_VERSION,
+        "model_calls": 0, "repair_calls": 0,
+    }
+
+    def parse_current(value):
+        return llm_judge.parse_judgments(
+            json.dumps(value, ensure_ascii=False), bullets=bullets, jd_items=jd_items,
+            cards=cards, resume_text=resume_text,
+        )
+
+    def validated_cache(cached):
+        if not isinstance(cached, dict):
+            return None
+        sections = cached.get("judged_sections")
+        if (
+            type(cached.get("schema_version")) is not int
+            or cached["schema_version"] != llm_judge.JUDGE_SCHEMA_VERSION
+            or type(cached.get("prompt_version")) is not int
+            or cached["prompt_version"] != llm_judge.PROMPT_VERSION
+            or not isinstance(sections, list)
+            or len(sections) != len(all_sections)
+            or not all(isinstance(section, str) for section in sections)
+            or set(sections) != set(all_sections)
+            or any(section not in cached for section in all_sections)
+            or type(cached.get("rejected_items")) is not int
+            or cached["rejected_items"] < 0
+        ):
+            return None
+        checked = parse_current({section: cached[section] for section in all_sections})
+        if (checked is None or set(checked["judged_sections"]) != set(all_sections)
+                or any(checked[section] != cached[section] for section in all_sections)):
+            return None
+        return cached
+
+    def prepare_sections(sections):
+        return client.prepare_request(
+            client.chat_completions_url,
+            {
+                "model": model, "temperature": 0,
+                "max_tokens": QUALITY_JUDGE.capability.max_output_tokens,
+                "stream": False, "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": "You are a strict judge. Return ONLY the JSON object."},
+                    {"role": "user", "content": llm_judge.build_judge_prompt(
+                        bullets=bullets, cards=cards, jd_items=jd_items,
+                        resume_text=resume_text, sections=sections)},
+                ],
+            },
+        )
+
+    client = None
     try:
         client = client_factory() if client_factory is not None else LLMClient(
             base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env(),
             provider=os.getenv("LLM_PROVIDER", ""),
         )
-        payload: dict[str, object] = {
-            "model": model,
-            "temperature": 0,
-            "max_tokens": 6000,
-            "stream": False,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": "You are a strict judge. Return ONLY the JSON object."},
-                {"role": "user", "content": prompt},
-            ],
-        }
-        meta.update(model_calls=0, repair_calls=0)
-        parsed: dict | None = None
-        merged: dict[str, Any] = {}
-        all_sections = ("r1_4", "r2_1", "r3_1", "r3_5", "r4_1")
-        requested = tuple(all_sections)
-        for attempt in range(2):
-            meta["model_calls"] += 1
-            if attempt:
-                payload = {**payload, "messages": [
-                    payload["messages"][0],
-                    {"role": "user", "content": llm_judge.build_judge_prompt(
-                        bullets=bullets, cards=cards, jd_items=jd_items,
-                        resume_text=resume_text, sections=requested)},
-                ]}
-            response = client.post_json(client.chat_completions_url, payload)
-            current = llm_judge.parse_judgments(
-                client.extract_content(response), bullets=bullets, jd_items=jd_items, cards=cards,
-                resume_text=resume_text,
-            )
-            if current:
-                for section in current.get("judged_sections") or []:
-                    merged[section] = current.get(section)
-                merged.setdefault("judged_sections", [])
-                merged["judged_sections"] = sorted(set(merged["judged_sections"]) | set(current.get("judged_sections") or []))
-                merged["rejected_items"] = len(merged.get("rejected_items") or []) if isinstance(merged.get("rejected_items"), list) else merged.get("rejected_items", 0)
-            missing = [section for section in all_sections if section not in (merged.get("judged_sections") or [])]
-            if not missing:
-                parsed = {**merged, "judged_sections": list(all_sections)}
-                break
-            if attempt:
-                parsed = merged if merged.get("judged_sections") else None
-                break
-            meta["repair_calls"] += 1
-            requested = tuple(missing)
-    except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
-        meta["error"] = str(exc)[:300]
-        print(f"[evaluation] LLM 判项不可用，保留 pending：{exc}")
-        return None, meta, decisions
-    if parsed is None:
-        meta["error"] = "invalid_judge_response"
-        return None, meta, decisions
-    if not missing:
+        prepared = prepare_sections(all_sections)
+        key = quality_judge_cache.judge_cache_key(
+            prepared_request=prepared, trace_inputs=trace.get("inputs", {}),
+            resume_sha256=resume_sha256, job_profile_id=job_profile_id,
+            cards=cards, prompt_version=llm_judge.PROMPT_VERSION,
+        )
+    except Exception as exc:
+        # 构造失败交由执行器记录，不作为传输失败，也不重发原输入。
+        prepared = exc
+    else:
+        meta["key"] = key
+        cached = validated_cache(quality_judge_cache.load_judgment(_judge_cache_root(), key))
+        if cached is not None:
+            meta.update(cache="hit", judged_sections=cached["judged_sections"],
+                        rejected_items=cached["rejected_items"])
+            return cached, meta, decisions
+
+    def initial_request():
+        if isinstance(prepared, Exception):
+            raise prepared
+        return prepared
+
+    def validate(parsed):
+        if not isinstance(parsed, dict):
+            raise ValueError("invalid_judge_response")
+        current = parse_current({section: parsed[section] for section in requested if section in parsed})
+        if current is None:
+            raise ValueError("invalid_judge_response")
+        for section in requested:
+            if section in current["judged_sections"]:
+                merged[section] = current[section]
+        merged["rejected_items"] += current["rejected_items"]
+        merged["judged_sections"] = [section for section in all_sections if section in merged]
+        if len(merged["judged_sections"]) != len(all_sections):
+            raise ValueError(REASON_PARTIAL_COVERAGE)
+        return merged
+
+    def repair(_previous, _error):
+        nonlocal requested
+        requested = tuple(section for section in all_sections if section not in merged["judged_sections"])
+        return prepare_sections(requested)
+
+    run = execute(
+        QUALITY_JUDGE, model=model, prepare=initial_request,
+        call=lambda request: client.send_request(request),
+        extract=lambda response: client.extract_content(response),
+        validate=validate, on_retry=repair,
+    )
+    if run.status != "complete":
+        reason = run.reason_code
+        if reason == REASON_INVALID_JSON and run.outcome.detail == REASON_PARTIAL_COVERAGE:
+            reason = REASON_PARTIAL_COVERAGE
+        if merged["judged_sections"]:
+            run = replace(run, outcome=partial(
+                reason_code=reason, detail=run.outcome.detail, result=merged,
+            ))
+        elif reason != run.reason_code:
+            run = replace(run, outcome=unavailable(
+                QUALITY_JUDGE, reason_code=reason, detail=run.outcome.detail,
+            ))
+    meta.update(model_calls=run.attempts, repair_calls=max(0, run.attempts - 1))
+    parsed = run.outcome.result if run.outcome.usable else None
+    if run.reason_code:
+        detail = run.outcome.detail
+        meta["error"] = run.reason_code + (f":{detail}" if detail and detail != run.reason_code else "")
+    if parsed is not None:
+        meta["judged_sections"] = parsed["judged_sections"]
+        meta["rejected_items"] = parsed["rejected_items"]
+    print("[evaluation] " + json.dumps(run.to_dict(), ensure_ascii=False))
+    if run.status == "complete":
         quality_judge_cache.save_judgment(_judge_cache_root(), key, parsed)
-    meta["judged_sections"] = parsed.get("judged_sections")
-    meta["rejected_items"] = parsed.get("rejected_items")
     return parsed, meta, decisions
 
 
