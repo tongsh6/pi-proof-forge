@@ -14,8 +14,11 @@ from typing import Any
 from uuid import uuid4
 
 from tools.infra import evidence_provenance as provenance
+from tools.infra.evidence_fact_scope import KEY as FACT_SCOPE_KEY, apply_fact_scope
 from tools.infra.evidence_sources import (
     SOURCE_FIELDS,
+    assert_source_snapshot,
+    exact_document_groups,
     field_values,
     read_source_documents,
     source_fingerprints,
@@ -26,6 +29,7 @@ from tools.sidecar.handlers import evidence as _origin
 from tools.sidecar.handlers._shared.llm_config import load_llm_config
 from tools.sidecar.handlers._shared.material_sources import (
     document,
+    evidence_bound_materials,
     documents,
     materials_dir,
     selected_text_materials,
@@ -448,14 +452,17 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(review, dict) or str(review.get("decision", "")) != "approved":
         raise ValueError("review_required_before_save")
 
+    scope_provided = "fact_scope" in review
+    if "fact_scope" in draft:
+        raise ValueError("fact_scope_review_required")
+    if scope_provided and (not params.get("evidence_id") or not params.get("expected_sha256")
+                           or params.get("save_mode") != "eligible"):
+        raise ValueError("fact_scope_review_required")
+
     source_material_ids = _as_string_list(
         draft.get("source_material_ids"), "source_material_ids"
     )
-    selected_records = selected_text_materials(source_material_ids)
-    selected_ids = {str(record["material_id"]) for record in selected_records}
-    _validate_source_material_ids(source_material_ids, selected_ids)
     artifacts = _normalize_artifacts(draft.get("artifacts", []))
-    _validate_markdown_artifacts(artifacts, selected_records)
 
     normalized_draft = {
         "title": str(draft.get("title", "")).strip(),
@@ -475,11 +482,59 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
     if params.get('evidence_id'):
         existing_path=_find_evidence_path(evidence_id)
         if existing_path is None:raise ValueError('evidence_review_target_missing')
-        original=existing_path.read_text(encoding='utf-8');existing_doc=parse_simple_yaml(original)
+        original_bytes = existing_path.read_bytes()
+        original = original_bytes.decode('utf-8'); existing_doc = parse_simple_yaml(original)
         old_refs=json.loads(existing_doc['scalars'].get('source_documents_json') or '[]')
         whole_material_ids=json.loads(existing_doc['scalars'].get('source_whole_material_ids_json') or '[]')
         whole_material_ids=list(dict.fromkeys([*whole_material_ids,*(mid for mid in existing_doc['lists'].get('source_material_ids',[]) if mid not in {r['material_id'] for r in old_refs})]))
     source_documents=draft.get('source_documents',[])
+    if not isinstance(source_documents, list):
+        raise ValueError('material_document_reference_invalid')
+    merge = review.get('merge_sources') is True
+    changed_sources = False
+    snapshots = {}
+    strict_ids = []
+    strict_fingerprints = {}
+    if existing_doc is not None:
+        s = existing_doc['scalars']
+        old_ids = existing_doc['lists'].get('source_material_ids', [])
+        changed_sources = old_ids != source_material_ids or old_refs != source_documents
+        if merge or s.get('reviewed_facts_json') or s.get('source_material_fingerprints_json') or params.get('expected_sha256'):
+            if params.get('expected_sha256') != hashlib.sha256(original_bytes).hexdigest():
+                raise ValueError('evidence_review_changed')
+        if changed_sources and (not merge or source_material_ids[:len(old_ids)] != old_ids
+                                or source_documents[:len(old_refs)] != old_refs):
+            raise ValueError('evidence_review_source_mismatch')
+    if existing_doc is not None and merge and changed_sources:
+        # New/expanded material scopes keep full verification. Only exact, persisted
+        # source groups that remain identical can reuse selected-document verification.
+        old_groups = exact_document_groups(old_ids, old_refs, whole_material_ids)
+        proposed_groups = exact_document_groups(source_material_ids, source_documents, whole_material_ids)
+        retained = [mid for mid in old_ids if mid in old_groups and old_groups[mid] == proposed_groups.get(mid)]
+        if retained:
+            fingerprints = json.loads(s.get('source_material_fingerprints_json') or '{}')
+            retained_fingerprints = {mid: fingerprints.get(mid) for mid in retained} if fingerprints else {}
+            if fingerprints and any(not retained_fingerprints[mid] for mid in retained):
+                raise ValueError('material_source_changed')
+            retained_records, snapshots = evidence_bound_materials(
+                retained, [ref for ref in old_refs if ref['material_id'] in retained], [],
+                fingerprints=retained_fingerprints)
+            strict_ids = [mid for mid in source_material_ids if mid not in retained]
+            strict_records = selected_text_materials(strict_ids) if strict_ids else []
+            strict_fingerprints = source_fingerprints(strict_records)
+            by_id = {record['material_id']: record for record in [*retained_records, *strict_records]}
+            selected_records = [by_id[mid] for mid in source_material_ids]
+        else:
+            selected_records = selected_text_materials(source_material_ids)
+    elif (existing_doc is not None and old_ids == source_material_ids
+            and source_documents == old_refs and old_refs and not merge):
+        selected_records,snapshots = evidence_bound_materials(source_material_ids,old_refs,whole_material_ids,
+            fingerprints=json.loads(existing_doc['scalars'].get('source_material_fingerprints_json') or '{}'))
+    else:
+        selected_records = selected_text_materials(source_material_ids)
+    selected_ids = {str(record["material_id"]) for record in selected_records}
+    _validate_source_material_ids(source_material_ids, selected_ids)
+    _validate_markdown_artifacts(artifacts, selected_records)
     documents,source_text=read_source_documents(selected_records,source_documents,whole_material_ids)
     field_sources=draft.get('field_sources',[])
     verified_fields=validate_field_sources(normalized_draft,field_sources,documents)
@@ -504,16 +559,6 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
             if result.casefold() not in source_text.casefold():raise ValueError('no_fabrication_guard: result is not traceable to selected document')
 
     if existing_doc is not None:
-        s=existing_doc['scalars']; old_refs=json.loads(s.get('source_documents_json') or '[]')
-        changed_sources=(existing_doc['lists'].get('source_material_ids',[])!=source_material_ids or old_refs!=source_documents)
-        if review.get('merge_sources') is True or s.get('reviewed_facts_json') or s.get('source_material_fingerprints_json') or params.get('expected_sha256'):
-            if params.get('expected_sha256')!=hashlib.sha256(existing_path.read_bytes()).hexdigest():
-                raise ValueError('evidence_review_changed')
-        if changed_sources:
-            if (review.get('merge_sources') is not True
-                or not set(existing_doc['lists'].get('source_material_ids',[])).issubset(source_material_ids)
-                or any(ref not in source_documents for ref in old_refs)):
-                raise ValueError('evidence_review_source_mismatch')
         if review.get('merge_sources') is True or s.get('reviewed_facts_json') or s.get('source_material_fingerprints_json'):
             previous=json.loads(s['reviewed_facts_json']) if s.get('reviewed_facts_json') else {**s,**existing_doc['lists']}
             for field in SOURCE_FIELDS:
@@ -525,6 +570,14 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
                     raise ValueError('field_source_cannot_be_removed')
             if changed_sources and not field_sources:raise ValueError('field_source_required_for_merge')
         preserved=_preserved_blocks(original)
+    reviewed_facts = {key:normalized_draft[key] for key in SOURCE_FIELDS}
+    if save_mode == "eligible":
+        if scope_provided and changed_sources:
+            raise ValueError("fact_scope_review_requires_unchanged_sources")
+        scopes = apply_fact_scope(existing_doc, normalized_draft, field_sources, source_documents,
+                                  review.get("fact_scope"), provided=scope_provided, documents=documents)
+        if scopes:
+            reviewed_facts[FACT_SCOPE_KEY] = scopes
     now = _origin._utcnow_iso()
     fields = {
         "id": evidence_id,
@@ -548,12 +601,21 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         "missing_items": missing_items,
         "source_documents_json": json.dumps(source_documents,ensure_ascii=False) if source_documents else "",
         "field_sources_json": json.dumps(field_sources,ensure_ascii=False) if field_sources else "",
-        "source_material_fingerprints_json": json.dumps(source_fingerprints(selected_records),ensure_ascii=False) if field_sources or (existing_doc and existing_doc['scalars'].get('source_material_fingerprints_json')) else "",
-        "reviewed_facts_json": json.dumps({key:normalized_draft[key] for key in SOURCE_FIELDS},ensure_ascii=False) if field_sources or (existing_doc and existing_doc['scalars'].get('reviewed_facts_json')) else '',
+        "source_material_fingerprints_json": json.dumps(source_fingerprints(selected_records),ensure_ascii=False) if field_sources or snapshots or (existing_doc and existing_doc['scalars'].get('source_material_fingerprints_json')) else "",
+        "reviewed_facts_json": json.dumps(reviewed_facts,ensure_ascii=False) if field_sources or (existing_doc and existing_doc['scalars'].get('reviewed_facts_json')) else '',
         "source_whole_material_ids_json": json.dumps(whole_material_ids,ensure_ascii=False) if whole_material_ids else '',
         "time_range_provenance_json": provenance.provenance_json(saved_provenance.get("time_range")),
         "role_scope_provenance_json": provenance.provenance_json(saved_provenance.get("role_scope")),
     }
+    if strict_ids:
+        current_fingerprints = source_fingerprints(selected_text_materials(strict_ids))
+        saved_fingerprints = json.loads(fields['source_material_fingerprints_json'])
+        if any(strict_fingerprints[mid] != current_fingerprints[mid] or strict_fingerprints[mid] != saved_fingerprints[mid]
+               for mid in strict_ids):
+            raise ValueError('material_source_changed')
+    assert_source_snapshot(snapshots)
+    if (scope_provided or snapshots or (existing_doc is not None and merge)) and existing_path.read_bytes() != original_bytes:
+        raise ValueError("evidence_review_changed")
     _write_evidence_file(_origin._EVIDENCE_DIR / f"{evidence_id}.yaml", fields, preserved_blocks=preserved)
     return {
         "meta": {"correlation_id": correlation_id},

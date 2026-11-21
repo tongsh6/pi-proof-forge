@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.sidecar.handlers import evidence as _origin
+from tools.infra.persistence.atomic_io import atomic_write_text
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.sidecar.handlers._shared.evidence_triage import (
     card_sha as _card_sha,
@@ -129,10 +130,9 @@ def handle_evidence_triage_set(params: dict[str, Any]) -> dict[str, Any]:
     else:
         data.pop(evidence_id, None)
     target = _triage_path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
-    tmp.replace(target)
+    atomic_write_text(
+        target, json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True)
+    )
     return {"meta": {"correlation_id": correlation_id}, "evidence_id": evidence_id, "triage": data.get(evidence_id)}
 
 

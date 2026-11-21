@@ -371,8 +371,14 @@ def _load_evidence_cards() -> list[dict[str, Any]]:
 
 
 def _source_error(doc):
-    try:validated_source_inputs(doc, materials_dir())
-    except ValueError as exc:return str(exc)
+    from tools.infra.evidence_fact_scope import project_fact_scope
+    try:
+        sources = validated_source_inputs(doc, materials_dir())
+        scalars = doc["scalars"]
+        project_fact_scope(doc, json.loads(scalars.get("source_documents_json") or "[]"),
+                           json.loads(scalars.get("field_sources_json") or "[]"), documents=sources.documents)
+    except ValueError as exc:
+        return str(exc)
     return ''
 
 
@@ -381,8 +387,8 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
     if path is None:
         return None
 
-    text = path.read_text(encoding="utf-8")
-    doc = parse_simple_yaml(text)
+    raw = path.read_bytes()
+    doc = parse_simple_yaml(raw.decode("utf-8"))
     s = doc["scalars"]
     l = doc["lists"]
     actions = l.get("actions", [])
@@ -390,7 +396,16 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
     artifacts = [
         _artifact_summary(evidence_id, token) for token in l.get("artifacts", [])
     ]
-    source_error = _source_error(doc)
+    source_documents = json.loads(s.get("source_documents_json") or "[]")
+    field_sources = json.loads(s.get("field_sources_json") or "[]")
+    from tools.infra.evidence_fact_scope import project_fact_scope
+    source_error, scopes = "", []
+    try:
+        sources = validated_source_inputs(doc, materials_dir())
+        if path.read_bytes() == raw:
+            scopes = project_fact_scope(doc, source_documents, field_sources, documents=sources.documents)
+    except ValueError as exc:
+        source_error = str(exc)
     return {
         "evidence_id": s.get("id", path.stem),
         "title": s.get("title", ""),
@@ -404,9 +419,10 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
         "artifacts": artifacts,
         "raw_source": s.get("raw_source", ""),
         "source_material_ids": l.get("source_material_ids", []),
-        "source_documents": json.loads(s.get("source_documents_json") or "[]"),
-        "field_sources": json.loads(s.get("field_sources_json") or "[]"),
-        "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "source_documents": source_documents,
+        "field_sources": field_sources,
+        "source_sha256": hashlib.sha256(raw).hexdigest(),
+        "fact_scope_review": scopes,
         "source_error": source_error,
         "review_decision": s.get("review_decision", ""),
         "reviewed_at": s.get("reviewed_at", ""),

@@ -27,9 +27,9 @@ def env():
         root = Path(tmp)
         edir = root / "evidence_cards"
         edir.mkdir()
-        (edir / "ec_a.yaml").write_text(_card("ec_a", "统一运动中心平台"), encoding="utf-8")
+        (edir / "ec_a.yaml").write_text(_card("ec_a", "合成活动平台"), encoding="utf-8")
         (edir / "ec_b.yaml").write_text(_card("ec_b", "接口梳理小任务"), encoding="utf-8")
-        (edir / "ec_c.yaml").write_text(_card("ec_c", "统一运动中心平台（副本）"), encoding="utf-8")
+        (edir / "ec_c.yaml").write_text(_card("ec_c", "合成活动平台（副本）"), encoding="utf-8")
         with patch.object(evidence, "_EVIDENCE_DIR", edir), patch.object(materials, "_MATERIALS_DIR", root / "materials"), \
                 patch.object(evidence, "_APP_DATA_DIR", root / "app-data"):
             yield root, edir

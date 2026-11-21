@@ -65,7 +65,7 @@ def _run_llm(args: argparse.Namespace) -> int:
     if not model:
         print("Missing model. Set --model or LLM_MODEL.", file=sys.stderr)
         return 1
-    if not llm_request_available(provider=provider, api_key=api_key, model=model):
+    if not llm_request_available(provider=provider, api_key=api_key, model=model, base_url=cast(str, args.base_url)):
         print("Missing API key. Set --api-key or LLM_API_KEY.", file=sys.stderr)
         return 1
     try:

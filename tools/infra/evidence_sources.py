@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from tools.infra.material_documents import split_material_documents
 
@@ -14,6 +15,33 @@ def field_values(fields, field):
     if isinstance(value, list):
         return value
     return [line.strip() for line in value.splitlines() if line.strip()] if field in {'actions', 'results'} else [value.strip()] if value.strip() else []
+
+
+def exact_document_groups(material_ids, references, whole_ids):
+    """An all-exact source set is eligible for the narrow document validation path."""
+    if not isinstance(whole_ids, list) or any(mid not in material_ids for mid in whole_ids):
+        raise ValueError("material_document_reference_invalid")
+    if not isinstance(references, list) or len(references) > 8:
+        raise ValueError("material_document_reference_invalid")
+    groups, keys = {}, set()
+    for ref in references:
+        if (not isinstance(ref, dict) or ref.get("material_id") not in material_ids
+                or any(not isinstance(ref.get(k), str) or not re.fullmatch(r"[0-9a-f]{64}",ref[k])
+                       for k in ("document_id","sha256"))):
+            raise ValueError("material_document_reference_invalid")
+        key = (ref["material_id"],ref["document_id"])
+        if key in keys:
+            raise ValueError("material_document_reference_invalid")
+        groups.setdefault(key[0], []).append(ref)
+        keys.add(key)
+    return groups if groups and not whole_ids and set(groups) == set(material_ids) and len(set(material_ids)) == len(material_ids) else {}
+
+
+def assert_source_snapshot(snapshots):
+    for key, (path, expected) in snapshots.items():
+        escaped = not key.startswith("evidence_material:") and path.resolve() != path.absolute()
+        if escaped or path.is_symlink() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError("material_source_changed")
 
 
 def read_source_documents(records, references, whole_material_ids=()):
@@ -28,10 +56,16 @@ def read_source_documents(records, references, whole_material_ids=()):
         if key in documents:
             raise ValueError('material_document_reference_invalid')
         record = by_id[key[0]]; path = record['path']
-        matches = [d for d in split_material_documents(path.read_text(encoding='utf-8'), path.name) if d['document_id'] == key[1]]
-        if len(matches) != 1 or matches[0]['sha256'] != ref.get('sha256'):
-            raise ValueError('material_document_changed_or_missing')
-        documents[key] = matches[0]['text']; selected.add(key[0])
+        if 'verified_documents' in record:
+            text = record['verified_documents'].get(key[1])
+            if text is None or hashlib.sha256(text.encode()).hexdigest() != ref.get('sha256'):
+                raise ValueError('material_document_changed_or_missing')
+        else:
+            matches = [d for d in split_material_documents(path.read_text(encoding='utf-8'), path.name) if d['document_id'] == key[1]]
+            if len(matches) != 1 or matches[0]['sha256'] != ref.get('sha256'):
+                raise ValueError('material_document_changed_or_missing')
+            text = matches[0]['text']
+        documents[key] = text; selected.add(key[0])
     # 兼容旧卡绑定整份材料；有精确引用的材料仅允许所选片段。
     texts = [*documents.values(), *(r['path'].read_text(encoding='utf-8') for r in records if r['material_id'] not in selected or r['material_id'] in whole_material_ids)]
     return documents, '\n\n'.join(texts)
@@ -68,46 +102,90 @@ def source_fingerprints(records):
     return out
 
 
+class ValidatedSourcePaths(dict):
+    """Path mapping with hashes captured from the bytes actually validated."""
+
+    def __init__(self, snapshots=(), *, documents=None):
+        self.snapshots = dict(snapshots)
+        self.documents = documents if documents is not None else {}
+        super().__init__((key,path) for key,(path,_) in self.snapshots.items())
+
+
+def assert_captured_source(sources, key, digest):
+    expected = getattr(sources, "snapshots", {}).get(key)
+    if expected is not None:
+        path, sha = expected
+        escaped = not key.startswith("evidence_material:") and path.resolve() != path.absolute()
+        if escaped or path.is_symlink() or digest != sha:
+            raise ValueError("material_source_changed")
+
+
 def validated_source_inputs(doc, material_dir: Path):
-    """补证卡须重验材料字节和字段引用；返回可纳入缓存/trace 的输入路径。"""
+    """Revalidate existing source bindings and return original paths with captured hashes."""
     s = doc['scalars']; raw = s.get('source_material_fingerprints_json')
     if not raw:
         if s.get('field_sources_json'):
             raise ValueError('field_source_fingerprints_missing')
-        return {}
+        return ValidatedSourcePaths()
     try:
-        fingerprints = json.loads(raw); refs = json.loads(s.get('source_documents_json') or '[]')
+        from tools.infra import referenced_materials as rm
+        from tools.infra.persistence.yaml_io import parse_simple_yaml
+        from tools.policy.exclusions import load_material_source_roots
+
+        fingerprints = json.loads(raw)
+        refs = json.loads(s.get('source_documents_json') or '[]')
+        whole = json.loads(s.get('source_whole_material_ids_json') or '[]')
+        mids = doc['lists'].get('source_material_ids', [])
         bindings = json.loads(s.get('field_sources_json') or '[]')
-        if not isinstance(fingerprints, dict) or set(fingerprints) != set(doc['lists'].get('source_material_ids', [])):
+        if not isinstance(fingerprints, dict) or set(fingerprints) != set(mids):
             raise ValueError('material_source_changed')
-        records = []
-        for mid, data in fingerprints.items():
+        groups = exact_document_groups(mids, refs, whole)
+        snapshots, records = {}, []
+        for mid in mids if groups else fingerprints:
+            data = fingerprints.get(mid)
+            item = None
+            if mid in groups:
+                if not re.fullmatch(r'[A-Za-z0-9_-]+', mid):
+                    raise ValueError('material_source_changed')
+                meta = material_dir / (mid + '.meta.yaml')
+                if meta.is_symlink():
+                    raise ValueError('material_source_changed')
+                if meta.is_file():
+                    item = parse_simple_yaml(meta.read_text(encoding='utf-8'))['scalars']
+                    if item.get('material_id') != mid:
+                        raise ValueError('material_source_changed')
+                if item and item.get('source_mode') == 'referenced':
+                    cache, docs, exact = rm.verify_bound_documents(
+                        material_dir,item,groups[mid],load_material_source_roots(),fingerprint=data)
+                    snapshots.update(exact)
+                    records.append({'material_id':mid,'path':cache,'verified_documents':docs})
+                    continue
+                if data and data.get('mode') == 'referenced':
+                    raise ValueError('material_source_changed')
             filename = str(data.get('filename') or ''); raw_path = Path(filename)
             path = material_dir / filename
             if (not filename or raw_path.is_absolute() or path.is_symlink() or not path.is_file()
-                    or not path.resolve().is_relative_to(material_dir.resolve())
-                    or hashlib.sha256(path.read_bytes()).hexdigest() != data.get('sha256')):
+                    or not path.resolve().is_relative_to(material_dir.resolve())):
+                raise ValueError('material_source_changed')
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if digest != data.get('sha256'):
                 raise ValueError('material_source_changed')
             if data.get('mode') == 'referenced':
-                # 引用材料：先验允许根，再重验清单与源文件哈希，最后核对缓存字节
                 manifest_path = material_dir / '.referenced' / f'{mid}.manifest.json'
                 if not manifest_path.is_file():
                     raise ValueError('material_source_changed')
                 manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
                 if manifest.get('manifest_sha256') != data.get('manifest_sha256'):
                     raise ValueError('material_source_changed')
-                from tools.infra import referenced_materials as rm
-                from tools.policy.exclusions import load_material_source_roots
                 target = Path(str(data.get('source_root') or '')) / str(data.get('source_relpath') or '')
-                try:
-                    rm.resolve_under_roots(target, load_material_source_roots())
-                except ValueError as exc:
-                    raise ValueError('material_source_changed') from exc
+                rm.resolve_under_roots(target,load_material_source_roots())
                 if rm.verify_manifest(target, manifest).get('status') != 'ok':
                     raise ValueError('material_source_changed')
-            records.append({'material_id': mid, 'path': path})
-        documents, _ = read_source_documents(records, refs)
+            records.append({'material_id':mid,'path':path})
+            snapshots[f'evidence_material:{mid}'] = (path,digest)
+        documents, _ = read_source_documents(records, refs, whole)
         validate_field_sources({**s, **doc['lists']}, bindings, documents)
-        return {f'evidence_material:{r["material_id"]}': r['path'] for r in records}
-    except (KeyError, TypeError, OSError, UnicodeError, ValueError) as exc:
-        raise ValueError('material_source_changed_or_invalid') from exc
+        assert_source_snapshot(snapshots)
+        return ValidatedSourcePaths(snapshots, documents=documents)
+    except (KeyError,TypeError,OSError,UnicodeError,ValueError,AttributeError) as exc:
+        raise ValueError(f'material_source_changed_or_invalid:{type(exc).__name__}:{str(exc)[:160]}') from exc

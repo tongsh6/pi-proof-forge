@@ -14,10 +14,10 @@ from typing import Any
 from uuid import uuid4
 
 from tools.infra import evidence_provenance as provenance
-from tools.infra.evidence_sources import read_source_documents
+from tools.infra.evidence_sources import assert_source_snapshot, read_source_documents
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.sidecar.handlers import evidence as _origin
-from tools.sidecar.handlers._shared.material_sources import selected_text_materials
+from tools.sidecar.handlers._shared.material_sources import evidence_bound_materials
 from tools.sidecar.handlers.evidence import (
     SOURCE_FIELDS,
     _UPDATABLE_FIELDS,
@@ -275,10 +275,15 @@ def handle_evidence_update(params: dict[str, Any]) -> dict[str, Any]:
         fields.update(status='needs_review',review_decision='pending',candidate_pool_eligible=False)
     if s.get('source_documents_json'):
         references=json.loads(s['source_documents_json'])
-        records=selected_text_materials(l.get('source_material_ids',[]))
-        _,source=read_source_documents(records,references,json.loads(s.get('source_whole_material_ids_json') or '[]'))
+        whole_ids=json.loads(s.get('source_whole_material_ids_json') or '[]')
+        records,snapshots=evidence_bound_materials(l.get('source_material_ids',[]), references, whole_ids,
+                                                   fingerprints=json.loads(s.get('source_material_fingerprints_json') or '{}'))
+        _,source=read_source_documents(records,references,whole_ids)
         if any(result.casefold() not in source.casefold() for result in fields['results']):
             raise ValueError('no_fabrication_guard: result is not traceable to selected document')
+        assert_source_snapshot(snapshots)
+        if path.read_text(encoding="utf-8") != text:
+            raise ValueError("evidence_review_changed")
     _write_evidence_file(path, fields, preserved_blocks=preserved_blocks)
     return {
         "meta": {"correlation_id": correlation_id},
