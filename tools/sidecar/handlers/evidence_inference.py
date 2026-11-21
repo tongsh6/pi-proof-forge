@@ -10,6 +10,8 @@ from typing import Any
 
 from tools.infra import evidence_inference as inference
 from tools.infra import evidence_provenance as provenance
+from tools.infra import knowledge_index
+from tools.infra.evidence_sources import ValidatedSourcePaths
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.policy.exclusions import load_evidence_inference_enabled
 from tools.sidecar.handlers import evidence as _origin
@@ -81,32 +83,42 @@ def _inference_target_cards(card_ids: object) -> list[str]:
 def handle_evidence_infer_fields(params: dict[str, Any]) -> dict[str, Any]:
     """C4：对缺时间/角色的卡运行规则聚合 + 一次 LLM，产出 L3 候选；不写卡。"""
     correlation_id = params["meta"]["correlation_id"]
-    index = inference.load_index(Path("."))
-    if index is None:
-        return {"meta": {"correlation_id": correlation_id}, "status": "index_missing",
-                "enabled": _origin.load_evidence_inference_enabled(), "cards": [],
-                "summary": {"requested": 0, "candidates": 0}}
     enabled = _origin.load_evidence_inference_enabled()
     target_ids = _inference_target_cards(params.get("card_ids"))
     if not target_ids:
         return {"meta": {"correlation_id": correlation_id}, "status": "no_target_cards",
                 "enabled": enabled, "cards": [],
                 "summary": {"requested": 0, "candidates": 0}}
-    llm_call = _origin._inference_llm_call if enabled else None
-    results: list[dict[str, Any]] = []
+    targets = []
     for evidence_id in target_ids:
         path = _find_evidence_path(evidence_id)
         if path is None:
             raise KeyError(f"NOT_FOUND: {evidence_id}")
         raw = path.read_bytes()
-        doc = parse_simple_yaml(raw.decode("utf-8"))
+        targets.append((evidence_id, path, raw, parse_simple_yaml(raw.decode("utf-8"))))
+    root = Path(".")
+    index = knowledge_index.build_index(root)
+    knowledge_index.save_index(index, root / "knowledge-index")
+    captured_sources = ValidatedSourcePaths()
+    state = inference.load_state(root, captured_sources=captured_sources)
+    llm_call = _origin._inference_llm_call if enabled else None
+    results: list[dict[str, Any]] = []
+    for evidence_id, path, raw, doc in targets:
         result = inference.infer_card(
-            root=Path("."), index=index, card_id=evidence_id,
+            root=root, index=index, card_id=evidence_id, card_path=path,
             card_sha256=hashlib.sha256(raw).hexdigest(),
             card_fields=doc["scalars"], card_lists=doc["lists"],
+            state=state, captured_sources=captured_sources,
             enabled=enabled, llm_call=llm_call,
         )
         results.append(result)
+    for _, _, _, doc in targets:
+        inference.assert_current_inputs(
+            root=root, index=index, card_fields=doc["scalars"],
+            card_lists=doc["lists"], captured_sources=captured_sources,
+        )
+    if any(result.get("cache") == "miss" and result.get("status") != "llm_error" for result in results):
+        inference.save_state(root, state, expected_sha256=captured_sources.snapshots["inference_state"][1])
     status = "ok"
     if any(result.get("status") == "llm_error" for result in results):
         status = "partial"

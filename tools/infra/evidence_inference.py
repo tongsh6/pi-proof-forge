@@ -13,12 +13,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from tools.infra import evidence_provenance as provenance
-from tools.infra.career_profile import load_career_profile
+from tools.infra.evidence_sources import (
+    ValidatedSourcePaths, assert_source_snapshot, exact_document_groups, validated_source_inputs,
+)
 from tools.infra.persistence.atomic_io import atomic_write_text
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.prompts.context import context_fingerprint
 
-INFERENCE_PROMPT_VERSION = 6
+INFERENCE_PROMPT_VERSION = 7
 INFERENCE_STATE_SCHEMA_VERSION = 1
 MAX_DOCUMENTS = 20
 MAX_EXCERPTS = 5
@@ -29,15 +31,6 @@ _OWNER = re.compile(r"我(?:负责|主导|设计|决策|推动|牵头|完成|搭
 _PARTICIPANT = re.compile(r"(?:我|本人)(?:参与|协同|配合|支持)")
 
 
-def load_index(root: Path) -> dict | None:
-    path = Path(root) / "knowledge-index" / "index.json"
-    if not path.is_file() or path.is_symlink():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return payload if isinstance(payload, dict) else None
 
 
 def candidate_hash(field: str, value: str, evidence: list[dict[str, Any]]) -> str:
@@ -141,42 +134,105 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
     return [item[3] for item in scored[:limit]]
 
 
-def read_document_texts(root: Path, documents: list[dict[str, Any]]) -> dict[str, str]:
-    """只读取候选文档所属材料并按 document_id 取正文。"""
+def read_document_texts(
+    root: Path, documents: list[dict[str, Any]], *, index: dict,
+    card_fields: dict, card_lists: dict,
+) -> ValidatedSourcePaths:
+    """从当前登记材料核对所选三元引用，保留实际读取的文本与版本。"""
+    from tools.infra import referenced_materials as rm
     from tools.infra.material_documents import split_material_documents
+    from tools.policy.exclusions import load_material_source_roots, resolve_policy_path
 
-    materials_dir = Path(root) / "materials"
-    texts: dict[str, str] = {}
-    by_material: dict[str, set[str]] = {}
+    materials_dir = (Path(root) / "materials").absolute()
+    try:
+        bindings = json.loads(card_fields.get("source_documents_json") or "[]")
+        whole = json.loads(card_fields.get("source_whole_material_ids_json") or "[]")
+        bound = exact_document_groups(card_lists.get("source_material_ids") or [], bindings, whole)
+        fingerprints = json.loads(card_fields.get("source_material_fingerprints_json") or "{}")
+        if not isinstance(fingerprints, dict):
+            fingerprints = {}
+    except (ValueError, TypeError):
+        bound, fingerprints = {}, {}
+
+    groups: dict[str, list[dict[str, Any]]] = {}
     for document in documents:
-        by_material.setdefault(document["material_id"], set()).add(document["document_id"])
-    for material_id, wanted in by_material.items():
-        material = next((item for item in documents if item["material_id"] == material_id), None)
-        filename = str((material or {}).get("material_filename", ""))
-        path = materials_dir / filename
-        if not filename or not path.is_file() or path.is_symlink():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        for doc in split_material_documents(text, path.name):
-            document_id = str(doc.get("document_id", ""))
-            if document_id in wanted:
-                texts[document_id] = str(doc.get("text", ""))
-    return texts
+        mid = document["material_id"]
+        if (not isinstance(mid, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", mid)
+                or any(not re.fullmatch(r"[0-9a-f]{64}", str(document.get(key, "")))
+                       for key in ("document_id", "sha256"))):
+            raise ValueError("material_document_reference_invalid")
+        groups.setdefault(mid, []).append(document)
+    snapshots, texts = {}, {}
+    try:
+        for mid, selected in groups.items():
+            meta_path = materials_dir / f"{mid}.meta.yaml"
+            if materials_dir.is_symlink() or meta_path.is_symlink() or not meta_path.is_file():
+                raise ValueError("material_source_changed")
+            meta_raw = meta_path.read_bytes()
+            meta_sha = hashlib.sha256(meta_raw).hexdigest()
+            if meta_sha != (index.get("asset_inventory") or {}).get(f"materials/{mid}.meta.yaml"):
+                raise ValueError("material_source_changed")
+            item = parse_simple_yaml(meta_raw.decode("utf-8"))["scalars"]
+            filename = str(item.get("filename") or "")
+            path = materials_dir / filename
+            if (item.get("material_id") != mid or not filename or Path(filename).is_absolute()
+                    or path.is_symlink() or not path.is_file()
+                    or not path.resolve().is_relative_to(materials_dir.resolve())
+                    or any(document.get("material_filename") != filename for document in selected)):
+                raise ValueError("material_source_changed")
+            refs = [{"material_id": mid, "document_id": document["document_id"], "sha256": document["sha256"]}
+                    for document in selected]
+            if item.get("source_mode") == "referenced":
+                roots = load_material_source_roots(resolve_policy_path(Path(root)))
+                existing = {(ref["document_id"], ref["sha256"]) for ref in bound.get(mid, [])}
+                narrow = (isinstance(fingerprints.get(mid), dict) and bool(fingerprints[mid])
+                          and bool(existing)
+                          and all((ref["document_id"], ref["sha256"]) in existing for ref in refs))
+                if not narrow:
+                    manifest_path = materials_dir / ".referenced" / f"{mid}.manifest.json"
+                    if manifest_path.is_symlink() or not manifest_path.is_file():
+                        raise ValueError("material_source_changed")
+                    manifest = json.loads(manifest_path.read_bytes().decode("utf-8"))
+                    target = Path(str(item.get("source_root") or "")) / str(item.get("source_relpath") or "")
+                    rm.resolve_under_roots(target, roots)
+                    if rm.verify_manifest(target, manifest).get("status") != "ok":
+                        raise ValueError("material_source_changed")
+                _, verified, captured = rm.verify_bound_documents(
+                    materials_dir, item, refs, roots,
+                    fingerprint=fingerprints[mid] if narrow else None)
+                if captured[f"evidence_meta:{mid}"][1] != meta_sha:
+                    raise ValueError("material_source_changed")
+                snapshots.update(captured)
+                texts.update(((mid, document_id), text) for document_id, text in verified.items())
+            else:
+                raw = path.read_bytes()
+                digest = hashlib.sha256(raw).hexdigest()
+                current = {doc["document_id"]: doc
+                           for doc in split_material_documents(raw.decode("utf-8"), path.name)}
+                for ref in refs:
+                    doc = current.get(ref["document_id"])
+                    if doc is None or doc["sha256"] != ref["sha256"]:
+                        raise ValueError("material_document_changed_or_missing")
+                    texts[(mid, ref["document_id"])] = doc["text"]
+                snapshots[f"evidence_material:{mid}"] = (path, digest)
+                snapshots[f"evidence_meta:{mid}"] = (meta_path, meta_sha)
+        assert_source_snapshot(snapshots)
+    except (OSError, UnicodeError, KeyError, TypeError) as exc:
+        raise ValueError("material_source_changed") from exc
+    return ValidatedSourcePaths(snapshots, documents=texts)
+
 
 
 def aggregate_documents(
     documents: list[dict[str, Any]],
-    texts: dict[str, str],
+    texts: dict[tuple[str, str], str],
     *,
     max_excerpts: int = MAX_EXCERPTS,
 ) -> list[dict[str, Any]]:
     aggregates: list[dict[str, Any]] = []
     for document in documents:
         document_id = document["document_id"]
-        text = texts.get(document_id, "")
+        text = texts.get((document["material_id"], document_id), "")
         if not text:
             continue
         dates = _dates_in(" ".join([document.get("label", ""), document.get("title", "")]) + "\n" + text[:1200])
@@ -207,23 +263,38 @@ def aggregate_documents(
     return aggregates
 
 
-def employment_windows(root: Path, card_id: str) -> tuple[list[tuple[int, int]], list[str]]:
-    """卡片所属工作的任职区间；找不到关联时退回全部已确认任职区间。"""
+def _confirmed_profile(root: Path, card_id: str) -> tuple[dict, ValidatedSourcePaths]:
+    """未采用的草稿不提供约束；已采用的上下文保留同次解析与依赖版本。"""
+    from tools.infra.career_profile import inspect_career
+
+    path = (Path(root) / "personal_profile.yaml").absolute()
+    if not path.is_file() or path.is_symlink():
+        return {}, ValidatedSourcePaths()
     try:
-        profile = load_career_profile(Path(root) / "personal_profile.yaml")
-    except (OSError, ValueError):
-        return [], []
-    work = (profile.get("career") or {}).get("work") or []
-    rows: list[dict[str, str]] = []
-    for item in work:
-        if not isinstance(item, dict) or not item.get("start"):
-            continue
-        labels = f"{item['start']} ~ {'至今' if item.get('current') or not item.get('end') else item['end']}"
-        rows.append({"company": str(item.get("company", "")), "label": labels,
-                     "card": card_id if card_id in (item.get("evidence_ids") or []) else ""})
-    matched = [row for row in rows if row["card"]] or rows
-    labels = [row["label"] for row in matched]
-    windows: list[tuple[int, int]] = []
+        raw = path.read_bytes()
+        fields = dict(parse_simple_yaml(raw.decode("utf-8"))["scalars"])
+        captured = {}
+        profile = inspect_career(fields, path.parent / "evidence_cards", captured_sources=captured)
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return {}, ValidatedSourcePaths()
+    if (not profile["career_status"]["reviewed"]
+            or not any(card_id in row.get("evidence_ids", []) for row in profile["career"]["work"])):
+        return {}, ValidatedSourcePaths()
+    sources = ValidatedSourcePaths({
+        **captured, "personal_profile": (path, hashlib.sha256(raw).hexdigest()),
+    })
+    assert_source_snapshot(sources.snapshots)
+    return profile, sources
+
+
+def employment_windows(profile: dict, card_id: str) -> tuple[list[tuple[int, int]], list[str]]:
+    """只使用同次已确认档案中与当前卡关联的任职区间。"""
+    labels = [
+        f"{row['start']} ~ {'至今' if row.get('current') or not row.get('end') else row['end']}"
+        for row in (profile.get("career") or {}).get("work") or []
+        if card_id in row.get("evidence_ids", []) and row.get("start")
+    ]
+    windows = []
     for label in labels:
         start, end = provenance.period_bounds(label)
         if start is not None:
@@ -231,21 +302,11 @@ def employment_windows(root: Path, card_id: str) -> tuple[list[tuple[int, int]],
     return windows, labels
 
 
-def _document_pool(aggregates: list[dict[str, Any]], texts: dict[str, str]) -> dict[str, str]:
-    return {item["document_id"]: texts.get(item["document_id"], "") for item in aggregates}
-
-
-def confirmed_work_context(root: Path, card_id: str) -> list[dict[str, Any]]:
-    """只传该卡关联且已确认的任职职责，不传联系方式及无关经历。"""
-    try:
-        profile = load_career_profile(Path(root) / "personal_profile.yaml")
-    except (OSError, ValueError):
-        return []
-    if not (profile.get("career_status") or {}).get("reviewed"):
-        return []
+def confirmed_work_context(profile: dict, card_id: str) -> list[dict[str, Any]]:
+    """只投影同次确认档案中的关联职责，不重新读取档案。"""
     context = []
     for row in (profile.get("career") or {}).get("work") or []:
-        if card_id not in (row.get("evidence_ids") or []):
+        if card_id not in row.get("evidence_ids", []):
             continue
         context.append({
             **{key: str(row.get(key) or "")[:500] for key in ("id", "company", "title", "start", "end", "scope")},
@@ -253,6 +314,7 @@ def confirmed_work_context(root: Path, card_id: str) -> list[dict[str, Any]]:
             "contributions": [str(value)[:500] for value in (row.get("contributions") or [])[:6]],
         })
     return context
+
 
 
 def build_inference_prompt(
@@ -302,19 +364,20 @@ def build_inference_prompt(
 def _evidence_entries(
     raw: Any,
     aggregates: list[dict[str, Any]],
-    texts: dict[str, str],
+    texts: dict[tuple[str, str], str],
 ) -> list[dict[str, str]]:
-    by_doc = {item["document_id"]: item for item in aggregates}
+    by_doc = {(item["material_id"], item["document_id"]): item for item in aggregates}
     entries: list[dict[str, str]] = []
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
             continue
         document_id = str(item.get("document_id", ""))
-        aggregate = by_doc.get(document_id)
+        source_key = (str(item.get("material_id", "")), document_id)
+        aggregate = by_doc.get(source_key)
         if aggregate is None:
             continue
         excerpt = " ".join(str(item.get("excerpt", "")).split())[:300]
-        if len(excerpt) < 8 or excerpt not in texts.get(document_id, ""):
+        if len(excerpt) < 8 or excerpt not in texts.get(source_key, ""):
             continue
         entries.append({
             "material_id": aggregate["material_id"],
@@ -329,7 +392,7 @@ def parse_inference_candidates(
     content: str,
     *,
     aggregates: list[dict[str, Any]],
-    texts: dict[str, str],
+    texts: dict[tuple[str, str], str],
     windows: list[tuple[int, int]],
 ) -> list[dict[str, Any]]:
     text = str(content or "").strip()
@@ -344,7 +407,7 @@ def parse_inference_candidates(
     if not isinstance(payload, dict):
         return []
     candidates: list[dict[str, Any]] = []
-    by_doc = {item["document_id"]: item for item in aggregates}
+    by_doc = {(item["material_id"], item["document_id"]): item for item in aggregates}
     time_raw = payload.get("time_range")
     if isinstance(time_raw, dict) and str(time_raw.get("value", "")).strip():
         value = str(time_raw["value"]).strip()[:60]
@@ -365,7 +428,7 @@ def parse_inference_candidates(
                        "", str(role_raw["value"]).strip()).strip()[:80]
         evidence = _evidence_entries(role_raw.get("evidence"), aggregates, texts)
         if value and evidence:
-            cited = {entry["document_id"] for entry in evidence}
+            cited = {(entry["material_id"], entry["document_id"]) for entry in evidence}
             hits = {
                 "owner": sum(by_doc[document_id]["owner_hits"] for document_id in cited if document_id in by_doc),
                 "participant": sum(by_doc[document_id]["participant_hits"] for document_id in cited if document_id in by_doc),
@@ -418,11 +481,14 @@ def rules_only_candidates(
 
 
 def attempt_fingerprint(card_sha256: str, aggregates: list[dict[str, Any]], windows: list[tuple[int, int]],
-                        work_context: list[dict[str, Any]] | None = None) -> str:
+                        work_context: list[dict[str, Any]] | None = None, *,
+                        captured_sources: ValidatedSourcePaths) -> str:
     canonical = json.dumps(
         {
             "card": card_sha256,
-            "documents": sorted((item["document_id"], item.get("sha256", "")) for item in aggregates),
+            "documents": sorted((item["material_id"], item["document_id"], item.get("sha256", "")) for item in aggregates),
+            "inputs": sorted((key, str(path.absolute()), digest)
+                             for key, (path, digest) in captured_sources.snapshots.items()),
             "windows": [list(item) for item in windows],
             "prompt": INFERENCE_PROMPT_VERSION,
             "task_context": context_fingerprint(),
@@ -434,17 +500,81 @@ def attempt_fingerprint(card_sha256: str, aggregates: list[dict[str, Any]], wind
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _merge_sources(target: ValidatedSourcePaths, incoming: ValidatedSourcePaths) -> None:
+    for key, (path, digest) in incoming.snapshots.items():
+        previous = target.snapshots.get(key)
+        if previous is not None and (previous[0].resolve() != path.resolve() or previous[1] != digest):
+            raise ValueError("material_source_changed")
+        target.snapshots[key] = (path.absolute(), digest)
+        target[key] = path.absolute()
+    for key, text in incoming.documents.items():
+        if key in target.documents and target.documents[key] != text:
+            raise ValueError("material_source_changed")
+        target.documents[key] = text
+
+
+def _assert_state_version(path: Path, expected: str) -> None:
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise ValueError("evidence_inference_state_changed")
+    current = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
+    if current != expected:
+        raise ValueError("evidence_inference_state_changed")
+
+
+def assert_current_inputs(
+    *, root: Path, index: dict, card_fields: dict, card_lists: dict,
+    captured_sources: ValidatedSourcePaths,
+) -> None:
+    """发布前复核累计输入及现行来源许可；当前版本不能替换原捕获。"""
+    snapshots = {key: value for key, value in captured_sources.snapshots.items() if key != "inference_state"}
+    assert_source_snapshot(snapshots)
+    current = read_document_texts(
+        root, select_documents(index, card_fields, card_lists), index=index,
+        card_fields=card_fields, card_lists=card_lists)
+    for key, (path, digest) in current.snapshots.items():
+        original = snapshots.get(key)
+        if original is None or original[0].resolve() != path.resolve() or original[1] != digest:
+            raise ValueError("material_source_changed")
+    if any(captured_sources.documents.get(key) != text for key, text in current.documents.items()):
+        raise ValueError("material_source_changed")
+    # 职业档案可能采用没有进入本卡召回集合的材料，沿原卡依赖复核当前许可。
+    for key, (path, expected) in snapshots.items():
+        if not key.startswith("career_evidence:"):
+            continue
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != expected:
+            raise ValueError("material_source_changed")
+        dependencies = validated_source_inputs(parse_simple_yaml(raw.decode("utf-8")), path.parent.parent / "materials")
+        for source_key, (source_path, digest) in dependencies.snapshots.items():
+            original = snapshots.get(source_key)
+            if original is None or original[0].resolve() != source_path.resolve() or original[1] != digest:
+                raise ValueError("material_source_changed")
+    assert_source_snapshot(snapshots)
+    state_snapshot = captured_sources.snapshots.get("inference_state")
+    if state_snapshot is not None:
+        _assert_state_version(*state_snapshot)
+
+
 def state_path(root: Path) -> Path:
     return Path(root) / "app-data" / "evidence_inference.json"
 
 
-def load_state(root: Path) -> dict[str, Any]:
+def load_state(root: Path, *, captured_sources: ValidatedSourcePaths | None = None) -> dict[str, Any]:
     path = state_path(root)
-    if not path.is_file() or path.is_symlink():
+    if path.is_symlink():
+        if captured_sources is not None:
+            raise ValueError("evidence_inference_state_changed")
+        return {"schema_version": INFERENCE_STATE_SCHEMA_VERSION, "cards": {}}
+    raw = path.read_bytes() if path.is_file() else None
+    if captured_sources is not None:
+        _merge_sources(captured_sources, ValidatedSourcePaths({
+            "inference_state": (path.absolute(), hashlib.sha256(raw).hexdigest() if raw is not None else ""),
+        }))
+    if raw is None:
         return {"schema_version": INFERENCE_STATE_SCHEMA_VERSION, "cards": {}}
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeError):
         return {"schema_version": INFERENCE_STATE_SCHEMA_VERSION, "cards": {}}
     if not isinstance(payload, dict) or not isinstance(payload.get("cards"), dict):
         return {"schema_version": INFERENCE_STATE_SCHEMA_VERSION, "cards": {}}
@@ -452,8 +582,10 @@ def load_state(root: Path) -> dict[str, Any]:
     return payload
 
 
-def save_state(root: Path, state: dict[str, Any]) -> Path:
+def save_state(root: Path, state: dict[str, Any], *, expected_sha256: str | None = None) -> Path:
     path = state_path(root)
+    if expected_sha256 is not None:
+        _assert_state_version(path, expected_sha256)
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(
         path, json.dumps(state, ensure_ascii=False, indent=1, sort_keys=True)
@@ -461,39 +593,47 @@ def save_state(root: Path, state: dict[str, Any]) -> Path:
     return path
 
 
+
 def infer_card(
-    *,
-    root: Path,
-    index: dict,
-    card_id: str,
-    card_sha256: str,
-    card_fields: dict,
-    card_lists: dict,
-    enabled: bool,
-    llm_call: Callable[[str], str] | None,
+    *, root: Path, index: dict, card_id: str, card_path: Path, card_sha256: str,
+    card_fields: dict, card_lists: dict, enabled: bool,
+    llm_call: Callable[[str], str] | None, state: dict,
+    captured_sources: ValidatedSourcePaths,
 ) -> dict[str, Any]:
-    windows, window_labels = employment_windows(root, card_id)
-    work_context = confirmed_work_context(root, card_id)
+    card_sources = ValidatedSourcePaths({
+        f"evidence_card:{card_id}": (Path(card_path).absolute(), card_sha256),
+    })
+    assert_source_snapshot(card_sources.snapshots)
+    profile, profile_sources = _confirmed_profile(root, card_id)
+    _merge_sources(card_sources, profile_sources)
+    windows, window_labels = employment_windows(profile, card_id)
+    work_context = confirmed_work_context(profile, card_id)
     documents = select_documents(index, card_fields, card_lists)
-    texts = read_document_texts(root, documents)
+    sources = read_document_texts(root, documents, index=index, card_fields=card_fields, card_lists=card_lists)
+    _merge_sources(card_sources, sources)
+    _merge_sources(captured_sources, card_sources)
+    texts = sources.documents
     aggregates = aggregate_documents(documents, texts)
-    fingerprint = attempt_fingerprint(card_sha256, aggregates, windows, work_context)
-    state = load_state(root)
+    fingerprint = attempt_fingerprint(card_sha256, aggregates, windows, work_context, captured_sources=card_sources)
+    assert_current_inputs(root=root, index=index, card_fields=card_fields, card_lists=card_lists,
+                          captured_sources=captured_sources)
     stored = state["cards"].get(card_id)
     rejected = set((stored or {}).get("rejected") or [])
+    rules_only = not enabled or llm_call is None
     if (
         isinstance(stored, dict)
         and stored.get("card_sha256") == card_sha256
         and stored.get("attempt_fingerprint") == fingerprint
+        and bool(stored.get("rules_only")) == rules_only
     ):
         candidates = [
             candidate for candidate in stored.get("candidates") or []
             if isinstance(candidate, dict) and candidate.get("candidate_hash") not in rejected
         ]
         return {"card_id": card_id, "card_sha256": card_sha256, "cache": "hit",
-                "status": "rules_only" if stored.get("rules_only") else "ok",
+                "status": "rules_only" if rules_only else "ok",
                 "candidates": candidates, "documents": len(aggregates), "windows": window_labels}
-    if not enabled or llm_call is None:
+    if rules_only:
         candidates = rules_only_candidates(aggregates, windows)
         status = "rules_only"
         error = ""
@@ -503,20 +643,22 @@ def infer_card(
             candidates = parse_inference_candidates(content, aggregates=aggregates, texts=texts, windows=windows)
             status = "ok"
             error = ""
-        except Exception as exc:  # 推断失败不写卡、不编造候选
+        except Exception as exc:  # 模型失败不编造候选；来源复核在此边界之外。
             candidates = []
             status = "llm_error"
             error = str(exc)[:300]
+    assert_current_inputs(root=root, index=index, card_fields=card_fields, card_lists=card_lists,
+                          captured_sources=captured_sources)
     candidates = [candidate for candidate in candidates if candidate.get("candidate_hash") not in rejected]
     if status != "llm_error":
         state["cards"][card_id] = {
             "card_sha256": card_sha256,
             "attempt_fingerprint": fingerprint,
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "rules_only": status == "rules_only",
+            "rules_only": rules_only,
             "candidates": candidates,
             "rejected": sorted(rejected),
         }
-        save_state(root, state)
     return {"card_id": card_id, "card_sha256": card_sha256, "cache": "miss", "status": status,
-            "error": error, "candidates": candidates, "documents": len(aggregates), "windows": window_labels}
+            "candidates": candidates, "documents": len(aggregates), "windows": window_labels,
+            **({"error": error} if error else {})}

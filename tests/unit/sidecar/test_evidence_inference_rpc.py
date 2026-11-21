@@ -1,15 +1,15 @@
 """C4/C5：evidence.inferFields / evidence.confirmInference 的候选、落盘与确认语义。"""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from tools.infra import evidence_inference as inference
-from tools.sidecar.handlers import evidence
+from tools.sidecar import server
+from tools.sidecar.handlers import evidence, materials
 
 
 CARD_YAML = (
@@ -19,38 +19,39 @@ CARD_YAML = (
     'stack:\n  - "Java"\ntags:\n  - "订单"\n'
 )
 
-INDEX = {"nonfact_materials": [], "materials": {"mat_work": {
-    "material_id": "mat_work", "label": "示例公司工作日志", "filename": "mat_work.txt",
-    "documents": [{"document_id": "doc_1", "label": "2023-03 周报", "title": "订单服务周报",
-                   "source_name": "2023-03-06.md", "sha256": "s1", "dates": {"window": "2023-03"}}]}}}
-
-
 def _setup(tmp_path, monkeypatch):
     evidence_dir = tmp_path / "evidence_cards"
     evidence_dir.mkdir()
     path = evidence_dir / "ec_1.yaml"
     path.write_text(CARD_YAML, encoding="utf-8")
-    (tmp_path / "knowledge-index").mkdir()
-    (tmp_path / "knowledge-index" / "index.json").write_text(json.dumps(INDEX), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PPF_POLICY_PATH", str(tmp_path / "policy.local.yaml"))
     monkeypatch.setattr(evidence, "_EVIDENCE_DIR", evidence_dir)
-    monkeypatch.setattr(inference, "select_documents", lambda *a, **k: [
-        {"material_id": "mat_work", "document_id": "doc_1", "label": "2023-03 周报",
-         "title": "订单服务周报", "sha256": "s1", "material_label": "示例公司工作日志",
-         "material_filename": "mat_work.txt", "document_dates": {"window": "2023-03"}}])
-    monkeypatch.setattr(inference, "read_document_texts", lambda *a, **k: {
-        "doc_1": "2023-03-06 周报。我负责订单服务改造，推动库存同步功能上线。"})
-    monkeypatch.setattr(inference, "employment_windows", lambda *a, **k: (
-        [(2022 * 12 + 2, 999999)], ["2022-02 ~ 至今"]))
+    monkeypatch.setattr(materials, "_MATERIALS_DIR", tmp_path / "materials")
+    source_text = "# Source: work/2023-03-06.md\n# 订单服务周报\n\n2023-03-06 周报。我负责订单服务改造，推动库存同步功能上线。\n"
+    uploaded = server.process_request({
+        "jsonrpc": "2.0", "id": "inference-fixture", "method": "material.upload",
+        "params": {
+            "meta": {"correlation_id": "inference-fixture"},
+            "file": {"filename": "work-log.txt", "content_base64": base64.b64encode(source_text.encode()).decode()},
+            "label": "示例公司工作日志",
+        },
+    })
+    assert "error" not in uploaded, uploaded
     return path
 
 
 def _fake_llm(prompt: str) -> str:
+    inputs = json.loads(prompt.split("INPUT JSON:\n", 1)[1])
+    assert len(inputs["documents"]) == 1
+    document = inputs["documents"][0]
+    citation = [{
+        "material_id": document["material_id"], "document_id": document["document_id"],
+        "excerpt": "我负责订单服务改造",
+    }]
     return json.dumps({
-        "time_range": {"value": "2023-03", "precision": "month", "confidence": 0.7,
-                       "evidence": [{"document_id": "doc_1", "excerpt": "我负责订单服务改造"}]},
-        "role_scope": {"value": "订单服务改造负责人", "confidence": 0.6,
-                       "evidence": [{"document_id": "doc_1", "excerpt": "我负责订单服务改造"}]},
+        "time_range": {"value": "2023-03", "precision": "month", "confidence": 0.7, "evidence": citation},
+        "role_scope": {"value": "订单服务改造负责人", "confidence": 0.6, "evidence": citation},
     }, ensure_ascii=False)
 
 
