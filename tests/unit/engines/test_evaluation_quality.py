@@ -1300,3 +1300,201 @@ def test_quality_normalized_partial_cache_cannot_gain_default_empty_sections(tmp
     assert meta["cache"] == "miss"
     assert second == first
     assert second["r1_4"], "freshly validated ownership judgment must survive cache replacement"
+
+def _evaluate_generated_judge_request(tmp_path, monkeypatch, generation, cited_fact):
+    """Actual shared generation, current source reads and evaluation; only HTTP is replaced."""
+    import io
+    from tools.engines.generation import resume_renderer
+    from tools.engines.matching.semantic_matching import run_semantic_matching, write_semantic_report
+    from tools.infra.persistence.review_snapshot import read_generation_trace
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+    from tools.orchestration.evaluation_flow import EvaluationFlowConfig, run_evaluation_flow
+
+    _assembler, _identity, _matching, paths = generation
+    card_id, field, index = cited_fact.rsplit(":", 2)
+    doc = parse_simple_yaml(paths["card"].read_text())
+    citation = {"fact_id": cited_fact, "quote": doc["lists"][field][int(index)]}
+    paths["job"].write_text(paths["job"].read_text() + 'must_have:\n  - "完成队列接口的联调与验收"\n')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LLM_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("LLM_THINKING", "default")
+    monkeypatch.setenv("PPF_QUALITY_JUDGE_CACHE_DIR", str(tmp_path / "judge-cache"))
+    quality_requests = []
+
+    def respond(request, **kwargs):
+        assert request.full_url == "http://127.0.0.1:9000/v1/chat/completions"
+        wire = json.loads(request.data)
+        content = wire["messages"][-1]["content"]
+        if "INPUT JSON:\n" in content:
+            data = json.loads(content.split("INPUT JSON:\n", 1)[1])
+            quality_requests.append(data)
+            bullets = data["bullets"]
+            assert bullets and data["jd_items"]
+            reference = "bullet#" + str(bullets[0]["bullet"])
+            # This response checks transport and deterministic guards, not model semantics.
+            answer = {
+                "r1_4": [{"bullet": row["bullet"], "supported": True, "citations": [card_id],
+                           "reason": "合成协议响应；不作为语义验收。"} for row in bullets],
+                "r2_1": [{"jd_item_id": row["id"], "status": "weak", "bullet_ref": reference,
+                           "citations": [reference], "reason": "合成协议响应。"} for row in data["jd_items"]],
+                "r3_1": [{"bullet": row["bullet"], "scene": True, "action": True, "result": True,
+                           "citations": [card_id], "reason": "结果资格仍须由现行来源核定。"}
+                          for row in bullets if row["section"] in {"项目经历", "工作经历", "补充成果"}],
+                "r3_5": {"summary_lines": 1, "role_scale_match": True, "generic_adjectives": [],
+                           "citations": [reference], "reason": "合成协议响应。"},
+                "r4_1": [],
+            }
+        else:
+            data = json.loads(content)
+            if data["stage"] == "recall":
+                answer = {"cards": [{"id": card_id, "score": 90, "reason": "合成精确引文",
+                                      "requirement_ids": ["r1"], "citations": [citation]}]}
+            else:
+                answer = {"assessments": [
+                    {"requirement_id": row["id"], "status": "supported",
+                     "reason": "合成精确引文", "citations": [citation]}
+                    for row in data["requirements"]]}
+        return io.BytesIO(json.dumps({"choices": [
+            {"message": {"content": json.dumps(answer, ensure_ascii=False)}, "finish_reason": "stop"}
+        ]}).encode())
+
+    monkeypatch.setattr("tools.infra.llm.client.request.urlopen", respond)
+    client = LLMClient("http://127.0.0.1:9000/v1", "", provider="openai_compatible",
+                       thinking_enabled=None)
+    semantic = run_semantic_matching(
+        job_path=paths["job"], evidence_files=[paths["card"]], personal_profile=paths["profile"],
+        client=client, model="synthetic-wire-model", cache_dir=tmp_path / "matching-cache")
+    report_path = tmp_path / "matching.yaml"
+    write_semantic_report(report_path, semantic)
+    views = resume_renderer.load_cards(paths["card"].parent, [card_id], tmp_path / "materials",
+                                       require_saved_eligible=True)
+    captured = {}
+    profile, target = resume_renderer.load_generation_context(
+        paths["profile"], paths["job"], captured_inputs=captured)
+    claims = []
+    markdown = resume_renderer.build_template_resume(
+        "A", views, personal_profile=profile, job_context=target, semantic_report=semantic, claims=claims)
+    inputs = {"personal_profile": paths["profile"], "job_profile": paths["job"],
+              "job_description": paths["jd"], card_id: paths["card"],
+              "matching_report": report_path, "semantic_matching": report_path.with_suffix(".semantic.json")}
+    for key in ("matching_report", "semantic_matching"):
+        captured[key] = hashlib.sha256(inputs[key].read_bytes()).hexdigest()
+    trace = resume_renderer.build_generation_trace(
+        version="quality-wire", content=markdown, strategy="semantic_selection_locked_evidence_fields",
+        semantic=semantic, profile=profile, target=target, selected_cards=views, claims=claims,
+        paths=inputs, captured_inputs=captured, missing_profile=["phone"], missing_target=[])
+    resume_path = tmp_path / "resume.md"
+    resume_path.write_text(markdown)
+    resume_path.with_suffix(".trace.json").write_text(json.dumps(trace))
+    assert read_generation_trace(resume_path)[1], "fixture must have a valid actual generation trace"
+    before = {Path(meta["path"]): Path(meta["path"]).read_bytes() for meta in trace["inputs"].values()}
+    config = EvaluationFlowConfig(
+        input_path=resume_path, output_path=tmp_path / "quality.md", job_profile_path=paths["job"],
+        use_llm=True, require_llm=True, model="synthetic-wire-model",
+        base_url="http://127.0.0.1:9000/v1", api_key="")
+    assert run_evaluation_flow(config) == 0
+    assert all(path.read_bytes() == raw for path, raw in before.items())
+    assert read_generation_trace(resume_path)[1]
+    result = json.loads(config.output_path.with_suffix(".json").read_text())
+    assert result["traceability"]["status"] == "verified"
+    assert result["quality_report"]["auto_pass"] is False
+    assert result["quality_judge"]["model_calls"] == 1
+    request, = quality_requests
+    return markdown, trace, views[0], request, result
+
+@pytest.mark.parametrize("measured", [False, True], ids=["nonquantified", "measured"])
+def test_quality_request_keeps_selected_sixth_result_and_complete_source_boundary(
+        tmp_path, monkeypatch, generation, measured):
+    _assembler, _identity, _matching, paths = generation
+    role = "负责接口协议、调用链路与回放记录的核对。" * 5 + "总体架构由平台组负责，本人仅负责接口对接。"
+    context = "固定请求样本覆盖空队列、连续入队和消费恢复，并保留每次回放记录。" * 7 + "全部测试均为冷启动；生产环境尚未上线。"
+    action = "完成队列接口联调并保存可重复的回放验收记录。"
+    results = [f"已交付第{index}批队列接口兼容性核对记录。" for index in range(5)]
+    value = ("已完成固定样本、输入顺序、回放条件和原始日志的逐项核对。" * 7
+             + ("在隔离测试环境的冷启动回放中，固定负载的 P95 从 200ms 降至 120ms。"
+                if measured else "已交付完整的冷启动回放验收记录，并通过对应测试范围的验收。")
+             + "该结论仅覆盖接口对接范围，生产环境尚未上线。")
+    results.append(value)
+    assert len(role) > 60 and len(context) > 160 and len(value) > 160
+    scalars = {"id": paths["card"].stem, "title": "队列接口回放验收", "time_range": "2024-01 ~ 2024-06",
+               "role_scope": role, "context": context}
+    lists = {"actions": [action], "results": results, "stack": ["Java"],
+             "artifacts": ["合成队列接口回放验收记录"]}
+    lines = [key + ": " + json.dumps(item, ensure_ascii=False) for key, item in scalars.items()]
+    for key, values in lists.items():
+        lines += [key + ":"] + ["  - " + json.dumps(item, ensure_ascii=False) for item in values]
+    paths["card"].write_text("\n".join(lines) + "\n")
+    write_reviewed_result_sources(
+        paths["card"], {index: (value if index == 5 and measured else None) for index in range(6)},
+        material_dir=tmp_path / "materials")
+    fact_id = paths["card"].stem + ":results:5"
+    markdown, trace, view, data, result = _evaluate_generated_judge_request(
+        tmp_path, monkeypatch, generation, fact_id)
+    claim, = [row for row in trace["claims"] if row.get("fact_id") == fact_id]
+    assert claim["text"] == value and value in markdown.splitlines()[claim["render_line"] - 1]
+    assert role in markdown and context in markdown
+    adopted_result_ids = {row["fact_id"] for row in trace["claims"] if row.get("field") == "results"}
+    assert fact_id in adopted_result_ids and paths["card"].stem + ":results:4" not in adopted_result_ids
+    strong = result["quality_report"]["tiers"]["strong"]
+    assert strong["metrics"]["quant_total"] == (0.3333 if measured else 0.0)
+    bullet = next(row for row in data["bullets"] if row["text"] == value)
+    assert not any(failure["rule"] == "R3.1" and failure["target"] == "bullet#" + str(bullet["bullet"])
+                   for failure in strong["failures"])
+    card, = data["cards"]
+    # All original source text remains available as independent verification context.
+    assert card["results"] == results
+    assert card["role_scope"] == role and card["context"] == context
+    projected = [row for row in data.get("claims", []) if row.get("fact_id") == fact_id]
+    assert len(projected) == 1, "the actual result occurrence must reach the judge with its source identity"
+    assert {key: projected[0][key] for key in ("field", "index", "value", "render_line")} == {
+        "field": "results", "index": 5, "value": value, "render_line": claim["render_line"]}
+    assert bullet["render_line"] == claim["render_line"]
+    assert set(card["result_reviews"]) == adopted_result_ids
+    assert card["result_reviews"][fact_id] == view["result_reviews"][fact_id]
+
+@pytest.mark.parametrize("source_sample", [(
+    ["完成队列处理接口的联调与回放验收。"],
+    ["在隔离测试环境中，固定负载下队列延迟降低 37%。"],
+)], indirect=True)
+def test_quality_request_does_not_promote_same_text_unused_result(
+        tmp_path, monkeypatch, generation, source_sample, result_review_model):
+    from tools.sidecar.handlers import evidence
+
+    _material_dir, card_path, params, scope = _scoped_review(source_sample, field="results")
+    value = scope["value"]
+    params["draft"]["actions"] = [value]
+    params["draft"]["field_sources"].append({
+        "field": "actions", "value": value, "quote": scope["source"]["quote"],
+        "material_id": scope["source"]["material_id"],
+        "document_id": scope["source"]["document_id"],
+    })
+    params["review"]["fact_scope"] = {**scope, "attribution": "teammate"}
+    result_review_model["reply"] = {
+        "outcome": "established", "measurement_quote": value,
+        "rationale": "合成已核结果属于同事，本人的正文只能采用另一个行动身份。"}
+    evidence.handle_evidence_save_draft(params)
+    detail = evidence.handle_evidence_get({"meta": params["meta"], "evidence_id": card_path.stem})["evidence"]
+    original_scopes = detail["fact_scope_review"]
+    paths = {**generation[3], "card": card_path}
+    action_id, result_id = card_path.stem + ":actions:0", card_path.stem + ":results:0"
+    markdown, trace, _view, data, result = _evaluate_generated_judge_request(
+        tmp_path, monkeypatch, (*generation[:3], paths), action_id)
+    rendered = {row.get("fact_id") for row in trace["claims"]}
+    assert action_id in rendered and result_id not in rendered
+    claim, = [row for row in trace["claims"] if row.get("fact_id") == action_id]
+    assert value in markdown.splitlines()[claim["render_line"] - 1]
+    strong = result["quality_report"]["tiers"]["strong"]
+    assert strong["metrics"]["quant_total"] == 0.0
+    bullet = next(row for row in data["bullets"] if row["text"] == value)
+    assert any(failure["rule"] == "R3.1" and failure["target"] == "bullet#" + str(bullet["bullet"])
+               and "结果" in failure["reason"] for failure in strong["failures"])
+    # Same text may remain in source context; exact identity controls adopted positive evidence.
+    projected = {row.get("fact_id"): row for row in data.get("claims", [])}
+    assert action_id in projected and result_id not in projected
+    assert {key: projected[action_id][key] for key in ("field", "index", "value", "render_line")} == {
+        "field": "actions", "index": 0, "value": value, "render_line": claim["render_line"]}
+    assert bullet["render_line"] == claim["render_line"]
+    source, = data["cards"]
+    assert source["results"] == [value]
+    assert source["result_reviews"] == {}
+    assert source["fact_scope_review"] == original_scopes

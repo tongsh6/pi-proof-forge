@@ -7,9 +7,10 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from tools.domain.quality_text import matches_fact_occurrence
 from tools.infra.evidence_provenance import parse_provenance
 
-PROMPT_VERSION = 5
+PROMPT_VERSION = 6
 JUDGE_SCHEMA_VERSION = 1
 
 _RULES = ("r1_4", "r2_1", "r3_1", "r3_5", "r4_1")
@@ -39,29 +40,42 @@ def resume_lines(resume: str) -> list[dict[str, object]]:
     return lines
 
 
-def _clip(value: object, limit: int) -> str:
-    text = " ".join(str(value or "").split())
-    return text if len(text) <= limit else text[: limit - 1] + "…"
+def summarize_cards(cards: dict[str, dict], *, claims: list[dict]) -> list[dict[str, object]]:
+    """Complete source context, with result credit restricted to adopted occurrences."""
+    adopted_results: dict[str, dict] = {}
+    for claim in claims:
+        if claim.get("source_kind") != "evidence" or claim.get("field") != "results":
+            continue
+        card_id = claim["evidence_id"]
+        fact_id = claim["fact_id"]
+        reviewed = (cards[card_id].get("result_reviews") or {}).get(fact_id, {})
+        if (
+            reviewed.get("field") == "results"
+            and fact_id == f"{card_id}:results:{reviewed.get('index')}"
+            and reviewed.get("value") == claim["value"]
+            and reviewed.get("result_review", {}).get("outcome") == "established"
+        ):
+            adopted_results.setdefault(card_id, {})[fact_id] = reviewed
 
-
-def summarize_cards(cards: dict[str, dict]) -> list[dict[str, object]]:
     summary: list[dict[str, object]] = []
     for card_id in sorted(cards):
         card = cards.get(card_id) or {}
         role = parse_provenance(card.get("role_scope_provenance") or card.get("role_scope_provenance_json")) or {}
-        results = [str(item) for item in (card.get("results") or []) if str(item).strip()]
         summary.append(
             {
                 "id": card_id,
-                "title": _clip(card.get("title"), 80),
-                "time_range": _clip(card.get("time_range"), 40),
-                "role_scope": _clip(card.get("role_scope"), 60),
+                "title": str(card.get("title") or ""),
+                "time_range": str(card.get("time_range") or ""),
+                "role_scope": str(card.get("role_scope") or ""),
+                "role_scope_provenance": role,
                 "role_scope_level": role.get("level", "L1" if card.get("role_scope") else "L5"),
                 "role_scope_confirmed": role.get("confirmed_by_user") is True,
-                "context": _clip(card.get("context"), 160),
-                "actions": [_clip(item, 160) for item in (card.get("actions") or [])[:5]],
-                "results": [_clip(item, 160) for item in results[:5]],
-                "stack": [_clip(item, 40) for item in (card.get("stack") or [])[:8]],
+                "context": str(card.get("context") or ""),
+                "actions": [str(item) for item in (card.get("actions") or [])],
+                "results": [str(item) for item in (card.get("results") or [])],
+                "stack": [str(item) for item in (card.get("stack") or [])],
+                "fact_scope_review": card.get("fact_scope_review") or [],
+                "result_reviews": adopted_results.get(card_id, {}),
             }
         )
     return summary
@@ -73,23 +87,43 @@ def build_judge_prompt(
     cards: dict[str, dict],
     jd_items: list[dict[str, str]],
     resume_text: str = "",
+    trace: dict | None = None,
     sections: tuple[str, ...] | None = None,
 ) -> str:
     bullet_lines = [
         {
             "bullet": int(row["number"]),
             "section": row.get("section", ""),
-            "entry": _clip(row.get("entry"), 80),
+            "entry": str(row.get("entry") or ""),
+            "render_line": row["line"] + 1 if type(row.get("line")) is int else None,
             "first_screen": bool(row.get("first_screen")),
             "text": str(row.get("text", "")),
         }
         for row in bullets
         if row.get("section") in {"项目经历", "工作经历", "补充成果", "核心能力"}
     ]
+    lines = resume_lines(resume_text)
+    visible_lines = {int(row["id"].split("#", 1)[1]) for row in lines}
+    visible_lines.update(row["render_line"] for row in bullet_lines if row["render_line"] is not None)
+    claims: list[dict] = []
+    for original in (trace.get("claims") or []) if isinstance(trace, dict) else []:
+        if not isinstance(original, dict) or original.get("render_line") not in visible_lines:
+            continue
+        claim = dict(original)
+        field = claim.get("field")
+        if claim.get("source_kind") == "evidence" and field in {"actions", "results"}:
+            card_id = claim.get("evidence_id", "")
+            values = (cards.get(card_id) or {}).get(field) or []
+            if not matches_fact_occurrence(card_id, field, values, claim):
+                raise ValueError("quality_claim_source_mismatch")
+            index = int(claim["fact_id"].rsplit(":", 1)[1])
+            claim.update(index=index, value=values[index])
+        claims.append(claim)
     payload = {
-        "resume_lines": resume_lines(resume_text),
-        "bullets": bullet_lines[:60],
-        "cards": summarize_cards(cards)[:60],
+        "resume_lines": lines,
+        "bullets": bullet_lines,
+        "claims": claims,
+        "cards": summarize_cards(cards, claims=claims),
         "jd_items": [
             {"id": item.get("id", ""), "kind": item.get("kind", "must_have"), "text": str(item.get("text", ""))}
             for item in jd_items
@@ -112,6 +146,14 @@ def build_judge_prompt(
         "You are a strict resume-quality judge. Judge ONLY from the provided bullets, evidence cards and JD items.\n"
         "每项判断必须引用输入中存在的 bullet#N、line#N 或证据卡 id。仅 absent 可引用 resume，"
         "表示已审阅本次完整正文。理由用简短中文，不虚构事实。\n"
+        "claims 按实际 render_line 记录正文已采用的来源身份；行动和结果的 index/value 是原字段位置与完整原文，"
+        "不能按同文或同卡替换身份。cards 是完整原卡核验语境，role_scope_provenance 和 fact_scope_review "
+        "提供已有职责与范围；它们可以支持或反驳正文已经表达的职责和条件，但不能补出未呈现的行动、成果、"
+        "JD 覆盖、规模或亮点。unknown、缺核定或不同范围本身不等于相反事实。"
+        "cards.result_reviews 只包含正文实际采用且当前已核的完整结果原 row；使用同一 row 的 value、scope、"
+        "source 和 result_review，不拼接另一事实的信用。其他原卡结果即便同文或真实，也不是本次正文成果。"
+        "正文场景须实际呈现；仅在原卡 context 中出现不等于已在正文表达。"
+        "时间等结构 claims 可能按已核来源降低显示精度，不把完整日期未展示当作事实冲突。\n"
         "Return ONLY a JSON object (no markdown fence) with EXACTLY these keys: " + ", ".join(selected) + "\n"
         + schema_text
         + "Rules: r1_4 covers every bullet whose wording claims ownership (负责/主导/独立负责/全权负责/设计并落地); "
@@ -129,7 +171,7 @@ def build_judge_prompt(
         "不因无独立卡 id 而省略判定。只评价实际正文，不从证据卡补出未呈现的行动和成果。"
         "r3_5 judges 职业概述 in resume_lines (<=3 lines, role/scale match, no generic adjectives). "
         "r4_1 nominates 0-3 differentiated highlights that exceed the JD requirement in one of the four dimensions; "
-        "only use L1 when the cited card text directly shows it.\n"
+        "only use L1 when the actual rendered claim and its complete source evidence directly show it.\n"
         "INPUT JSON:\n" + json.dumps(payload, ensure_ascii=False)
     )
 

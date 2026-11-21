@@ -145,3 +145,22 @@ def test_visible_citation_can_fill_omitted_duplicate_bullet_ref():
                                       jd_items=JD_ITEMS, resume_text="## 核心技能\nJava\n")
     assert "r2_1" in judged["judged_sections"]
     assert judged["r2_1"][1]["bullet_ref"] == "line#2"
+
+
+def test_judge_preserves_complete_card_verification_context():
+    role = "负责接口协议、调用链路与回放记录的核对。" * 5 + "总体架构由平台组负责，本人仅负责接口对接。"
+    context = "本次核验采用固定请求样本并保留每次回放记录。" * 12 + "全部测试均为冷启动；生产环境尚未上线。"
+    action = "整理接口输入输出、调用链路和可重复回放记录。" * 12 + "对接范围不包括平台总体架构与生产发布。"
+    results = ["第" + str(index) + "项独立材料记录，仅作核验语境。" for index in range(5)] + [
+        "已交付接口验收记录，结论仅适用于上述冷启动测试条件。"]
+    assert len(role) > 60 and len(context) > 160 and len(action) > 160
+    prompt = llm_judge.build_judge_prompt(
+        bullets=[], jd_items=[], cards={"ec-boundary": {
+            "title": "接口对接", "role_scope": role, "context": context,
+            "actions": [action], "results": results,
+        }})
+    card, = json.loads(prompt.split("INPUT JSON:\n", 1)[1])["cards"]
+    # Original context is independent verification input, not adopted resume credit.
+    assert {key: card[key] for key in ("role_scope", "context", "actions", "results")} == {
+        "role_scope": role, "context": context, "actions": [action], "results": results,
+    }

@@ -42,7 +42,7 @@ def _read_quality_input(meta: dict) -> bytes:
 
 def _load_quality_cards(trace: dict) -> dict[str, dict]:
     """只解析生成 trace 所绑定的本次来源版本。"""
-    from tools.infra.evidence_fact_scope import current_result_reviews
+    from tools.infra.evidence_fact_scope import current_result_reviews, project_fact_scope
     from tools.infra.evidence_sources import validated_source_inputs
     from tools.infra.material_paths import materials_dir_for
 
@@ -66,7 +66,13 @@ def _load_quality_cards(trace: dict) -> dict[str, dict]:
                     or expected.get("sha256") != digest):
                 raise ValueError("quality_input_changed")
         reviews = current_result_reviews(doc, material_dir, card_id=card_id, validated_sources=sources)
-        cards[card_id] = {**doc["scalars"], **doc["lists"], "result_reviews": reviews}
+        scopes = project_fact_scope(
+            doc, json.loads(doc["scalars"].get("source_documents_json") or "[]"),
+            json.loads(doc["scalars"].get("field_sources_json") or "[]"), documents=sources.documents,
+        )
+        cards[card_id] = {
+            **doc["scalars"], **doc["lists"], "result_reviews": reviews, "fact_scope_review": scopes,
+        }
     return cards
 
 
@@ -193,7 +199,7 @@ def _run_quality_judge(
                     {"role": "system", "content": "You are a strict judge. Return ONLY the JSON object."},
                     {"role": "user", "content": llm_judge.build_judge_prompt(
                         bullets=bullets, cards=cards, jd_items=jd_items,
-                        resume_text=resume_text, sections=sections)},
+                        resume_text=resume_text, trace=trace, sections=sections)},
                 ],
             },
         )
