@@ -4,6 +4,14 @@ import pytest
 from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_current_official_target(monkeypatch):
+    # These transport/quota fixtures do not own real Job/Profile authority.
+    # The current official gate is exercised with native records in test_official_job_profile_binding.
+    monkeypatch.setattr("tools.sidecar.handlers.daily_delivery.require_current_pdf_queue_target", lambda _: None)
+
+
+
 def setup(tmp_path,monkeypatch):
     from tools.sidecar.handlers import agent,daily_delivery as flow
     monkeypatch.setattr(agent,'_PROJECT_ROOT',tmp_path);monkeypatch.setattr(agent,'_AGENT_RUN_DIR',tmp_path/'outputs/agent_runs');monkeypatch.setattr(agent,'_REVIEW_QUEUE_DIR',tmp_path/'outputs/review_queue')

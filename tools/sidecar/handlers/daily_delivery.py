@@ -1,6 +1,7 @@
 """每日授权的 App 接口；文件与岗位身份只从批准快照读取。"""
 from __future__ import annotations
 import json
+from tools.domain.job_lead_state import canonical_liepin_detail_url
 from tools.sidecar.handlers import agent
 from tools.infra.persistence.daily_delivery import DailyDeliveryStore
 from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
@@ -8,10 +9,34 @@ from tools.infra.persistence.review_queue import locked_review_queue
 from tools.channels.base import DeliveryRequest
 from tools.orchestration.approved_delivery import _job_key
 
-REASONS={'completed','candidate_shortfall','daily_not_active','daily_expired','daily_date_changed','daily_limit_reached','daily_scope_mismatch','daily_unresolved','daily_execution_stopped','daily_login_required','daily_attachment_capacity','daily_upload_unconfirmed','daily_binding_unconfirmed','daily_receipt_unknown','daily_interrupted','daily_recovery_required'}
+REASONS={'completed','candidate_shortfall','daily_not_active','daily_expired','daily_date_changed','daily_limit_reached','daily_scope_mismatch','daily_unresolved','daily_execution_stopped','daily_login_required','daily_attachment_capacity','daily_upload_unconfirmed','daily_binding_unconfirmed','daily_receipt_unknown','daily_interrupted','daily_recovery_required','quick_official_target_changed'}
 
 def store():
     return DailyDeliveryStore(agent._PROJECT_ROOT/'outputs/submissions/delivery_attempts.sqlite3')
+
+def require_current_pdf_queue_target(q):
+    """Validate the sealed target against the current official Quick Run launch receipt."""
+    from tools.sidecar.handlers.quick_run_results import require_current_official_run
+    message = 'quick_official_target_changed'
+    try:
+        quick_id = agent._validate_run_resource_id('quick_run_id', q.get('quick_run_id'))
+        root = agent._PROJECT_ROOT
+        run_file = root/'outputs/quick_runs'/f'{quick_id}.json'
+        run = json.loads(run_file.read_text(encoding='utf-8'))['run']
+        if run.get('run_id') != quick_id or run.get('status') != 'DONE' or len(q['candidates']) != 1:
+            raise ValueError(message)
+        c = q['candidates'][0]
+        pin = require_current_official_run(run, root)
+        capture = pin['capture']
+        if (c.get('delivery_kind') != 'generated_pdf' or c.get('source') != 'liepin_official'
+                or c.get('platform') != 'liepin' or c.get('jd_status') != 'complete_reviewed'
+                or c.get('job_lead_id') != pin['job_lead_id'] or c.get('job_profile_id') != run['job_profile_id']
+                or canonical_liepin_detail_url(c.get('job_url')) != capture['source_url']
+                or any(c.get(k) != capture[k] for k in ('platform_job_id','platform_job_type','source_jd_sha256'))):
+            raise ValueError(message)
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError, AttributeError):
+        raise ValueError(message) from None
+
 
 def scope_item(run_id,*,fresh=False):
     agent._validate_run_resource_id('run_id',run_id)
@@ -25,6 +50,7 @@ def scope_item(run_id,*,fresh=False):
     if fresh and (c.get('status')!='pending' or q.get('pdf_upload') or q.get('pdf_delivery') or store().has_attempt(key)):
         raise ValueError('daily_candidate_already_used')
     if fresh:
+        require_current_pdf_queue_target(q)
         from tools.infra.resume_content import require_queue_content
         require_queue_content(agent._PROJECT_ROOT,q,require_approval=bool(q.get('pdf_upload') or q.get('pdf_delivery')))
     return dict(run_id=run_id,job_key=key,pdf_sha256=sealed['pdf_sha256'],channel='liepin',delivery_kind='generated_pdf',
@@ -123,6 +149,7 @@ def handle_change(params):
             if scope_item(item['run_id'])!=item:raise ValueError('daily_scope_mismatch')
             q=agent._load_queue(agent._get_queue_file(item['run_id']))
             if not q.get('pdf_delivery',{}).get('state')=='success':
+                require_current_pdf_queue_target(q)
                 from tools.infra.export.resume_filename import check_platform_pdf_filename
                 if q['candidates'][0].get('pdf_filename'):
                     check_platform_pdf_filename(q['candidates'][0]['pdf_filename'])
@@ -151,6 +178,7 @@ def handle_claim(params):
 def check_queue_write(q,digest):
     if q.get('daily_interruption') and q.get('pdf_delivery',{}).get('state')!='success':
         raise ValueError('daily_recovery_required')
+    require_current_pdf_queue_target(q)
     from tools.infra.resume_content import require_queue_content
     require_queue_content(agent._PROJECT_ROOT,q,require_approval=bool(q.get('pdf_upload') or q.get('pdf_delivery')))
     return store().write_permit(q.get('daily_cycle'),q['run_id'],digest,attempt_id=q.get('pdf_delivery',{}).get('attempt_id'))
@@ -162,6 +190,7 @@ def handle_permit(params):
 
 def handle_check(params):
     item=scope_item(params.get('run_id'))
+    require_current_pdf_queue_target(agent._load_queue(agent._get_queue_file(item['run_id'])))
     checked=store().check_write(params.get('id'),item['run_id'],item['pdf_sha256'])
     if checked!=item:raise ValueError('daily_scope_mismatch')
     return {'valid':True}
