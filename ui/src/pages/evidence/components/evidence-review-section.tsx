@@ -89,7 +89,22 @@ export function EvidenceReviewSection({
       )}
       {!!options.length&&<details className="mt-3 space-y-2 text-sm" data-testid="fact-scope-review">
         <summary>{t("factScope.title")}</summary>
-        {reviewedScopes?.map((row,index)=><p key={row.fact_id+":"+index}>{row.value} · {t("factScope."+row.attribution)} · {row.target} · {t("factScope."+row.environment)} · {t("factScope."+row.implementation)} · {t("factScope."+row.release)}</p>)}
+        {reviewedScopes?.map((row,index)=><div key={row.fact_id+":"+index} className="space-y-1">
+          <p>{row.value} · {t("factScope."+row.attribution)} · {row.target} · {t("factScope."+row.environment)} · {t("factScope."+row.implementation)} · {t("factScope."+row.release)}</p>
+          {row.field==="results"&&((row.sources??[]).length ? row.sources.map((source,sourceIndex)=>{
+            const review=source.result_review;
+            return <div key={sourceIndex} className="space-y-1 border-l border-border pl-3 text-xs">
+              <p>{t("factScope.resultReview."+(review?.outcome??"unreviewed"))}</p>
+              {review&&<p>{review.rationale}</p>}
+              {review?.measurement_quote ? <>
+                <p>{t("factScope.resultReview.measurementQuote")}</p>
+                <blockquote className="whitespace-pre-wrap">{review.measurement_quote}</blockquote>
+              </> : <p>{t("factScope.resultReview.noMeasurement")}</p>}
+              <p className="break-all text-text-secondary">{t("factScope.resultReview.source")} · {source.material_id} / {source.document_id} · {source.sha256.slice(0,12)}</p>
+              <blockquote className="whitespace-pre-wrap">{source.quote}</blockquote>
+            </div>;
+          }) : <p className="text-xs">{t("factScope.resultReview.unreviewed")}</p>)}
+        </div>)}
         <p>{t("factScope.hint")}</p>
         <select aria-label={t("factScope.fact")} value={key} disabled={busy} onChange={e=>{
           setKey(e.target.value);setAttribution("unknown");setTarget("");setEnvironment("unknown");setImplementation("unknown");setRelease("unknown");

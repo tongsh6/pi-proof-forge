@@ -62,7 +62,10 @@ export type EvidenceFactScopeReview=({kind:"revoke"} & EvidenceFactPosition) | (
 } & EvidenceFactPosition);
 export type EvidenceFactScopeProjection=EvidenceFactPosition & {fact_id:string;attribution:EvidenceFactAttribution|"conflict";target:string;
   environment:EvidenceFactEnvironment;implementation:EvidenceFactImplementation|"conflict";
-  release:EvidenceFactRelease|"conflict";sources:(EvidenceFactScopeSource & {attribution:EvidenceFactAttribution;implementation:EvidenceFactImplementation;release:EvidenceFactRelease})[]};
+  release:EvidenceFactRelease|"conflict";sources:(EvidenceFactScopeSource & {
+    attribution:EvidenceFactAttribution;implementation:EvidenceFactImplementation;release:EvidenceFactRelease;
+    result_review?:{outcome:"established"|"not_established"|"unknown";measurement_quote:string|null;rationale:string};
+  })[]};
 export interface EvidenceDetail {
   fact_scope_review?: EvidenceFactScopeProjection[];
   field_sources?: EvidenceFieldSource[];

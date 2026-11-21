@@ -111,3 +111,61 @@ for(const reviewTargetId of [undefined,'other']){
     result = subprocess.run(["node", "-e", script], cwd=Path(__file__).resolve().parents[3],
                             capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_result_review_display_preserves_each_source_and_never_submits_authority():
+    script = r'''
+const assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm'), ts=require('./ui/node_modules/typescript');
+let hooks=[], index=0, tree, calls=[];
+const react={useState(init){const i=index++;if(!(i in hooks))hooks[i]=init;return [hooks[i],v=>{hooks[i]=v;}]}};
+const jsx=(type,props)=>({type,props}), exports={};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/src/pages/evidence/components/evidence-review-section.tsx','utf8'),
+ {compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,
+ {exports,require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx,jsxs:jsx,Fragment:'fragment'}:n==='react-i18next'?{useTranslation:()=>({t:k=>k})}:{}});
+const value='隔离测试的 P95 为 120 ms；生产目标为 80 ms。';
+const measured='隔离测试的 P95 为 120 ms';
+const source={material_id:'synthetic-measurement',document_id:'a'.repeat(64),sha256:'b'.repeat(64),quote:value};
+const draft={source_material_ids:[source.material_id],source_documents:[source],actions:[],results:[value],
+ field_sources:[{...source,field:'results',value}]};
+const scope={fact_id:'synthetic:results:0',field:'results',index:0,value,attribution:'self',target:'接口性能',environment:'test',implementation:'implemented',release:'not_released'};
+const base={generatedDraft:draft,scopeDraft:draft,reviewMissingItems:[],busy:false,onSaveReviewedDraft:(...x)=>calls.push(x)};
+let reviewedScopes=[];
+function render(){index=0;tree=exports.EvidenceReviewSection({...base,reviewedScopes});}
+const nodes=v=>Array.isArray(v)?v.flatMap(nodes):v&&typeof v==='object'?[v,...nodes(v.props.children)]:[];
+const text=v=>Array.isArray(v)?v.map(text).join(' '):v&&typeof v==='object'?text(v.props.children):String(v??'');
+const label=k=>nodes(tree).find(n=>n.props['aria-label']===k), button=k=>nodes(tree).find(n=>n.type==='button'&&text(n)===k);
+const first={...source,attribution:'self',implementation:'implemented',release:'not_released',
+ result_review:{outcome:'established',measurement_quote:measured,rationale:'测试记录支持完整原句；生产部分仍是目标。'}};
+const second={...source,material_id:'synthetic-unresolved',document_id:'c'.repeat(64),quote:'另一来源缺少样本记录。',
+ result_review:{outcome:'unknown',measurement_quote:null,rationale:'无法核实测量条件。'}};
+reviewedScopes=[{...scope,sources:[first,second]}]; render();
+assert.ok(text(tree).includes('factScope.resultReview.established'),'show complete-result conclusion');
+assert.ok(text(tree).includes('factScope.resultReview.unknown'),'keep source-specific uncertainty');
+assert.ok(text(tree).includes(measured),'keep the actual measurement quote');
+assert.ok(text(tree).includes(first.result_review.rationale));
+assert.ok(text(tree).includes(second.result_review.rationale));
+assert.ok(text(tree).includes(second.quote),'show the source for its own review');
+assert.ok(!nodes(tree).some(n=>n.type==='input'&&n.props.type==='checkbox'),'no client measurement checkbox');
+for(const outcome of ['established','not_established','unknown']){
+ reviewedScopes=[{...scope,sources:[{...first,result_review:{outcome,measurement_quote:null,rationale:'该来源没有核定量化测量。'}}]}];render();
+ assert.ok(text(tree).includes('factScope.resultReview.'+outcome));
+ assert.ok(text(tree).includes('factScope.resultReview.noMeasurement'));
+ assert.ok(!text(tree).includes('factScope.resultReview.measurementQuote'),'null does not become measured');
+}
+reviewedScopes=[{...scope,sources:[source]}];render();
+assert.ok(text(tree).includes('factScope.resultReview.unreviewed'),'implemented is not a result verification');
+assert.ok(!text(tree).includes('factScope.resultReview.established'));
+reviewedScopes=[{...scope,sources:[first]}]; render();
+const choice=nodes(label('factScope.fact')).find(n=>n.type==='option'&&n.props.value).props.value;
+const change=(key,value)=>{label(key).props.onChange({target:{value}});render();};
+change('factScope.fact',choice);change('factScope.attribution','self');change('factScope.target','接口性能');
+change('factScope.env','test');change('factScope.implementation','implemented');change('factScope.release','not_released');
+button('factScope.adopt').props.onClick();
+assert.equal(calls.length,1);
+assert.equal(calls[0][1].value,value);
+assert.equal(calls[0][1].source.quote,value);
+assert.ok(!JSON.stringify(calls[0][1]).includes('result_review'),'read-only authority never returns in a client directive');
+'''
+    result = subprocess.run(["node", "-e", script], cwd=Path(__file__).resolve().parents[3],
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr

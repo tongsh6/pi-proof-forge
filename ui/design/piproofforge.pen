@@ -13615,7 +13615,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "若此事实已有核定范围，扩充引文后在“核对单项事实范围”重新确认并保存；更新草稿引文本身不赋予新范围或实测结论。",
+                          "content": "若此事实已有核定范围，扩充引文后须重新确认并保存；草稿引文不授予核定。成果保存后，在原范围区按出处只读显示完整结果结论、实测原文或无已核定量化、解释与来源版本。",
                           "fontFamily": "Inter",
                           "fontSize": 11,
                           "fontWeight": "normal"
