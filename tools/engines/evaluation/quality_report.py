@@ -166,13 +166,6 @@ def _run_quality_judge(
                 {"role": "user", "content": prompt},
             ],
         }
-        # 本机 LM Studio 的 Qwen reasoning 模型会把预算耗在 thinking 上，导致最终 content 为空；
-        # 只对本机 base_url 关闭推理输出，不改变远端模型请求语义。
-        if "127.0.0.1" in base_url or "localhost" in base_url:
-            payload["reasoning_effort"] = "none"
-        elif os.getenv("LLM_PROVIDER", "").strip().lower() == "deepseek":
-            # 结构化判项不需要推理输出；DeepSeek thinking 会把 6000 输出预算全部耗在 reasoning 上。
-            payload["thinking"] = {"type": "disabled"}
         meta.update(model_calls=0, repair_calls=0)
         parsed: dict | None = None
         merged: dict[str, Any] = {}

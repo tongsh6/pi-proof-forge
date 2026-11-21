@@ -324,6 +324,46 @@ def _judge_fixture(tmp_path, monkeypatch):
     return resume, semantic, json.dumps(payload, ensure_ascii=False), {"ec_1": {"title": "统一平台"}}
 
 
+@pytest.mark.parametrize(
+    "provider,base_url,expected_protocol",
+    [
+        ("openai_compatible", "https://api.example.test/proxy/localhost/v1", {}),
+        ("openai_compatible", "http://127.0.0.1:9000/v1", {}),
+        ("deepseek", "http://127.0.0.1:9000/v1", {"thinking": {"type": "disabled"}}),
+        ("openai_compatible", "http://127.0.0.1:8000/v1", {"reasoning_effort": "none"}),
+        ("strata", "http://127.0.0.1:47831/v1", {"reasoning_effort": "none"}),
+    ],
+    ids=["remote-path-localhost", "unknown-loopback", "deepseek-off-loopback", "verified-splash", "strata-off"],
+)
+def test_quality_judge_request_uses_shared_provider_adapter(tmp_path, monkeypatch, provider, base_url, expected_protocol):
+    import io
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LLM_PROVIDER", provider)
+    monkeypatch.setenv("LLM_THINKING", "off")
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
+    requests = []
+
+    def open_response(request, **kwargs):
+        requests.append(request)
+        response = {"choices": [{"message": {"content": content}, "finish_reason": "stop"}]}
+        return io.BytesIO(json.dumps(response).encode())
+
+    monkeypatch.setattr("tools.infra.llm.client.request.urlopen", open_response)
+    judgments, meta, _decisions = quality_report._run_quality_judge(
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
+        use_llm=True, model="synthetic-model", api_key="synthetic", base_url=base_url,
+    )
+    assert judgments is not None and meta["cache"] == "miss"
+    assert meta["model_calls"] == 1 and meta["repair_calls"] == 0
+    assert len(requests) == 1
+    assert requests[0].full_url == base_url + "/chat/completions"
+    payload = json.loads(requests[0].data)
+    assert payload["response_format"] == {"type": "json_object"}
+    actual_protocol = {key: payload[key] for key in ("reasoning_effort", "thinking") if key in payload}
+    assert actual_protocol == expected_protocol
+
+
 def test_quality_judge_cache_hit_avoids_second_model_call(tmp_path, monkeypatch):
     resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient(content)

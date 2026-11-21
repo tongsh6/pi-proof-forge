@@ -149,3 +149,49 @@ def test_inference_disabled_returns_rules_only_l2(tmp_path, monkeypatch):
     candidates = result["cards"][0]["candidates"]
     assert candidates and all(item["level"] == "L2" for item in candidates)
     assert result["cards"][0]["status"] == "rules_only"
+
+@pytest.mark.parametrize(
+    "provider,base_url,expected_protocol",
+    [
+        ("openai_compatible", "https://api.example.test/proxy/localhost/v1", {}),
+        ("openai_compatible", "http://127.0.0.1:9000/v1", {}),
+        ("deepseek", "http://127.0.0.1:9000/v1", {"thinking": {"type": "disabled"}}),
+        ("openai_compatible", "http://127.0.0.1:8000/v1", {"reasoning_effort": "none"}),
+        ("strata", "http://127.0.0.1:47831/v1", {"reasoning_effort": "none"}),
+    ],
+    ids=["remote-path-localhost", "unknown-loopback", "deepseek-off-loopback", "verified-splash", "strata-off"],
+)
+def test_inference_request_uses_shared_provider_adapter(tmp_path, monkeypatch, provider, base_url, expected_protocol):
+    import io
+
+    from tools.sidecar.handlers import evidence_inference as handler
+
+    path = _setup(tmp_path, monkeypatch)
+    original = path.read_bytes()
+    monkeypatch.setattr(evidence, "load_evidence_inference_enabled", lambda: True)
+    monkeypatch.setattr(handler, "load_llm_config", lambda: {
+        "provider": provider, "base_url": base_url, "api_key_for_request": "synthetic",
+        "model": "synthetic-model", "timeout": 5, "thinking_enabled": False,
+        "thinking_effort": "high",
+    })
+    requests = []
+
+    def open_response(request, **kwargs):
+        requests.append(request)
+        payload = json.loads(request.data)
+        prompt = next(message["content"] for message in payload["messages"] if message["role"] == "user")
+        response = {"choices": [{"message": {"content": _fake_llm(prompt)}, "finish_reason": "stop"}]}
+        return io.BytesIO(json.dumps(response).encode())
+
+    monkeypatch.setattr("tools.infra.llm.client.request.urlopen", open_response)
+    result = evidence.handle_evidence_infer_fields({
+        "meta": {"correlation_id": "provider-wire"}, "card_ids": ["ec_1"],
+    })
+    assert result["status"] == "ok" and result["summary"]["candidates"] == 2
+    assert path.read_bytes() == original
+    assert len(requests) == 1
+    assert requests[0].full_url == base_url + "/chat/completions"
+    payload = json.loads(requests[0].data)
+    assert payload["response_format"] == {"type": "json_object"}
+    actual_protocol = {key: payload[key] for key in ("reasoning_effort", "thinking") if key in payload}
+    assert actual_protocol == expected_protocol

@@ -37,8 +37,6 @@ def _inference_llm_call(prompt: str) -> str:
         "response_format": {"type": "json_object"},
         "max_tokens": 1200,
     }
-    if "127.0.0.1" in base_url or "localhost" in base_url:
-        payload["reasoning_effort"] = "none"
     client = _origin.LLMClient(
         base_url=base_url,
         api_key=str(llm_config["api_key_for_request"]),
