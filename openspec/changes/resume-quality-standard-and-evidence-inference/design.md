@@ -86,19 +86,23 @@ employment_window: 2022-06 ~ 2024-03   # 来自已确认档案，按材料所属
 
 ### 4.2 跨文档推断（L3）
 
-新 RPC `evidence.inferFields`：
+既有 RPC `evidence.inferFields`：
 
 ```
 输入: card_ids[]（默认 = 分流为"值得补"且缺字段的卡）
 步骤:
-  1. kb 索引检索：优先已精确绑定且指纹一致的原文，再按卡标题/背景相关性排序（限 20 篇，排除设计资料类来源）；不使用私人材料白名单或派生标签授予优先权
+  1. 应用按需准备当前派生索引后检索：优先已精确绑定且指纹一致的原文，再按卡标题/背景相关性排序（限 20 篇，排除设计资料类来源）；不使用私人材料白名单或派生标签授予优先权
   2. 聚合：保留每篇前 1000 字符及截断标记、日期线索、第一人称关键句与计数；计数只是辅助，不裁掉省略主语的原文语境
-  3. LLM 一次调用：输入聚合结果 + 卡摘要 + 关联的已确认任职职责 + 任职区间，输出 time_range/role_scope 候选、等级 L3、置信度、每条依据的 document_id+excerpt
+  3. LLM 一次调用：输入聚合结果 + 卡摘要 + 关联的已确认任职职责 + 任职区间，输出 time_range/role_scope 候选、等级 L3、置信度、每条依据的 material_id/document_id 与 excerpt（SHA 由已核原文绑定）
   4. 校验：时间在任职区间内；依据 excerpt 可在文档原文回读；否则丢弃该候选
 输出: candidates[] 写入 app-data/evidence_inference.json（按卡指纹 + 文档集合指纹 + 已确认任职上下文 + 公共指令指纹 + 任务版本）
 ```
 
 不写卡。对账面板新增"待确认推断"列：接受 → `evidence.update` 写字段与 provenance；修改后接受 → L4；否决 → 记录 `(card_fp, candidate_hash)`。
+
+**L4 接线与版本边界**：现有 handler 先确定目标，再直接调用原 knowledge_index 构建器准备当前派生导航；不用 CLI/bootstrap，也不新增构建 RPC。全库 verify 继续是导航诊断，不能代替本次采用来源的授权和版本检查。原 read_document_texts/聚合/候选解析复用已有验证文本与 snapshots，并以材料、文档、SHA 三元身份贯穿；原 attempt_fingerprint 绑定实际采用的版本，不另存一份来源账本。卡的实际路径与已读 SHA 由现 handler 传入，任职上下文只解析一次；原应用用例暂存本批候选，缓存返回与整批发布共用原来源复核职责，全部实际输入及当前来源许可复核后一次写原状态文件，错误不覆盖候选状态或调用期间的合法更新。新召回守整份 manifest 准入，已存精确绑定按原窄复验，不静默刷新来源。完整验收与边界见 evidence-provenance R4.5；确认入口的来源复核紧接推进，保留连续字段确认/修改后 L4/否决既有语义。
+
+**L4 限定验收（2026-11-22）**：真实 Router 独立反例与原行为对照转绿，最终全量 2874 passed、1 skipped、101 subtests passed（50.74 秒），架构 v2 通过。移除原工程索引 bootstrap 后，一次合成应用验收完成 8 RPC、1 次本机 Splash，由 inferFields 创建索引并返回两条有出处候选，原卡字节不变且不可入池；没有确认、正式生成或投递。具体对照、请求及运行摘要见 [Project Ledger](../../../docs/project-ledger.md)。
 
 ### 4.3 生成器消费等级
 
