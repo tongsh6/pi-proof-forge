@@ -147,6 +147,18 @@ Last updated: 2026-11-22
 - 实际请求为 3086 个逻辑 JSON 字符、10656 个 wire 字节，明确关闭沿 shared client 发为 reasoning_effort=none，无 thinking/chat_template_kwargs，finish_reason=stop。实际请求 SHA 为 5a3298daeebfe76df2757baed47ab365523cfa5184e185aeafc48414812c01f5，运行记录 SHA 为 d1d0408e5fe3726284f066e5fc0fde84803ec9897223452a98bedb5c12e8dd8f，均已独立重算。此直接调用计量不冒称 TaskRunner 预算。
 - 原卡前后字节完全一致，时间/职责仍空、candidate_pool_eligible=false，没有确认候选。真实招聘站、正式生成与投递均为零；原生 UI、quality judge 真实模型链及 confirmInference 的末端来源复核未由本片验收。下一片核定候选接受的原始依据与连续确认版本接续，P0-026 继续进行。
 
+## 2026-11-22 正式质量判项请求、缓存与有界修复（切片 L6，限定工程与合成应用验收完成）
+
+- 查重沿现 Quick Run 正式 pipeline、quality_report/llm_judge、唯一质量缓存、TaskContract/TaskRunner 和共享 LLMClient 补齐实际消费者。登记 quality_judge，保输出 6,000 tokens 与完整已准备请求 24,000 逻辑 JSON 字符，同一 Request 决定预算、身份和发送；不另建 Agent 模型入口、RPC、业务脚本或平行账本，guided 仍零模型。
+- 原缓存键改为实际 URL/body、当前正文/岗位、trace 输入版本、卡字段与协议；删除二次 context 读取和旧 key 入口，原缓存 schema 升为 2，旧缓存仅 miss、不删除或迁移。命中先核完整版本/声明，再按当前正文/JD/引用重验且保留组逐项一致；默认空数组、坏引用或自报完整不能授信，重复 JSON 键由共同 parser 拒绝。历史 rejected_items 仅为严格类型的诊断，不补信用；认证 headers 不参与身份，稳定同请求有效缓存零 HTTP。
+- 修复只请求并合并未完成组，不覆盖首轮合法结论。修复超预算、不可构造、传输失败或仍缺项，都保首轮已核完整组、其余 pending，不缓存整份；没有有效组则不可用。次数按实际发送回调计，准备失败不计模型调用；TaskRun 保真实原因/耗时，完整诊断沿 stdout，原 meta.error 使用稳定原因，不增持久/API 字段。来源变更仍沿 H 拒绝发布，不借 partial 降级回写旧报告。
+- 独立质量首组 13 例旧生产为 12 failed / 1 passed（0.30 秒）：两 provider 的 raw 小于上限而 prepared 超限仍各发 2 HTTP，修复超限仍发第 2 次，准备失败虚计次数，发送失败丢首轮合法组，端点/推理模式变更及三类坏缓存仍 hit。请求头变化和稳定缓存正控通过。实际 flow 首 HTTP 变更卡后，原来源 fence 已正确拒绝且原报告字节保持；该例后因多发修复 HTTP 失败，不能称来源绕过。
+- 追加两例旧生产 2 failed（0.14 秒）证明未请求修复组覆盖旧结论，以及 normalized partial 缓存借默认数组冒充完整。原 15 例最终 15 passed（0.14 秒），全部此前失败点后的计数、pending、无 partial cache、真实结果和来源断言执行。共享 Runner 另两例先 2 failed（0.04 秒），再由原协议责任拒绝 finish_reason=length 的闭合 JSON，截断不进 extract/validate；后续 stop 正控与连续截断原因通过。Runner/缓存完整组 30 passed（0.06 秒）；缓存新控制是候选后的验证，不混计旧 RED。
+- engine 整文件首轮 79 passed / 6 failed 均为旧 FakeClient 缺 prepare/send；只迁真实共享准备与最终发送替身后 85 passed。稳定诊断协议随后仅使旧 exact 字串断言 1 failed / 84 passed，按新 invalid_json 原因迁一行后最终 85 passed（0.33 秒）；其他新旧业务预期不变。CLI 旧替身另 1 failed / 1 passed，同类接口迁移后 2 passed，免密 2 次/在线缺 key 零构造原断言保持。全量首轮 1 failed / 3035 passed 仅因注册集合未列新任务；补既定名称后最终 3036 passed、1 skipped、101 subtests passed（56.90 秒）。架构 v2、路线图、AIEF 与差异检查通过。
+- 实际应用复用 K4b2 已经真实上传、结果复审、档案确认和岗位保存的纯合成资料，保持原来源字节；通过现 settings、profile/evidence 与 run.quick.start/get 完成 11 RPC、5 次本机 Splash 请求。matching 两次、背景两次、质量一次；质量完整请求 5580 字符、输出预算 6000、明确关闭推理模式，五组判项完成且 llm_pending 为空。正文完整实测句/限定及精确 trace 保持，量化 0.5、auto_pass=false；没有用请求成功补绿质量或授予投递。
+- 应用记录 SHA 为 4fe6190c1e6317b7e7af5438c2c24f4cdfcf6ac4a1828f167de474d9801ca3fd；五对请求/响应 wire、实际正文/trace/Scorecard/缓存均已独立重算；未调用生产 key 函数，以实际请求与原输入重算的缓存身份与文件/API 一致。质量请求 SHA 为 d2907b0dc193a192b5b50a98bb9ab8efd713b404e36d4c028d7f3b064b8ec9dc，A/B 正文 SHA 同为 49a9cef9da69163e02cc8cfa791c1d638279af3ce78965c6748d49728abd4ae4；5 项原始来源及 241 个生产文件摘要保持。API 只按既有 PDF 检查叠加已知页数 1，同一质量判项未变，裁切仍未知；该投影差异不计产品失败。父进程和实际 pipeline 子进程均加载 loopback 限制，拒绝数零；生产 Python 源前后未变。实际应用本片只验证单一配置的一次质量请求，不冒称 live 缓存命中或实际模型修复已触发；这些边界由真实客户端/最终 HTTP 的独立对照覆盖。
+- 24k 准入覆盖实际 prepared request，不代表 judge 已见完整原卡。只读发现原摘要仍截断角色/背景/行动/成果及前五条，可能遗漏正文已选的 results:5 或尾部职责/环境限定；下一片先核现 trace 与结果投影的正证/核验语境职责，不另建事实账本。尚未实测模型因此误判，R3.2 的精确已核结果边界仍保持。真实 JD/正式件/投递、原生 UI 与全部语义语境继续 pending，P0-026 不关闭。
+
 ## 2026-11-22 guided Agent 四层质量与固定审核（切片 M1，限定工程与合成应用验收完成）
 
 - 查重复用 RuleEvaluationEngine、同次版本读取、共同四层计算、Scorecard.quality_report、ReviewSnapshotStore 和现 QualityReportPanel；没有新 Engine、RPC、持久实体或业务脚本。RuleEvaluationEngine 直接消费 trace 绑定的实际卡/职业档案/岗位字节，同批输入用于旧参考指标和四层报告，报告绑定正文 UTF-8 SHA 与目标，Scorecard 保入口版本标签。实际读取校验与末端 trace 复核共同防换值后恢复；独立无岗位绑定的诊断能力不补造岗位事实。
