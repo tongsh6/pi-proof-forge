@@ -93,3 +93,20 @@ def test_delivery_flow_requires_and_records_disclosure_before_send():
     assert "liepin_native_ai_disclosure.js" in _source("ui/src-tauri/src/liepin_webview.rs")
     assert "probeAiDisclosureDryRun" in _source("ui/src-tauri/src/main.rs")
     assert "AI 投递声明" in _source("ui/design/DESIGN.md")
+
+
+def test_native_source_permit_precedes_forward_browser_actions_but_not_receipt_recovery():
+    source = _source("ui/src-tauri/src/liepin_webview.rs")
+    def body(name):
+        return source.split("async fn " + name + "(", 1)[1].split("\n}", 1)[0]
+    for name, first_browser_operation in (
+        ("upload_liepin_native_pdf_inner", "check_liepin_native_session_inner"),
+        ("start_liepin_pdf_communication_inner", "inspect_uploaded_liepin_pdf_inner"),
+        ("send_ai_disclosure", "run_pdf_script"),
+    ):
+        stage = body(name)
+        assert stage.index('"daily.permit"') < stage.index(first_browser_operation)
+    assert '"daily.permit"' not in body("recheck_liepin_native_pdf_removal_inner")
+    stage = body("continue_liepin_pdf_delivery_inner")
+    assert stage.index('"run.agent.pdfInteractionPacket"') < stage.index("browser.navigate")
+    assert stage.index('"daily.permit"') < stage.index("run_pdf_script")

@@ -1,5 +1,7 @@
 """执行 Jobs 组件的事件与状态，验证岗位绑定；不替代真实桌面验收。"""
 
+import json
+import runpy
 import subprocess
 from pathlib import Path
 
@@ -7,7 +9,31 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_full_jd_binding_survives_review_and_clears_on_target_change():
+def test_full_jd_binding_survives_review_and_clears_on_target_change(tmp_path, monkeypatch):
+    from tools.sidecar.handlers import jobs
+    from tools.sidecar.server import process_request
+
+    fixture = runpy.run_path(str(ROOT/"tests/unit/infra/test_liepin_job_detail.py"))
+    respond, requests = fixture["transport"].__wrapped__(monkeypatch)
+    monkeypatch.setattr(jobs, "_JOB_LEAD_DIR", tmp_path)
+    jobs._write_job_lead_file(tmp_path/"lead-a.yaml", {"id":"lead-a","source":"liepin_official",
+        "platform":"liepin","platform_job_id":fixture["RAW_ID"],"platform_job_type":"2","url":fixture["URL"]})
+    respond(fixture["page"](title="登录猎聘"))
+    failed_detail = process_request({"id":"detail","method":"jobs.fetchLiepinDetail",
+                                   "params":{"meta":{"correlation_id":"ui-test"},"job_lead_id":"lead-a"}})["result"]
+    assert len(requests) == 1
+    # Seed an ordinary saved full official JD through the real handler, with HTTPS scripted.
+    jobs._write_job_lead_file(tmp_path/"lead-saved.yaml", {"id":"lead-saved","source":"liepin_official",
+        "platform":"liepin","platform_job_id":fixture["RAW_ID"],"platform_job_type":"2",
+        "position":"Role-saved","url":fixture["URL"]})
+    respond()
+    captured = process_request({"id":"saved","method":"jobs.fetchLiepinDetail",
+                               "params":{"meta":{"correlation_id":"fixture"},"job_lead_id":"lead-saved"}})["result"]
+    assert captured["status"]=="pass" and len(requests)==2
+    listing = process_request({"id":"list","method":"jobs.listLeads","params":{"meta":{"correlation_id":"fixture"}}})["result"]
+    stored, = [lead for lead in listing["items"] if lead["job_lead_id"]=="lead-saved"]
+    assert stored["jd_status"]=="full_unreviewed" and stored["source_jd"]==captured["jd_text"]
+
     script = r"""
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -35,23 +61,46 @@ const react = {
   },
 };
 const t = (key) => key;
-const profiles = ['a', 'b'].map(id => ({ job_profile_id: `profile-${id}`, job_lead_id: `lead-${id}`, title: `Role-${id}`, company: `Company-${id}`, status: 'draft', match_score: 0, evidence_count: 0, resume_count: 0, updated_at: '', business_domain: '', source_jd: '', tone: '', keywords: [], must_have: [], nice_to_have: [], seniority_signal: [] }));
+let profiles = ['a', 'b'].map(id => ({ job_profile_id: `profile-${id}`, job_lead_id: `lead-${id}`, title: `Role-${id}`, company: `Company-${id}`, status: 'draft', match_score: 0, evidence_count: 0, resume_count: 0, updated_at: '', business_domain: '', source_jd: '', tone: '', keywords: [], must_have: [], nice_to_have: [], seniority_signal: [] }));
 const leads = ['a', 'b'].map(id => ({ job_lead_id: `lead-${id}`, job_profile_id: `profile-${id}`, company: `Company-${id}`, position: `Role-${id}`, source: 'liepin_api', status: 'draft', favorited: false, updated_at: '', platform: 'liepin', platform_job_id: id, jd_status: 'summary_only' }));
 const calls = [];
 leads[0].salary = '40-70k·15薪';
 leads[0].location = '上海-浦东新区';
 leads[0].company_size = '1-49人';
 leads[0].financing_stage = '天使轮融资';
-let failDetail = false, failPrepare = false;
+let failDetail = false, failPrepare = false, driftOnFetch = false, captureSameBody = false;
+let holdList = false, releaseList = null, failList = false, revokeOnFailure = false;
+const listFilters = [];
 const navigations = [];
 leads[0].source = 'liepin_official'; leads[0].jd_status = 'complete_reviewed';
 const api = {
   prepareLiepinDefault: async (id) => { calls.push(['prepare', id]); return failPrepare ? {status:'blocked',code:'ALREADY_ATTEMPTED',message:'raw private error'} : {status:'ready',run_id:'explicit-run'}; },
-  listJobProfiles: async () => ({ items: profiles }),
+  listJobProfiles: async (filters) => {
+    listFilters.push(filters.status);
+    const response = { items: filters.status ? profiles.filter(p => p.status === filters.status) : profiles };
+    if (holdList) {holdList=false;return new Promise(resolve => {releaseList=()=>resolve(response)})}
+    if (failList) throw Error('local refresh failed');
+    return response;
+  },
   listJobLeads: async () => ({ items: leads }),
   fetchLiepinJobDetail: async (id) => {
     calls.push(['fetch', id]);
-    return failDetail ? { status: 'blocked', code: 'JOB_DETAIL_UNAVAILABLE', message: 'raw unsafe message' } : { status: 'pass', code: 'OK', job_lead_id: id, job_profile_id: `profile-${id.slice(-1)}`, jd_text: `Full JD ${id}`, source_url: `https://www.liepin.com/job/${id}.shtml`, source_jd_sha256: 'sha', jd_status: 'full' };
+    if (revokeOnFailure) {
+      profiles = profiles.map(p=>p.job_profile_id==='profile-a' ? {...p,native_pdf_delivery:{supported:false,reason:'job_review_required'}} : p);
+      return {status:'blocked',code:'JOB_ID_MISMATCH',job_lead_id:id,job_profile_id:'profile-a',jd_text:''};
+    }
+    if (captureSameBody) {
+      return {status:'pass',code:'OK',job_lead_id:id,job_profile_id:'profile-a',
+              jd_text:'Full JD lead-a',source_url:'https://www.liepin.com/job/123.shtml',
+              source_jd_sha256:'same',jd_status:'complete_reviewed'};
+    }
+    if (driftOnFetch) {
+      profiles = profiles.map(p => p.job_profile_id === 'profile-a' ? {...p,status:'saved_incomplete'} : p);
+      return {status:'pass',code:'OK',job_lead_id:id,job_profile_id:'profile-a',
+              jd_text:'Full JD lead-a', source_url:'https://www.liepin.com/job/123.shtml',
+              source_jd_sha256:'changed',jd_status:'full_unreviewed'};
+    }
+    return failDetail ? {...JSON.parse(process.argv[1]), message:'raw unsafe message'} : { status: 'pass', code: 'OK', job_lead_id: id, job_profile_id: `profile-${id.slice(-1)}`, jd_text: `Full JD ${id}`, source_url: `https://www.liepin.com/job/${id}.shtml`, source_jd_sha256: 'sha', jd_status: 'full' };
   },
   generateJobProfileDraft: async (payload) => {
     calls.push(['generate', payload]);
@@ -113,6 +162,19 @@ async function click(label) { const node = button(label); assert.ok(node, `Missi
   await click('pages.jobs.liepinDetail.fetch');
   assert.equal(input('pages.jobs.jdDraft.jdPlaceholder').props.value, 'Full JD lead-a');
   assert.ok(text(tree).includes('lead-a'), '显示已绑定线索');
+  const oldRefresh=nodes(tree).find(n=>n.type==='button'&&n.props.title==='common.refreshShortcut');
+  holdList=true;oldRefresh.props.onClick();await settle();assert.ok(releaseList);
+  driftOnFetch = true;
+  await click('pages.jobs.liepinDetail.fetch');
+  releaseList();await settle();
+
+  driftOnFetch = false;
+  await click('pages.jobs.tabs.profiles');
+  assert.ok(button('pages.jobs.actions.generateResume').props.disabled,'官方正文变化后的旧 active 不得继续生成');
+  assert.ok(text(tree).includes('pages.jobs.status.saved_incomplete'),'需显示后端读回的真实待确认状态');
+  assert.equal(input('pages.jobs.jdDraft.jdPlaceholder').props.value,'Full JD lead-a','保留刚核实的同源正文');
+  await click('pages.jobs.tabs.leads');
+
   await click('pages.jobs.actions.manualDraft');
   const summary = nodes(tree).find(node => node.props?.['aria-label'] === 'pages.jobs.jdDraft.reviewSummary');
   const mustHave = nodes(tree).find(node => node.props?.['aria-label'] === 'pages.jobs.jdDraft.reviewMustHave');
@@ -148,14 +210,98 @@ async function click(label) { const node = button(label); assert.ok(node, `Missi
   await click('pages.jobs.liepinDetail.fetch');
   assert.equal(input('pages.jobs.jdDraft.jdPlaceholder').props.value, 'Full JD lead-a', '获取失败保留旧稿');
   assert.ok(!text(tree).includes('raw unsafe message'));
+  assert.ok(text(tree).includes('pages.jobs.liepinDetail.reasons.access_required'));
   await click('pages.jobs.jdDraft.unbind');
   assert.equal(button('pages.jobs.jdDraft.unbind'), undefined);
   assert.equal(input('pages.jobs.jdDraft.jdPlaceholder').props.value, 'Full JD lead-a', '显式解除绑定保留正文供人工导入');
   await click('pages.jobs.jdDraft.clear');
   assert.equal(input('pages.jobs.jdDraft.jdPlaceholder').props.value, '');
+  const previousCalls=calls.length;
+  const saved=JSON.parse(process.argv[2]);
+  leads.push(saved,{...saved,job_lead_id:'lead-url-only',position:'Role-url-only',source_jd:'https://www.liepin.com/job/42.shtml'},
+    {...saved,job_lead_id:'lead-literal',position:'Role-literal',source_jd:saved.source_jd+'<script>literal</script>'},
+    {...saved,job_lead_id:'lead-manual',position:'Role-manual',source:'manual'},
+    {...saved,job_lead_id:'lead-empty',position:'Role-empty',source_jd:'暂无'});
+  await click('pages.jobs.tabs.profiles');
+  await click('pages.jobs.tabs.leads');
+  // Change the existing filter to reload rows as a fresh local read.
+  const refresh=nodes(tree).find(node=>node.type==='button'&&node.props.title==='common.refreshShortcut');
+  refresh.props.onClick(); await settle();
+  await click('Role-saved');
+  const storedBody=()=>nodes(tree).find(node=>node.props?.['data-testid']==='jobs-stored-jd-body');
+  assert.equal(storedBody().type,'pre');
+  assert.equal(storedBody().props.children,saved.source_jd,'还原持久化岗位原文，不调用详情');
+  assert.ok(text(tree).includes('pages.jobs.liepinDetail.storedHint'),'历史依据状态须明确');
+  assert.equal(input('pages.jobs.jdDraft.jdPlaceholder').props.value,'','只读预览不注入编辑器');
+  assert.equal(button('pages.jobs.jdDraft.unbind'),undefined,'预览不建立绑定');
+  await click('Role-literal');
+  assert.equal(storedBody().props.children,saved.source_jd+'<script>literal</script>');
+  assert.equal(storedBody().props.dangerouslySetInnerHTML,undefined);
+  await click('Role-url-only');assert.equal(storedBody(),undefined,'纯 URL 不能作为已存正文');
+  await click('Role-manual');assert.equal(storedBody(),undefined,'不将手工材料冒充官方已存正文');
+  await click('Role-empty');assert.equal(storedBody(),undefined,'占位符不是正文');
+  await click('Role-b');assert.equal(storedBody(),undefined,'选择摘要行不会继承旧正文');
+  assert.equal(calls.length,previousCalls,'查看持久来源不触发读取外站、模型、保存或审批');
+  failDetail=false;
+  profiles=profiles.map(p=>({...p,status:'active',source_jd:'旧已审核正文'}));
+  const refreshLocal=async()=>{nodes(tree).find(n=>n.type==='button'&&n.props.title==='common.refreshShortcut').props.onClick();await settle()};
+  await click('pages.jobs.tabs.profiles');
+  await refreshLocal();
+  const statusFilter=nodes(tree).find(n=>n.type==='select' && text(n).includes('pages.jobs.filters.allStatuses'));
+  statusFilter.props.onChange({target:{value:'active'}});await settle();
+  nodes(tree).find(n=>n.type==='form'&&text(n).includes('pages.jobs.filters.apply')).props.onSubmit({preventDefault(){}});
+  await settle();
+  await click('pages.jobs.tabs.leads');
+  await click('Role-a');
+  const reads=listFilters.length;
+  captureSameBody=true;await click('pages.jobs.liepinDetail.fetch');captureSameBody=false;
+  assert.ok(listFilters.length>reads && listFilters.at(-1)==='active','同正文亦读回最新官方凭据与档案');
+  driftOnFetch=true;await click('pages.jobs.liepinDetail.fetch');driftOnFetch=false;
+  await click('pages.jobs.tabs.profiles');
+  assert.ok(button('pages.jobs.actions.generateResume').props.disabled);
+  assert.ok(!button('Role-a') && button('Role-b'));
+  assert.equal(input('pages.jobs.jdDraft.jdPlaceholder').props.value,'Full JD lead-a','当前筛选排除旧档案不清除同源正文');
+  assert.equal(listFilters.at(-1),'active');
+
+  profiles=profiles.map(p=>({...p,status:'active',source_jd:'旧已审核正文'}));await refreshLocal();
+  await click('Role-a');assert.ok(!button('pages.jobs.actions.generateResume').props.disabled);
+  await click('pages.jobs.tabs.leads');await click('Role-a');
+  failList=true;driftOnFetch=true;await click('pages.jobs.liepinDetail.fetch');driftOnFetch=false;
+  await click('pages.jobs.tabs.profiles');
+  assert.ok(button('pages.jobs.actions.generateResume').props.disabled,'本地读回失败亦不得重开已撤审核的入口');
+  assert.ok(input('pages.jobs.jdDraft.jdPlaceholder').props.value==='Full JD lead-a');
+  failList=false;
+  profiles=profiles.map(p=>({...p,status:'active',source_jd:'旧已审核正文'}));await refreshLocal();
+  await click('Role-a');assert.ok(!button('pages.jobs.actions.generateResume').props.disabled);
+  await click('pages.jobs.tabs.leads');await click('Role-a');
+  const beforeFailureReads=listFilters.length;
+  failDetail=true;await click('pages.jobs.liepinDetail.fetch');failDetail=false;
+  await click('pages.jobs.tabs.profiles');
+  assert.ok(!button('pages.jobs.actions.generateResume').props.disabled,'暂时无法读详情不能撤当前可用档案');
+  assert.equal(listFilters.length,beforeFailureReads);
+  await click('pages.jobs.tabs.leads');revokeOnFailure=true;await click('pages.jobs.liepinDetail.fetch');revokeOnFailure=false;
+  assert.ok(text(tree).includes('pages.jobs.liepinDetail.codes.JOB_ID_MISMATCH'));
+  await click('pages.jobs.tabs.profiles');
+  assert.ok(button('Role-a'),'历史审批档案仍可读');
+  const staleCta=button('pages.jobs.actions.generateResume');
+  assert.ok(staleCta.props.disabled,'撤销来源的历史 active 档案不得再生成');
+  const previousNavigation=navigations.length;
+  staleCta.props.onClick();assert.equal(navigations.length,previousNavigation);
+  profiles=profiles.map(p=>({...p,native_pdf_delivery:{supported:true,reason:''}}));await refreshLocal();
+  await click('Role-a');assert.ok(!button('pages.jobs.actions.generateResume').props.disabled);
+  await click('pages.jobs.tabs.leads');await click('Role-a');
+  holdList=true;await refreshLocal();
+  failList=true;revokeOnFailure=true;await click('pages.jobs.liepinDetail.fetch');revokeOnFailure=false;
+  releaseList();await settle();
+  await click('pages.jobs.tabs.profiles');
+  assert.ok(!button('Role-a')&&button('Role-b'),'未读回的单一旧档案撤下、不撤其他档案');
+  assert.ok(button('pages.jobs.actions.generateResume').props.disabled,'本地读回失败、旧读取迟到都不恢复撤销的来源');
+
+
+
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
     result = subprocess.run(
-        ["node", "-e", script], cwd=ROOT, capture_output=True, text=True, check=False
+        ["node", "-e", script, json.dumps(failed_detail), json.dumps(stored)], cwd=ROOT, capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stdout + result.stderr

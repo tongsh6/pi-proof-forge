@@ -272,6 +272,9 @@
       }
     },
     "quickRun": {
+      "officialCaptureRequiredBadge": "需重新读取官方详情",
+      "officialCaptureRequired": "先在岗位页重新读取猎聘官方详情，再启动快速运行。",
+      "officialSourceUnverified": "猎聘来源或岗位审核已失效。请在岗位页核对官方详情与审核状态再试。",
       "title": "快速运行",
       "needsReview": "简历已生成，需审核后再投递",
       "needsEvidence": "资料或证据不完整，当前简历不可投递",
@@ -367,7 +370,8 @@
           "partial": "部分支持",
           "insufficient": "证据不足",
           "conflict": "存在冲突",
-          "not_present": "简历未呈现"
+          "not_present": "简历未呈现",
+          "unassessed": "正文覆盖未核验"
         }
       },
       "direction": {
@@ -391,6 +395,9 @@
       "fitBadgePrecheck": "（规则预检：{{label}}）",
       "fitHintPrecheck": "该岗位尚未做模型对位预检；规则预检结论：{{label}}，命中 {{matched}}/{{total}} 项要求。仅供参考，不会拦截。",
       "qualityNotPassedCanContinue": "质量层未全绿不影响继续投递：你可以查看并准备此 PDF，系统不会拦截你的投递意图；是否发送仍由你确认。",
+      "goPlatformResumeJobs": "前往岗位中心",
+      "platformDefaultOnlyBadge": "（平台默认简历）",
+      "platformDefaultHint": "该猎头岗位暂不支持 App 内定制 PDF 投递，不能加入每日 PDF 批次。可在岗位中心走平台默认简历流程；生成的定制 PDF 不会被自动发送。",
       "manualDeliveryOnlyBadge": "（仅手动投递）",
       "manualDeliveryHintShort": "该岗位为手工导入或未绑定已审核的平台线索，App 内 PDF 投递不可用；可在平台手动投递后到岗位中心记录。",
       "manualDeliveryHint": "该岗位不支持 App 内 PDF 投递。简历已生成：{{path}}。请先在平台手动投递，再到岗位中心记录手动投递。",
@@ -770,7 +777,7 @@
         "defaultHint": "检查线索质量，确认值得匹配后再转为岗位画像。",
         "convert": "转为岗位画像",
         "summaryOnly": "摘要 · 待补完整 JD",
-        "summaryHint": "当前只有岗位摘要。转画像仍为未完整草稿，需补充完整 JD 并审核后用于匹配。",
+        "summaryHint": "当前只保留摘要，无法据此判断以前是否尝试读取详情。转换只生成待补草稿，请补齐完整 JD 并审核后再匹配。",
         "sourceLink": "查看岗位来源",
         "fetchedAt": "获取时间",
         "companySize": "公司规模",
@@ -795,14 +802,17 @@
         "refreshError": "搜索已完成，但列表刷新失败；已有线索仍保留，请手动刷新。"
       },
       "liepinDetail": {
+        "storedTitle": "查看已存 JD 原文",
+        "storedHint": "这是本机保存的历史正文，未重新核验来源或当前招聘状态，不会载入编辑或审核。",
         "fetch": "获取完整 JD",
         "fetching": "获取中…",
         "hint": "成功后完整正文载入上方解析区，保持当前岗位关联，仍需解析和人工审核。",
         "failed": "获取完整 JD 未完成；原有草稿保留，请稍后手动重试。",
+        "reasons": {"source_reports_unavailable": "请求的官方页面显示不可用提示，不能据此确认当前招聘状态。", "source_page_not_found": "请求的详情页未找到，不等于岗位已经关闭。", "access_required": "页面要求登录或访问权限，本次未核验完整 JD。", "no_verified_detail": "页面未提供足够的可核验身份和正文，岗位状态未知。"},
         "codes": {
           "INVALID_INPUT": "岗位输入无效，原有草稿保留。",
           "NETWORK_ERROR": "无法连接职位页面，请检查网络后手动重试。",
-          "JOB_DETAIL_UNAVAILABLE": "职位页面暂不包含可用完整 JD，原有草稿保留。",
+          "JOB_DETAIL_UNAVAILABLE": "本次未取得可核验的完整 JD，原草稿保留。",
           "JOB_ID_MISMATCH": "职位页面与当前岗位标识不一致，已拒绝替换草稿。",
           "INVALID_RESPONSE": "职位页面内容无法识别，原有草稿保留。",
           "SECURITY_CHALLENGE": "职位页面要求安全验证，请在平台正常完成验证后手动重试。",
@@ -1588,6 +1598,7 @@
     }
   },
   "daily": {
+    "preparation": {"internalPreview":{"available":"已核验当前片段依据。","title":"内部定向片段","boundary":"仅展示有据的部分内容，不是完整简历，不可投递。","loading":"正在核对预览依据…","open":"重新核对并查看内部片段","unavailable":"未能读取当前内部片段。","sources":"查看片段依据","limitations":"查看证据局限与未核要求","supported_excerpt":"引用事实","context":"来源上下文","reasons":{"no_presentable_supported_work":"已核证据不足以形成岗位相关工作或项目片段，暂不生成。","preview_mismatch":"预览返回与当前岗位或预览边界不一致，未显示内容。","preview_unavailable":"当前无法读取预览。","preview_audit_missing":"还没有当前岗位的语义核对记录。","preview_audit_invalid":"语义核对记录未通过校验。","preview_target_mismatch":"语义核对记录不属于当前岗位。","preview_inputs_changed":"来源或档案已变更，需重新核对。","preview_fact_changed":"原事实已不能与现有引用逐字核对。","preview_render_blocked":"部分事实含不宜展示的内部信息，未生成片段。","preview_inputs_unavailable":"当前依据无法读取。"}},"semanticSectionSchedule":"仅对原文编号、标题和子条款位置均可核验的硬性章节优先；不升级加分项、不推测未标明的关键技术。","semanticSchedule":"未核必备项优先，已核项后置但不删除；只是评估顺序，不是匹配分数或关键技术识别。","semanticOutcome":{"noUsable": "本轮没有可用的当前核对结果", "engines": {"preflight": "本次未启动匹配引擎", "returned": "匹配引擎已返回", "failed": "匹配引擎未返回评估"}, "stops": {"timeout": "本地服务等待超时", "budget": "达到本轮请求预算"}, "checks": "当前已完成并验证 {{count}} 个核对项", "notRecorded": "该记录未保留引擎诊断。"},"semanticCacheProgress":"本轮新增 {{count}} 块可复用缓存，不等于已匹配要求数。","semanticCoverageUnknown":"本轮未获得完整覆盖统计，不把未知当作零缺口。","semanticCandidateLimitation":"仅用于说明限制，不计作本人证据","semanticFindings":"查看当前可追溯分析","supportStates":{"supported":"当前引用支持","partial":"部分支持","insufficient":"可见范围缺证","conflict":"存在相反事实","unassessed":"评审未完成"},"semanticStates":{"partial":"已保存部分语义分析","blocked":"语义分析暂未完成","stale":"语义分析依据已变化","invalid":"语义分析记录需重验"},"semanticLimitation":"仅作证据分析，不是完整匹配结论或发送授权。","semanticCoverage":"已评审召回 {{reviewed}} / {{total}} 张证据卡；{{cards}} 张卡及 {{checks}} 个核对项服务评审降级。","semanticDeferred":"另有 {{cards}} 张卡、{{checks}} 个核对项因预算暂缓，尚未评估，不作能力结论。","semanticPending":"本次有界分析尚未覆盖全部阶段，已保存可复用进度。","semanticProgress":"证据语义核对，第 {{round}} 轮","savedStates":{"fresh":"已保存准备：输入仍一致","stale":"已保存准备：依据已变化","invalid":"已保存准备：记录需重新核对"},"savedInputOnly":"只校验输入版本，不代表能力匹配或可发送。","savedNeedsRefresh":"旧建议不作为当前依据，后续准备应重新核对。","precheckStates":{"promising":"词汇重合较多，仍非匹配结论","caution":"词汇重合有限","low":"词汇重合较低","unknown":"尚无足够预检信号"},"evidenceOverlap":"规则项重合：{{matched}} / {{total}}，词汇命中 {{hits}} 张卡。","overlapOnly":"仅词汇重合，不证明能力或资格满足。","legacySources":"证据池中 {{count}} 张旧格式卡尚不能重验来源版本，保留已审核记录。","assessmentStates":{"prepared":"语义准备完成，未批准","deferred":"自动准备已暂缓（方向建议）","blocked":"核对暂不可完成"},"groundingDeferred":"根据方向建议暂缓要求提取，未把缺少原文定位当作失败。","assessing":"正在核对方向与来源","unapproved":"未批准，尚非可投递状态","directionLabel":"方向建议","directions":{"aligned":"方向相符（不等于能力匹配）","needs_review":"方向信息不足","excluded":"方向不符","unavailable":"方向建议不可用"},"grounded":"已定位 {{count}} 条要求原文；仅证明可追溯，不证明语义分类正确。","notGrounded":"要求原文尚未完成定位","refill":"补充并核对岗位","refilling":"正在补充来源…","recheckMatching":"匹配规则已更新，重新核对","continueMatching":"继续核对未完成的匹配（仅一轮）","startMatching":"开始匹配（尚无保存结果）","resumeAssessment":"继续核对这份已保存草稿","refillLimitation":"按确认偏好补充官方来源后，应用自动核对方向与要求原文。结果仍未批准，不代表能力匹配或可投递；不会发送申请。","refillSummary":"找到 {{received}} 条来源，准备 {{prepared}} 份来源草稿","refillStates":{"completed":"来源步骤完成","partial":"部分完成","blocked":"暂未执行"},"title":"应用准备判断","refresh":"重新判断","limitation":"应用按现有岗位与证据预检选择准备顺序；入选仍需当前语义核验和简历生成，不代表可发送，不会触发投递。","summary":"准备 {{selected}} / {{maximum}}，缺口 {{shortfall}}；不以低匹配岗位凑数。","loading":"正在分析现有岗位…","open":"查看准备流程","deferred":"暂缓与排除原因","channels":{"generated_pdf":"定制 PDF 路线","platform_default":"平台默认简历路线"},"reasons":{"semantic_contract_recheck_unavailable":"记录或输入已变化，请刷新准备计划。","semantic_contract_recheck_retained":"未得到已验证的新结果，已保留原记录。","semantic_continuation_unavailable":"匹配记录已变化、不可续做或轮次用完，请刷新准备计划。","semantic_continuation_retained":"本轮没有得到可用新结果，已保留上一次可用核对。","semantic_start_unavailable":"已有匹配记录，请刷新准备计划。","semantic_advisory_partial":"已保存当前可见事实的语义分析","semantic_budget_exhausted":"本轮请求预算用完，保留已验证缓存","semantic_provider_timeout":"本地服务等待超时，停止自动续做","semantic_no_relevant_evidence":"本轮没有形成可用选材，不代表全部证据不匹配","semantic_all_cards_degraded":"召回评审未完成，不能据此判断能力","semantic_result_missing":"匹配引擎未返回评估","semantic_engine_unavailable":"语义引擎本轮未完成","semantic_inputs_changed":"输入已变化，旧分析不作为当前依据","semantic_preparation_not_fresh_grounded":"来源准备已变化或要求尚未完成定位","semantic_career_unconfirmed":"个人档案尚未确认","semantic_no_eligible_evidence":"尚无满足现有入池条件的证据","semantic_preparation_busy":"已有语义准备正在执行","semantic_audit_invalid":"保存的语义分析未通过完整性校验","semantic_inputs_unavailable":"语义分析输入暂不可用","semantic_unavailable":"语义分析暂不可用","preparation_saved_unapproved":"已保存来源绑定语义草稿，未批准","preparation_direction_deferred":"应用保留方向暂缓建议","preparation_stale":"准备依据已变化","preparation_invalid":"准备记录未通过一致性检查","direction_excluded":"方向建议不符，自动准备暂缓","preparation_resume_unavailable":"来源草稿已变化或已经核对，请刷新准备计划。","assessment_unavailable":"语义准备暂不可用","assessment_busy":"该准备核对正在执行","profile_not_unapproved":"画像已有审核状态，保留原流程","source_binding_mismatch":"画像与官方来源绑定不一致","requirement_source_missing":"无法定位要求原文","requirements_incomplete":"要求条款不完整","local_splash_required":"需使用已确认的本地 Splash","direction_invalid":"方向建议未通过校验","draft_generation_failed":"来源绑定草稿生成未完成","assessment_inputs_changed":"核对期间输入已改变，未覆盖","OK":"来源检查已完成","replenishment_busy":"已有来源补充正在运行","preferences_not_confirmed":"求职偏好尚未确认","job_preferences_source_changed":"求职偏好依据已变化","city_unknown":"缺少明确城市信息","safe_primary_query_missing":"缺少可直接搜索的主要求职方向","delivery_state_unavailable":"无法确认既有投递记录，已暂缓","replenishment_inputs_unavailable":"来源补充所需资料暂不可用","profile_already_linked":"已有关联画像，保留原流程","lead_not_new":"线索已有处理记录","lead_unavailable":"官方线索不可用","city_mismatch":"岗位城市与目标不符","detail_security_deferred":"本轮遇到安全验证或访问限制，未尝试读取详情","detail_search_deferred":"本轮来源搜索未完成，未尝试读取详情","SECURITY_CHALLENGE":"平台要求安全验证，已停止本轮，不再重试。","detail_budget":"本次来源详情预算已用完","lead_changed":"线索身份已变化","search_failed":"官方岗位搜索失败","detail_failed":"岗位详情获取失败","source_preparation_failed":"来源草稿准备失败","replenishment_incomplete":"部分来源步骤未完成","manual_import":"手工导入渠道，需独立投递流程","job_lead_missing":"缺少已绑定岗位线索","not_official_channel":"不是已支持的官方渠道","job_review_required":"来源审核或 JD 指纹未通过","job_binding_mismatch":"岗位与画像绑定不一致","jd_fingerprint_mismatch":"JD 内容版本已变化","quick_official_capture_required":"请先在岗位页重新读取官方详情，再准备此岗位。","semantic_review_required":"待新语义核验与准备","profile_review_required":"岗位画像未完成审核","jd_missing":"缺完整 JD","channel_unavailable":"渠道能力未确认","job_identity_missing":"缺稳定岗位身份","already_attempted":"已有投递占位，需沿原流程处理","fit_not_promising":"当前适配证据不足，不补入今日目标","duplicate_job":"同岗位重复画像","preparation_limit":"本次准备数量已达上限"}},
     "title": "每日受控投递",
     "description": "App 运行期间按上海时间每日执行一批；关闭或休眠时不运行，重新打开后只处理当天，不补过去日期。每次使用下方清单里的固定 PDF；附件位置不足时停止并说明原因。",
     "today": "今日",
@@ -1629,6 +1640,7 @@
       "daily_date_changed": "已跨上海日界，停止昨日批次",
       "daily_limit_reached": "每日共享额度已用完",
       "daily_scope_mismatch": "岗位或固定文件与授权不一致",
+      "quick_official_target_changed": "官方岗位来源或启动版本已变化。请在岗位页重读详情，并用当前版本重新生成后再准备投递。",
       "daily_pdf_filename_too_long": "猎聘附件名含后缀最多 24 个字符；当前文件名即使使用简称仍超限，尚未上传。",
       "daily_unresolved": "存在未决投递或中断批次，需先核验",
       "daily_execution_stopped": "前置检查未通过，批次已停止；查看原运行记录",
@@ -2082,9 +2094,11 @@
         "nextActions": "下一步"
       },
       "gapKind": {
+        "pdf_check_pending": "未核验",
         "evidence_missing": "证据缺口",
         "not_expressed": "未表达"
       }
     }
-  }
+  },
+  "factScope": {"title": "核对单项事实范围", "sourceNotUnique": "该引文在同一文档出现多次，旧范围暂不可用。可先撤销所选事实范围，再依据完整原文重新核对。", "hint": "选择有逐字依据的行动或成果。仅确认该依据支持的本人关系、对象、环境与状态。", "fact": "事实", "choose": "选择已引用事实", "attribution": "本人和本项事实的关系", "self": "本人负责执行", "team_lead": "牵头团队", "contributor": "参与协作", "teammate": "同事负责（不归本人）", "target": "动作对象", "env": "环境", "implementation": "实施状态", "release": "发布状态", "unknown": "未知", "test": "测试", "staging": "预发布", "production": "生产", "implemented": "已实现", "planned": "仅计划", "not_implemented": "明确未实现", "released": "已发布", "not_released": "明确未发布", "conflict": "存在相反证据", "adopt": "确认此范围并保存审核", "revoke": "撤销此事实的范围并保存"}
 }

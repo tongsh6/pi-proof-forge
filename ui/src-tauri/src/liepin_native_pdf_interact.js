@@ -10,14 +10,14 @@
   const inIm=e=>{for(let p=e,i=0;p && i<10;p=p.parentElement,i++)if(typeof p.className==='string' && p.className.includes('im-ui'))return true;return false;};
   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   const action={click_issued:false,reason:'inspection_only'};
-  if(!resumeButtons().length){
+  if(canWrite() && !resumeButtons().length){
     if(!Array.from(document.querySelectorAll('.im-ui-contact-list-item')).some(visible)){
       const openers=Array.from(document.querySelectorAll('.im-ui-basic-entry.im-ui-basic-entry-c')).filter(visible);
       if(openers.length===1){openers[0].click();await wait(700);}
     }
     const entries=Array.from(document.querySelectorAll('.im-ui-contact-list-item')).filter(e=>visible(e)
       && normalize(e.querySelector('.im-ui-contact-title-sub')?.textContent||'').endsWith(normalize(payload.company)));
-    if(entries.length===1){entries[0].click();await wait(700);}
+    if(entries.length===1 && canWrite()){entries[0].click();await wait(700);}
   }
   const buttons=resumeButtons();
   let context=null;
@@ -31,14 +31,16 @@
     }
   }
   if(payload.action==='prepare'){
-    if(context && buttons.length===1){action.click_issued=true;action.reason='approved_recipient_resume_entry';buttons[0].click();await wait(1600);}
+    if(!canWrite())action.reason='daily_write_cancelled';
+    else if(context && buttons.length===1){action.click_issued=true;action.reason='approved_recipient_resume_entry';buttons[0].click();await wait(1600);}
     else action.reason='active_recipient_not_verified';
     if(action.click_issued){
       const modals=Array.from(document.querySelectorAll('.ant-im-modal-content')).filter(e=>visible(e)
         && (e.innerText||'').includes('选择附件简历') && (e.innerText||'').includes(payload.filename.replace(/\.pdf$/i,'')));
       const targets=modals.length===1?Array.from(modals[0].querySelectorAll('input[type="radio"]')).filter(e=>e.value===payload.file_id):[];
       // 只切换至本次批准的附件；最终发送仍由独立动作重新核验。
-      if(targets.length===1 && !targets[0].disabled){if(!targets[0].checked){targets[0].click();await wait(300);}}
+      if(!canWrite())action.reason='daily_write_cancelled';
+      else if(targets.length===1 && !targets[0].disabled){if(!targets[0].checked){targets[0].click();await wait(300);}}
       else action.reason='approved_attachment_not_unique';
     }
   }

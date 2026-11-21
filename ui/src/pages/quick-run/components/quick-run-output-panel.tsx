@@ -9,6 +9,7 @@ type QuickRunOutputPanelProps = {
   quickRunResult: QuickRunStartResult | null;
   terminalLines: string[];
   manualDeliveryOnly: boolean | undefined;
+  platformDefaultOnly?: boolean;
   onNavigate: (path: string) => void;
 };
 
@@ -21,6 +22,7 @@ export function QuickRunOutputPanel({
   quickRunResult,
   terminalLines,
   manualDeliveryOnly,
+  platformDefaultOnly,
   onNavigate,
 }: QuickRunOutputPanelProps) {
   const { t } = useTranslation();
@@ -57,10 +59,10 @@ export function QuickRunOutputPanel({
           (manualDeliveryOnly ? (
             <div className="space-y-2">
               <p className="text-xs text-warning" data-testid="quick-run-manual-delivery-result">
-                {t("pages.quickRun.manualDeliveryHint", { path: quickRunResult.resume_pdf })}
+                {t(platformDefaultOnly ? "pages.quickRun.platformDefaultHint" : "pages.quickRun.manualDeliveryHint", { path: quickRunResult.resume_pdf })}
               </p>
               <button type="button" data-testid="quick-run-record-manual" className="rounded-card border border-border px-3 py-2 text-text-primary"
-                onClick={() => onNavigate("/jobs")}>{t("pages.quickRun.goRecordManual")}</button>
+                onClick={() => onNavigate("/jobs")}>{t(platformDefaultOnly ? "pages.quickRun.goPlatformResumeJobs" : "pages.quickRun.goRecordManual")}</button>
             </div>
           ) : (
             <div className="space-y-2">

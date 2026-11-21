@@ -114,7 +114,7 @@ export function QuickRunInputSection({
                 return (
                   <option key={profile.job_profile_id} value={profile.job_profile_id}>
                     {profile.company ? `${profile.company} · ${profile.title}` : profile.title}{suffix}
-                    {profile.native_pdf_delivery?.supported === false ? ` ${t("pages.quickRun.manualDeliveryOnlyBadge")}` : ""}
+                    {profile.native_pdf_delivery?.supported === false ? ` ${t(profile.native_pdf_delivery?.reason === "quick_official_capture_required" ? "pages.quickRun.officialCaptureRequiredBadge" : profile.native_pdf_delivery?.reason === "platform_default_only" ? "pages.quickRun.platformDefaultOnlyBadge" : "pages.quickRun.manualDeliveryOnlyBadge")}` : ""}
                   </option>
                 );
               })}
@@ -125,7 +125,7 @@ export function QuickRunInputSection({
               </p>}
             {manualDeliveryOnly &&
               <p role="status" data-testid="quick-run-manual-delivery-hint" className="text-xs text-warning">
-                {t("pages.quickRun.manualDeliveryHintShort")}
+                {t(selectedProfile?.native_pdf_delivery?.reason === "platform_default_only" ? "pages.quickRun.platformDefaultHint" : "pages.quickRun.manualDeliveryHintShort")}
               </p>}
             {selectedProfile && rulePrecheck &&
               <p role="status" className="text-xs text-text-secondary">

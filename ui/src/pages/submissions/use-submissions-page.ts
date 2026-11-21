@@ -330,6 +330,7 @@ export function useSubmissionsPage() {
       ["attachment_removal_already_attempted", t("pages.submissions.nativePdf.errors.attachment_removal_already_attempted")],
       ["attachment_removal_not_pending", t("pages.submissions.nativePdf.errors.attachment_removal_not_pending")],
     ];
+    if (message.includes("quick_official_target_changed")) return t("daily.reasons.quick_official_target_changed");
     if (message.includes("daily_pdf_filename_too_long")) return t("daily.reasons.daily_pdf_filename_too_long");
     if (message.includes("daily_recovery_required")) return t("pages.submissions.nativePdf.recoveryOnly");
     if (message.includes("attachment_missing_on_platform")) return t("pages.submissions.nativePdf.platformMissing");

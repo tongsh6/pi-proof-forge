@@ -53,7 +53,7 @@ type EvidenceDetailPanelProps = {
   setEditMode: (editing: boolean) => void;
   draftFromForm: (draft: EvidenceDraftPayload) => EvidenceDraftPayload;
   onSave: () => void;
-  onSaveReviewedDraft: (saveMode: "incomplete" | "eligible") => void;
+  onSaveReviewedDraft: (saveMode: "incomplete" | "eligible", factScope?: import("@/lib/sidecar/types").EvidenceFactScopeReview) => void;
   onDelete: () => void;
   onStartRereview: () => void;
   onMergeChange: (draft: EvidenceDraftPayload) => void;
@@ -122,6 +122,7 @@ export function EvidenceDetailPanel({
   onImport,
 }: EvidenceDetailPanelProps) {
   const { t } = useTranslation();
+  const scopeSourceAmbiguous = detail?.source_error === "fact_scope_source_not_unique";
   return (
     <aside
       className="rounded-panel border border-border bg-bg-panel p-5 shadow-[var(--shadow-panel)] xl:sticky xl:top-[6.5rem] xl:max-h-[calc(100vh-8rem)] xl:self-start xl:overflow-y-auto"
@@ -194,10 +195,15 @@ export function EvidenceDetailPanel({
 
       {detailState === "ready" && (detail || isDraft) ? (
         <div className="space-y-4 pt-4">
-          {!!detail?.source_error&&<p role="alert" className="text-sm text-warning">{t('sourceMerge.changed')}</p>}
+          {!!detail?.source_error&&<p role="alert" className="text-sm text-warning">{t(scopeSourceAmbiguous ? 'factScope.sourceNotUnique' : 'sourceMerge.changed')}</p>}
           {!generatedDraft && !!detail?.source_material_ids?.length && <button type="button" disabled={busy} className="rounded-card border border-accent px-3 py-2 text-sm text-accent" onClick={onStartRereview}>{t('materialDocument.reReview')}</button>}
           {generatedDraft ? (
             <EvidenceReviewSection
+              key={reviewTargetId ?? "new"}
+              scopeDraft={reviewTargetId&&detail?.evidence_id===reviewTargetId&&(!detail.source_error||scopeSourceAmbiguous)
+                ? draftFromForm(generatedDraft) : undefined}
+              sourceError={detail?.source_error}
+              reviewedScopes={detail?.fact_scope_review}
               generatedDraft={generatedDraft}
               reviewMissingItems={reviewMissingItems}
               busy={busy}

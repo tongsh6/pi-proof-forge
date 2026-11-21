@@ -8,7 +8,7 @@ def test_cleanup_removes_only_app_generated_attachments_with_new_dom():
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const script=fs.readFileSync('ui/src-tauri/src/liepin_native_cleanup_attachments.js','utf8');
 let menu=false,dialog=false,confirmClicks=0,removed=[];
-const appRecord={fileName:'童双龙-某司-后端-20261010.1',originalExtension:'pdf',fileId:'/a.pdf',encryAttachmentId:'a'};
+const appRecord={fileName:'示例甲-某司-后端-20261010.1',originalExtension:'pdf',fileId:'/a.pdf',encryAttachmentId:'a'};
 const otherRecord={fileName:'自定义简历',originalExtension:'pdf',fileId:'/b.pdf',encryAttachmentId:'b'};
 const makeCard=(record)=>({
   getClientRects:()=>[1],
@@ -46,7 +46,7 @@ const window={scrollTo:()=>{}};
  const result=JSON.parse(new URL(location.href).searchParams.get('payload'));
  const detail=JSON.parse(result.responses[0].payload);
  assert.equal(result.status,'success');
- assert.deepEqual(Array.from(detail.removed),['童双龙-某司-后端-20261010.1']);
+ assert.deepEqual(Array.from(detail.removed),['示例甲-某司-后端-20261010.1']);
  assert.equal(confirmClicks,1,'只确认一次删除');
  assert.equal(detail.skipped[0],'自定义简历','非 App 命名规则的附件不得删除');
  assert.equal(cards.length,1);

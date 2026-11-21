@@ -195,7 +195,8 @@ export function QuickRunPage() {
   const activeJobProfiles = jobProfiles.filter((jp) => jp.status === "active" && jp.source_jd?.trim());
   const targetAvailable = selectedProfile?.status === "active" && Boolean(selectedProfile.source_jd?.trim());
   // 手工导入/未绑定已审核平台线索的画像不能走 App 内原生 PDF 投递，只能手动投递后记录。
-  const manualDeliveryOnly = selectedProfile?.native_pdf_delivery?.supported === false;
+  const officialCaptureRequired = selectedProfile?.native_pdf_delivery?.reason === "quick_official_capture_required";
+  const manualDeliveryOnly = selectedProfile?.native_pdf_delivery?.supported === false && !officialCaptureRequired;
   // 未做模型对位预检时展示规则预检结论；assessed（Quick Run 结果）优先，保持原有已评估提示不变。
   const selectedPrecheck = selectedProfile?.fit_precheck;
   const rulePrecheck = selectedPrecheck && selectedPrecheck.source === "rule" ? selectedPrecheck : null;
@@ -230,11 +231,12 @@ export function QuickRunPage() {
     runState === "running" && "running",
     loadState === "ready" && careerProfile?.career_status?.ready !== true && "profileNotReady",
     loadState === "ready" && !targetAvailable && "targetUnavailable",
+    loadState === "ready" && officialCaptureRequired && "officialCaptureRequired",
     loadState === "ready" && selectedMaterialId === "" && "materialRequired",
     loadState === "ready" && eligibleEvidenceIds.length === 0 && "evidenceRequired",
   ].filter((item): item is string => Boolean(item));
   const canStartRun = startBlockers.length === 0;
-  const startBlockerText = startBlockers.map((key) => t(`reasons.quickRun.${key}`)).join("，");
+  const startBlockerText = startBlockers.map((key) => t(key === "officialCaptureRequired" ? "pages.quickRun.officialCaptureRequired" : `reasons.quickRun.${key}`)).join("，");
 
   const scoreBars = useMemo(
     () =>
@@ -344,7 +346,9 @@ export function QuickRunPage() {
           evidence_ids: eligibleEvidenceIds,
           resume_positioning: resumePositioning,
           use_llm: useLlm,
-          require_llm: useLlm,
+          // 语义评审失败时回退规则模式继续生成，而不是让整次 Quick Run 失败；
+          // 结果页/日志会显式提示「语义评审失败，本次没有有效语义结果」。
+          require_llm: false,
           timeout_seconds: useLlm ? 1800 : 120,
           direction_acknowledged: directionAcknowledged,
         },
@@ -371,7 +375,12 @@ export function QuickRunPage() {
       }
       applyTerminalResult(result, version, false);
     } catch (e) {
-      const message = getErrorMessage(e);
+      const detail = getErrorMessage(e);
+      const message = detail === "quick_official_capture_required"
+        ? t("pages.quickRun.officialCaptureRequired")
+        : detail === "job_profile_official_source_unverified"
+          ? t("pages.quickRun.officialSourceUnverified")
+          : detail;
       taskStore.fail("quickRun", message);
       notify("error", t("toasts.quickRun.failed"), message);
       if (version !== selectionVersion.current) return;
@@ -492,6 +501,7 @@ export function QuickRunPage() {
               quickRunResult={quickRunResult}
               terminalLines={terminalLines}
               manualDeliveryOnly={manualDeliveryOnly}
+              platformDefaultOnly={selectedProfile?.native_pdf_delivery?.reason === "platform_default_only"}
               onNavigate={(path) => navigate(path)}
             />
 

@@ -18,7 +18,9 @@ const api={getProfile:async()=>({profile:{career_status:{ready:true,reviewed:tru
 listEvidence:async()=>({items:[{evidence_id:'ec1',title:'项目一',status:'saved_eligible'}],next_cursor:null}),
 listEvidenceMaterialSources:async()=>({items:[{material_id:'work',label:'工作'}]}),
 listJobProfiles:async()=>({items:[
- {job_profile_id:'job-manual',status:'active',title:'Java技术专家',company:'得物App',source_jd:'完整JD',native_pdf_delivery:{supported:false,reason:'manual_import'}},
+ {job_profile_id:'job-manual',status:'active',title:'Java技术专家',company:'合成示例科技',source_jd:'完整JD',native_pdf_delivery:{supported:false,reason:'manual_import'}},
+ {job_profile_id:'job-headhunter',status:'active',title:'猎头岗',company:'某公司',source_jd:'完整JD',native_pdf_delivery:{supported:false,reason:'platform_default_only'}},
+ {job_profile_id:'job-old',status:'active',title:'历史来源',source_jd:'旧正文',native_pdf_delivery:{supported:false,reason:'quick_official_capture_required'}},
  {job_profile_id:'job-official',status:'active',title:'平台负责人',company:'某公司',source_jd:'完整JD',native_pdf_delivery:{supported:true,reason:''}}],next_cursor:null}),
 getSettings:async()=>({llm_config:{api_key:{configured:false}}}),
 checkQuickRunDirection:async()=>({direction:null,requires_confirmation:false,unavailable_reason:''}),
@@ -49,6 +51,19 @@ by('quick-run-record-manual').props.onClick();assert.equal(navigations.at(-1),'/
 profileSelect.props.onChange({target:{value:'job-official'}});await settle();
 await start().props.onClick();await settle();
 assert.ok(by('quick-run-prepare-pdf'),'已绑定官方线索的画像应恢复正常准备 PDF');
+profileSelect.props.onChange({target:{value:'job-headhunter'}});await settle();
+assert.ok(text(by('quick-run-manual-delivery-hint')).includes('pages.quickRun.platformDefaultHint'));
+await start().props.onClick();await settle();
+assert.ok(!by('quick-run-prepare-pdf'),'猎头岗不可误入定制 PDF 批次');
+assert.ok(text(by('quick-run-manual-delivery-result')).includes('pages.quickRun.platformDefaultHint'));
+assert.ok(!text(by('quick-run-manual-delivery-result')).includes('pages.quickRun.manualDeliveryHint'));
+by('quick-run-record-manual').props.onClick();assert.equal(navigations.at(-1),'/jobs');
+profileSelect.props.onChange({target:{value:'job-old'}});await settle();
+assert.ok(start().props.disabled);
+assert.ok(text(by('quick-run-blockers')).includes('pages.quickRun.officialCaptureRequired'));
+assert.ok(!by('quick-run-manual-delivery-hint'));
+const before=calls.length;
+await start().props.onClick();await settle();assert.equal(calls.length,before);
 console.log('manual delivery ui ok');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''

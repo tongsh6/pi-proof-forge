@@ -172,6 +172,7 @@ export function JobsPage() {
   const [profileSort, setProfileSort] = useState<ProfileSort>("precheck");
 
   const hasLoadedRef = useRef(false);
+  const loadSequence = useRef(0);
   const [refreshing, setRefreshing] = useState(false);
   // 新建画像区块默认收起；没有任何画像、或已有解析草稿/绑定线索时自动展开。
   const [createOpen, setCreateOpen] = useState(false);
@@ -186,8 +187,10 @@ export function JobsPage() {
   const loadData = useCallback(
     async (
       nextProfileFilters: JobProfilesFilters = profileFilters,
-      nextLeadFilters: JobLeadsFilters = leadFilters
+      nextLeadFilters: JobLeadsFilters = leadFilters,
+      retainBoundProfileId?: string
     ) => {
+      const sequence = ++loadSequence.current;
       if (hasLoadedRef.current) setRefreshing(true);
       else setLoadState("loading");
       setError(null);
@@ -200,12 +203,13 @@ export function JobsPage() {
           }),
           listJobLeads(nextLeadFilters),
         ]);
+        if (sequence !== loadSequence.current) return;
         setProfiles(profileResult.items);
         setLeads(leadResult.items);
         setSelectedProfileId((current) => {
           if (
-            current &&
-            profileResult.items.some((item) => item.job_profile_id === current)
+            current && (current === retainBoundProfileId ||
+            profileResult.items.some((item) => item.job_profile_id === current))
           ) {
             return current;
           }
@@ -220,6 +224,7 @@ export function JobsPage() {
         hasLoadedRef.current = true;
         setLoadState("ready");
       } catch (nextError) {
+        if (sequence !== loadSequence.current) return;
         const message = getErrorMessage(nextError);
         setError(message);
         if (hasLoadedRef.current) {
@@ -232,11 +237,14 @@ export function JobsPage() {
           setLoadState("error");
         }
       } finally {
-        setRefreshing(false);
+        if (sequence === loadSequence.current) setRefreshing(false);
       }
     },
     [leadFilters, profileFilters] // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  const loadCurrentData = useRef(loadData);
+  loadCurrentData.current = loadData;
 
   useEffect(() => {
     void loadData(profileFilters, leadFilters);
@@ -285,6 +293,10 @@ export function JobsPage() {
 
   const isBusy =
     actionState !== "idle" || draftState !== "idle" || convertingLeadId !== null || liepinSearching || fetchingDetail || preparingReview;
+  const canGenerateSelectedResume = !isBusy && selectedProfile?.status === "active"
+    && Boolean(selectedProfile.source_jd?.trim())
+    && selectedProfile.native_pdf_delivery?.reason !== "job_review_required";
+
 
   useEffect(() => { setPreparationError(null); }, [selectedLeadId]);
 
@@ -341,6 +353,16 @@ export function JobsPage() {
     if (changedLead || changedProfile) clearJdDraft();
   }, [activeTab, boundLeadId, boundProfileId, clearJdDraft, selectedLeadId, selectedProfileId]);
 
+  const refreshOfficialProfile = useCallback(async (profileId: string, withdrewReview: boolean) => {
+    if (withdrewReview) {
+      // A source operation already removed approval authority; a failed local
+      // refresh must not resurrect the previous actionable entry.
+      setProfiles(current => current.filter(profile =>
+        profile.job_profile_id !== profileId || profile.status !== "active"));
+    }
+    await loadCurrentData.current(undefined, undefined, profileId);
+  }, []);
+
   const handleFetchLiepinDetail = useCallback(async () => {
     if (!selectedLead) return;
     // 已有手动输入的 JD 文本且不属于当前线索时，覆盖前先确认。
@@ -358,9 +380,13 @@ export function JobsPage() {
     try {
       const result = await fetchLiepinJobDetail(selectedLead.job_lead_id);
       if (result.status !== "pass") {
-        setDetailError(t(`pages.jobs.liepinDetail.codes.${result.code}`, {
+        const fallback = t(`pages.jobs.liepinDetail.codes.${result.code}`, {
           defaultValue: t("pages.jobs.liepinDetail.failed"),
-        }));
+        });
+        setDetailError(result.code === "JOB_DETAIL_UNAVAILABLE" && result.detail_reason
+          ? t(`pages.jobs.liepinDetail.reasons.${result.detail_reason}`, {defaultValue:fallback})
+          : fallback);
+        if (result.job_profile_id) await refreshOfficialProfile(result.job_profile_id, true);
         return;
       }
       setJdText(result.jd_text);
@@ -379,12 +405,15 @@ export function JobsPage() {
         jd_status: result.jd_status,
         job_profile_id: result.job_profile_id,
       } : lead));
+      if (result.job_profile_id && (result.jd_status === "full_unreviewed" || result.jd_status === "complete_reviewed")) {
+        await refreshOfficialProfile(result.job_profile_id, result.jd_status === "full_unreviewed");
+      }
     } catch {
       setDetailError(t("pages.jobs.liepinDetail.failed"));
     } finally {
       setFetchingDetail(false);
     }
-  }, [boundLeadId, jdText, selectedLead, t]);
+  }, [boundLeadId, jdText, refreshOfficialProfile, selectedLead, t]);
 
   const handleLiepinSearch = useCallback(async () => {
     if (!liepinKeyword.trim()) return;
@@ -1278,8 +1307,8 @@ export function JobsPage() {
               </div>
             </div>
             <button type="button" data-testid="job-generate-resume" className="mt-3 rounded-card border border-accent px-3 py-2 text-sm text-accent disabled:opacity-50"
-              disabled={isBusy || selectedProfile?.status !== "active" || !selectedProfile?.source_jd?.trim()}
-              onClick={() => { if (selectedProfile?.status === "active" && selectedProfile.source_jd?.trim()) navigate(`/quick-run?job_profile_id=${encodeURIComponent(selectedProfile.job_profile_id)}`); }}>
+              disabled={!canGenerateSelectedResume}
+              onClick={() => { if (canGenerateSelectedResume && selectedProfile) navigate(`/quick-run?job_profile_id=${encodeURIComponent(selectedProfile.job_profile_id)}`); }}>
               {t("pages.jobs.actions.generateResume")}
             </button>
             {selectedProfile && !profileEditing ? (
@@ -1655,6 +1684,21 @@ export function JobsPage() {
                 </div>
                 {selectedLead.jd_status === "summary_only" ? (
                   <p className="rounded-card border border-warning/40 bg-warning/10 p-3 text-sm text-warning">{t("pages.jobs.leads.summaryHint")}</p>
+                ) : null}
+                {selectedLead.source === "liepin_official"
+                  && selectedLead.platform === "liepin"
+                  && selectedLead.jd_status === "full_unreviewed"
+                  && selectedLead.source_jd?.trim()
+                  && !/^(?:https?:\/\/\S+|[-—]+|n\/a|null|none|暂无|无)$/i.test(selectedLead.source_jd.trim()) ? (
+                  <details key={selectedLead.job_lead_id + ":" + (selectedLead.source_jd_sha256 || "")}
+                           className="space-y-2 rounded-card border border-border p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-text-primary">
+                      {t("pages.jobs.liepinDetail.storedTitle")}
+                    </summary>
+                    <p className="text-xs text-text-muted">{t("pages.jobs.liepinDetail.storedHint")}</p>
+                    <pre data-testid="jobs-stored-jd-body"
+                         className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words text-sm text-text-secondary">{selectedLead.source_jd}</pre>
+                  </details>
                 ) : null}
                 {selectedLead.platform === "liepin" ? (
                   <div className="space-y-2">

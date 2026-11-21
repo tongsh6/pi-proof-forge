@@ -50,7 +50,21 @@ export interface ArtifactSummary {
   created_at?: string;
 }
 
+export type EvidenceFactPosition={field:"actions"|"results";index:number;value:string};
+export type EvidenceFactScopeSource={material_id:string;document_id:string;sha256:string;quote:string};
+export type EvidenceFactImplementation="implemented"|"planned"|"not_implemented"|"unknown";
+export type EvidenceFactRelease="released"|"not_released"|"unknown";
+export type EvidenceFactEnvironment="test"|"staging"|"production"|"unknown";
+export type EvidenceFactAttribution="self"|"team_lead"|"contributor"|"teammate"|"unknown";
+export type EvidenceFactScopeReview=({kind:"revoke"} & EvidenceFactPosition) | ({
+  kind:"adopt";source:EvidenceFactScopeSource;attribution:EvidenceFactAttribution;target:string;environment:EvidenceFactEnvironment;
+  implementation:EvidenceFactImplementation;release:EvidenceFactRelease;
+} & EvidenceFactPosition);
+export type EvidenceFactScopeProjection=EvidenceFactPosition & {fact_id:string;attribution:EvidenceFactAttribution|"conflict";target:string;
+  environment:EvidenceFactEnvironment;implementation:EvidenceFactImplementation|"conflict";
+  release:EvidenceFactRelease|"conflict";sources:(EvidenceFactScopeSource & {attribution:EvidenceFactAttribution;implementation:EvidenceFactImplementation;release:EvidenceFactRelease})[]};
 export interface EvidenceDetail {
+  fact_scope_review?: EvidenceFactScopeProjection[];
   field_sources?: EvidenceFieldSource[];
   source_sha256?: string;
   source_error?: string;
@@ -372,11 +386,15 @@ export interface LiepinSearchResult extends RpcResultBase {
   auth: LiepinAuthState;
 }
 
+export type LiepinDetailUnavailableReason = "source_reports_unavailable" | "source_page_not_found" | "access_required" | "no_verified_detail";
+
 export interface LiepinJobDetailResult extends RpcResultBase {
+  detail_reason?: LiepinDetailUnavailableReason;
   status: "pass" | "blocked";
   code: string;
   message: string;
   job_lead_id: string;
+  /** A blocked response names the linked profile only after revoking its current capture. */
   job_profile_id: string;
   jd_text: string;
   source_url: string;
@@ -1144,7 +1162,8 @@ export interface QuickRunStartResult extends RpcResultBase {
     assessment_scope?:{qualification_count:number;responsibility_count:number;check_count:number};
     mode: "semantic";
     fit_score: number;
-    resume_score: number;
+    resume_score: number | null;
+    occurrence_coverage_known?: boolean;
     expression_score?: number;
     reviewed_card_count?: number;
     all_requirements_supported: boolean;

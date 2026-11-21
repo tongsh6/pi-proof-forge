@@ -7,6 +7,7 @@ import type {
   EvidenceDeleteResult,
   EvidenceFilters,
   EvidenceDraftPayload,
+  EvidenceFactScopeReview,
   EvidenceGenerateDraftResult,
   EvidenceGetResult,
   EvidenceImportResult,
@@ -28,6 +29,7 @@ import type {
   JobLeadConvertResult,
   LiepinCredentialResult,
   LiepinJobDetailResult,
+  LiepinDetailUnavailableReason,
   LiepinResumeResult,
   LiepinSearchResult,
   LlmConnectionCheckResult,
@@ -267,7 +269,7 @@ export async function saveEvidenceDraft(payload: {
   expected_sha256?:string;
   draft: EvidenceDraftPayload;
   save_mode: "incomplete" | "eligible";
-  review: { decision: "approved"; reviewed_at?: string; merge_sources?:boolean };
+  review: { decision: "approved"; reviewed_at?: string; merge_sources?:boolean; fact_scope?:EvidenceFactScopeReview };
 }): Promise<EvidenceSaveDraftResult> {
   return client.call<EvidenceSaveDraftResult>("evidence.saveDraft", payload);
 }
@@ -797,6 +799,23 @@ export function shutdownSidecar(): void {
   client.close();
 }
 
+export type PreparationMatchOutcome = {engine:"preflight"|"returned"|"failed";reason:string|null;stop_causes:("timeout"|"budget")[];completed_check_count:number;usable_current_result:boolean};
+export type PreparationSemanticMatch = {status:"partial"|"blocked"|"stale"|"invalid";code:string;scope:"advisory_partial";input_fresh:boolean;match_outcome?:PreparationMatchOutcome;cache_progress_count?:number;assessment_schedule?:{policy:string;section_policy?:string};coverage_known?:boolean;assessments?:{requirement_id:string;requirement_text?:string;status:string;reason:string;citations?:{fact_id:string;quote?:string;text?:string;candidate_support?:boolean}[]}[];continuation_needed?:boolean;continuation_digest?:string;eligible_card_count?:number;reviewed_card_count?:number;degraded_card_count?:number;degraded_check_count?:number;deferred_card_count?:number;deferred_check_count?:number;model_calls?:number;budget_exhausted?:boolean;send_ready:false};
+export async function matchDailyPreparation(job_profile_id:string,startIfNoAudit=false,contractDigest?:string,continuationDigest?:string):Promise<PreparationSemanticMatch> {return client.call<PreparationSemanticMatch & {meta:{correlation_id:string}}>("jobs.matchPreparation",contractDigest?{job_profile_id,recheck_contract_digest:contractDigest}:startIfNoAudit?{job_profile_id,start_if_no_audit:true}:continuationDigest?{job_profile_id,continue_matching_digest:continuationDigest}:{job_profile_id});}
+export type PreparationInternalPreview={status:"preview"|"blocked";code:string;job_profile_id:string;scope:"internal_targeted_excerpt";input_fresh:boolean;markdown:string;claims:{fact_id:string;source_id:string;quote:string;usage:"supported_excerpt"|"context";requirement_ids:string[];support_statuses:string[]}[];limitations:{requirement_id:string;text:string;status:string;reason:string}[];preview_fact_count:number;partial:true;model_calls:0;active_target_eligible:false;deliverable:false;send_ready:false};
+export async function previewDailyPreparation(job_profile_id:string):Promise<PreparationInternalPreview>{return client.call<PreparationInternalPreview & {meta:{correlation_id:string}}>("jobs.previewPreparation",{job_profile_id});}
+export type SavedPreparationState = {state:"absent"|"fresh"|"stale"|"invalid";reason:string;scope:"input_consistency_only";direction:PreparationAssessment["direction"];requirements_grounded:boolean;requirement_count:number;send_ready:false;semantic_matching?:PreparationSemanticMatch|null;evidence_precheck?:null|{source:string;state:string;coverage:number|null;matched_requirements:number|null;total_requirements:number|null;evidence_hits:number|null;source_freshness_unverified_count?:number;verified_source_count?:number;excluded_count?:number;card_count?:number}};
+export type PreparationRecoveryAction =
+  | {kind:"resume_assessment"}
+  | {kind:"start_matching"}
+  | {kind:"recheck_matching"|"continue_matching";audit_digest:string};
+export type PreparationItem = {job_profile_id:string;company:string;title:string;source_url:string;channel:string;reason:string;recovery_action:PreparationRecoveryAction|null;preparation?:SavedPreparationState};
+export type DailyPreparation = {meta:{correlation_id:string};maximum:number;selected:PreparationItem[];deferred:PreparationItem[];shortfall:number;send_ready:false};
+export async function getDailyPreparation(maximum=3):Promise<DailyPreparation> {return client.call<DailyPreparation>("jobs.planDailyPreparation",{maximum});}
+export type PreparationReplenishment = {meta:{correlation_id:string};status:"completed"|"partial"|"blocked";code:string;maximum:number;shortfall:number;queries:string[];received_count:number;imported_count:number;source_prepared_count:number;source_prepared:{job_lead_id:string;job_profile_id:string;company:string;title:string}[];deferred:{job_lead_id:string;reason:string}[];errors:{stage:string;code:string;job_lead_id?:string;detail_reason?:LiepinDetailUnavailableReason}[];send_ready:false};
+export async function replenishDailyPreparation(maximum:number):Promise<PreparationReplenishment> {return client.call<PreparationReplenishment>("jobs.replenishPreparation",{maximum});}
+export type PreparationAssessment = {meta:{correlation_id:string};status:"prepared"|"deferred"|"blocked";code:string;job_profile_id:string;direction:null|{status:"aligned"|"needs_review"|"excluded";reason:string;criterion_index:number;jd_quote:string;preference:{kind:string;text:string;quote:string}};requirements_grounded:boolean;requirement_count:number;model_calls:number;active_target_eligible:false;send_ready:false};
+export async function assessDailyPreparation(job_profile_id:string,resumeSourceOnly=false):Promise<PreparationAssessment> {return client.call<PreparationAssessment>("jobs.assessPreparation",resumeSourceOnly?{job_profile_id,resume_source_only:true}:{job_profile_id});}
 export type DailyCandidate = {run_id:string;company:string;position:string;pdf_sha256:string;pdf_path:string;pdf_filename?:string;matching_score?:number;job_url:string};
 export type DailyAuthorization = {id:string;state:string;scope:DailyCandidate[];maximum:number;time:string;expires_at:string};
 export type DailyProgressItem = {run_id:string;company:string;position:string;phase:string;quick_run_id:string|null;recovery_required:boolean};

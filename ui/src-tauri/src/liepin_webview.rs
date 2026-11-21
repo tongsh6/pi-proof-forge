@@ -279,6 +279,7 @@ async fn pdf_rpc(app: AppHandle, method: &'static str, mut params: Value) -> Res
 
 async fn upload_liepin_native_pdf_inner(app: AppHandle, window: WebviewWindow, run_id: String, accept_account_effects: bool) -> Result<Value,String> {
     require_local_command(&window)?;
+    pdf_rpc(app.clone(),"daily.permit",json!({"run_id":run_id})).await?;
     let mut checked=check_liepin_native_session_inner(app.clone(),window.clone()).await?;
     if checked["status"]!="authenticated" {return Err("NATIVE_SESSION_LOGIN_REQUIRED".into());}
     // 会话可能停在猎聘首页；上传脚本固定要求简历附件页，已认证时只做站内导航，不提交任何表单。
@@ -406,6 +407,7 @@ async fn inspect_liepin_pdf_target_inner(app:AppHandle,window:WebviewWindow,run_
 
 async fn start_liepin_pdf_communication_inner(app:AppHandle,window:WebviewWindow,run_id:String) -> Result<Value,String> {
     require_local_command(&window)?;
+    pdf_rpc(app.clone(),"daily.permit",json!({"run_id":run_id})).await?;
     inspect_uploaded_liepin_pdf_inner(app.clone(),window.clone(),run_id.clone()).await?;
     inspect_liepin_pdf_target_inner(app.clone(),window,run_id.clone()).await?;
     let packet=pdf_rpc(app.clone(),"run.agent.beginPdfDelivery",json!({"run_id":run_id})).await?;
@@ -434,7 +436,10 @@ async fn ensure_target_chat_open(browser:&WebviewWindow,packet:&Value)->Result<(
 async fn send_ai_disclosure(app:&AppHandle,browser:&WebviewWindow,packet:&Value,run_id:&str)->Result<Value,String>{
     // 独立声明步骤：在目标会话里真实发出一条 AI 自动化声明；确认后由后端记录证据，未确认则阻断投递。
     let nonce=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|"NATIVE_PDF_STATE_FAILED")?.as_nanos().to_string();
-    let observation=run_pdf_script(app,browser,include_str!("liepin_native_ai_disclosure.js"),packet,&nonce).await?;
+    let permit=pdf_rpc(app.clone(),"daily.permit",json!({"run_id":run_id})).await?;
+    let mut guarded=packet.clone();
+    if let (Some(target),Some(fields))=(guarded.as_object_mut(),permit.as_object()) {target.extend(fields.clone());}
+    let observation=run_pdf_script(app,browser,include_str!("liepin_native_ai_disclosure.js"),&guarded,&nonce).await?;
     pdf_rpc(app.clone(),"run.agent.recordPdfInteraction",json!({"run_id":run_id,"action":"ai_disclosure",
         "delivery_ref":packet["delivery_ref"],"observation":observation})).await
 }
@@ -463,7 +468,7 @@ async fn continue_liepin_pdf_delivery_inner(app:AppHandle,window:WebviewWindow,r
     }
     if packet["requires_ai_disclosure"]==true {return Err("ai_disclosure_not_confirmed".into());}
     // 导航/等待后重验，页面再以截止时间及取消标志约束真正点击和网络写入。
-    if action=="send" {
+    if matches!(action.as_str(),"prepare"|"send") {
         let permit=pdf_rpc(app.clone(),"daily.permit",json!({"run_id":run_id})).await?;
         if let (Some(target),Some(fields))=(packet.as_object_mut(),permit.as_object()) {target.extend(fields.clone());}
     }

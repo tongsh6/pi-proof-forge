@@ -108,3 +108,25 @@ now=3000;window.__ppfCancelledDailyCycle='cycle';await delayed();assert.equal(se
 '''
     r=subprocess.run(['node','-e',code],cwd=Path(__file__).resolve().parents[3],capture_output=True,text=True)
     assert r.returncode==0,r.stderr
+
+
+def test_prepare_refuses_expired_entry_and_cancellation_after_dialog_wait():
+    code=r'''
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync('ui/src-tauri/src/liepin_native_pdf_interact.js','utf8');
+(async()=>{for(const mode of ['expired','cancelled','current']){
+ let entry=0,radio=0,now=mode==='expired'?30:0;
+ const root={className:'im-ui-chat-container',innerText:'公司 岗位'};
+ const resume={textContent:'发简历',children:[],parentElement:root,getClientRects:()=>[1],click:()=>entry++};
+ const target={checked:false,value:'file-id',click:()=>radio++};
+ const modal={innerText:'选择附件简历 cv',getClientRects:()=>[1],querySelectorAll:s=>s.startsWith('input')?[target]:[]};
+ const document={querySelectorAll:s=>s==='*'?[resume]:s==='.ant-im-modal-content'?[modal]:[]};
+ const window={},location={href:'https://www.liepin.com/job/123.shtml'};
+ const script=source.replace('UPLOAD_PAYLOAD',JSON.stringify({action:'prepare',file_id:'file-id',filename:'cv.pdf',company:'公司',position:'岗位',daily_cycle:'cycle',write_deadline_ms:20})).replace('UPLOAD_NONCE','"test"');
+ await vm.runInNewContext(script,{document,window,location,URL,encodeURIComponent,Date:{now:()=>now},
+   setTimeout:fn=>{if(mode==='cancelled')window.__ppfCancelledDailyCycle='cycle';fn();},getComputedStyle:()=>({visibility:'visible'})});
+ assert.equal(entry,mode==='expired'?0:1);assert.equal(radio,mode==='current'?1:0);
+}})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+    result=subprocess.run(['node','-e',code],cwd=Path(__file__).resolve().parents[3],capture_output=True,text=True)
+    assert result.returncode==0,result.stderr

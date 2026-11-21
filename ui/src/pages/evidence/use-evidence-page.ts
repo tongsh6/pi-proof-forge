@@ -47,6 +47,7 @@ import type {
   ProblemFilter,
   SaveState,
 } from "./evidence-helpers";
+import { hasSourceAppend } from "./source-merge";
 
 
 export function useEvidencePage() {
@@ -488,17 +489,26 @@ export function useEvidencePage() {
   }, [materialSources, selectedMaterialId, selectedDocument, t, updateFormFromDraft]);
 
   const handleSaveReviewedDraft = useCallback(
-    async (saveMode: "incomplete" | "eligible") => {
+    async (saveMode: "incomplete" | "eligible", factScope?: import("@/lib/sidecar/types").EvidenceFactScopeReview) => {
       if (!generatedDraft || detailState!=="ready") return;
       setSaveState("saving");
       setDetailError(null);
       try {
+        const draft = draftFromForm(generatedDraft);
+        let mergeSources = false;
+        if (reviewTargetId) {
+          if (detail?.evidence_id !== reviewTargetId) throw new Error("evidence_review_changed");
+          mergeSources = hasSourceAppend(detail, draft);
+        }
+        if (factScope && (!reviewTargetId || !detail?.source_sha256 || mergeSources || saveMode !== "eligible")) {
+          throw new Error("fact_scope_review_required");
+        }
         const result = await saveEvidenceDraft({
-          draft: draftFromForm(generatedDraft),
+          draft,
           evidence_id: reviewTargetId,
           expected_sha256: reviewTargetId ? detail?.source_sha256 : undefined,
           save_mode: saveMode,
-          review: { decision: "approved", reviewed_at: new Date().toISOString(), merge_sources: Boolean(generatedDraft.field_sources?.length) },
+          review: { decision: "approved", reviewed_at: new Date().toISOString(), merge_sources: mergeSources, ...(factScope ? {fact_scope:factScope} : {}) },
         });
         setGeneratedDraft(null);setReviewTargetId(undefined);
         await loadEvidence(result.evidence_id);
