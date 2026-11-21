@@ -731,9 +731,9 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 - `execute_dry_run` 与 `execute_guided_batch` 缺省为 `false`；两者均未启用时只创建桌面端运行控制记录并返回 `queued`。
 - `execute_dry_run=true` 执行本地 dry-run AgentLoop；`execute_guided_batch=true` 执行既有 guided batch，后者优先。二者均不得触发真实投递或外部可见动作。
 - Guided batch 沿既有模型配置检查、`preflight_confirmed` 与 `confirmed_no_real_submit` 前置；`submit_enabled=true` 拒绝。执行固定为 dry run、`max_deliveries=0`，返回 `delivery_plan.external_submission_attempted=false`，不能以生成成功解释为外部投递完成。
-- P0-026 切片 F（限定工程范围已完成）：guided batch 的 `options.evidence_ids` 限定生成输入集合；按当前源读取完整事实、角色和已有范围，复用正式 FactIndex/plan/正文/trace 实现。未选卡不得被共享加载扩入，选中 ID 与卡内身份不符须拒绝，失效来源不得回退旧正文生成。
+- P0-026 切片 F（限定工程范围已完成）：guided batch 的 `options.evidence_ids` 限定直接项目证据选材；按当前源读取完整事实、角色和已有范围，复用正式 FactIndex/plan/正文/trace 实现。未选卡不得被扩入该项目 Fact/claims 集合，选中 ID 与卡内身份不符须拒绝，失效来源不得回退旧正文生成。职业档案既有贡献与其来源依赖不因项目选材范围被删除。
 - 生成正文和同一 `generation_trace` 由评价及既有审核快照消费；追溯缺失、正文/来源版本变化或精确事实失配须保持未验证，不因 card ID 存在或运行结束获得来源可信结论。内部追溯信息不得写入候选人正文。
-- 本片已工程验收直接采用卡及实际 profile/JD 文件、精确 trace、快照字节、现有时间精度、无时间/L5 时间卡正文准入、L5 角色省略和已采纳 L3 职责保留。职业档案依赖的未直接采用关联卡材料仍待切片 G；后续共享选材契约另列于质量设计/tasks，不宣称间接依赖或全部产品行为已闭合。
+- F 已验收直接采用卡及实际 profile/JD 文件、精确 trace、快照字节和来源等级消费者。G 已验证职业档案实际关联卡与材料按消费路径/版本加入同一 trace，正式生成与 Agent 共同消费；声明字段来源却缺材料指纹、变化及同键冲突拒绝或撤权，同一实际路径的别名正控保留。依赖捕获不把关联卡选作项目，公有 JSON/RPC 契约不变；后续共享选材仍待完成。
 - 批准或发送合同不变，Agent 规则评分未接入四层 R3.2，完整命题、实测发生性及真实 Splash/正式件验收仍未完成。
 
 `result`
