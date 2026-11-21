@@ -150,7 +150,7 @@ def test_system_settings_i18n_contract_is_complete():
         )
 
 
-def test_deepseek_provider_defaults_and_thinking_toggle_are_wired():
+def test_deepseek_provider_defaults_and_connection_are_wired():
     source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
 
     assert 'deepseek: {' in source
@@ -158,15 +158,8 @@ def test_deepseek_provider_defaults_and_thinking_toggle_are_wired():
     assert '"deepseek-flash"' in source
     assert "model: nextDefaults.model" in source
     assert "nextDefaults.base_url" in source
-    assert "thinking_enabled: current.thinking_enabled" in source
+    # Thinking state, interactions, and RPC payloads are checked in the browser behavior tests.
     assert 'setLlmConnection(null)' in source
-    assert "thinking_enabled" in source
-    assert "thinking_effort" in source
-    assert "thinking_effort: current.thinking_effort" in source
-    assert "payload.thinking_effort = form.thinking_effort" in source
-    assert "LLM_THINKING_EFFORTS" in source
-    assert "effort.value" in source
-    assert 'role="switch"' in source
     assert "LLM_PROVIDER_OPTIONS" in source
     assert "notChecked" in source
     assert "clearLlmApiKey" in source
@@ -216,26 +209,6 @@ def test_strata_provider_defaults_and_option_are_wired():
     assert source.index('{ id: "strata"') < source.index('{ id: "openai"')
     assert "mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5" in source
 
-
-def test_strata_thinking_toggle_and_payload_are_wired():
-    source = SYSTEM_SETTINGS_PAGE.read_text(encoding="utf-8")
-
-    # 思考开关对 DeepSeek 与 Strata 显示，Strata 使用独立提示文案。
-    assert 'llmForm.provider === "deepseek" || llmForm.provider === "strata"' in source
-    assert "thinkingModeHintStrata" in source
-    # Strata 只渲染 low/high；max 在切换 provider 时归一到 high。
-    assert 'effort.value !== "max"' in source
-    assert "thinkingEffortsForProvider(llmForm.provider).map" in source
-    assert "function normalizeThinkingEffort" in source
-    assert (
-        'return provider === "strata" && effort === "max" ? "high" : effort;'
-        in source
-    )
-    assert "normalizeThinkingEffort(nextProvider," in source
-    # Strata 保存/检查连接同样提交思考字段。
-    assert 'form.provider === "deepseek" || form.provider === "strata"' in source
-    assert "payload.thinking_enabled = form.thinking_enabled" in source
-    assert "payload.thinking_effort = form.thinking_effort" in source
 
 
 def test_strata_keyless_credential_status_is_wired():

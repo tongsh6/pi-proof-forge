@@ -58,7 +58,7 @@ type LlmForm = {
   api_key: string;
   timeout: string;
   temperature: string;
-  thinking_enabled: boolean;
+  thinking_enabled: boolean | null;
   thinking_effort: string;
 };
 
@@ -113,7 +113,7 @@ const LLM_THINKING_EFFORTS = [
   { value: "max", labelKey: "effortMax" },
 ] as const;
 
-// Strata 的 Qwen3.8 仅支持 low/high，历史/其他 provider 的 max 归一到 high。
+// Strata 协议仅使用 low/high，已保存的 max 归一到 high。
 function normalizeThinkingEffort(provider: string, effort: string): string {
   return provider === "strata" && effort === "max" ? "high" : effort;
 }
@@ -153,7 +153,7 @@ function toLlmForm(config: LlmConfig | null): LlmForm {
     api_key: "",
     timeout: String(config?.timeout ?? 60),
     temperature: String(config?.temperature ?? 0.2),
-    thinking_enabled: config?.thinking_enabled ?? false,
+    thinking_enabled: config?.thinking_enabled ?? null,
     thinking_effort: normalizeThinkingEffort(provider, config?.thinking_effort ?? "high"),
   };
 }
@@ -174,53 +174,26 @@ function applyProviderDefaults(
         ? STRATA_UNIFIED_BASE_URL
         : nextDefaults.base_url,
     api_key: nextProvider === current.provider ? current.api_key : "",
-    thinking_enabled: current.thinking_enabled,
-    thinking_effort: current.thinking_effort,
+    thinking_enabled: null,
+    thinking_effort: "high",
   };
 }
 
-function llmPayloadFromForm(form: LlmForm): {
-  provider: string;
-  model?: string;
-  base_url?: string;
-  api_key?: string;
-  timeout: number;
-  temperature: number;
-  thinking_enabled?: boolean;
-  thinking_effort?: string;
-} {
-  const payload: {
-    provider: string;
-    model?: string;
-    base_url?: string;
-    api_key?: string;
-    timeout: number;
-    temperature: number;
-    thinking_enabled?: boolean;
-    thinking_effort?: string;
-  } = {
+function llmPayloadFromForm(form: LlmForm) {
+  const model = form.model.trim();
+  const apiKey = form.api_key.trim();
+  return {
     provider: form.provider.trim(),
+    base_url: form.base_url.trim(),
     timeout: Number(form.timeout),
     temperature: Number(form.temperature),
+    thinking_enabled: form.thinking_enabled,
+    thinking_effort: form.thinking_effort,
+    ...(model ? { model } : {}),
+    ...(apiKey ? { api_key: apiKey } : {}),
   };
-  if (form.provider === "deepseek" || form.provider === "strata") {
-    payload.thinking_enabled = form.thinking_enabled;
-    payload.thinking_effort = form.thinking_effort;
-  }
-  const model = form.model.trim();
-  if (model) {
-    payload.model = model;
-  }
-  const baseUrl = form.base_url.trim();
-  if (baseUrl) {
-    payload.base_url = baseUrl;
-  }
-  const apiKey = form.api_key.trim();
-  if (apiKey) {
-    payload.api_key = apiKey;
-  }
-  return payload;
 }
+
 
 function statusTone(value: string): StatusTone {
   const normalized = value.toLowerCase();
@@ -772,14 +745,7 @@ export function SystemSettingsPage() {
       if (nextProvider === llmForm.provider) return;
       setLlmConnection(null);
       setLlmCheckState("idle");
-      setLlmForm((current) => {
-        const next = applyProviderDefaults(current, nextProvider);
-        // 切换到 Strata 时，把其不支持的 max 强度归一到 high。
-        return {
-          ...next,
-          thinking_effort: normalizeThinkingEffort(nextProvider, next.thinking_effort),
-        };
-      });
+      setLlmForm((current) => applyProviderDefaults(current, nextProvider));
     },
     [llmForm.provider]
   );
@@ -1494,12 +1460,21 @@ export function SystemSettingsPage() {
                           : ""
                       }`}
                       data-testid="settings-llm-base-url"
-                      onChange={(event) =>
-                        setLlmForm((current) => ({
-                          ...current,
-                          base_url: event.target.value,
-                        }))
-                      }
+                      onChange={(event) => {
+                        const baseUrl = event.target.value;
+                        setLlmForm((current) => {
+                          const changed =
+                            current.base_url.trim().replace(/\/+$/, "") !==
+                            baseUrl.trim().replace(/\/+$/, "");
+                          return {
+                            ...current,
+                            base_url: baseUrl,
+                            ...(changed
+                              ? { thinking_enabled: null, thinking_effort: "high" }
+                              : {}),
+                          };
+                        });
+                      }}
                       placeholder={
                         LLM_PROVIDER_DEFAULTS[llmForm.provider]?.base_url ||
                         "http://127.0.0.1:1234/v1"
@@ -1512,7 +1487,11 @@ export function SystemSettingsPage() {
                       <p className="text-xs text-text-muted">
                         {t("pages.systemSettings.llm.strataBaseUrlHint")}
                       </p>
-                    ) : null}
+                    ) : (
+                      <p className="text-xs text-text-muted">
+                        {t("pages.systemSettings.llm.baseUrlRequiredHint")}
+                      </p>
+                    )}
                   </label>
                   <div className="space-y-1.5 md:col-span-2">
                     <div className="flex items-center justify-between gap-3">
@@ -1599,76 +1578,74 @@ export function SystemSettingsPage() {
                   </label>
                 </div>
 
-                {llmForm.provider === "deepseek" || llmForm.provider === "strata" ? (
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-3">
-                    <div className="min-w-0">
-                      <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-text-primary">
-                        {t("pages.systemSettings.llm.thinkingMode")}
-                      </span>
-                      <p className="mt-1 text-xs text-text-muted">
-                        {llmForm.provider === "strata"
-                          ? t("pages.systemSettings.llm.thinkingModeHintStrata")
-                          : t("pages.systemSettings.llm.thinkingModeHint")}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button
-                        aria-checked={llmForm.thinking_enabled}
-                        aria-label={t("pages.systemSettings.llm.thinkingMode")}
-                        className={`relative h-6 w-11 rounded-full transition-colors ${
-                          llmForm.thinking_enabled ? "bg-accent" : "bg-bg-hover"
-                        }`}
-                        onClick={() =>
-                          setLlmForm((current) => ({
-                            ...current,
-                            thinking_enabled: !current.thinking_enabled,
-                          }))
-                        }
-                        role="switch"
-                        type="button"
-                      >
-                        <span
-                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-all ${
-                            llmForm.thinking_enabled ? "left-[22px]" : "left-0.5"
-                          }`}
-                        />
-                      </button>
-                      {llmForm.thinking_enabled ? (
-                        <div
-                          aria-label={t("pages.systemSettings.llm.thinkingEffort")}
-                          className="inline-flex rounded-card border border-border bg-bg-hover p-0.5"
-                          role="group"
-                          title={t("pages.systemSettings.llm.thinkingEffortHint")}
-                        >
-                          {thinkingEffortsForProvider(llmForm.provider).map((effort) => {
-                            const active =
-                              llmForm.thinking_effort === effort.value;
-                            return (
-                              <button
-                                aria-pressed={active}
-                                className={`rounded-[7px] px-2.5 py-1 text-xs font-medium transition-colors ${
-                                  active
-                                    ? "bg-accent text-white"
-                                    : "text-text-secondary hover:text-text-primary"
-                                }`}
-                                key={effort.value}
-                                onClick={() =>
-                                  setLlmForm((current) => ({
-                                    ...current,
-                                    thinking_effort: effort.value,
-                                  }))
-                                }
-                                type="button"
-                              >
-                                {t(`pages.systemSettings.llm.${effort.labelKey}`)}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
+                <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-3">
+                  <div className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-text-primary">
+                      {t("pages.systemSettings.llm.thinkingMode")}
+                    </span>
+                    <p className="mt-1 text-xs text-text-muted">
+                      {llmForm.provider === "strata"
+                        ? t("pages.systemSettings.llm.thinkingModeHintStrata")
+                        : llmForm.provider === "deepseek"
+                          ? t("pages.systemSettings.llm.thinkingModeHint")
+                          : t("pages.systemSettings.llm.thinkingModeHintCompatible")}
+                    </p>
                   </div>
-                ) : null}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <select
+                      aria-label={t("pages.systemSettings.llm.thinkingMode")}
+                      className={LLM_FIELD_INPUT_CLASS}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setLlmForm((current) => ({
+                          ...current,
+                          thinking_enabled: value === "default" ? null : value === "on",
+                        }));
+                      }}
+                      value={
+                        llmForm.thinking_enabled === null
+                          ? "default"
+                          : llmForm.thinking_enabled ? "on" : "off"
+                      }
+                    >
+                      <option value="default">{t("pages.systemSettings.llm.thinkingDefault")}</option>
+                      <option value="off">{t("pages.systemSettings.llm.thinkingOff")}</option>
+                      <option value="on">{t("pages.systemSettings.llm.thinkingOn")}</option>
+                    </select>
+                    {llmForm.thinking_enabled === true ? (
+                      <div
+                        aria-label={t("pages.systemSettings.llm.thinkingEffort")}
+                        className="inline-flex rounded-card border border-border bg-bg-hover p-0.5"
+                        role="group"
+                        title={t("pages.systemSettings.llm.thinkingEffortHint")}
+                      >
+                        {thinkingEffortsForProvider(llmForm.provider).map((effort) => {
+                          const active = llmForm.thinking_effort === effort.value;
+                          return (
+                            <button
+                              aria-pressed={active}
+                              className={`rounded-[7px] px-2.5 py-1 text-xs font-medium transition-colors ${
+                                active
+                                  ? "bg-accent text-white"
+                                  : "text-text-secondary hover:text-text-primary"
+                              }`}
+                              key={effort.value}
+                              onClick={() =>
+                                setLlmForm((current) => ({
+                                  ...current,
+                                  thinking_effort: effort.value,
+                                }))
+                              }
+                              type="button"
+                            >
+                              {t(`pages.systemSettings.llm.${effort.labelKey}`)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-bg-primary/40 px-4 py-3">
                   <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">

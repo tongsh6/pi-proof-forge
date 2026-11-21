@@ -495,7 +495,7 @@ export interface LlmConfig {
   base_url: string | null;
   api_key: MaskedSecretStatus;
   configured_providers?: string[];
-  thinking_enabled?: boolean;
+  thinking_enabled?: boolean | null;
   thinking_effort?: string;
   timeout: number;
   temperature: number;
