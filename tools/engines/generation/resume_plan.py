@@ -185,14 +185,16 @@ def build_resume_plan(
         # 标题/时间/场景/角色是结构性事实：从证据卡直接取，不依赖选材是否选中
         # （否则"项目缺时间"会让合格层 R1.3 恒失败）。
         group_card_ids = list(dict.fromkeys(fact.source_id for fact in facts if fact.kind == "evidence"))
-        structured: dict[str, str] = {}
+        structured: dict[str, Fact] = {}
         for cid in group_card_ids:
             for fact in index.by_card(cid):
-                structured.setdefault(fact.field, fact.text)
-        context = structured.get("context", "") or next(
-            (fact.text for fact in facts if fact.field == "context"), ""
+                structured.setdefault(fact.field, fact)
+        context_fact = structured.get("context") or next(
+            (fact for fact in facts if fact.field == "context"), None
         )
-        role_text = structured.get("role_scope", "")
+        context = context_fact.text if context_fact is not None else ""
+        role_fact = structured.get("role_scope")
+        role_text = role_fact.text if role_fact is not None else ""
         period_text = next((fact.time_range for fact in facts if fact.kind == "evidence" and fact.time_range), "")
         actions = [fact for fact in facts if fact.field == "actions"]
         results = [fact for fact in facts if fact.field == "results"]
@@ -202,6 +204,8 @@ def build_resume_plan(
         if not period:
             untimed.append(card_id)
         rendered_ids = tuple(fact.fact_id for fact in (*actions, *results))
+        if context_fact is not None and context:
+            rendered_ids = (context_fact.fact_id, *rendered_ids)
         push(rendered_ids)
         projects.append(
             ProjectBlock(

@@ -1,5 +1,6 @@
 """共享正文入口使用现行FactIndex/plan，不保留preferred_facts第二通道。"""
 from copy import deepcopy
+import hashlib
 import json
 
 import pytest
@@ -106,6 +107,22 @@ def test_shared_builder_preserves_full_project_context_and_selected_result():
     assert card == original
     assert "背景：" + FULL_PROJECT_CONTEXT in markdown
     assert background["text"] == FULL_PROJECT_CONTEXT
+    assert background.get("source_kind") == "evidence"
+    assert background.get("evidence_id") == card["id"]
+    assert background.get("fact_id") == card["id"] + ":context:0"
+    assert markdown.splitlines()[background["render_line"] - 1] == "背景：" + FULL_PROJECT_CONTEXT
+    from tools.engines.matching.semantic_review import resume_assessment
+    context_id = card["id"] + ":context:0"
+    report = {
+        "facts": {context_id: {"source_id": card["id"], "field": "context", "text": card["context"]}},
+        "requirements": [{"id": "r-context", "kind": "must_have", "text": "合成场景要求"}],
+        "assessments": [{"requirement_id": "r-context", "status": "supported",
+                         "citations": [{"fact_id": context_id, "quote": card["context"]}]}],
+    }
+    assessment = resume_assessment(report, claims, occurrence_coverage_known=True)
+    requirement, = assessment["requirements"]
+    assert requirement["resume_status"] == "supported"
+    assert requirement["citations"][0]["render_lines"] == [background["render_line"]]
 
 
 @pytest.mark.parametrize("review", ("measured", "nonquant", "unreviewed"))
@@ -170,6 +187,11 @@ def test_merged_project_keeps_later_cards_background_without_result_borrowing():
     assert background["text"] == second["context"]
     result, = [row for row in claims if row.get("fact_id") == "ec-background:results:0"]
     assert markdown.splitlines()[result["render_line"] - 1] == "- " + second["results"][0]
+    assert background.get("source_kind") == "evidence"
+    assert background.get("evidence_id") == second["id"]
+    assert background.get("fact_id") == second["id"] + ":context:0"
+    assert markdown.splitlines()[background["render_line"] - 1] == "背景：" + second["context"]
+    assert not any(row.get("fact_id") == first["id"] + ":context:0" for row in claims)
 
 
 def test_guided_generation_keeps_full_context_through_trace_and_actual_evaluation(generation):
@@ -180,7 +202,7 @@ def test_guided_generation_keeps_full_context_through_trace_and_actual_evaluatio
     raw = paths["card"].read_text()
     previous = 'context: "合成队列处理验收"'
     assert raw.count(previous) == 1
-    paths["card"].write_text(raw.replace(previous, "context: " + json.dumps(FULL_PROJECT_CONTEXT, ensure_ascii=False)))
+    paths["card"].write_text(raw.replace(previous, "context: " + json.dumps("  " + FULL_PROJECT_CONTEXT + "  ", ensure_ascii=False)))
     before = paths["card"].read_bytes()
     assert FULL_PROJECT_CONTEXT.index(PROJECT_CONTEXT_TAIL) > 120
     resume = assembler.generate(report, [identity], "complete-context")
@@ -205,3 +227,98 @@ def test_guided_generation_keeps_full_context_through_trace_and_actual_evaluatio
     background, = [row for row in trace["claims"] if row.get("field") == "context"]
     assert "背景：" + FULL_PROJECT_CONTEXT in resume.content
     assert background["text"] == FULL_PROJECT_CONTEXT
+    assert background.get("source_kind") == "evidence"
+    assert background.get("evidence_id") == identity.id
+    assert background.get("fact_id") == identity.id + ":context:0"
+    assert resume.content.splitlines()[background["render_line"] - 1] == "背景：" + FULL_PROJECT_CONTEXT
+
+
+
+def test_same_text_backgrounds_only_cover_the_rendered_context_identity():
+    from tools.engines.evaluation.tiers.common import load_quality_config
+    from tools.engines.evaluation.tiers.strong import evaluate_strong
+    from tools.engines.matching.semantic_review import resume_assessment
+
+    _, first = inputs()
+    value = first["results"][0]
+    first.update(context=value, project_key="共同验收项目", results=[], result_reviews={})
+    second = {
+        **deepcopy(first), "id": "ec-other-context",
+        "actions": ["完成独立的消费回执与异常处理联调"],
+        "results": [value], "result_reviews": {},
+    }
+    claims = []
+    markdown = build_template_resume("A", [first, second], claims=claims)
+    assert markdown.splitlines().count("背景：" + value) == 1
+    assert "- " + value not in markdown.splitlines()
+    assert [row["evidence_id"] for row in claims if row.get("field") == "actions"] == [
+        first["id"], first["id"], second["id"],
+    ]
+    identities = [
+        (first["id"], "context", "r-used"),
+        (second["id"], "context", "r-other-context"),
+        (second["id"], "results", "r-unreviewed-result"),
+    ]
+    report = {
+        "facts": {f"{source}:{field}:0": {"source_id": source, "field": field, "text": value}
+                  for source, field, _ in identities},
+        "requirements": [{"id": requirement, "kind": "must_have", "text": "合成精确引用"}
+                         for _, _, requirement in identities],
+        "assessments": [{"requirement_id": requirement, "status": "supported",
+                         "citations": [{"fact_id": f"{source}:{field}:0", "quote": value}]}
+                        for source, field, requirement in identities],
+    }
+    assessment = resume_assessment(report, claims, occurrence_coverage_known=True)
+    statuses = {row["requirement_id"]: row["resume_status"] for row in assessment["requirements"]}
+    assert statuses["r-other-context"] == "not_present"
+    assert statuses["r-unreviewed-result"] == "not_present"
+    quality = evaluate_strong(
+        resume=markdown, cards={first["id"]: first, second["id"]: second},
+        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(),
+    )
+    assert quality.metrics["quant_total"] == 0.0
+    assert statuses["r-used"] == "supported"
+
+
+def test_trace_rejects_changed_background_even_when_original_text_remains_in_result(generation):
+    from tools.infra.persistence.review_snapshot import read_generation_trace
+
+    assembler, identity, report, paths = generation
+    raw = paths["card"].read_text()
+    previous = 'context: "合成队列处理验收"'
+    assert raw.count(previous) == 1
+    # The original scalar has harmless spacing; the body and source match use the normal display form.
+    source_context = "  " + RESULT + "  "
+    paths["card"].write_text(raw.replace(previous, "context: " + json.dumps(source_context, ensure_ascii=False)))
+    before = paths["card"].read_bytes()
+    resume = assembler.generate(report, [identity], "same-text-context")
+    root = paths["card"].parent.parent
+    output = root / "synthetic-same-text-context.md"
+    output.write_text(resume.content)
+    output.with_suffix(".trace.json").write_text(json.dumps(resume.generation_trace))
+    trace, valid = read_generation_trace(output)
+    assert valid
+    lines = resume.content.splitlines()
+    assert lines.count("背景：" + RESULT) == 1
+    assert lines.count("- " + RESULT) == 1
+    background_line = lines.index("背景：" + RESULT)
+    result, = [row for row in trace["claims"] if row.get("fact_id") == identity.id + ":results:0"]
+    assert lines[result["render_line"] - 1] == "- " + RESULT
+    background, = [row for row in trace["claims"] if row.get("field") == "context"]
+    assert background["text"] == RESULT
+
+    changed_lines = list(lines)
+    changed_lines[background_line] = "背景：" + RESULT.removeprefix("在隔离测试环境中，")
+    assert changed_lines[background_line] != lines[background_line]
+    changed_text = "\n".join(changed_lines) + ("\n" if resume.content.endswith("\n") else "")
+    # A global substring check can still find the whole original statement in the result bullet.
+    assert RESULT in changed_text
+    assert changed_lines[result["render_line"] - 1] == "- " + RESULT
+    changed_trace = deepcopy(trace)
+    changed_trace["resume_sha256"] = hashlib.sha256(changed_text.encode("utf-8")).hexdigest()
+    assert changed_trace["claims"] == trace["claims"]
+    output.write_text(changed_text)
+    output.with_suffix(".trace.json").write_text(json.dumps(changed_trace))
+    _, valid = read_generation_trace(output)
+    assert paths["card"].read_bytes() == before
+    assert valid is False

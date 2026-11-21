@@ -140,15 +140,39 @@ def render_plan(
                 lines.append("- " + from_fact(achievement))
 
     if plan.projects:
+        project_contexts: list[Fact | None] = []
+        for block in plan.projects:
+            registered = [index.get(fact_id) for fact_id in block.fact_ids]
+            if any(item is None for item in registered):
+                raise ValueError("unbound_resume_fact")
+            contexts = [item for item in registered if item is not None and item.field == "context"]
+            if len(contexts) > 1:
+                raise ValueError("unbound_resume_fact")
+            context_fact = contexts[0] if contexts else None
+            if context_fact is not None and (
+                context_fact.kind != "evidence"
+                or not render_fact_text(block.background)
+                or render_fact_text(context_fact.text) != render_fact_text(block.background)
+            ):
+                raise ValueError("unbound_resume_fact")
+            project_contexts.append(context_fact)
+        registered = [index.get(fact_id) for fact_id in plan.fact_ids]
+        if any(item is None for item in registered):
+            raise ValueError("unbound_resume_fact")
+        plan_context_ids = {item.fact_id for item in registered if item is not None and item.field == "context"}
+        if plan_context_ids != {item.fact_id for item in project_contexts if item is not None}:
+            raise ValueError("unbound_resume_fact")
+
         lines.extend(["", "## 项目经历"])
-        for position, block in enumerate(plan.projects):
-            # Group labels and composed context are not occurrences of any one card fact.
+        for position, (block, context_fact) in enumerate(zip(plan.projects, project_contexts)):
+            # Group headings remain presentation; an explicitly bound background retains its own source.
             title = fact(block.title, "presentation", "title")
             lines.append(f"### {title}" + (f"（{block.period}）" if block.period else ""))
             if block.role:
                 lines.append("角色：" + fact(block.role, "presentation", "role_scope"))
             if block.background:
-                lines.append("背景：" + fact(block.background, "presentation", "context"))
+                lines.append("背景：" + (from_fact(context_fact) if context_fact is not None
+                                        else fact(block.background, "presentation", "context")))
             if block.work_company:
                 lines.append("所属工作：" + fact(block.work_company, "personal_profile", "career.work.company"))
             for item in block.key_work:

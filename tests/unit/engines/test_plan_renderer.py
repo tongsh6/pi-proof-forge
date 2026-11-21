@@ -1,11 +1,14 @@
 """计划渲染契约：章节顺序、逐条 claim 可追溯、无时间项目不伪造时间。"""
+from dataclasses import replace
+
 import pytest
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
-from tools.engines.generation.fact_index import build_fact_index
+from tools.domain.quality_text import render_fact_text
+from tools.engines.generation.fact_index import Fact, FactIndex, build_fact_index
 from tests.unit.engines.test_fact_index import reviewed_card_results
 from tools.engines.generation.fact_selector import SelectionBudget, select_facts
 from tools.engines.generation.plan_renderer import render_plan
-from tools.engines.generation.resume_plan import build_resume_plan
+from tools.engines.generation.resume_plan import ResumePlan, build_resume_plan
 
 
 def card(**over):
@@ -149,3 +152,106 @@ def test_internal_paths_are_filtered_before_render():
 
     assert "/Users/" not in text
     assert all("/Users/" not in claim["text"] for claim in claims)
+
+
+@pytest.fixture
+def explicitly_bound_background():
+    """A declared renderer input, independent of the plan producer under test elsewhere."""
+    context = "门店高峰预约排队场景；只负责接口对接，不承担平台整体改造。"
+    index = build_fact_index([card(context=context)], {})
+    selected = select_facts(index, budget=SelectionBudget())
+    plan = build_resume_plan(index, selected, {})
+    context_fact = index.get("ec_a:context:0")
+    assert context_fact is not None
+    block, = plan.projects
+    block = replace(block, fact_ids=tuple(dict.fromkeys((*block.fact_ids, context_fact.fact_id))))
+    plan = replace(plan, projects=(block,),
+                   fact_ids=tuple(dict.fromkeys((*plan.fact_ids, context_fact.fact_id))))
+    return index, plan, context_fact
+
+
+@pytest.mark.parametrize("invalid", [
+    "unresolved_id",
+    "multiple_contexts",
+    "profile_context",
+    "empty_background",
+    "different_complete_value",
+    "block_only_registration",
+    "plan_only_registration",
+])
+def test_renderer_rejects_explicit_invalid_background_binding(explicitly_bound_background, invalid):
+    index, plan, context_fact = explicitly_bound_background
+    block, = plan.projects
+    context_id = context_fact.fact_id
+
+    if invalid == "unresolved_id":
+        # Unresolvable IDs cannot be ignored merely because their spelling lacks a field hint.
+        unknown = "unresolved_occurrence"
+        block = replace(block, fact_ids=tuple(unknown if fid == context_id else fid for fid in block.fact_ids))
+        plan = replace(plan, fact_ids=tuple(unknown if fid == context_id else fid for fid in plan.fact_ids))
+    elif invalid == "multiple_contexts":
+        other = replace(context_fact, fact_id="ec_b:context:0", source_id="ec_b",
+                        text="另一个独立项目的完整背景。")
+        index = replace(index, facts=(*index.facts, other), by_id={**index.by_id, other.fact_id: other})
+        block = replace(block, fact_ids=(*block.fact_ids, other.fact_id))
+        plan = replace(plan, fact_ids=(*plan.fact_ids, other.fact_id))
+    elif invalid == "profile_context":
+        profile_context = Fact(fact_id="personal_profile:context:0", source_id="personal_profile",
+                               field="context", text=context_fact.text, kind="profile")
+        index = replace(index, facts=(*index.facts, profile_context),
+                        by_id={**index.by_id, profile_context.fact_id: profile_context})
+        block = replace(block, fact_ids=tuple(
+            profile_context.fact_id if fid == context_id else fid for fid in block.fact_ids))
+        plan = replace(plan, fact_ids=tuple(
+            profile_context.fact_id if fid == context_id else fid for fid in plan.fact_ids))
+    elif invalid == "empty_background":
+        block = replace(block, background="")
+    elif invalid == "different_complete_value":
+        block = replace(block, background="门店高峰预约排队场景。")
+    elif invalid == "block_only_registration":
+        plan = replace(plan, fact_ids=tuple(fid for fid in plan.fact_ids if fid != context_id))
+    elif invalid == "plan_only_registration":
+        block = replace(block, fact_ids=tuple(fid for fid in block.fact_ids if fid != context_id))
+    else:
+        raise AssertionError(invalid)
+
+    plan = replace(plan, projects=(block,))
+    with pytest.raises(ValueError):
+        render_plan(plan, index, profile={}, job_context={})
+
+
+def test_renderer_records_explicit_background_on_its_actual_line(explicitly_bound_background):
+    index, plan, context_fact = explicitly_bound_background
+    block, = plan.projects
+    # Existing display whitespace is permitted; the full declared proposition is unchanged.
+    plan = replace(plan, projects=(replace(block, background="  " + context_fact.text + "\n"),))
+    claims = []
+    text = render_plan(plan, index, profile={}, job_context={}, claims=claims)
+
+    actual = [row for row in claims if row.get("fact_id") == context_fact.fact_id]
+    assert len(actual) == 1, claims
+    claim, = actual
+    assert claim["source_kind"] == "evidence"
+    assert claim["evidence_id"] == context_fact.source_id
+    assert claim["field"] == "context"
+    assert claim["text"] == render_fact_text(context_fact.text)
+    assert text.splitlines()[claim["render_line"] - 1] == "背景：" + claim["text"]
+    assert "只负责接口对接，不承担平台整体改造。" in claim["text"]
+
+
+def test_renderer_keeps_unbound_scope_description_without_guessing_source(explicitly_bound_background):
+    index, plan, context_fact = explicitly_bound_background
+    block, = plan.projects
+    # The real preview shape has only action/result facts and no declared context occurrence.
+    facts = tuple(fact for fact in index.facts if fact.field in {"actions", "results"})
+    index = FactIndex(facts=facts, by_id={fact.fact_id: fact for fact in facts})
+    ids = tuple(fact.fact_id for fact in facts)
+    block = replace(block, fact_ids=ids)
+    plan = ResumePlan(projects=(block,), fact_ids=ids)
+    claims = []
+    text = render_plan(plan, index, profile={}, job_context={}, claims=claims)
+
+    assert "背景：" + context_fact.text in text
+    assert {row["fact_id"] for row in claims if row.get("field") in {"actions", "results"}} == set(ids)
+    assert all(text.splitlines()[row["render_line"] - 1] == "- " + row["text"]
+               for row in claims if row.get("field") in {"actions", "results"})

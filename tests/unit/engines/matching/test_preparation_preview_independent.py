@@ -134,3 +134,38 @@ def test_string_qualifiers_do_not_get_rendered_character_by_character():
         facts["ec:actions:0"]["source_qualifiers"]="参与或负责"
     with pytest.raises(ValueError):build(**kw)
 
+
+def test_composed_scope_background_remains_presentation_without_full_card_context(monkeypatch):
+    module = importlib.import_module("tools.engines.generation.preparation_preview")
+    kw = fixture()
+    qualifiers = ["本人仅承担接口对接", "所有验证限于隔离回归环境"]
+    full_context = "该项目完整场景未被岗位引用，不得作为片段背景夹带。"
+    for facts in (kw["audit_facts"], kw["current_facts"]):
+        facts["ec:actions:0"]["source_qualifiers"] = list(qualifiers)
+        facts["ec:context:0"] = {
+            "source_id": "ec", "field": "context", "text": full_context,
+            "source_role": "负责后端开发",
+        }
+    actual_render = module.render_plan
+    rendered_claims = []
+
+    def observe_render(plan, index, **kwargs):
+        return actual_render(plan, index, claims=rendered_claims, **kwargs)
+
+    monkeypatch.setattr(module, "render_plan", observe_render)
+    result = build(**kw)
+    scope = "责任范围原文：" + "；".join(qualifiers)
+    assert "背景：" + scope in result["markdown"]
+    assert full_context not in result["markdown"]
+    assert "未引用隐私项目动作" not in result["markdown"]
+    assert result["preview_fact_count"] == 1
+    background, = [row for row in rendered_claims if row.get("field") == "context"]
+    assert background["text"] == scope
+    assert background["source_kind"] == "presentation"
+    assert "fact_id" not in background and "render_line" not in background
+    assert not any(row.get("fact_id") == "ec:context:0"
+                   for row in [*rendered_claims, *result["claims"]])
+    cited, = [row for row in result["claims"] if row.get("usage") == "supported_excerpt"]
+    assert cited["fact_id"] == "ec:actions:0"
+    assert cited["quote"] == kw["current_facts"]["ec:actions:0"]["text"]
+
