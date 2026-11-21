@@ -337,8 +337,7 @@ def _safe_parse_iso_date(value: str) -> datetime | None:
 def _load_precheck_corpus() -> dict[str, Any]:
     """Rule-overlap inputs; revalidate sources on every read, never approve cards."""
     from collections import Counter
-    from tools.engines.evidence.batch_extract import pool_approval_reason
-    from tools.infra.evidence_pool import pool_eligible_scalars
+    from tools.infra.evidence_pool import pool_approval_reason, pool_eligible_scalars
     from tools.infra.evidence_sources import validated_source_inputs
     from tools.infra.material_paths import materials_dir_for
     from tools.sidecar.handlers._shared.profile_state import profile_path

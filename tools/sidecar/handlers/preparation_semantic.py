@@ -17,8 +17,7 @@ from tools.infra.material_paths import materials_dir_for
 from tools.infra.persistence.atomic_io import atomic_write_json
 from tools.infra.persistence.review_queue import locked_review_queue
 from tools.infra.persistence.yaml_io import parse_simple_yaml
-from tools.infra.evidence_pool import pool_eligible_scalars
-from tools.engines.evidence.batch_extract import pool_approval_reason
+from tools.infra.evidence_pool import pool_approval_reason, pool_eligible_scalars
 from tools.prompts.context import context_fingerprint
 from tools.sidecar.handlers import jobs
 from tools.sidecar.handlers._shared.llm_config import load_llm_config

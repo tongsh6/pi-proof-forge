@@ -34,3 +34,20 @@ def pool_eligible_scalars(scalars: Mapping[str, object], *, card_id: str = "") -
     if eligible and eligible.lower() != "true":
         return False
     return True
+
+
+def pool_approval_reason(card: dict, *, source_verifiable: bool = True) -> str:
+    """只读完整性预检查，返回缺失或来源未核验原因。
+
+    空原因不授予复审批准或实测资格；调用者仍须核对明确状态、
+    现行来源及逐事实范围。
+    """
+    if not str(card.get("title") or "").strip():
+        return "title_missing"
+    if not card.get("results"):
+        return "results_missing"
+    if not card.get("artifacts"):
+        return "artifacts_missing"
+    if not source_verifiable:
+        return "source_unverifiable"
+    return ""

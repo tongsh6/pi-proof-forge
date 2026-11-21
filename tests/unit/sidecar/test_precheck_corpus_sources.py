@@ -4,6 +4,17 @@ import pytest
 from tools.sidecar.handlers import jobs
 from tools.sidecar.handlers._shared import profile_state
 
+def test_pool_approval_reason_enforces_evidence_first_gate():
+    from tools.infra.evidence_pool import pool_approval_reason
+
+    good = {"title": "项目", "results": ["查询降至 300ms"], "artifacts": ["mat_x"]}
+    assert pool_approval_reason(good) == ""
+    assert pool_approval_reason({**good, "title": ""}) == "title_missing"
+    assert pool_approval_reason({**good, "results": []}) == "results_missing"
+    assert pool_approval_reason({**good, "artifacts": []}) == "artifacts_missing"
+    assert pool_approval_reason(good, source_verifiable=False) == "source_unverifiable"
+
+
 @pytest.fixture
 def fixture(tmp_path,monkeypatch):
     cards=tmp_path/"evidence_cards";cards.mkdir()
