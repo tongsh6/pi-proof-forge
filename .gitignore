@@ -1,9 +1,9 @@
 .DS_Store
 __pycache__/
 *.pyc
-.venv/
+.venv
 venv/
-node_modules/
+node_modules
 .pnpm-store/
 dist/
 target/
@@ -19,15 +19,24 @@ outputs/
 uploaded_resumes/
 materials/
 app-data/
-evidence_cards/ec-demo_*.yaml
-evidence_cards/ec-qr_*.yaml
-matching_reports/mr-demo_*.yaml
-matching_reports/mr-qr_*.yaml
-# App-generated local career evidence, live leads and reviewed profiles
-evidence_cards/ec_*.yaml
-job_leads/jl_liepin_*.yaml
-job_profiles/jp_*.yaml
-matching_reports/mr-candidate_*.yaml
+# Runtime data stays local; only these reviewed synthetic examples are versioned.
+/evidence_cards/*
+!/evidence_cards/ec-2026-001.yaml
+!/evidence_cards/ec-2026-002.yaml
+!/evidence_cards/ec-2026-003.yaml
+/jd_inputs/*
+!/jd_inputs/jd-2026-001.txt
+/job_leads/*
+!/job_leads/jl-2026-001.yaml
+/job_profiles/*
+!/job_profiles/jp-2026-001.yaml
+!/job_profiles/jp-2026-003.yaml
+!/job_profiles/jp-2026-004.yaml
+!/job_profiles/jp-2026-005.yaml
+/matching_reports/*
+!/matching_reports/mr-2026-001.yaml
+/profiles/*
+!/profiles/candidate_profile.yaml
 .app-runtime/
 ui/src-tauri/gen/
 .playwright-cli/
@@ -37,9 +46,6 @@ ui/test-results/
 !ui/src-tauri/resources/sidecar/.gitkeep
 !ui/src-tauri/resources/sidecar/bin/.gitkeep
 !ui/src-tauri/resources/tools/.gitkeep
-!ui/src-tauri/resources/evidence_cards/.gitkeep
-!ui/src-tauri/resources/matching_reports/.gitkeep
-!ui/src-tauri/resources/job_profiles/.gitkeep
 
 # Local environment
 .env
@@ -57,9 +63,6 @@ policy.local.yaml
 debug_dom*.html
 debug_dom*.png
 policy_validation.yaml
-# 本机语义缓存与原文引用产物
-matching_reports/.semantic-cache/
-matching_reports/*.semantic.json
-matching_reports/*.direction.json
 # 知识索引（本地生成，含私有资产摘要，不入库）
 knowledge-index/
+_verify_profile.yaml
