@@ -1,6 +1,7 @@
 import json
 import time
 import unittest
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -8,6 +9,7 @@ from unittest.mock import patch
 
 from tools.sidecar.server import (
     process_request,
+    run_stdio_loop,
     build_success_response,
     build_error_response,
 )
@@ -73,6 +75,39 @@ class ProcessRequestTests(unittest.TestCase):
         self.assertEqual(response["id"], "req_001")
         self.assertIn("result", response)
         self.assertEqual(response["result"]["meta"]["correlation_id"], "corr_001")
+
+    def test_non_object_request_returns_validation_error(self) -> None:
+        for request in (None, [], "ping", 0, 1.5, False):
+            with self.subTest(request=request):
+                response = process_request(request)
+                self.assertEqual(response["jsonrpc"], "2.0")
+                self.assertEqual(response["id"], "")
+                self.assertEqual(response["error"]["code"], "VALIDATION_ERROR")
+                self.assertNotIn("result", response)
+
+    def test_stdio_loop_continues_after_non_object_requests(self) -> None:
+        invalid_requests = (None, [], "ping", 0, 1.5, False)
+        ping = {
+            "jsonrpc": "2.0",
+            "id": "req_after_invalid",
+            "method": "system.ping",
+            "params": {"meta": {"correlation_id": "corr_after_invalid"}},
+        }
+        stdin = StringIO(
+            "".join(json.dumps(request) + "\n" for request in (*invalid_requests, ping))
+        )
+        stdout = StringIO()
+        with patch("sys.stdin", stdin), patch("sys.stdout", stdout):
+            run_stdio_loop()
+
+        responses = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        self.assertEqual(len(responses), len(invalid_requests) + 1)
+        for response in responses[:-1]:
+            self.assertEqual(response["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(responses[-1]["id"], ping["id"])
+        self.assertEqual(
+            responses[-1]["result"]["meta"]["correlation_id"], "corr_after_invalid"
+        )
 
     def test_unknown_method_returns_error(self) -> None:
         request = {

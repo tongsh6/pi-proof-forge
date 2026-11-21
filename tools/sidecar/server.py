@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+
+from tools.errors.codes import SidecarError, error_code_of
 import sys
 from typing import Any
 
@@ -123,6 +125,18 @@ def _create_router() -> Router:
     router.register("jobs.searchLiepin", handle_jobs_search_liepin)
     router.register("jobs.fetchLiepinDetail", handle_jobs_fetch_liepin_detail)
     router.register("jobs.convertLead", handle_jobs_convert_lead)
+    from tools.sidecar.handlers.preparation import handle_plan_daily_preparation
+    router.register("jobs.planDailyPreparation", handle_plan_daily_preparation)
+    from tools.sidecar.handlers.preparation_replenishment import handle_replenish_preparation
+    router.register("jobs.replenishPreparation", handle_replenish_preparation)
+    from tools.sidecar.handlers.preparation_assessment import handle_assess_preparation
+    router.register("jobs.assessPreparation", handle_assess_preparation)
+    from tools.sidecar.handlers.preparation_semantic import handle_match_preparation
+    router.register("jobs.matchPreparation", handle_match_preparation)
+    from tools.sidecar.handlers.preparation_preview import handle_preview_preparation
+    router.register("jobs.previewPreparation", handle_preview_preparation)
+    from tools.sidecar.handlers.preparation_historical import handle_review_historical_preparation
+    router.register("jobs.reviewHistoricalPreparation", handle_review_historical_preparation)
     router.register("jobs.listProfiles", handle_jobs_list_profiles)
     router.register("jobs.createProfile", handle_jobs_create_profile)
     router.register("jobs.updateProfile", handle_jobs_update_profile)
@@ -224,7 +238,12 @@ def build_error_response(
     }
 
 
-def process_request(request: dict[str, Any]) -> dict[str, Any]:
+def process_request(request: Any) -> dict[str, Any]:
+    if not isinstance(request, dict):
+        return build_error_response(
+            "", "VALIDATION_ERROR", "request must be a JSON object", ""
+        )
+
     request_id = request.get("id", "")
     method = request.get("method", "")
     params = request.get("params")
@@ -246,32 +265,13 @@ def process_request(request: dict[str, Any]) -> dict[str, Any]:
         result = _router.dispatch(method, params)
         return build_success_response(request_id, result)
     except KeyError as e:
-        error_str = str(e)
-        if "NOT_FOUND" in error_str:
-            return build_error_response(
-                request_id, "NOT_FOUND", error_str, correlation_id
-            )
         return build_error_response(
-            request_id, "VALIDATION_ERROR", f"Unknown method: {method}", correlation_id
+            request_id, error_code_of(e), str(e) or f"Unknown method: {method}", correlation_id
         )
-    except ValueError as e:
-        error_str = str(e)
-        if "UNSUPPORTED_VERSION" in error_str:
-            return build_error_response(
-                request_id, "UNSUPPORTED_VERSION", error_str, correlation_id
-            )
-        return build_error_response(
-            request_id, "VALIDATION_ERROR", error_str, correlation_id
-        )
-    except Exception as e:
-        error_str = str(e)
-        if error_str.startswith("CONFLICT:"):
-            return build_error_response(
-                request_id, "CONFLICT", error_str, correlation_id
-            )
-        return build_error_response(
-            request_id, "INTERNAL_ERROR", error_str, correlation_id
-        )
+    except (ValueError, SidecarError) as e:
+        return build_error_response(request_id, error_code_of(e), str(e), correlation_id)
+    except Exception as e:  # noqa: BLE001 - RPC 边界必须兜底并保留 correlation id
+        return build_error_response(request_id, error_code_of(e), str(e), correlation_id)
 
 
 def run_stdio_loop() -> None:
@@ -291,7 +291,7 @@ def run_stdio_loop() -> None:
         sys.stdout.write(json.dumps(response) + "\n")
         sys.stdout.flush()
 
-        if request.get("method") == "system.shutdown":
+        if isinstance(request, dict) and request.get("method") == "system.shutdown":
             break
 
 

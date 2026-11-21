@@ -1,3 +1,4 @@
+import pytest
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -55,11 +56,58 @@ def test_quick_run_export_uses_shared_name(tmp_path,monkeypatch):
     monkeypatch.setattr(agent,'_PROJECT_ROOT',tmp_path)
     source=tmp_path/'outputs/r1/resume_mr-r1_A.md';source.parent.mkdir(parents=True)
     source.write_text('# 张三\n求职意向：某上海专业技术服务公司 · 高级全栈工程师\n')
-    def render(src,dst):dst.parent.mkdir(parents=True,exist_ok=True);dst.write_bytes(b'%PDF-test')
+    def render(src,dst):
+        assert src != source and src.read_bytes() == source.read_bytes()
+        dst.write_bytes(b'%PDF-test')
+        dst.with_suffix('.html').write_bytes(b'<p>test</p>')
     monkeypatch.setattr(agent,'markdown_to_pdf',render)
     result=agent._export_resume_pdf('r1',{'resume_dir':'outputs/r1'})
     day=datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y%m%d')
     assert Path(result).name==f'张三-某上海专业技术服务公司-高级全栈工程师-{day}.1.PDF'
+    final = tmp_path / result
+    assert final.read_bytes() == b'%PDF-test'
+    assert final.with_suffix('.html').read_bytes() == b'<p>test</p>'
+
+
+@pytest.mark.parametrize("changed,previous", [("markdown", True), ("trace", True), ("markdown", False), ("trace", False)])
+def test_quick_run_export_rejects_drift_before_publication(tmp_path, monkeypatch, changed, previous):
+    from tools.infra.export import pdf_exporter
+    from tools.infra.export.resume_filename import pdf_filename_for_resume
+    from tools.sidecar.handlers import agent
+
+    monkeypatch.setattr(agent, "_PROJECT_ROOT", tmp_path)
+    source_dir = tmp_path / "outputs" / "resumes"
+    source_dir.mkdir(parents=True)
+    source = source_dir / "resume_mr-race_A.md"
+    source.write_text("# Synthetic candidate\n\n- Original QA content\n")
+    trace = source.with_suffix(".trace.json")
+    trace.write_text('{"claims":["original"]}')
+    export_dir = tmp_path / "outputs" / "quick_runs" / "race" / "exports"
+    export_dir.mkdir(parents=True)
+    pdf = export_dir / pdf_filename_for_resume(source, tmp_path/"outputs", readable=True)
+    html = pdf.with_suffix(".html")
+    old_pdf, old_html = b"%PDF-1.4\n% prior frozen artifact\n%%EOF\n", b"<p>prior verified artifact</p>"
+    if previous:
+        pdf.write_bytes(old_pdf)
+        html.write_bytes(old_html)
+    rendered = []
+    def interleaved_render(staged_html, staged_pdf):
+        assert "Original QA content" in staged_html.read_text()
+        staged_pdf.write_bytes(b"%PDF-1.4\n% newly rendered artifact\n%%EOF\n")
+        rendered.append(staged_pdf)
+        if changed == "markdown":
+            source.write_text(source.read_text() + "\n- New content after render start\n")
+        else:
+            trace.write_text('{"claims":["different"]}')
+    monkeypatch.setattr(pdf_exporter, "_render_html_to_pdf", interleaved_render)
+    artifacts = {"resume_dir":"outputs/resumes"}
+    with pytest.raises(RuntimeError, match="resume_pdf_source_changed"):
+        agent._export_resume_pdf("race", artifacts)
+    assert len(rendered) == 1
+    assert artifacts == {"resume_dir":"outputs/resumes"}
+    assert not any(p.is_dir() for p in export_dir.iterdir()), "staging directory is cleaned"
+    actual = {p.name:p.read_bytes() for p in export_dir.iterdir()}
+    assert actual == ({pdf.name:old_pdf, html.name:old_html} if previous else {})
 
 
 def test_resume_center_directory_export_uses_readable_name(tmp_path,monkeypatch):
@@ -78,11 +126,11 @@ def test_resume_center_directory_export_uses_readable_name(tmp_path,monkeypatch)
 def test_local_full_name_is_stable_without_changing_platform_filename(tmp_path, monkeypatch):
     from tools.infra.export import resume_filename as names
     monkeypatch.setattr(names,'_today',lambda:'20261014')
-    src=tmp_path/'resume.md';src.write_text('# 童双龙\n求职意向：某上海专业技术服务公司 · 高级全栈工程师\n')
+    src=tmp_path/'resume.md';src.write_text('# 示例甲\n求职意向：某上海专业技术服务公司 · 高级全栈工程师\n')
     outputs=tmp_path/'outputs'
     platform=names.pdf_filename_for_resume(src,outputs)
     local=names.pdf_filename_for_resume(src,outputs,readable=True)
-    assert local=='童双龙-某上海专业技术服务公司-高级全栈工程师-20261014.1.PDF'
+    assert local=='示例甲-某上海专业技术服务公司-高级全栈工程师-20261014.1.PDF'
     names.check_platform_pdf_filename(platform)
     monkeypatch.setattr(names,'_today',lambda:'20261015')
     assert names.pdf_filename_for_resume(src,outputs)==platform

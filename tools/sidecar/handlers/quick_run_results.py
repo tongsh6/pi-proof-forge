@@ -9,12 +9,16 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from tools.infra.export.pdf_exporter import markdown_to_pdf, pdf_page_count
+from tools.domain.job_lead_state import current_jd_capture
+from tools.infra.persistence.job_lead_binding import reviewed_official_profile
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.sidecar.handlers.resume import read_generation_trace
 
+from ._shared import job_repository
 from ._shared.agent_runtime import _validate_run_resource_id
 
 
@@ -170,22 +174,101 @@ def _parse_matching_lists(matching_path: Path) -> dict[str, list[str]]:
     }
 
 
-def _load_job_profile_context(job_profile_id: str, job_profile_path: Path) -> dict[str, Any]:
+def _official_job_context(fields: dict[str, str]) -> tuple[bool, dict[str, str]]:
+    tagged = fields.get("source") == "liepin_official" or fields.get("jd_origin") == "public_page"
+    lead_id = fields.get("job_lead_id")
     try:
-        doc = parse_simple_yaml(job_profile_path.read_text(encoding="utf-8"))
+        binding = job_repository.bound_lead(lead_id) if lead_id else None
+    except (KeyError, OSError, UnicodeError, ValueError):
+        binding = None
+    lead = binding[1] if binding else {}
+    return tagged or lead.get("source") == "liepin_official", lead
+
+
+def _read_job_profile_context(job_profile_id: str, job_profile_path: Path):
+    try:
+        data = job_profile_path.read_bytes()
+        doc = parse_simple_yaml(data.decode("utf-8"))
     except OSError as exc:
         raise ValueError(f"job_profile_path cannot be read: {job_profile_path}") from exc
     status = doc["scalars"].get("status", "").strip()
     complete = status == "active"
     if not complete:
         raise ValueError(f"job_profile_not_complete: {job_profile_id}")
-    return {
+    canonical_path = job_repository.profile_path(job_profile_id)
+    same_profile_path = job_profile_path.resolve() == canonical_path.resolve()
+    official, lead = _official_job_context(doc["scalars"])
+    if not same_profile_path and canonical_path.exists():
+        try:
+            canonical = parse_simple_yaml(canonical_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise ValueError("job_profile_official_source_unverified") from exc
+        official = official or _official_job_context(canonical["scalars"])[0]
+    if official and (
+        not same_profile_path
+        or lead.get("source") != "liepin_official"
+        or lead.get("job_profile_id") != job_profile_id
+        or reviewed_official_profile(lead, canonical_path.parent) != doc
+    ):
+        raise ValueError("job_profile_official_source_unverified")
+    context = {
         "job_profile_id": job_profile_id,
         "status": status,
         "active_target_eligible": True,
         "title": doc["scalars"].get("target_role", job_profile_id),
         "company": doc["scalars"].get("company", ""),
     }
+    return context, data, lead if official else None
+
+
+def _load_job_profile_context(job_profile_id: str, job_profile_path: Path) -> dict[str, Any]:
+    return _read_job_profile_context(job_profile_id, job_profile_path)[0]
+
+
+def _official_target_pin(data: bytes, lead: dict[str, str]) -> dict[str, Any]:
+    capture = current_jd_capture(lead)
+    if capture is None:
+        raise ValueError("quick_official_capture_required")
+    return {"profile_sha256": hashlib.sha256(data).hexdigest(),
+            "job_lead_id": lead["id"], "capture": capture}
+
+
+def is_unpinned_official_run(run: dict) -> bool:
+    """Old run files remain read-only; recognise known official profiles without inferring their pin."""
+    try:
+        profile_id = _validate_run_resource_id("job_profile_id", run.get("job_profile_id"))
+        canonical = job_repository.profile_path(profile_id)
+        fields = parse_simple_yaml(canonical.read_text(encoding="utf-8"))["scalars"]
+        return _official_job_context(fields)[0]
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _official_stage_path(root: Path, run_id: str, profile_id: str) -> Path:
+    return root / "outputs" / "quick_runs" / run_id / "job_profile" / f"{profile_id}.yaml"
+
+
+def require_current_official_run(run: dict, root: Path, *, command: list[str] | None = None) -> dict:
+    """Validate launch authority and its immutable input at worker/result/handoff boundaries."""
+    message = "quick_official_target_changed"
+    try:
+        run_id = _validate_run_resource_id("run_id", run.get("run_id"))
+        profile_id = _validate_run_resource_id("job_profile_id", run.get("job_profile_id"))
+        canonical = job_repository.profile_path(profile_id)
+        staged = _official_stage_path(root, run_id, profile_id)
+        pin = run["official_target"]
+        if (Path(run["job_profile_path"]).resolve() != canonical.resolve() or not staged.is_file()
+                or staged.resolve() != root.resolve() / staged.relative_to(root)):
+            raise ValueError(message)
+        _, data, lead = _read_job_profile_context(profile_id, canonical)
+        if lead is None or pin != _official_target_pin(data, lead) or staged.read_bytes() != data:
+            raise ValueError(message)
+        if command is not None and (command != run["command"] or command.count("--job-profile") != 1
+                                    or command[command.index("--job-profile") + 1] != str(staged)):
+            raise ValueError(message)
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError, IndexError):
+        raise ValueError(message) from None
+    return pin
 
 
 def _is_saved_eligible_evidence(doc: dict[str, dict[str, Any]]) -> bool:
@@ -286,13 +369,26 @@ def _export_resume_pdf(run_id: str, artifacts: dict[str, object]) -> str:
         return ""
     from tools.infra.export.resume_filename import pdf_filename_for_resume
     pdf_path = _facade()._PROJECT_ROOT / "outputs" / "quick_runs" / run_id / "exports" / pdf_filename_for_resume(resume_md, _facade()._PROJECT_ROOT / 'outputs', readable=True)
-    trace_path=resume_md.with_suffix('.trace.json')
-    source_hash=hashlib.sha256(resume_md.read_bytes()).hexdigest()
-    trace_hash=hashlib.sha256(trace_path.read_bytes()).hexdigest() if trace_path.is_file() else ''
-    _facade().markdown_to_pdf(resume_md, pdf_path)
-    if (hashlib.sha256(resume_md.read_bytes()).hexdigest()!=source_hash
-            or (hashlib.sha256(trace_path.read_bytes()).hexdigest() if trace_path.is_file() else '')!=trace_hash):
-        raise RuntimeError('resume_pdf_source_changed')
+    trace_path = resume_md.with_suffix(".trace.json")
+    source_bytes = resume_md.read_bytes()
+    source_hash = hashlib.sha256(source_bytes).hexdigest()
+    trace_hash = hashlib.sha256(trace_path.read_bytes()).hexdigest() if trace_path.is_file() else ""
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".ppf-quick-pdf-", dir=pdf_path.parent) as temporary:
+        staged_source = Path(temporary) / resume_md.name
+        staged_pdf = Path(temporary) / pdf_path.name
+        staged_source.write_bytes(source_bytes)
+        _facade().markdown_to_pdf(staged_source, staged_pdf)
+        try:
+            unchanged = (hashlib.sha256(resume_md.read_bytes()).hexdigest() == source_hash
+                         and (hashlib.sha256(trace_path.read_bytes()).hexdigest()
+                              if trace_path.is_file() else "") == trace_hash)
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            raise RuntimeError("resume_pdf_source_changed")
+        staged_pdf.with_suffix(".html").replace(pdf_path.with_suffix(".html"))
+        staged_pdf.replace(pdf_path)
     artifacts['resume_pdf_source_sha256']=source_hash
     artifacts['resume_pdf_trace_sha256']=trace_hash
     return str(pdf_path.relative_to(_facade()._PROJECT_ROOT))
@@ -305,6 +401,7 @@ def _quick_run_result_details(
     *,
     selected_evidence_card_ids: list[str] | None = None,
     resume_positioning: dict[str, str] | None = None,
+    export_pdf: bool = True,
 ) -> dict[str, Any]:
     summary_payload = _load_quick_run_summary(run_id)
     artifacts = summary_payload.get("artifacts", {})
@@ -346,7 +443,7 @@ def _quick_run_result_details(
     )
     pdf_artifact = ""
     pdf_export_error = ""
-    if resume_a is not None and resume_a.exists():
+    if export_pdf and resume_a is not None and resume_a.exists():
         try:
             pdf_artifact = _export_resume_pdf(run_id, artifacts)
             if pdf_artifact:

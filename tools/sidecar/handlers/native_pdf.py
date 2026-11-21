@@ -138,6 +138,12 @@ def _validated_generation(quick_run_id):
             or lead.get('job_profile_id')!=run['job_profile_id']
             or trace['target'].get('source_jd_sha256')!=lead.get('source_jd_sha256')):
         raise ValueError('pdf_job_review_required')
+    from tools.sidecar.handlers.quick_run_results import _official_stage_path, require_current_official_run
+    pin = require_current_official_run(run, agent_state.project_root())
+    profile_trace = trace.get('inputs', {}).get('job_profile', {})
+    if (pin['job_lead_id'] != lead_id or profile_trace.get('sha256') != pin['profile_sha256']
+            or profile_trace.get('path') != str(_official_stage_path(agent_state.project_root(), quick_run_id, run['job_profile_id']).resolve())):
+        raise ValueError('quick_official_target_changed')
     from tools.policy.exclusions import load_exclusion_policy,match_exclusion,resolve_policy_path
     if match_exclusion(lead.get('company',''),lead.get('legal_entity',''),load_exclusion_policy(resolve_policy_path(agent_state.project_root()))):
         raise ValueError('pdf_target_excluded')
@@ -393,6 +399,8 @@ def handle_pdf_target_packet(params):
         sealed=ReviewSnapshotStore(agent_state.agent_run_dir()).load(run_id,c)
         binding=q.get('attachment_binding',{})
         if not binding or binding.get('pdf_sha256')!=sealed['pdf_sha256']:raise ValueError('attachment_verification_required')
+        from tools.sidecar.handlers.daily_delivery import require_current_pdf_queue_target
+        require_current_pdf_queue_target(q)
         return {'meta':params['meta'],'filename':binding['filename'],'job_url':c['job_url'],
                 'company':c['company'],'position':c['position'],'attachment_id':binding['attachment_id']}
 

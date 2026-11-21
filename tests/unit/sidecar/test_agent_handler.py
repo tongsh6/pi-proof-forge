@@ -1528,3 +1528,23 @@ def test_quick_start_records_direction_acknowledgement(tmp_path, monkeypatch):
     acknowledgement = payload["run"]["direction_acknowledgement"]
     assert acknowledgement["acknowledged"] is True
     assert acknowledgement["acknowledged_at"]
+
+
+def test_old_quick_run_remains_viewable_without_claiming_current_coverage(tmp_path, monkeypatch):
+    from tools.sidecar.handlers import quick_run
+    monkeypatch.setattr(agent, "_QUICK_RUN_DIR", tmp_path)
+    stored = {"run":{"run_id":"qr_old","status":"DONE","job_profile_id":"jp_fixture"},
+              "semantic_review":{"resume_score":100,"fit_score":95,"requirements":[
+                  {"resume_status":"supported","citations":[{"in_resume":True}]}],
+                 "all_requirements_supported":True},
+              "resume_readiness":{"quality_passed":True, "quality_report":{"auto_pass":True}},
+              "artifacts":{"resume_dir":"outputs/qr_old"}}
+    path = tmp_path/"qr_old.json"
+    path.write_text(json.dumps(stored))
+    before = path.read_bytes()
+    result = quick_run.handle_quick_get({"meta":{"correlation_id":"fixture"},"run_id":"qr_old"})
+    assert result["status"]=="DONE" and result["artifacts"]["resume_dir"]=="outputs/qr_old"
+    assert result["semantic_review"]["resume_score"] is None
+    assert result["semantic_review"]["requirements"][0]["resume_status"]=="unassessed"
+    assert result["resume_readiness"]["quality_passed"] is False
+    assert path.read_bytes()==before

@@ -7,6 +7,14 @@ import pytest
 from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_current_official_target(monkeypatch):
+    # These transport/quota fixtures do not own real Job/Profile authority.
+    # The current official gate is exercised with native records in test_official_job_profile_binding.
+    monkeypatch.setattr("tools.sidecar.handlers.daily_delivery.require_current_pdf_queue_target", lambda _: None)
+
+
+
 def test_snapshot_copies_exact_reviewed_pdf_bytes(tmp_path):
     store=ReviewSnapshotStore(tmp_path)
     pdf=b'%PDF-1.7\nreviewed bytes\n%%EOF\n'

@@ -78,7 +78,7 @@ def test_duplicate_same_bytes_attachments_bind_only_uploaded_file_id():
     from tools.infra import liepin_attachment_contract as contract
     pdf=b'%PDF-1.7\nduplicate\n%%EOF';digest=hashlib.sha256(pdf).hexdigest()
     path='/recruit-auth/resume/attachment-res/c/new.PDF'
-    record={'fileName':'童双龙-某司-岗-20261022.5','originalExtension':'pdf','fileSize':len(pdf),
+    record={'fileName':'示例甲-某司-岗-20261022.5','originalExtension':'pdf','fileSize':len(pdf),
             'fileId':path,'encryAttachmentId':'new-id','auditStatus':0,'accessPath':path+'?tk=x',
             'download':{'http_status':200,'byte_length':len(pdf),'sha256':digest}}
     older={**record,'fileId':'/recruit-auth/resume/attachment-res/c/old.PDF','encryAttachmentId':'old-id',

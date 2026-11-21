@@ -6,6 +6,14 @@ from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
 from tools.infra.persistence.delivery_attempt_store import DeliveryAttemptStore
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_current_official_target(monkeypatch):
+    # These transport/quota fixtures do not own real Job/Profile authority.
+    # The current official gate is exercised with native records in test_official_job_profile_binding.
+    monkeypatch.setattr("tools.sidecar.handlers.daily_delivery.require_current_pdf_queue_target", lambda _: None)
+
+
+
 def test_native_delivery_reserves_pdf_quota_once_before_browser_action(tmp_path,monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(agent,'_PROJECT_ROOT',tmp_path)

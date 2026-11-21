@@ -143,12 +143,33 @@ def handle_get_pending_review(params: dict[str, Any]) -> dict[str, Any]:
         except ValueError:
             candidate.update(snapshot_status='invalid', resume_preview='')
 
+    # 一次准备多个岗位时会有多个队列；只返回最新一个会让更早的待审任务在界面上
+    # 消失（用户以为没准备成功）。这里额外聚合全部待审队列，保持既有字段不变。
+    all_pending: list[dict[str, Any]] = []
+    queue_dir = _facade()._REVIEW_QUEUE_DIR
+    for path in sorted(queue_dir.glob('*.json')):
+        if path == queue_file:
+            continue
+        try:
+            other = _load_queue(path)
+        except (ValueError, OSError):
+            continue
+        for candidate in other.get('candidates', []):
+            # 只列真正待审的：approved 但无 delivery 的是历史遗留决定，
+            # 混进来会让待审列表变噪音（实测聚合出 21 条）。
+            if candidate.get('status') == 'pending' and 'delivery' not in candidate:
+                all_pending.append({**candidate, 'run_id': path.stem})
+    for candidate in pending:
+        all_pending.append({**candidate, 'run_id': queue_file.stem})
+    # 最新的排前面：run_id 以时间戳开头，字典序即时间序。
+    all_pending.sort(key=lambda item: str(item.get('run_id') or ''), reverse=True)
     return {
         "meta": {"correlation_id": correlation_id},
         "candidates": pending,
         "run_id": queue_file.stem,
         "native_pdf_quick_run_id": queue.get("quick_run_id"),
         "delivery_results": [_delivery_confirmation(c['delivery']) for c in queue.get('candidates', []) if 'delivery' in c],
+        "all_pending": all_pending,
     }
 
 def handle_submit_review(params: dict[str, Any]) -> dict[str, Any]:

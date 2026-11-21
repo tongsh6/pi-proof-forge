@@ -121,3 +121,38 @@ def test_single_pdf_grant_is_bound_to_run_job_and_pdf_and_cannot_be_replenished(
     assert store.active_batch()['remaining']==0
     assert store.reserve('approved-job','approved-run','approved-sha',delivery_kind='generated_pdf') is None
     with pytest.raises(ValueError,match='authorization_already_used'):store.authorize_supplementary_batch('reset','single',1,'generated_pdf',ref)
+
+
+def test_spent_mismatched_batch_can_be_closed_without_funding_other_kind(tmp_path):
+    from tools.infra.persistence.delivery_attempt_store import DeliveryAttemptStore
+
+    store = DeliveryAttemptStore(tmp_path / "attempts.sqlite3")
+    prior = store.reserve("job-a", "run-a", "digest-a")
+    store.finish(prior, "success")
+    store.authorize_batch("batch", 1, [prior])
+    # 用 authorize_supplementary_batch 才能声明批次类型（authorize_batch 是通用批次）
+    store.authorize_supplementary_batch("pdf-batch", "batch", 1, "generated_pdf", "ref-a")
+    pdf_attempt = store.reserve("job-pdf", "run-pdf", "digest-pdf", delivery_kind="generated_pdf")
+    store.finish(pdf_attempt, "success")  # 把 PDF 批次额度用尽
+
+    # 用尽的 generated_pdf 批次不能给 platform_default 投递供额度
+    with pytest.raises(ValueError, match="delivery_batch_route_not_authorized"):
+        store.reserve("job-b", "run-b", "digest-b", delivery_kind="platform_default")
+
+    # 但可以关闭它，让后续投递走 attempt 级授权
+    assert store.close_spent_batch("pdf-batch", delivery_kind="platform_default") is True
+    assert store.active_batch() is None
+    assert store.reserve("job-b", "run-b", "digest-b", delivery_kind="platform_default")
+
+
+def test_close_refuses_when_batch_is_for_same_kind_or_still_has_quota(tmp_path):
+    from tools.infra.persistence.delivery_attempt_store import DeliveryAttemptStore
+
+    store = DeliveryAttemptStore(tmp_path / "attempts.sqlite3")
+    prior = store.reserve("job-a", "run-a", "digest-a")
+    store.finish(prior, "success")
+    store.authorize_batch("batch", 2, [prior])  # 还有 1 次剩余额度
+
+    assert store.close_spent_batch("batch", delivery_kind="platform_default") is False
+    assert store.close_spent_batch("batch", delivery_kind="generated_pdf") is False
+    assert store.active_batch() is not None

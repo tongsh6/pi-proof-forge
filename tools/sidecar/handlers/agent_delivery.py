@@ -272,13 +272,21 @@ def handle_prepare_liepin_default(params: dict[str, Any]) -> dict[str, Any]:
         store = DeliveryAttemptStore(_facade()._PROJECT_ROOT / 'outputs/submissions/delivery_attempts.sqlite3')
         if store.has_attempt(_job_key(request)):
             return {**base, 'code': 'ALREADY_ATTEMPTED'}
+        # platform_default 的授权是 attempt 级（delivery_attempt_id + 用户确认），
+        # 与 generated_pdf 的批次额度无关：遗留的 generated_pdf 批次不该挡住
+        # 平台默认简历投递。只有批次本身就是 platform_default 时才校验额度。
         batch = store.active_batch()
         if batch and batch.get('allowed_delivery_kind') not in (None, 'platform_default'):
-            return {**base, 'code': 'BATCH_ROUTE_NOT_AUTHORIZED'}
-        if batch and batch['remaining'] == 0:
-            return {**base, 'code': 'BATCH_LIMIT_REACHED'}
-        if batch and batch['unresolved']:
-            return {**base, 'code': 'BATCH_UNRESOLVED'}
+            # 其他类型（如 generated_pdf）的批次不适用于平台默认简历投递。
+            # 已用尽且无未决时可以关闭它；否则如实报授权不匹配。
+            if not store.close_spent_batch(batch['batch_id'], delivery_kind='platform_default'):
+                return {**base, 'code': 'BATCH_ROUTE_NOT_AUTHORIZED'}
+            batch = store.active_batch()
+        if batch and batch.get('allowed_delivery_kind') in (None, 'platform_default'):
+            if batch['remaining'] == 0:
+                return {**base, 'code': 'BATCH_LIMIT_REACHED'}
+            if batch['unresolved']:
+                return {**base, 'code': 'BATCH_UNRESOLVED'}
         from tools.infra.resume_content import current_career,content_body_issues
         career=current_career(_facade()._PROJECT_ROOT)
         detail = fetch_liepin_job_detail(lead['url'], lead['platform_job_id'])
@@ -290,7 +298,10 @@ def handle_prepare_liepin_default(params: dict[str, Any]) -> dict[str, Any]:
         content = resume.get('resume_text', '')
         if not isinstance(content, str) or not content.strip():
             return {**base, 'code': 'RESUME_UNAVAILABLE'}
-        if content_body_issues(career,content):return {**base,'code':'RESUME_CONTENT_INCOMPLETE'}
+        # 平台默认简历由用户自行维护：只校验核心事实（公司/职位/起止时间/
+        # 学校/学历），豁免平台脱敏字段与人工省略；系统生成简历仍走严格策略。
+        if content_body_issues(career,content,policy='user_maintained'):
+            return {**base,'code':'RESUME_CONTENT_INCOMPLETE'}
         digest = hashlib.sha256(content.encode()).hexdigest()
         candidate = {key: lead.get(key, '') for key in (
             'company', 'position', 'platform', 'platform_job_id', 'platform_job_type',

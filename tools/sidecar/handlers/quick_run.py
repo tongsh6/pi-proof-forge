@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from tools.infra.persistence.atomic_io import atomic_write_text
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 from ._shared.agent_runtime import (
@@ -33,6 +34,11 @@ from .quick_run_progress import (
 from .quick_run_results import (
     _direction_precheck_cache_dir,
     _load_job_profile_context,
+    _read_job_profile_context,
+    _official_target_pin,
+    _official_stage_path,
+    require_current_official_run,
+    is_unpinned_official_run,
     _quick_run_paths,
     _quick_run_positioning,
     _quick_run_result_details,
@@ -70,12 +76,7 @@ def _load_quick_run(run_id: str) -> dict[str, Any]:
 
 def _save_quick_run(run_file: Path, payload: dict[str, Any]) -> None:
     # 原子替换：后台线程写进度时，读取方不会看到半截 JSON。
-    run_file.parent.mkdir(parents=True, exist_ok=True)
-    temporary = run_file.with_name(run_file.name + ".tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    os.replace(temporary, run_file)
+    atomic_write_text(run_file, json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def _read_temp_file_text(handle: Any) -> str:
@@ -118,6 +119,31 @@ def _terminate_quick_run_process(process: Any) -> None:
     _wait_for_process_exit(process, _facade()._QUICK_RUN_TERMINATE_GRACE_SECONDS)
 
 
+def _official_run_changed(run: dict) -> bool:
+    if "official_target" not in run:
+        return False
+    try:
+        require_current_official_run(run, _facade()._PROJECT_ROOT)
+    except ValueError:
+        return True
+    return False
+
+
+def _mark_official_run_historical(payload: dict) -> dict:
+    readiness = payload.get("resume_readiness")
+    readiness = readiness if isinstance(readiness, dict) else {}
+    run = payload.get("run") or {}
+    context = run.get("job_profile") or {}
+    no_resume = readiness.get("status") in (None, "NOT_GENERATED")
+    return {**payload, "reason": "quick_official_target_changed",
+            "run": {**run, "job_profile": {**context, "active_target_eligible": False}},
+            "resume_readiness": {**readiness, "content_ready": False, "deliverable": False,
+                                 "quality_passed": False, "manual_override_allowed": False,
+                                 "status": "NOT_GENERATED" if no_resume else "NEEDS_REVIEW",
+                                 "reasons": ["官方岗位来源或启动版本无法核对，请重新准备。" if no_resume else
+                                             "官方岗位来源或启动版本无法核对，已有产物仅供历史查看，请重新准备。"]}}
+
+
 def _finalize_quick_run(
     run_id: str,
     *,
@@ -125,6 +151,7 @@ def _finalize_quick_run(
     exit_code: int | None,
     stdout: str,
     stderr: str,
+    official_target_changed: bool = False,
 ) -> None:
     """把管线终态、阶段终态与结果详情一次性写回 quick_runs JSON。
 
@@ -145,6 +172,9 @@ def _finalize_quick_run(
                 for item in snapshot_run.get("selected_evidence_card_ids") or []
             ]
             positioning = snapshot_run.get("resume_positioning")
+        target_changed = official_target_changed or _official_run_changed(snapshot_run)
+        if target_changed and status == "DONE":
+            status = "FAILED"
         events = _read_pipeline_run_events(run_id)
         progress = _stage_progress_from_events(
             events, started_at=started_at, final_status=status
@@ -158,6 +188,7 @@ def _finalize_quick_run(
                 resume_positioning=positioning
                 if isinstance(positioning, dict)
                 else None,
+                **({"export_pdf": False} if target_changed else {}),
             )
         except Exception as exc:  # noqa: BLE001 - 结果组装失败也必须落终态
             details = {
@@ -166,6 +197,10 @@ def _finalize_quick_run(
                     stderr + f"\n[quick-run] result assembly failed: {exc}"
                 )[-4000:],
             }
+        target_changed = target_changed or _official_run_changed(snapshot_run)
+        if target_changed and status == "DONE":
+            status = "FAILED"
+            progress = _stage_progress_from_events(events, started_at=started_at, final_status=status)
         with _facade()._QUICK_RUN_LOCK:
             payload = _load_quick_run(run_id)
             run_payload = payload.get("run")
@@ -177,6 +212,8 @@ def _finalize_quick_run(
             run_payload["finished_at"] = _utcnow_iso()
             payload["progress"] = progress
             payload.update(details)
+            if target_changed:
+                payload = _mark_official_run_historical(payload)
             payload["stdout"] = str(details.get("stdout") or stdout[-4000:])
             payload["stderr"] = str(details.get("stderr") or stderr[-4000:])
             _save_quick_run(_get_quick_run_file(run_id), payload)
@@ -203,6 +240,7 @@ def _execute_quick_run(
     stdout_text = ""
     stderr_text = ""
     process: Any = None
+    official_target_changed = False
     # stdout/stderr 写临时文件，避免管道填满阻塞子进程。
     out_handle = tempfile.TemporaryFile()
     err_handle = tempfile.TemporaryFile()
@@ -211,6 +249,13 @@ def _execute_quick_run(
             status = "stopped"
         else:
             try:
+                run = _load_quick_run(run_id)["run"]
+                if "official_target" in run:
+                    try:
+                        require_current_official_run(run, _facade()._PROJECT_ROOT, command=command)
+                    except ValueError:
+                        official_target_changed = True
+                        raise
                 process = _facade().Popen(
                     command,
                     stdout=out_handle,
@@ -271,6 +316,7 @@ def _execute_quick_run(
             exit_code=exit_code,
             stdout=stdout_text,
             stderr=stderr_text,
+            official_target_changed=official_target_changed,
         )
 
 
@@ -306,7 +352,7 @@ def handle_quick_check_direction(params: dict[str, Any]) -> dict[str, Any]:
     job_profile_path = _facade()._PROJECT_ROOT / "job_profiles" / f"{job_profile_id}.yaml"
     if not job_profile_path.is_file():
         raise ValueError(f"job_profile_path does not exist: {job_profile_path}")
-    # 与正式运行一致：只对 active 且可读的岗位画像做方向评估。
+    # 与正式运行共用同一 active / 官方来源门禁。
     _load_job_profile_context(job_profile_id, job_profile_path)
 
     def response(
@@ -342,7 +388,8 @@ def handle_quick_check_direction(params: dict[str, Any]) -> dict[str, Any]:
     model = str(llm_env.get("LLM_MODEL", "")).strip()
     api_key = str(llm_env.get("LLM_API_KEY", "")).strip()
     from tools.infra.llm.client import LLMClient, llm_request_available
-    if not llm_request_available(provider=provider, api_key=api_key, model=model):
+    if not llm_request_available(provider=provider, api_key=api_key, model=model,
+                                 base_url=str(llm_env.get("LLM_BASE_URL", "")).strip()):
         return response(None, False, "llm_unavailable")
     try:
         client = LLMClient(
@@ -383,7 +430,8 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
 
     # 同步校验保持原顺序：校验失败在返回前直接抛错，不会启动后台线程。
     raw_path, job_profile_path, material_context = _quick_run_paths(job_profile_id, options)
-    job_profile_context = _load_job_profile_context(job_profile_id, job_profile_path)
+    job_profile_context, profile_bytes, official_lead = _read_job_profile_context(job_profile_id, job_profile_path)
+    official_target = _official_target_pin(profile_bytes, official_lead) if official_lead is not None else None
     selected_evidence_cards = _selected_evidence_cards(
         str(evidence_id).strip() if evidence_id is not None else None, options
     )
@@ -403,6 +451,10 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     run_id = _facade()._build_quick_run_id()
     evidence_dir = Path("outputs") / "quick_runs" / run_id / "evidence_cards"
     _stage_selected_evidence(selected_evidence_cards, evidence_dir)
+    staged_profile = job_profile_path
+    if official_target is not None:
+        staged_profile = _official_stage_path(_facade()._PROJECT_ROOT, run_id, job_profile_id)
+        atomic_write_text(staged_profile, profile_bytes.decode("utf-8"), mode=0o400)
     started_at = _utcnow_iso()
     command = [
         sys.executable,
@@ -412,7 +464,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
         "--raw",
         str(raw_path),
         "--job-profile",
-        str(job_profile_path),
+        str(staged_profile),
         "--evidence-dir",
         str(evidence_dir),
         "--run-id",
@@ -443,6 +495,7 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
             "selected_evidence_card_ids": selected_evidence_card_ids,
             "raw_path": str(raw_path),
             "job_profile_path": str(job_profile_path),
+            **({"official_target": official_target} if official_target is not None else {}),
             "material_source": material_context,
             "evidence_dir": str(evidence_dir),
             "resume_positioning": resume_positioning,
@@ -483,13 +536,37 @@ def handle_quick_start(params: dict[str, Any]) -> dict[str, Any]:
     return _quick_run_envelope(payload, correlation_id)
 
 
+def _hide_unverifiable_saved_coverage(payload: dict) -> dict:
+    review = payload.get("semantic_review")
+    if not isinstance(review, dict) or review.get("occurrence_coverage_known") is True:
+        return payload
+    def without_occurrence(row):
+        return {**row, "resume_status":"unassessed",
+                "citations":[{**c, "in_resume":False, "render_lines":[]} for c in row.get("citations", [])]}
+    historical = {**review, "occurrence_coverage_known":False, "resume_score":None,
+                  "all_requirements_supported":False,
+                  "requirements":[{**without_occurrence(row),
+                                   "checks":[without_occurrence(c) for c in row.get("checks", [])]}
+                                  for row in review.get("requirements", [])]}
+    readiness = payload.get("resume_readiness") or {}
+    return {**payload, "semantic_review":historical, "quality_report":None,
+            "resume_readiness":{**readiness, "quality_report":None, "quality_passed":False, "auto_pass":False,
+                                 "reasons":[*readiness.get("reasons", []),
+                                            "旧稿缺少逐条事实呈现记录，请重新生成以核验覆盖。"]}}
+
+
 def handle_quick_get(params: dict[str, Any]) -> dict[str, Any]:
     """读取 Quick Run 当前状态与真实阶段进度；终态时附带完整结果详情。"""
     correlation_id = params["meta"]["correlation_id"]
     run_id = _validate_run_resource_id("run_id", params.get("run_id"))
     with _facade()._QUICK_RUN_LOCK:
         payload = _load_quick_run(run_id)
-    return _quick_run_envelope(payload, correlation_id)
+    run = payload.get("run", {})
+    if isinstance(run, dict) and run.get("status") == "DONE" and (
+        _official_run_changed(run) or ("official_target" not in run and is_unpinned_official_run(run))
+    ):
+        payload = _mark_official_run_historical(payload)
+    return _quick_run_envelope(_hide_unverifiable_saved_coverage(payload), correlation_id)
 
 
 def handle_quick_cancel(params: dict[str, Any]) -> dict[str, Any]:

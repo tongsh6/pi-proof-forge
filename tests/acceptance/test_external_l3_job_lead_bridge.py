@@ -1,3 +1,5 @@
+"""外部验收桥接的离线合成夹具；不连接招聘平台。"""
+
 from __future__ import annotations
 
 import json
@@ -46,7 +48,7 @@ def _write_validation_log(root: Path) -> Path:
                 "steps:",
                 '  - name: "target_verify"',
                 '    status: "success"',
-                '    detail: "url_job_id=1980984659; dom_jobid=80984659; params_jobid=80984659; recruiter=虞女士"',
+                '    detail: "url_job_id=1912345678; dom_jobid=12345678; params_jobid=12345678; recruiter=示例招聘人"',
                 '    screenshot: ""',
                 '  - name: "submit"',
                 '    status: "skipped"',
@@ -69,11 +71,11 @@ def test_builds_redacted_confirmation_packet_from_validated_list_lead(tmp_path: 
     lead_source.write_text(
         "\n".join(
             [
-                'generated_at: "2026-05-13T00:29:20+08:00"',
+                'generated_at: "2026-01-01T00:00:00+08:00"',
                 "items:",
-                '  - job_url: "https://www.liepin.com/job/1980984659.shtml"',
+                '  - job_url: "https://www.liepin.com/job/1912345678.shtml"',
                 '    position: "架构师"',
-                '    company_name: "海程新材料(芜湖)有限公司"',
+                '    company_name: "合成示例材料有限公司"',
                 "    direction: backend",
                 "    confidence: 0.82",
                 f'    validation_log: "{validation_log}"',
@@ -103,12 +105,12 @@ def test_builds_redacted_confirmation_packet_from_validated_list_lead(tmp_path: 
     assert redacted["artifacts"]["resume_pdf"]["basename_persisted"] is False
     assert redacted["session"]["storage_ready"] is True
 
-    assert "https://www.liepin.com/job/1980984659.shtml" not in redacted_text
-    assert "虞女士" not in redacted_text
+    assert "https://www.liepin.com/job/1912345678.shtml" not in redacted_text
+    assert "示例招聘人" not in redacted_text
     assert "resume.pdf" not in redacted_text
     assert "PIPF_EXTERNAL_L3_AUTHORIZED=false" in env_template
     assert "PIPF_EXTERNAL_L3_FINAL_SUBMIT_CONFIRMED=false" in env_template
-    assert "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=1980984659" in env_template
+    assert "PIPF_EXTERNAL_L3_CONFIRM_JOB_ID=1912345678" in env_template
     assert "PIPF_EXTERNAL_L3_CONFIRM_RECRUITER=" in env_template
 
 
@@ -147,7 +149,7 @@ def test_reports_structured_gaps_when_target_verify_is_missing(tmp_path: Path) -
     assert "confirm_recruiter_present" in packet.missing_items
 
 
-def _ready_packet(tmp_path: Path, *, job_id: str = "1980984659"):
+def _ready_packet(tmp_path: Path, *, job_id: str = "1912345678"):
     validation_log = _write_validation_log(tmp_path)
     resume, profile = _write_resume_and_profile(tmp_path)
     session_dir = _write_session(tmp_path)
@@ -202,7 +204,7 @@ def test_session_storage_does_not_imply_manual_login_confirmation(tmp_path: Path
 
 
 def test_rejects_validation_log_for_another_job(tmp_path: Path) -> None:
-    packet = _ready_packet(tmp_path, job_id="1980984660")
+    packet = _ready_packet(tmp_path, job_id="1912345679")
     assert "target_job_id_matches" in packet.missing_items
     assert redacted_packet_dict(packet)["status"] == "blocked_until_missing_evidence"
 

@@ -33,11 +33,12 @@ def handle_begin_pdf_delivery(params):
         from tools.policy.exclusions import load_exclusion_policy,match_exclusion,resolve_policy_path
         if match_exclusion(c.get('company',''),c.get('legal_entity',''),load_exclusion_policy(resolve_policy_path(agent_state.project_root()))):
             raise ValueError('pdf_target_excluded')
+        from tools.sidecar.handlers.daily_delivery import check_queue_write,require_current_pdf_queue_target,store as daily_store
+        require_current_pdf_queue_target(q)
         from tools.infra.liepin_job_detail import fetch_liepin_job_detail
         current=fetch_liepin_job_detail(c['job_url'],expected_job_id=str(c['platform_job_id']))
         if current['source_jd_sha256']!=c['source_jd_sha256']:raise ValueError('job_detail_changed')
         attempts=DeliveryAttemptStore(agent_state.project_root()/'outputs/submissions/delivery_attempts.sqlite3')
-        from tools.sidecar.handlers.daily_delivery import check_queue_write,store as daily_store
         check_queue_write(q,sealed['pdf_sha256'])
         request=DeliveryRequest(run_id,c['job_lead_id'],'liepin',sealed['resume_path'],c['job_url'],False,c)
         if q.get('daily_cycle'):
@@ -91,7 +92,13 @@ def handle_pdf_interaction_packet(params):
         if binding.get('pdf_sha256')!=sealed['pdf_sha256']:
             # 状态在投递中但附件绑定缺失/失效：提示先重新核验附件，避免误报“投递流程未开始”。
             raise ValueError('attachment_verification_required')
+        if action=='inspect':
+            # This packet opens the target chat, unlike historical attachment/receipt inspection.
+            from tools.sidecar.handlers.daily_delivery import require_current_pdf_queue_target
+            require_current_pdf_queue_target(q)
         if action=='prepare':
+            from tools.sidecar.handlers.daily_delivery import check_queue_write
+            check_queue_write(q,sealed['pdf_sha256'])
             if q.get('daily_interruption'):raise ValueError('daily_recovery_required')
             # 开关开启时，准备前必须先发出 AI 声明；声明本身是独立、可核对的一次聊天写入。
             if (not d.get('final_send_started') and _origin._ai_disclosure_enabled() and _origin._disclosure_recorded(q) is None):

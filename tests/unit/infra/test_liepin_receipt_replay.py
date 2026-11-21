@@ -193,5 +193,5 @@ def test_different_hash_cannot_promote_old_external_observation(submitted_unknow
 def _complete_content_precondition_for_existing_route_tests(monkeypatch):
     # 内容门禁由 test_resume_content 验证；这里保持岗位身份/回执的独立场景。
     monkeypatch.setattr('tools.infra.resume_content.current_career',lambda *a: {'revision':'confirmed-fixture'})
-    monkeypatch.setattr('tools.infra.resume_content.content_body_issues',lambda *a: [])
+    monkeypatch.setattr('tools.infra.resume_content.content_body_issues',lambda *a, **k: [])
     monkeypatch.setattr('tools.infra.resume_content.require_default_content',lambda *a: 'confirmed-fixture')

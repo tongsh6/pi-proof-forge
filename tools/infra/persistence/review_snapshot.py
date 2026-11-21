@@ -147,11 +147,23 @@ def read_generation_trace(resume_path: Path) -> tuple[dict[str, Any], bool]:
             path = Path(source["path"])
             if source.get("sha256") != hashlib.sha256(path.read_bytes()).hexdigest():
                 return trace, False
+        lines = text.splitlines()
         for claim in claims:
             if not isinstance(claim, dict) or not claim.get("text") or claim["text"] not in text:
                 return trace, False
-            if claim.get("source_kind") == "evidence" and claim.get("evidence_id") not in ids:
+            kind = claim.get("source_kind")
+            if kind == "evidence" and claim.get("evidence_id") not in ids:
                 return trace, False
+            if "fact_id" in claim or "render_line" in claim:
+                line = claim.get("render_line")
+                if (type(line) is not int or not 1 <= line <= len(lines)
+                        or claim["text"] not in lines[line - 1] or kind not in ("evidence", "personal_profile")):
+                    return trace, False
+                owner = claim.get("evidence_id") if kind == "evidence" else "personal_profile"
+                field = claim.get("field")
+                if (not owner or not isinstance(field, str) or not field
+                        or not re.fullmatch(re.escape(f"{owner}:{field}:") + r"[0-9]+", str(claim.get("fact_id", "")))):
+                    return trace, False
         return trace, True
     except (OSError, ValueError, KeyError, TypeError):
         return trace, False

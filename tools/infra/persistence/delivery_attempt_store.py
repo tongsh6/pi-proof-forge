@@ -150,6 +150,31 @@ class DeliveryAttemptStore:
             connection.execute('INSERT INTO delivery_batches(batch_id,authorized_max,prior_attempt_ids,allowed_delivery_kind,supplement_of,authorization_ref) VALUES(?,?,?,?,?,?)',
                                (batch_id, authorized_max, '[]', delivery_kind, previous_batch_id, authorization_ref))
 
+    def close_spent_batch(self, batch_id: str, *, delivery_kind: str) -> bool:
+        """关闭一个已用尽、且类型不是 `delivery_kind` 的激活批次。
+
+        授权隔离必须保留：generated_pdf 的额度不能用于 platform_default 投递。
+        但一个已用尽的旧批次也不该永久挡住另一类投递——所以这里只做"关闭"，
+        不转移、不合并额度；新的投递仍必须由用户显式授权。
+        """
+        with self._connection() as connection:
+            row = connection.execute(
+                'SELECT allowed_delivery_kind FROM delivery_batches WHERE batch_id=? AND active=1',
+                (batch_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            allowed = row[0]
+            if not allowed or allowed == delivery_kind:
+                return False
+            active = self._active_batch(connection)
+            if not active or active['batch_id'] != batch_id:
+                return False
+            if active['remaining'] or active['unresolved'] or active['in_flight']:
+                return False
+            connection.execute('UPDATE delivery_batches SET active=0 WHERE batch_id=?', (batch_id,))
+            return True
+
     def finish(self, attempt_id: str, state: str) -> None:
         if state not in {'success', 'failed', 'unknown', 'not_submitted'}:
             raise ValueError('invalid_delivery_outcome')
