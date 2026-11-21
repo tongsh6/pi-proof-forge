@@ -1,9 +1,12 @@
+import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from tools.infra.llm_credentials import LLMApiKeyStore
 from tools.sidecar.handlers.settings import (
@@ -14,6 +17,167 @@ from tools.sidecar.handlers.settings import (
     handle_settings_update,
 )
 
+
+
+
+
+@pytest.fixture
+def l3b_settings_rpc(tmp_path, monkeypatch):
+    from tools.sidecar.server import process_request
+
+    monkeypatch.setenv("PPF_POLICY_PATH", str(tmp_path / "policy.yaml"))
+    monkeypatch.setenv("LLM_THINKING", "on")
+    monkeypatch.setenv("LLM_THINKING_EFFORT", "max")
+
+    def rpc(payload=None):
+        method = "settings.get" if payload is None else "settings.update"
+        params = {"meta": {"correlation_id": "thinking-control"}}
+        if payload is not None:
+            params.update(section="llm_config", payload=payload)
+        response = process_request({"jsonrpc": "2.0", "id": method, "method": method, "params": params})
+        assert "error" not in response, response
+        return response["result"]
+
+    return rpc
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_wire"),
+    [("missing", None), (None, None), (False, "none"), (True, "low")],
+)
+def test_l3b_settings_roundtrip_reaches_actual_inference_request(l3b_settings_rpc, monkeypatch, mode, expected_wire):
+    from io import BytesIO
+    from tools.infra.llm import client as llm_client
+    from tools.sidecar.handlers.evidence_inference import _inference_llm_call
+
+    payload = {"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+               "model": "synthetic-model", "thinking_effort": "low"}
+    if mode != "missing":
+        payload["thinking_enabled"] = mode
+    assert l3b_settings_rpc(payload)["saved"]
+    sent = []
+
+    def capture(req, **_kwargs):
+        sent.append(req)
+        return BytesIO(b'{"choices":[{"message":{"content":"{}"}}]}')
+
+    monkeypatch.setattr(llm_client.request, "urlopen", capture)
+    assert _inference_llm_call("synthetic request contract") == "{}"
+    assert len(sent) == 1
+    wire = json.loads(sent[0].data.decode("utf-8"))
+    assert sent[0].full_url == "http://127.0.0.1:8000/v1/chat/completions"
+    assert wire.get("reasoning_effort") == expected_wire
+    if expected_wire is None:
+        assert "reasoning_effort" not in wire
+    assert "thinking" not in wire
+    config = l3b_settings_rpc()["llm_config"]
+    assert config["thinking_enabled"] is (None if mode == "missing" else mode)
+    assert config["thinking_effort"] == "low"
+
+
+@pytest.mark.parametrize(
+    ("change", "expected_mode", "expected_effort"),
+    [
+        ({"provider": "deepseek"}, None, "high"),
+        ({"base_url": "http://127.0.0.1:8001/v1"}, None, "high"),
+        ({"base_url": "http://127.0.0.1:8001/v1", "thinking_effort": "max"}, None, "max"),
+        ({"base_url": "http://127.0.0.1:8001/v1", "thinking_enabled": False}, False, "high"),
+        ({"base_url": "http://127.0.0.1:8001/v1", "thinking_enabled": True,
+          "thinking_effort": "max"}, True, "max"),
+        ({"model": "renamed-model"}, True, "low"),
+        ({"base_url": "  http://127.0.0.1:8000/v1/  "}, True, "low"),
+    ],
+)
+def test_l3b_settings_deployment_changes_reset_only_omitted_controls(
+    l3b_settings_rpc, change, expected_mode, expected_effort
+):
+    l3b_settings_rpc({"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+                     "model": "synthetic-model", "thinking_enabled": True, "thinking_effort": "low"})
+    l3b_settings_rpc(change)
+    actual = l3b_settings_rpc()["llm_config"]
+    assert actual["thinking_enabled"] is expected_mode
+    assert actual["thinking_effort"] == expected_effort
+
+
+def test_l3b_settings_null_resets_but_omission_and_effort_only_do_not_change_mode(l3b_settings_rpc):
+    l3b_settings_rpc({"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+                     "model": "synthetic-model", "thinking_enabled": True, "thinking_effort": "low"})
+    l3b_settings_rpc({"timeout": 45})
+    assert l3b_settings_rpc()["llm_config"]["thinking_enabled"] is True
+    l3b_settings_rpc({"thinking_enabled": None})
+    l3b_settings_rpc({"thinking_effort": "max"})
+    actual = l3b_settings_rpc()["llm_config"]
+    assert actual["thinking_enabled"] is None
+    assert actual["thinking_effort"] == "max"
+
+
+def test_l3b_strata_uses_effective_endpoint_when_deciding_reset(l3b_settings_rpc):
+    l3b_settings_rpc({"provider": "strata", "model": "synthetic-model",
+                     "thinking_enabled": True, "thinking_effort": "low"})
+    l3b_settings_rpc({"base_url": "http://127.0.0.1:8999/v1"})
+    actual = l3b_settings_rpc()["llm_config"]
+    assert actual["base_url"] == "http://127.0.0.1:47831/v1"
+    assert actual["thinking_enabled"] is True
+    assert actual["thinking_effort"] == "low"
+
+
+
+
+def test_l3b_independent_result_review_uses_configured_mode(l3b_settings_rpc, monkeypatch):
+    from io import BytesIO
+    from tools.infra.llm import client as llm_client
+    from tools.sidecar.handlers.evidence_draft import _review_result_scopes
+
+    l3b_settings_rpc({"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+                     "model": "synthetic-model", "thinking_enabled": True, "thinking_effort": "low"})
+    sent = []
+    verdict = {"reviews": [{"review_index": 0, "outcome": "unknown", "measurement_quote": None,
+                            "rationale": "Synthetic protocol fixture has no supporting source context."}]}
+
+    def capture(req, **_kwargs):
+        sent.append(req)
+        return BytesIO(json.dumps({"choices": [{"message": {"content": json.dumps(verdict)}}]}).encode())
+
+    monkeypatch.setattr(llm_client.request, "urlopen", capture)
+    value = "A synthetic delivery needs source review."
+    reviewed = _review_result_scopes({"fact": {"field": "results", "index": 0, "value": value},
+                                     "bindings": [], "documents": [],
+                                     "scopes": [{"review_index": 0, "value": value, "source": {"quote": value}}]})
+    assert reviewed[0]["outcome"] == "unknown"
+    assert len(sent) == 1
+    wire = json.loads(sent[0].data.decode("utf-8"))
+    assert wire["reasoning_effort"] == "low"
+    assert "thinking" not in wire
+
+
+
+
+@pytest.mark.parametrize("empty_url", ["", "  \t "])
+def test_l3b_settings_empty_endpoint_rejection_has_no_persistent_effect(
+    l3b_settings_rpc, tmp_path, monkeypatch, empty_url
+):
+    from tools.sidecar.server import process_request
+
+    monkeypatch.setenv("PPF_CREDENTIAL_DIR", str(tmp_path / "credentials"))
+    original = {"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+                "model": "synthetic-model", "api_key": "synthetic-existing-key",
+                "thinking_enabled": True, "thinking_effort": "low"}
+    l3b_settings_rpc(original)
+    before_config = l3b_settings_rpc()["llm_config"]
+    before_files = {str(path.relative_to(tmp_path)): path.read_bytes()
+                    for path in tmp_path.rglob("*") if path.is_file()}
+    response = process_request({
+        "jsonrpc": "2.0", "id": "empty-endpoint", "method": "settings.update",
+        "params": {"meta": {"correlation_id": "empty-endpoint"}, "section": "llm_config",
+                   "payload": {"provider": "deepseek", "model": "new-synthetic-model",
+                               "base_url": empty_url, "api_key": "synthetic-unsaved-key",
+                               "thinking_enabled": None, "thinking_effort": "high"}},
+    })
+    assert response["error"]["code"] == "VALIDATION_ERROR"
+    assert response["error"]["message"] == "base_url must be a non-empty string"
+    assert l3b_settings_rpc()["llm_config"] == before_config
+    assert {str(path.relative_to(tmp_path)): path.read_bytes()
+            for path in tmp_path.rglob("*") if path.is_file()} == before_files
 
 
 class SettingsGetTests(unittest.TestCase):
@@ -546,7 +710,6 @@ class SettingsLlmCredentialTests(unittest.TestCase):
         self.assertEqual(result["models"], ["deepseek-flash", "deepseek-v4-pro"])
         self.assertEqual(captured[0]["api_key"], key)
         self.assertEqual(captured[0]["provider"], "deepseek")
-        self.assertTrue(captured[0]["thinking_enabled"])
         self.assertIn("DeepSeek", result["message"])
 
     def test_legacy_lm_studio_placeholder_stays_usable(self) -> None:

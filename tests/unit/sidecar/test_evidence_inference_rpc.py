@@ -151,17 +151,17 @@ def test_inference_disabled_returns_rules_only_l2(tmp_path, monkeypatch):
     assert result["cards"][0]["status"] == "rules_only"
 
 @pytest.mark.parametrize(
-    "provider,base_url,expected_protocol",
+    "provider,base_url,mode,expected_protocol",
     [
-        ("openai_compatible", "https://api.example.test/proxy/localhost/v1", {}),
-        ("openai_compatible", "http://127.0.0.1:9000/v1", {}),
-        ("deepseek", "http://127.0.0.1:9000/v1", {"thinking": {"type": "disabled"}}),
-        ("openai_compatible", "http://127.0.0.1:8000/v1", {"reasoning_effort": "none"}),
-        ("strata", "http://127.0.0.1:47831/v1", {"reasoning_effort": "none"}),
+        ("openai_compatible", "https://api.example.test/proxy/localhost/v1", None, {}),
+        ("openai_compatible", "http://127.0.0.1:9000/v1", None, {}),
+        ("deepseek", "http://127.0.0.1:9000/v1", False, {"thinking": {"type": "disabled"}}),
+        ("openai_compatible", "http://127.0.0.1:8000/v1", False, {"reasoning_effort": "none"}),
+        ("strata", "http://127.0.0.1:47831/v1", False, {"reasoning_effort": "none"}),
     ],
-    ids=["remote-path-localhost", "unknown-loopback", "deepseek-off-loopback", "verified-splash", "strata-off"],
+    ids=["remote-path-localhost", "unknown-loopback", "deepseek-off-loopback", "splash-explicit-off", "strata-off"],
 )
-def test_inference_request_uses_shared_provider_adapter(tmp_path, monkeypatch, provider, base_url, expected_protocol):
+def test_inference_request_uses_shared_provider_adapter(tmp_path, monkeypatch, provider, base_url, mode, expected_protocol):
     import io
 
     from tools.sidecar.handlers import evidence_inference as handler
@@ -171,7 +171,7 @@ def test_inference_request_uses_shared_provider_adapter(tmp_path, monkeypatch, p
     monkeypatch.setattr(evidence, "load_evidence_inference_enabled", lambda: True)
     monkeypatch.setattr(handler, "load_llm_config", lambda: {
         "provider": provider, "base_url": base_url, "api_key_for_request": "synthetic",
-        "model": "synthetic-model", "timeout": 5, "thinking_enabled": False,
+        "model": "synthetic-model", "timeout": 5, "thinking_enabled": mode,
         "thinking_effort": "high",
     })
     requests = []

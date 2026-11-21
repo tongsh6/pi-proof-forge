@@ -89,7 +89,9 @@ def handle_review_historical_preparation(params):
         if _inputs(profile_id)["snapshot"] != inputs["snapshot"]:
             raise ValueError("semantic_inputs_changed")
         model = str(config["model"])
-        client = semantic.BoundedLocalClient(model=model, api_key=str(config.get("api_key_for_request") or ""))
+        client = semantic.BoundedLocalClient(model=model, api_key=str(config.get("api_key_for_request") or ""),
+                                             thinking_enabled=config.get("thinking_enabled"),
+                                             reasoning_effort=str(config.get("thinking_effort", "high")))
         with TemporaryDirectory(prefix="ppf-historical-review-") as tmp:
             cache = Path(tmp)
             preferences, body = inputs["preferences"], inputs["job_fields"]["source_jd"]

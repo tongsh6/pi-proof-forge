@@ -6,6 +6,8 @@ from io import BytesIO
 from urllib.error import HTTPError
 from unittest.mock import Mock, patch
 
+import pytest
+
 from tools.infra.llm.client import (
     KEYLESS_PROVIDERS,
     LLMClient,
@@ -14,6 +16,109 @@ from tools.infra.llm.client import (
     llm_request_available,
     provider_is_keyless,
 )
+
+
+# Configuration is authoritative; URLs, model aliases and JSON format are not mode choices.
+def _sent_request_control(config, payload, *, response_schema=None):
+    original = copy.deepcopy(payload)
+    original_schema = copy.deepcopy(response_schema)
+    client = LLMClient(**config)
+    with patch("tools.infra.llm.client.request.urlopen", return_value=BytesIO(b"{}")) as transport:
+        prepared = client.prepare_request(client.chat_completions_url, payload, response_schema=response_schema)
+        accepted_data = prepared.data
+        assert transport.call_count == 0
+        assert client.send_request(prepared) == {}
+    assert transport.call_count == 1 and transport.call_args.args[0] is prepared
+    assert prepared.data == accepted_data
+    assert prepared.full_url == config["base_url"].rstrip("/") + "/chat/completions"
+    assert payload == original and response_schema == original_schema
+    return json.loads(prepared.data)
+
+
+@pytest.mark.parametrize("provider,base_url,model", [
+    ("openai_compatible", "http://127.0.0.1:8000/v1", "arbitrary-alias"),
+    ("lm_studio", "http://127.0.0.1:1234/v1", "qwen/qwen3.8-27b"),
+    ("lm_studio", "http://127.0.0.1:1234/v1", "qwen3.8-flash-next@q2_k"),
+    ("lm_studio", "http://127.0.0.1:1234/v1", "qwen3.8-27b@q8_0"),
+])
+def test_request_control_default_is_not_inferred_from_deployment_or_model(monkeypatch, provider, base_url, model):
+    monkeypatch.delenv("LLM_THINKING", raising=False)
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+    payload = {"model": model, "messages": [{"role": "user", "content": "保留完整测试条件。"}],
+               "response_format": {"type": "json_object"}}
+    sent = _sent_request_control(
+        {"base_url": base_url, "api_key": "", "provider": provider, "thinking_enabled": None},
+        payload, response_schema=schema,
+    )
+    if provider == "lm_studio":
+        assert sent["response_format"]["json_schema"]["schema"] == schema
+    else:
+        assert sent["response_format"] == {"type": "json_object"}
+        assert json.dumps(schema, ensure_ascii=False, sort_keys=True) in sent["messages"][0]["content"]
+    assert "thinking" not in sent and "reasoning_effort" not in sent
+
+
+@pytest.mark.parametrize("provider", ["openai", "openai_compatible", "lm_studio"])
+@pytest.mark.parametrize("mode,expected", [(False, "none"), (True, "max")])
+def test_request_control_generic_explicit_mode_reaches_request(provider, mode, expected):
+    sent = _sent_request_control(
+        {"base_url": "https://synthetic.example/v1", "api_key": "", "provider": provider,
+         "thinking_enabled": mode, "reasoning_effort": "max"},
+        {"model": "arbitrary-alias", "messages": [{"role": "user", "content": "完整事实"}],
+         "response_format": {"type": "json_object"}},
+    )
+    assert sent.get("reasoning_effort") == expected
+    assert "thinking" not in sent
+
+
+@pytest.mark.parametrize("provider,expected", [
+    ("deepseek", {"thinking": {"type": "disabled"}}),
+    ("strata", {"reasoning_effort": "none"}),
+    ("openai_compatible", {}),
+])
+def test_request_control_explicit_none_does_not_revive_parent_environment(monkeypatch, provider, expected):
+    monkeypatch.setenv("LLM_THINKING", "on")
+    monkeypatch.setenv("LLM_THINKING_EFFORT", "max")
+    sent = _sent_request_control(
+        {"base_url": "https://synthetic.example/v1", "api_key": "", "provider": provider,
+         "thinking_enabled": None},
+        {"model": "arbitrary-alias", "messages": [{"role": "user", "content": "完整事实"}]},
+    )
+    assert {key: sent[key] for key in ("thinking", "reasoning_effort") if key in sent} == expected
+
+
+@pytest.mark.parametrize("environment,expected", [("on", {"reasoning_effort": "max"}),
+                                                ("off", {"reasoning_effort": "none"}), ("default", {})])
+def test_request_control_omitted_mode_reads_cli_environment(monkeypatch, environment, expected):
+    monkeypatch.setenv("LLM_THINKING", environment)
+    monkeypatch.setenv("LLM_THINKING_EFFORT", "max")
+    sent = _sent_request_control(
+        {"base_url": "https://synthetic.example/v1", "api_key": "", "provider": "openai_compatible"},
+        {"model": "arbitrary-alias", "messages": [{"role": "user", "content": "完整事实"}]},
+    )
+    assert {key: sent[key] for key in ("thinking", "reasoning_effort") if key in sent} == expected
+
+
+@pytest.mark.parametrize("effort", ["low", "max"])
+def test_request_control_deepseek_json_preserves_explicit_on(effort):
+    sent = _sent_request_control(
+        {"base_url": "https://synthetic.example/v1", "api_key": "", "provider": "deepseek",
+         "thinking_enabled": True, "reasoning_effort": effort},
+        {"model": "arbitrary-alias", "response_format": {"type": "json_object"}},
+    )
+    assert sent.get("thinking") == {"type": "enabled"}
+    assert sent.get("reasoning_effort") == effort
+
+
+@pytest.mark.parametrize("effort,expected", [("low", "low"), ("max", "high")])
+def test_request_control_strata_json_preserves_explicit_on(effort, expected):
+    sent = _sent_request_control(
+        {"base_url": "http://127.0.0.1:47831/v1", "api_key": "", "provider": "strata",
+         "thinking_enabled": True, "reasoning_effort": effort},
+        {"model": "arbitrary-alias", "response_format": {"type": "json_object"}},
+    )
+    assert sent.get("reasoning_effort") == expected
+    assert "thinking" not in sent
 
 
 class ExtractContentTests(unittest.TestCase):
@@ -290,18 +395,18 @@ class StructuredOutputTests(unittest.TestCase):
             self._sent_payload(payload, response_schema={"type": "object"}), payload
         )
 
-    def test_verified_qwen_structured_extraction_disables_reasoning_without_mutation(self) -> None:
+    def test_structured_model_alias_uses_default_mode_without_mutation(self) -> None:
         payload = {
             "model": "qwen/qwen3.8-27b",
             "response_format": {"type": "json_object"},
         }
         original = copy.deepcopy(payload)
         sent = self._sent_payload(payload)
-        self.assertEqual(sent["reasoning_effort"], "none")
+        self.assertNotIn("reasoning_effort", sent)
         self.assertEqual(sent["response_format"]["type"], "json_schema")
         self.assertEqual(payload, original)
 
-    def test_verified_qwen_preserves_explicit_reasoning_effort(self) -> None:
+    def test_model_alias_preserves_explicit_reasoning_effort(self) -> None:
         for effort in ("low", "none", None):
             with self.subTest(effort=effort):
                 payload = {
@@ -311,7 +416,7 @@ class StructuredOutputTests(unittest.TestCase):
                 }
                 self.assertEqual(self._sent_payload(payload)["reasoning_effort"], effort)
 
-    def test_flash_next_direction_budget_is_reserved_for_json_content(self) -> None:
+    def test_model_alias_does_not_change_json_budget_or_explicit_controls(self) -> None:
         payload = {
             "model": "qwen3.8-flash-next@q2_k",
             "max_tokens": 800,
@@ -319,7 +424,7 @@ class StructuredOutputTests(unittest.TestCase):
         }
         original = copy.deepcopy(payload)
         sent = self._sent_payload(payload)
-        self.assertEqual(sent["reasoning_effort"], "none")
+        self.assertNotIn("reasoning_effort", sent)
         self.assertEqual(sent["max_tokens"], 800)
         self.assertEqual(payload, original)
         for effort in ("low", "none", None):
@@ -343,7 +448,7 @@ class StructuredOutputTests(unittest.TestCase):
                 )
                 self.assertNotIn("reasoning_effort", sent)
 
-    def test_verified_qwen_without_json_object_keeps_request_unchanged(self) -> None:
+    def test_model_alias_without_explicit_control_keeps_request_unchanged(self) -> None:
         for response_format in (
             None,
             {"type": "text"},
@@ -456,7 +561,7 @@ class DeepSeekThinkingTests(unittest.TestCase):
                 )
                 self.assertEqual(sent["reasoning_effort"], effort)
 
-    def test_json_object_requests_disable_deepseek_thinking(self) -> None:
+    def test_json_object_preserves_explicit_deepseek_thinking(self) -> None:
         sent = self._sent(
             {
                 "model": "deepseek-flash",
@@ -467,8 +572,8 @@ class DeepSeekThinkingTests(unittest.TestCase):
             thinking_enabled=True,
             thinking_effort="max",
         )
-        self.assertEqual(sent["thinking"], {"type": "disabled"})
-        self.assertNotIn("reasoning_effort", sent)
+        self.assertEqual(sent["thinking"], {"type": "enabled"})
+        self.assertEqual(sent["reasoning_effort"], "max")
 
     def test_explicit_thinking_and_effort_are_not_overridden(self) -> None:
         sent = self._sent(
@@ -493,7 +598,7 @@ class DeepSeekThinkingTests(unittest.TestCase):
                     thinking_enabled=True,
                 )
                 self.assertNotIn("thinking", sent)
-                self.assertNotIn("reasoning_effort", sent)
+                self.assertEqual(sent["reasoning_effort"], "high")
 
     def test_environment_provider_and_thinking_are_used_when_not_explicit(self) -> None:
         with patch.dict(
@@ -501,15 +606,14 @@ class DeepSeekThinkingTests(unittest.TestCase):
             {"LLM_PROVIDER": "deepseek", "LLM_THINKING": "on", "LLM_THINKING_EFFORT": "max"},
             clear=False,
         ):
-            sent = self._sent(
+            sent = _sent_request_control(
+                {"base_url": "http://127.0.0.1:1234/v1", "api_key": ""},
                 {"model": "deepseek-flash", "messages": [{"role": "user", "content": "json"}]},
-                provider="",
-                thinking_enabled=None,
             )
         self.assertEqual(sent["thinking"], {"type": "enabled"})
         self.assertEqual(sent["reasoning_effort"], "max")
 
-    def test_environment_thinking_defaults_off(self) -> None:
+    def test_explicit_none_uses_deepseek_default(self) -> None:
         sent = self._sent(
             {"model": "deepseek-flash", "messages": [{"role": "user", "content": "json"}]},
             provider="deepseek",
@@ -548,7 +652,7 @@ class StrataReasoningTests(unittest.TestCase):
                 self.assertEqual(sent["reasoning_effort"], expected)
                 self.assertNotIn("thinking", sent)
 
-    def test_json_object_disables_reasoning_even_when_thinking_enabled(self) -> None:
+    def test_json_object_preserves_explicit_strata_thinking(self) -> None:
         payload = {
             "model": "qwen3.8-flash-next-q2_0",
             "messages": [{"role": "user", "content": "return json"}],
@@ -556,7 +660,7 @@ class StrataReasoningTests(unittest.TestCase):
         }
         original = copy.deepcopy(payload)
         sent = self._sent(payload, thinking_enabled=True, thinking_effort="max")
-        self.assertEqual(sent["reasoning_effort"], "none")
+        self.assertEqual(sent["reasoning_effort"], "high")
         self.assertNotIn("thinking", sent)
         self.assertEqual(sent["response_format"], {"type": "json_object"})
         self.assertEqual(payload, original)

@@ -447,7 +447,9 @@ def handle_match_preparation(params):
                                      expected=params.get("continue_matching_digest"))
             if reserved is None:
                 return preflight("semantic_start_unavailable" if starting else "semantic_continuation_unavailable")
-        client = BoundedLocalClient(model=config["model"], api_key=str(config.get("api_key_for_request") or ""))
+        client = BoundedLocalClient(model=config["model"], api_key=str(config.get("api_key_for_request") or ""),
+                                    thinking_enabled=config.get("thinking_enabled"),
+                                    reasoning_effort=str(config.get("thinking_effort", "high")))
         raw, failure = None, ""
         cache_dir = _audit_path(profile_id).parent / ".semantic-cache"
         cache_before = _cache_snapshot(cache_dir)

@@ -396,7 +396,7 @@ def handle_evidence_generate_draft(params: dict[str, Any]) -> dict[str, Any]:
             api_key=str(llm_config["api_key_for_request"]),
             timeout=int(llm_config["timeout"]),
             provider=str(llm_config["provider"]),
-            thinking_enabled=bool(llm_config.get("thinking_enabled", False)),
+            thinking_enabled=llm_config.get("thinking_enabled"),
             reasoning_effort=str(llm_config.get("thinking_effort", "high")),
         )
         response = client.post_json(client.chat_completions_url, payload)
@@ -460,7 +460,7 @@ def _review_result_scopes(review_input):
         raise ValueError("result_review_provider_unavailable")
     try:
         client = _origin.LLMClient(base_url=base_url, api_key=api_key, timeout=int(config["timeout"]),
-                                   provider=provider, thinking_enabled=False,
+                                   provider=provider, thinking_enabled=config.get("thinking_enabled"),
                                    reasoning_effort=str(config.get("thinking_effort", "high")))
         payload = {"model": model, "messages": result_review_messages(review_input),
                    "temperature": float(config["temperature"]), "response_format": {"type": "json_object"}}

@@ -13,7 +13,6 @@ from tools.sidecar.handlers._shared.llm_config import (
     load_llm_config,
     merge_llm_config_payload,
     models_url,
-    normalize_thinking_effort,
     provider_label,
     saved_api_key_for_provider,
     valid_api_key,
@@ -115,10 +114,6 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
             api_key=api_key,
             timeout=int(config["timeout"]),
             provider=requested_provider,
-            thinking_enabled=bool(config.get("thinking_enabled", False)),
-            reasoning_effort=normalize_thinking_effort(
-                config.get("thinking_effort", "high")
-            ),
         )
         models = client.list_models()
         if not models:

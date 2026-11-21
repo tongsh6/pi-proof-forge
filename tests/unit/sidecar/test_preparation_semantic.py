@@ -202,6 +202,52 @@ def test_reader_detects_stale_and_tampered_audit(setup,monkeypatch):
     assert m.read_semantic_preparation('jp_test')['status']=='invalid'
 
 
+
+
+@pytest.mark.parametrize(("mode", "expected_wire"),
+                         [("missing", None), (None, None), (False, "none"), (True, "low")])
+def test_l3b_preparation_settings_reach_bounded_serialized_request(setup, tmp_path, monkeypatch, mode, expected_wire):
+    from io import BytesIO
+    from tools.infra.llm import bounded_local
+    from tools.sidecar.handlers._shared.llm_config import load_llm_config
+    from tools.sidecar.handlers.settings import handle_settings_update
+
+    m, _, engine, raw = setup
+    monkeypatch.setenv("PPF_POLICY_PATH", str(tmp_path / "policy.yaml"))
+    monkeypatch.setenv("LLM_THINKING", "on")
+    monkeypatch.setenv("LLM_THINKING_EFFORT", "max")
+    payload = {"provider": "openai_compatible", "base_url": m.SPLASH, "model": "synthetic-model",
+               "thinking_effort": "low"}
+    if mode != "missing":
+        payload["thinking_enabled"] = mode
+    assert handle_settings_update({"meta": {"correlation_id": "bounded-thinking"},
+                                   "section": "llm_config", "payload": payload})["saved"]
+    monkeypatch.setattr(m, "load_llm_config", load_llm_config)
+    opener = Mock()
+    opener.open.side_effect = lambda *_args, **_kwargs: BytesIO(b"{}")
+    monkeypatch.setattr(bounded_local.request, "build_opener", lambda *_args: opener)
+
+    def consume(**kwargs):
+        client = kwargs["client"]
+        client.post_json(client.chat_completions_url, {
+            "model": payload["model"], "messages": [], "response_format": {"type": "json_object"},
+        })
+        return raw
+
+    engine.side_effect = consume
+    result = m.handle_match_preparation({"meta": {}, "job_profile_id": "jp_test"})
+    assert result["status"] == "partial"
+    assert opener.open.call_count == 1
+    req = opener.open.call_args.args[0]
+    assert req.full_url == m.SPLASH + "/chat/completions"
+    wire = json.loads(req.data.decode("utf-8"))
+    assert wire.get("reasoning_effort") == expected_wire
+    if expected_wire is None:
+        assert "reasoning_effort" not in wire
+    assert engine.call_args.kwargs["client"].model_calls == 1
+    assert "thinking" not in wire
+
+
 def test_client_max_four_no_transport_retry(monkeypatch):
     m=module()
     response=Mock();response.read.return_value=b'{}';response.close.return_value=None

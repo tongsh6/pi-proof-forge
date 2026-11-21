@@ -397,7 +397,7 @@ def handle_quick_check_direction(params: dict[str, Any]) -> dict[str, Any]:
             api_key=api_key,
             timeout=int(llm_env.get("LLM_TIMEOUT") or 60),
             provider=provider,
-            thinking_enabled=bool(llm_summary.get("thinking_enabled")),
+            thinking_enabled=llm_summary.get("thinking_enabled"),
             reasoning_effort=str(llm_summary.get("thinking_effort") or "high"),
         )
         review = assess_direction(

@@ -1403,6 +1403,43 @@ class TestAgentRunStart:
             assert fetched["run"]["llm_config_summary"] == summary
 
 
+
+
+@pytest.mark.parametrize(("mode", "expected_env", "expected_wire"),
+                         [("missing", "default", None), (None, "default", None),
+                          (False, "off", "none"), (True, "on", "low")])
+def test_l3b_quick_run_settings_override_parent_thinking_environment(
+    tmp_path, monkeypatch, mode, expected_env, expected_wire
+):
+    from tools.infra.llm.client import LLMClient
+    from tools.sidecar.handlers.settings import handle_settings_update
+
+    monkeypatch.setenv("PPF_POLICY_PATH", str(tmp_path / "policy.yaml"))
+    monkeypatch.setenv("LLM_THINKING", "on")
+    monkeypatch.setenv("LLM_THINKING_EFFORT", "max")
+    payload = {"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1",
+               "model": "synthetic-model", "thinking_effort": "low"}
+    if mode != "missing":
+        payload["thinking_enabled"] = mode
+    assert handle_settings_update({"meta": {"correlation_id": "quick-thinking"},
+                                   "section": "llm_config", "payload": payload})["saved"]
+    summary, child_env = _persisted_llm_runtime_context()
+    effective_env = {**os.environ, **child_env}
+    assert effective_env["LLM_THINKING"] == expected_env
+    assert summary["thinking_enabled"] is (None if mode == "missing" else mode)
+    assert effective_env["LLM_THINKING_EFFORT"] == "low"
+    with patch.dict(os.environ, effective_env, clear=True):
+        client = LLMClient(summary["base_url"], "", provider=summary["provider"])
+        req = client.prepare_request(client.chat_completions_url, {
+            "model": summary["model"], "messages": [],
+            "response_format": {"type": "json_object"},
+        })
+    wire = json.loads(req.data.decode("utf-8"))
+    assert wire.get("reasoning_effort") == expected_wire
+    if expected_wire is None:
+        assert "reasoning_effort" not in wire
+
+
 def test_persisted_llm_runtime_context_propagates_thinking_mode() -> None:
     config = {
         "provider": "deepseek",

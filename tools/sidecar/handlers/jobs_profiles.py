@@ -172,7 +172,7 @@ def handle_jobs_generate_profile_draft(params: dict[str, object], *, llm_config_
             api_key=str(llm_config["api_key_for_request"]),
             timeout=int(llm_config["timeout"]),
             provider=str(llm_config["provider"]),
-            thinking_enabled=bool(llm_config.get("thinking_enabled", False)),
+            thinking_enabled=llm_config.get("thinking_enabled"),
             reasoning_effort=str(llm_config.get("thinking_effort", "high")),
         )
         response = client.post_json(

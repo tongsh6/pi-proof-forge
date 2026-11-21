@@ -325,22 +325,22 @@ def _judge_fixture(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "provider,base_url,expected_protocol",
+    "provider,base_url,environment,expected_protocol",
     [
-        ("openai_compatible", "https://api.example.test/proxy/localhost/v1", {}),
-        ("openai_compatible", "http://127.0.0.1:9000/v1", {}),
-        ("deepseek", "http://127.0.0.1:9000/v1", {"thinking": {"type": "disabled"}}),
-        ("openai_compatible", "http://127.0.0.1:8000/v1", {"reasoning_effort": "none"}),
-        ("strata", "http://127.0.0.1:47831/v1", {"reasoning_effort": "none"}),
+        ("openai_compatible", "https://api.example.test/proxy/localhost/v1", "default", {}),
+        ("openai_compatible", "http://127.0.0.1:9000/v1", "default", {}),
+        ("deepseek", "http://127.0.0.1:9000/v1", "off", {"thinking": {"type": "disabled"}}),
+        ("openai_compatible", "http://127.0.0.1:8000/v1", "off", {"reasoning_effort": "none"}),
+        ("strata", "http://127.0.0.1:47831/v1", "off", {"reasoning_effort": "none"}),
     ],
-    ids=["remote-path-localhost", "unknown-loopback", "deepseek-off-loopback", "verified-splash", "strata-off"],
+    ids=["remote-path-localhost", "unknown-loopback", "deepseek-off-loopback", "splash-explicit-off", "strata-off"],
 )
-def test_quality_judge_request_uses_shared_provider_adapter(tmp_path, monkeypatch, provider, base_url, expected_protocol):
+def test_quality_judge_request_uses_shared_provider_adapter(tmp_path, monkeypatch, provider, base_url, environment, expected_protocol):
     import io
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LLM_PROVIDER", provider)
-    monkeypatch.setenv("LLM_THINKING", "off")
+    monkeypatch.setenv("LLM_THINKING", environment)
     resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     requests = []
 

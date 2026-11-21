@@ -63,6 +63,13 @@ def normalize_thinking_effort(value: object) -> str:
     return effort if effort in THINKING_EFFORTS else "high"
 
 
+def _effective_base_url(provider: str, scalars: dict[str, Any]) -> str | None:
+    if provider == "strata":
+        return STRATA_UNIFIED_BASE_URL
+    value = scalars.get("llm_base_url") or os.environ.get("LLM_BASE_URL")
+    return str(value or "").strip().rstrip("/") or None
+
+
 def load_llm_config_impl() -> dict[str, Any]:
     scalars, _ = _settings_module()._load_policy_doc()
     provider = str(
@@ -111,10 +118,7 @@ def load_llm_config_impl() -> dict[str, Any]:
         configured_providers = []
 
     default_model = "" if provider == "strata" else "gpt-4"
-    base_url: str | None = scalars.get("llm_base_url") or os.environ.get("LLM_BASE_URL")
-    if provider == "strata":
-        # 统一推理后台端点固定；旧配置里直连引擎的 8081/8082 等地址不再生效。
-        base_url = STRATA_UNIFIED_BASE_URL
+    base_url = _effective_base_url(provider, scalars)
     return {
         "provider": provider,
         "model": scalars.get("llm_model")
@@ -125,7 +129,7 @@ def load_llm_config_impl() -> dict[str, Any]:
         "api_key_for_request": api_key_for_request,
         "api_key_source": api_key_source,
         "configured_providers": configured_providers,
-        "thinking_enabled": to_bool(scalars.get("llm_thinking_enabled", ""), False),
+        "thinking_enabled": to_bool(scalars.get("llm_thinking_enabled", ""), None),
         "thinking_effort": normalize_thinking_effort(
             scalars.get("llm_thinking_effort", "high")
         ),
@@ -168,6 +172,7 @@ def save_llm_config_impl(payload: dict[str, Any]) -> Path | None:
         current_provider = normalize_provider(current_provider)
     except ValueError:
         current_provider = ""
+    current_base_url = _effective_base_url(current_provider, scalars)
     target_provider = current_provider
     if "provider" in payload:
         provider = require_non_empty_str(payload["provider"], "provider")
@@ -189,6 +194,15 @@ def save_llm_config_impl(payload: dict[str, Any]) -> Path | None:
     if "base_url" in payload:
         base_url = require_non_empty_str(payload["base_url"], "base_url")
         scalars["llm_base_url"] = base_url
+    deployment_changed = (
+        target_provider != current_provider
+        or _effective_base_url(target_provider, scalars) != current_base_url
+    )
+    if deployment_changed:
+        if "thinking_enabled" not in payload:
+            scalars.pop("llm_thinking_enabled", None)
+        if "thinking_effort" not in payload:
+            scalars.pop("llm_thinking_effort", None)
     if "timeout" in payload:
         scalars["llm_timeout"] = str(require_positive_int(payload["timeout"], "timeout"))
     if "temperature" in payload:
@@ -197,9 +211,12 @@ def save_llm_config_impl(payload: dict[str, Any]) -> Path | None:
         )
     if "thinking_enabled" in payload:
         enabled = payload["thinking_enabled"]
-        if not isinstance(enabled, bool):
-            raise ValueError("thinking_enabled must be a boolean")
-        scalars["llm_thinking_enabled"] = "true" if enabled else "false"
+        if enabled is not None and not isinstance(enabled, bool):
+            raise ValueError("thinking_enabled must be a boolean or null")
+        if enabled is None:
+            scalars.pop("llm_thinking_enabled", None)
+        else:
+            scalars["llm_thinking_enabled"] = "true" if enabled else "false"
     if "thinking_effort" in payload:
         effort = payload["thinking_effort"]
         if not isinstance(effort, str) or effort.strip().lower() not in THINKING_EFFORTS:
@@ -296,7 +313,7 @@ def require_float_in_range(value: object, field: str, minimum: float, maximum: f
     return number
 
 
-def to_bool(value: str, default: bool) -> bool:
+def to_bool(value: str, default: bool | None) -> bool | None:
     lowered = value.strip().lower()
     if lowered in ("true", "1", "yes", "on"):
         return True

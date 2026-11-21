@@ -12,20 +12,20 @@ from tools.infra.job_preferences import assess_direction
 def wire(monkeypatch):
     sent = []
     response = {'choices': [{'message': {'content': '{"ok":true}'}}]}
-    def open_request(self, req):
+    def open_request(req, **kwargs):
         sent.append(json.loads(req.data))
         return BytesIO(json.dumps(response).encode())
-    monkeypatch.setattr(LLMClient, '_open_with_retry', open_request)
+    monkeypatch.setattr('tools.infra.llm.client.request.urlopen', open_request)
     return sent, response
 
 
-def test_direction_uses_real_client_splash_policy(wire, tmp_path):
+def test_direction_preserves_explicit_off_with_real_client(wire, tmp_path):
     sent, response = wire
     jd = 'Build Python backend APIs.'
     response['choices'][0]['message']['content'] = json.dumps({
         'status': 'aligned', 'reason': '后端职责相符', 'criterion_index': 0, 'jd_quote': jd})
     client = LLMClient('http://127.0.0.1:8000/v1/', '', provider='openai_compatible',
-                       thinking_enabled=True)
+                       thinking_enabled=False)
     result = assess_direction({'revision': 'fixture', 'items': [
         {'kind': 'primary', 'text': 'Python backend'}]}, jd, client, 'new-model-alias', tmp_path)
     assert result['status'] == 'aligned' and result['model_calls'] == 1
@@ -35,17 +35,17 @@ def test_direction_uses_real_client_splash_policy(wire, tmp_path):
     assert sent[0]['response_format'] == {'type': 'json_object'}
 
 
-@pytest.mark.parametrize('base_url,provider,format,effort,expected', [
-    ('http://127.0.0.1:8000/v1', 'openai_compatible', {'type':'json_object'}, None, 'none'),
-    ('http://127.0.0.1:8000/v1', 'openai_compatible', {'type':'json_object'}, 'high', 'high'),
-    ('http://127.0.0.1:8000/v1', 'openai_compatible', None, None, None),
-    ('http://127.0.0.1:1234/v1', 'openai_compatible', {'type':'json_object'}, None, None),
-    ('https://remote.example/v1', 'openai_compatible', {'type':'json_object'}, None, None),
-    ('http://127.0.0.1:8000/v1', 'openai', {'type':'json_object'}, None, None),
+@pytest.mark.parametrize('base_url,provider,format,mode,effort,expected', [
+    ('http://127.0.0.1:8000/v1', 'openai_compatible', {'type':'json_object'}, False, None, 'none'),
+    ('http://127.0.0.1:8000/v1', 'openai_compatible', {'type':'json_object'}, False, 'high', 'high'),
+    ('http://127.0.0.1:8000/v1', 'openai_compatible', None, None, None, None),
+    ('http://127.0.0.1:1234/v1', 'openai_compatible', {'type':'json_object'}, None, None, None),
+    ('https://remote.example/v1', 'openai_compatible', {'type':'json_object'}, None, None, None),
+    ('http://127.0.0.1:8000/v1', 'openai', {'type':'json_object'}, None, None, None),
 ])
-def test_policy_scope_and_explicit_override(wire, base_url, provider, format, effort, expected):
+def test_configuration_default_and_explicit_payload_across_endpoints(wire, base_url, provider, format, mode, effort, expected):
     sent, _ = wire
-    client = LLMClient(base_url, '', provider=provider, thinking_enabled=True)
+    client = LLMClient(base_url, '', provider=provider, thinking_enabled=mode)
     payload = {'model':'any-alias', 'messages':[{'role':'user','content':'Synthetic JSON test'}]}
     if format is not None:
         payload['response_format'] = format
@@ -53,5 +53,8 @@ def test_policy_scope_and_explicit_override(wire, base_url, provider, format, ef
         payload['reasoning_effort'] = effort
     before = copy.deepcopy(payload)
     client.post_json(client.chat_completions_url, payload)
+    assert len(sent) == 1
     assert sent[0].get('reasoning_effort') == expected
+    if expected is None:
+        assert 'reasoning_effort' not in sent[0]
     assert payload == before

@@ -94,6 +94,50 @@ def handler_case(tmp_path, monkeypatch):
     return historical,inputs,raw,client
 
 
+
+
+def test_l3b_historical_entry_passes_saved_mode_to_bounded_wire(handler_case, tmp_path, monkeypatch):
+    import json
+    from io import BytesIO
+    from unittest.mock import Mock
+    from tools.infra.llm import bounded_local
+    from tools.sidecar.handlers._shared.llm_config import load_llm_config
+    from tools.sidecar.handlers.settings import handle_settings_update
+
+    historical, _, raw, _ = handler_case
+    monkeypatch.setenv("PPF_POLICY_PATH", str(tmp_path / "policy.yaml"))
+    monkeypatch.setenv("LLM_THINKING", "on")
+    monkeypatch.setenv("LLM_THINKING_EFFORT", "max")
+    assert handle_settings_update({
+        "meta": {"correlation_id": "historical-thinking"}, "section": "llm_config",
+        "payload": {"provider": "openai_compatible", "base_url": semantic.SPLASH,
+                    "model": "synthetic-model", "thinking_enabled": True, "thinking_effort": "low"},
+    })["saved"]
+    monkeypatch.setattr(semantic, "load_llm_config", load_llm_config)
+    monkeypatch.setattr(semantic, "BoundedLocalClient", bounded_local.BoundedLocalClient)
+    opener = Mock()
+    opener.open.side_effect = lambda *_args, **_kwargs: BytesIO(b"{}")
+    monkeypatch.setattr(bounded_local.request, "build_opener", lambda *_args: opener)
+
+    def direction(_preferences, _body, client, model, _cache):
+        client.post_json(client.chat_completions_url, {
+            "model": model, "messages": [], "response_format": {"type": "json_object"},
+        })
+        return {"status": "aligned", "reason": "source", "criterion_index": 0, "jd_quote": "业务接口开发"}
+
+    monkeypatch.setattr(historical, "assess_direction", direction)
+    monkeypatch.setattr(semantic, "run_semantic_matching", lambda **_kwargs: raw)
+    result = historical.handle_review_historical_preparation({"meta": {}, "job_profile_id": "jp_test"})
+    assert result["status"] == "preview"
+    assert opener.open.call_count == 1
+    req = opener.open.call_args.args[0]
+    assert req.full_url == semantic.SPLASH + "/chat/completions"
+    wire = json.loads(req.data.decode("utf-8"))
+    assert wire["reasoning_effort"] == "low"
+    assert "thinking" not in wire
+    assert result["send_ready"] is False
+
+
 def test_end_to_end_internal_rpc_does_not_change_approval_or_persist_cache(handler_case,tmp_path):
     from tools.sidecar.server import process_request
     before={p.name:p.read_bytes() for p in tmp_path.iterdir()}

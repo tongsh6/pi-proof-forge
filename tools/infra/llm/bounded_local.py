@@ -51,8 +51,9 @@ class _TimeoutAwareResponse:
 
 class BoundedLocalClient(LLMClient):
     """Counts actual HTTP attempts, without the parent's transient-error retries."""
-    def __init__(self, *, model, api_key):
-        super().__init__(SPLASH, api_key, timeout=20, provider="openai_compatible")
+    def __init__(self, *, model, api_key, thinking_enabled: bool | None = None, reasoning_effort: str = "high"):
+        super().__init__(SPLASH, api_key, timeout=20, provider="openai_compatible",
+                         thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort)
         self.model_calls = 0
         self.budget_exhausted = False
         self.provider_timeout = False

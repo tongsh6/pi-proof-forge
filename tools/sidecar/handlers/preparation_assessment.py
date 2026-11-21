@@ -89,7 +89,7 @@ def handle_assess_preparation(params):
         config = {**config, "timeout":min(60, max(1, int(config.get("timeout", 60))))}
         client = LLMClient(base_url=config["base_url"], api_key=str(config.get("api_key_for_request", "")),
                            timeout=config["timeout"], provider=config["provider"],
-                           thinking_enabled=bool(config.get("thinking_enabled", False)),
+                           thinking_enabled=config.get("thinking_enabled"),
                            reasoning_effort=str(config.get("thinking_effort", "high")))
         stage = "direction"
         direction = assess_direction(preferences, fields["source_jd"], client, str(config["model"]),

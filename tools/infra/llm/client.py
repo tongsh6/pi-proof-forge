@@ -83,13 +83,20 @@ def llm_timeout_from_env(default: int = 120) -> int:
     return value if value > 0 else default
 
 
-def _thinking_enabled_from_env() -> bool:
+def _thinking_enabled_from_env() -> bool | None:
     import os
 
-    return os.getenv("LLM_THINKING", "").strip().lower() in ("on", "1", "true", "yes")
+    value = os.getenv("LLM_THINKING", "").strip().lower()
+    if value in ("on", "1", "true", "yes"):
+        return True
+    if value in ("off", "0", "false", "no"):
+        return False
+    return None
 
 
 _THINKING_EFFORTS = ("low", "high", "max")
+# Omission reads the CLI environment; explicit None keeps the provider default.
+_THINKING_UNSET = object()
 
 
 def _normalize_thinking_effort(value: object) -> str:
@@ -105,7 +112,7 @@ class LLMClient:
         timeout: int = 120,
         *,
         provider: str = "",
-        thinking_enabled: bool | None = None,
+        thinking_enabled: bool | None = cast(bool | None, _THINKING_UNSET),
         reasoning_effort: str | None = None,
     ) -> None:
         import os
@@ -120,8 +127,8 @@ class LLMClient:
         self._timeout = timeout
         self._thinking_enabled = (
             _thinking_enabled_from_env()
-            if thinking_enabled is None
-            else bool(thinking_enabled)
+            if thinking_enabled is _THINKING_UNSET
+            else thinking_enabled
         )
         self._reasoning_effort = _normalize_thinking_effort(
             reasoning_effort
@@ -194,32 +201,25 @@ class LLMClient:
     ) -> request.Request:
         """Assemble and serialize once, without transport or caller-data mutation."""
         payload = with_job_search_context(payload)
-        # Verified Splash service deployment, independent of model alias.
-        # Keep provider wire adaptation here, not duplicated in task handlers.
-        if (
-            self._provider == "openai_compatible"
-            and self._base_url == "http://127.0.0.1:8000/v1"
-            and payload.get("response_format") == {"type": "json_object"}
-            and "reasoning_effort" not in payload
-        ):
-            payload = {**payload, "reasoning_effort": "none"}
         if self._provider == "deepseek":
-            # DeepSeek 的 json_object 请求若开启 thinking，推理会耗尽较小的输出预算，
-            # 导致结构化正文为空；结构化输出默认关闭思考，显式 thinking 仍由调用方决定。
-            if (
-                payload.get("response_format") == {"type": "json_object"}
-                and "thinking" not in payload
-            ):
-                payload = {**payload, "thinking": {"type": "disabled"}}
             if "thinking" not in payload:
                 payload = {
                     **payload,
                     "thinking": {
-                        "type": "enabled" if self._thinking_enabled else "disabled"
+                        "type": "enabled" if self._thinking_enabled is True else "disabled"
                     },
                 }
-                if self._thinking_enabled and "reasoning_effort" not in payload:
+                if self._thinking_enabled is True and "reasoning_effort" not in payload:
                     payload = {**payload, "reasoning_effort": self._reasoning_effort}
+        elif self._provider == "strata":
+            if "reasoning_effort" not in payload:
+                effort = "none"
+                if self._thinking_enabled is True:
+                    effort = "high" if self._reasoning_effort == "max" else self._reasoning_effort
+                payload = {**payload, "reasoning_effort": effort}
+        elif self._thinking_enabled is not None and "reasoning_effort" not in payload:
+            effort = self._reasoning_effort if self._thinking_enabled is True else "none"
+            payload = {**payload, "reasoning_effort": effort}
         if (
             self._provider == "lm_studio"
             and payload.get("response_format") == {"type": "json_object"}
@@ -235,16 +235,6 @@ class LLMClient:
                     },
                 },
             }
-            if (
-                payload.get("model") in (
-                    "qwen/qwen3.8-27b",
-                    "qwen3.8-flash-next@q2_k",
-                    "qwen3.8-27b@q8_0",
-                )
-                and "reasoning_effort" not in payload
-            ):
-                # 已定位这些型号会把结构化输出预算耗在推理中；仅调整本次请求。
-                payload = {**payload, "reasoning_effort": "none"}
         if response_schema is not None and payload.get("response_format") == {"type": "json_object"}:
             # JSON-object providers still need the complete caller-owned output contract.
             # Native schema requests above, and explicit formats, keep their wire protocol.
@@ -259,19 +249,6 @@ class LLMClient:
             else:
                 messages = [{"role": "system", "content": instruction}, *messages]
             payload = {**payload, "messages": messages}
-        if self._provider == "strata" and "reasoning_effort" not in payload:
-            # Strata（Qwen3.8 本地 OpenAI 兼容服务）用请求顶层 reasoning_effort 控制思考，
-            # 不识别 DeepSeek 风格 thinking 对象；结构化 JSON 请求把输出预算留给正文。
-            if (
-                payload.get("response_format") == {"type": "json_object"}
-                or not self._thinking_enabled
-            ):
-                reasoning_effort = "none"
-            else:
-                reasoning_effort = (
-                    "high" if self._reasoning_effort == "max" else self._reasoning_effort
-                )
-            payload = {**payload, "reasoning_effort": reasoning_effort}
         data = json.dumps(payload).encode("utf-8")
         return request.Request(url, data=data, headers=self.build_headers(), method="POST")
 
