@@ -147,6 +147,14 @@ Last updated: 2026-11-22
 - 实际请求为 3086 个逻辑 JSON 字符、10656 个 wire 字节，明确关闭沿 shared client 发为 reasoning_effort=none，无 thinking/chat_template_kwargs，finish_reason=stop。实际请求 SHA 为 5a3298daeebfe76df2757baed47ab365523cfa5184e185aeafc48414812c01f5，运行记录 SHA 为 d1d0408e5fe3726284f066e5fc0fde84803ec9897223452a98bedb5c12e8dd8f，均已独立重算。此直接调用计量不冒称 TaskRunner 预算。
 - 原卡前后字节完全一致，时间/职责仍空、candidate_pool_eligible=false，没有确认候选。真实招聘站、正式生成与投递均为零；原生 UI、quality judge 真实模型链及 confirmInference 的末端来源复核未由本片验收。下一片核定候选接受的原始依据与连续确认版本接续，P0-026 继续进行。
 
+## 2026-11-22 完整项目场景呈现（切片 K4a，限定工程范围已完成）
+
+- 对齐 core、设计与任务摘要原先相反的去重方向：保留已选完整成果 bullet 和独立来源，只可省经完整语义判断确认冗余的背景；未知保留双方。语义去重仍 pending，不以字符串包含、同卡或结果核定代授信用。
+- 查重确认固定 120 字裁剪只有共同 ResumePlan 一个消费者。生产仅改原 plan：删除该常量和孤立 helper，背景直接保留既有 FactIndex 中的完整 context。独立对照另复现合法“尚未”背景被成果词表整段过滤，因此同时撤除该背景处误用，不加措辞特例；其他字段、预算、来源/范围准入及 renderer 内部信息拒绝保持职责。
+- 首轮 `5 failed / 5 passed` 含两项测试前置/精度问题：沿用旧 result_reviews、未考虑现四位小数。修正真实夹具并保留原否定句后，原生产 `3 failed / 7 passed`（0.07 秒）：共同和 guided 长背景尾部责任/环境丢失，合并项目合法否定背景被整段过滤。三项业务 RED 全部转绿；背景/成果同文的实测、已核非量化、未核三控继续区分真实结果信用，不把背景算成量化 bullet。
+- 最终五文件定向 `99 passed`（1.56 秒）；实际来源加载/生命周期、生成 trace、评测和合成 Quick Run/PDF 三文件 `107 passed`（3.61 秒）；架构 v2、路线图、AIEF 与 diff 检查通过。原两页合成 PDF、首屏/末页完整文字、页面边界及 trace 未改断言。按此次单一生产模块风险验证，未重跑全量；上一片 2928 项全量不冒充当前树的全量结果。
+- 无新增字段、任务或业务脚本，0 模型请求；没有真实招聘站、真人正式件或投递。当前背景仍按原 presentation 输出，未宣称具精确 Fact occurrence 或新增防篡改能力。下一片复用原 block.fact_ids 与 from_fact 补背景自身身份，再在最终选材之后接完整语义呈现；Agent 四层、原生与真实样本验收继续 pending。
+
 ## 2026-11-22 推断候选确认的来源依据与接续（切片 L5，限定工程范围已完成）
 
 - 沿现 inferFields/confirmInference 和候选 state 补齐，复用既有 candidate_hash 选择身份、card_sha256 作为唯一同卡确认进度。查重确认候选引用与旧不可逆摘要不能恢复全部实际输入；在原 state 增唯一 input_basis，记录实际已核路径/SHA、原采用文档三元身份及现协议/公共上下文摘要，无原文副本、平行账本、新 RPC 或业务脚本。现 attempt_fingerprint 改为整份原 basis 的 canonical 摘要，防止只删去一组依赖后仍接受旧候选；确认只复核原集合，不重检索全库或补造旧依据。
