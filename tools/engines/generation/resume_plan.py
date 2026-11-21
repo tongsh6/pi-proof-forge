@@ -23,7 +23,6 @@ MAX_WORK_DUTIES = 4
 MAX_WORK_ACHIEVEMENTS = 2
 MAX_CAPABILITIES = 4
 MAX_STACK = 12
-MAX_BACKGROUND_CHARS = 120
 
 
 @dataclass(frozen=True)
@@ -91,13 +90,6 @@ class ResumePlan:
 
 def _squash(text: str) -> str:
     return " ".join(str(text or "").split())
-
-
-def _truncate(text: str, limit: int) -> str:
-    value = _squash(text)
-    if len(value) <= limit:
-        return value
-    return value[: max(0, limit - 1)].rstrip("，。；、,; ") + "…"
 
 
 def _period_of(item: Mapping[str, object]) -> str:
@@ -217,7 +209,7 @@ def build_resume_plan(
                 title=title,
                 period=period,
                 role=role_text,
-                background=_truncate(context, MAX_BACKGROUND_CHARS) if presentable(context, field="context") else "",
+                background=context,
                 key_work=prioritized(actions),
                 outcomes=prioritized(results),
                 work_company=company,
