@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 
 import pytest
-from tests.unit.engines.test_generation_engines import write_reviewed_result_sources
+from tests.unit.engines.test_generation_engines import generation, write_reviewed_result_sources
+from tests.unit.sidecar.test_evidence_source_merge import _scoped_review, result_review_model, sample as source_sample
 
 from tools.cli.commands import evaluate as evaluate_cli
 from tools.engines.evaluation import quality_report
@@ -817,3 +818,249 @@ def test_evaluation_binds_semantic_object_to_consumed_trace_version(tmp_path, mo
         assert result["semantic_review"]["mode"] == "semantic"
         assert all("基于本次固定原文判读" in row["reason"] for row in result["semantic_review"]["requirements"])
         assert result["traceability"]["verified_bullets"] == 1
+
+
+def _generated_agent_input(generation):
+    assembler, identity, matching, paths = generation
+    resume = assembler.generate(matching, [identity], "guided-v1")
+    profile = JobProfile(matching.job_profile_id, "工程师", (), "")
+    from tools.infra.persistence.review_snapshot import validate_generation_trace
+    assert validate_generation_trace(resume.content, resume.generation_trace)
+    return resume, profile, paths
+
+
+def test_agent_four_layer_report_uses_actual_body_and_current_sources(generation, monkeypatch):
+    resume, profile, _paths = _generated_agent_input(generation)
+    calls = []
+
+    def unexpected_http(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("guided rule evaluation must not call a model")
+
+    monkeypatch.setattr("tools.infra.llm.client.request.urlopen", unexpected_http)
+    score = RuleEvaluationEngine().evaluate(resume, profile)
+    assert calls == []
+    assert score.resume_version == "guided-v1"
+    assert score.job_profile_id == profile.id
+    report = score.quality_report
+    assert isinstance(report, dict), "the actual Agent evaluator must return its four-layer report"
+    assert set(report["tiers"]) == {"eligible", "fit", "strong", "distinct"}
+    assert report["resume_version"] == hashlib.sha256(resume.content.encode()).hexdigest()
+    assert report["job_profile_id"] == profile.id
+    assert report["tiers"]["strong"]["metrics"]["quant_total"] == 0.5
+    assert report["llm_pending"] and report["auto_pass"] is False
+    assert any(row["rule"] == "R1.5" for row in report["tiers"]["eligible"]["failures"])
+    fit_rules = {row["rule"] for row in report["tiers"]["fit"]["failures"]}
+    assert "R2.1" in fit_rules
+    assert "R2.4" not in fit_rules
+
+
+@pytest.mark.parametrize("mismatch", ["resume", "profile", "both"])
+def test_agent_four_layer_rejects_target_identity_mismatch(generation, mismatch):
+    from dataclasses import replace
+    resume, profile, _paths = _generated_agent_input(generation)
+    if mismatch in {"resume", "both"}:
+        resume = replace(resume, job_profile_id="jp-other")
+    if mismatch in {"profile", "both"}:
+        profile = replace(profile, id="jp-other")
+    with pytest.raises(ValueError):
+        RuleEvaluationEngine().evaluate(resume, profile)
+
+
+@pytest.mark.parametrize("changed_after_evaluation", [False, True])
+def test_agent_revalidates_bound_source_after_evaluation_returns(generation, changed_after_evaluation):
+    from tools.config.fragments import PolicyConfig
+    from tools.orchestration.agent_loop import AgentLoop
+
+    resume, profile, paths = _generated_agent_input(generation)
+    original = paths["card"].read_bytes()
+
+    class EvaluateThenChange:
+        def evaluate(self, value, target):
+            score = RuleEvaluationEngine().evaluate(value, target)
+            if changed_after_evaluation:
+                paths["card"].write_bytes(original + b"\n# changed after engine returned\n")
+            return score
+
+    policy = PolicyConfig(1, 0.01, 0.01, 1, "standard", "manual", True, (), ())
+    loop = AgentLoop(policy, "ar-quality-source", dry_run=True,
+                     evaluation_engine=EvaluateThenChange(), job_profile=profile)
+    if changed_after_evaluation:
+        with pytest.raises(ValueError, match="generation_trace"):
+            loop._run_evaluation(resume)
+        assert paths["card"].read_bytes() != original
+    else:
+        score = loop._run_evaluation(resume)
+        assert score.resume_version == resume.version
+        assert paths["card"].read_bytes() == original
+
+
+@pytest.mark.parametrize("semantic", [
+    None,
+    {"mode": "rule", "occurrence_coverage_known": True, "requirements": []},
+    {"mode": "semantic", "occurrence_coverage_known": False, "requirements": []},
+    {"mode": "semantic", "occurrence_coverage_known": True, "requirements": []},
+])
+def test_agent_unassessed_projects_are_not_declared_irrelevant(generation, semantic):
+    from tools.engines.evaluation import tiered_evaluator
+    resume, _profile, _paths = _generated_agent_input(generation)
+    result = tiered_evaluator.evaluate_fit(
+        resume=resume.content, semantic_review=semantic, job_context={},
+        config=tiered_evaluator.load_quality_config())
+    assert result.passed is False
+    assert "R2.4" not in {failure.rule for failure in result.failures}
+
+
+@pytest.mark.parametrize("mapped", [False, True])
+def test_agent_valid_current_mapping_preserves_irrelevance_control(generation, mapped):
+    from tools.engines.evaluation import tiered_evaluator
+    resume, _profile, _paths = _generated_agent_input(generation)
+    action = next(claim for claim in resume.generation_trace["claims"]
+                  if claim.get("fact_id") == "ec-engine:actions:0")
+    semantic = {
+        "mode": "semantic", "occurrence_coverage_known": True,
+        "requirements": [{
+            "requirement_id": "r1", "kind": "responsibility", "text": "负责队列处理与测试联调",
+            "status": "supported" if mapped else "insufficient",
+            "resume_status": "supported" if mapped else "not_present",
+            "citations": [{
+                "fact_id": action["fact_id"], "in_resume": True,
+                "render_lines": [action["render_line"]],
+            }] if mapped else [],
+        }],
+    }
+    result = tiered_evaluator.evaluate_fit(
+        resume=resume.content, semantic_review=semantic, job_context={},
+        config=tiered_evaluator.load_quality_config())
+    failures = [failure for failure in result.failures if failure.rule == "R2.4"]
+    assert bool(failures) is (not mapped)
+
+
+@pytest.mark.parametrize("source_sample", [(
+    ["完成队列处理接口的联调与回放验收。"],
+    ["在隔离测试环境中，固定负载下队列延迟降低 37%。"],
+)], indirect=True)
+@pytest.mark.parametrize("attribution, expected_quant", [("teammate", 0.0), ("self", 0.5)])
+def test_agent_quantification_uses_rendered_result_occurrence(
+        source_sample, result_review_model, attribution, expected_quant):
+    from tools.domain.models import EvidenceCard, MatchingReport
+    from tools.engines.generation.template_assembler import TemplateAssembler
+    from tools.infra.persistence.review_snapshot import validate_generation_trace
+    from tools.sidecar.handlers import evidence
+
+    material_dir, card, params, scope = _scoped_review(source_sample, field="results")
+    value = scope["value"]
+    # One source occurrence may be adopted as action and result; the rendered identity matters.
+    params["draft"]["actions"] = [value]
+    params["draft"]["field_sources"].append({
+        "field": "actions", "value": value, "quote": scope["source"]["quote"],
+        "material_id": scope["source"]["material_id"],
+        "document_id": scope["source"]["document_id"],
+    })
+    params["review"]["fact_scope"] = {**scope, "attribution": attribution}
+    result_review_model["reply"] = {
+        "outcome": "established", "measurement_quote": value,
+        "rationale": "合成已核结果；归属由本条原范围明确限定。"}
+    evidence.handle_evidence_save_draft(params)
+    profile_path = material_dir.parent / "personal_profile.yaml"
+    profile_path.write_text('name: "合成评估候选人"\ncurrent_position: "工程师"\n')
+    job = material_dir.parent / "jp-agent-quality.yaml"
+    job.write_text('target_role: "工程师"\ncompany: "合成公司"\nsource_jd: "负责队列接口与回放"\n')
+    assembler = TemplateAssembler(
+        evidence_dir=card.parent, personal_profile_path=profile_path, job_profile_path=job)
+    resume = assembler.generate(
+        MatchingReport(job.stem, (card.stem,), {}, ()),
+        [EvidenceCard(card.stem, "选择身份", "", ("不得借用 DTO 的结果 99%",), ("原文",))],
+        "numeric-identity")
+    assert validate_generation_trace(resume.content, resume.generation_trace)
+    rendered = {claim.get("fact_id") for claim in resume.generation_trace["claims"]}
+    assert card.stem + ":actions:0" in rendered
+    assert (card.stem + ":results:0" in rendered) is (attribution == "self")
+    assert value in resume.content
+    assert "99%" not in resume.content
+    score = RuleEvaluationEngine().evaluate(resume, JobProfile(job.stem, "工程师", (), ""))
+    report = score.quality_report
+    assert isinstance(report, dict)
+    assert report["tiers"]["strong"]["metrics"]["quant_total"] == expected_quant
+    assert report["auto_pass"] is False and report["llm_pending"]
+
+
+@pytest.mark.parametrize("input_key", ["ec-engine", "personal_profile", "job_profile"])
+def test_agent_four_layer_consumed_bytes_cannot_be_restored_into_authority(
+        generation, monkeypatch, input_key):
+    resume, profile, _paths = _generated_agent_input(generation)
+    target = Path(resume.generation_trace["inputs"][input_key]["path"])
+    original = target.read_bytes()
+    read_input = quality_report._read_quality_input
+    state = {"consumed": False}
+
+    def changed_bytes_then_restore(meta):
+        if Path(meta["path"]) == target and not state["consumed"]:
+            state["consumed"] = True
+            target.write_bytes(original + b"\n# changed only while actually read\n")
+            try:
+                return read_input(meta)
+            finally:
+                target.write_bytes(original)
+        return read_input(meta)
+
+    monkeypatch.setattr(quality_report, "_read_quality_input", changed_bytes_then_restore)
+    with pytest.raises(ValueError, match="quality_input_changed"):
+        RuleEvaluationEngine().evaluate(resume, profile)
+    assert state["consumed"] and target.read_bytes() == original
+
+
+def test_agent_four_layer_source_change_during_report_rejects_result(generation, monkeypatch):
+    from tools.engines.evaluation import tiered_evaluator
+
+    resume, profile, paths = _generated_agent_input(generation)
+    original = paths["card"].read_bytes()
+    build_report = tiered_evaluator.build_quality_report
+    state = {"evaluated": False}
+
+    def report_then_change(**kwargs):
+        report = build_report(**kwargs)
+        state["evaluated"] = True
+        paths["card"].write_bytes(original + b"\n# changed during four-layer calculation\n")
+        return report
+
+    monkeypatch.setattr(tiered_evaluator, "build_quality_report", report_then_change)
+    with pytest.raises(ValueError):
+        RuleEvaluationEngine().evaluate(resume, profile)
+    assert state["evaluated"]
+    assert paths["card"].read_bytes() != original
+
+
+def test_agent_explicit_llm_keeps_the_source_bound_four_layer_report(generation, monkeypatch):
+    import io
+    from tools.engines.evaluation.llm_evaluator import LLMEvaluationEngine
+    from tools.infra.llm.client import LLMClient
+
+    resume, profile, _paths = _generated_agent_input(generation)
+    expected = RuleEvaluationEngine().evaluate(resume, profile).quality_report
+    assert isinstance(expected, dict) and expected["llm_pending"]
+    calls = []
+
+    def respond(request, **kwargs):
+        assert request.full_url == "http://127.0.0.1:8000/v1/chat/completions"
+        payload = json.loads(request.data)
+        calls.append(payload)
+        assert resume.content in payload["messages"][-1]["content"]
+        answer = {
+            "semantic_coverage": 1.0, "fabrication_risk": 0.0,
+            "keyword_gaps": [], "strengths": ["合成显式模型参考评价"], "improvements": [],
+        }
+        return io.BytesIO(json.dumps({
+            "choices": [{"message": {"content": json.dumps(answer)}}]
+        }).encode())
+
+    monkeypatch.setattr("tools.infra.llm.client.request.urlopen", respond)
+    client = LLMClient("http://127.0.0.1:8000/v1", "", provider="openai_compatible",
+                       thinking_enabled=None)
+    score = LLMEvaluationEngine(client, "synthetic-reference-model").evaluate(resume, profile)
+    assert len(calls) == 1
+    assert score.dimension_scores["llm_semantic_coverage"] == 1.0
+    assert score.quality_report == expected
+    assert score.quality_report["auto_pass"] is False
+    assert score.quality_report["resume_version"] == hashlib.sha256(resume.content.encode()).hexdigest()
+    assert score.quality_report["job_profile_id"] == profile.id

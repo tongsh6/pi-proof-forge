@@ -165,21 +165,23 @@ def evaluate_fit(
                 gap_kind=gap_kind,
             )
         )
-    # R2.4 与 JD 无关的经历应压缩或退出正文。
-    project_entries = [
-        entry for entry in _entries(resume).get("项目经历", []) if entry.get("title")
-    ]
-    mapped_refs = {ref for row in matrix if row["status"] in {"supported", "weak"}
-                   for ref in re.findall(r"(?:bullet|line)#\d+", str(row.get("bullet_ref", "")))}
-    bullets, _ = _bullet_rows(resume)
-    mapped_entries = {str(row["entry"]) for row in bullets if f"bullet#{row['number']}" in mapped_refs}
-    mapped_entries.update(str(row["entry"]) for row in resume_lines(resume) if row["id"] in mapped_refs)
-    for entry in project_entries:
-        title = entry["title"]
-        if entry["raw"] not in mapped_entries:
-            failures.append(
-                _failure("R2.4", f"项目经历「{_short(title)}」", "未映射到任何 JD 条目，考虑压缩或退出正文")
-            )
+    # 未评或未知的空矩阵不能证明项目与 JD 无关。
+    if matrix:
+        # R2.4 与 JD 无关的经历应压缩或退出正文。
+        project_entries = [
+            entry for entry in _entries(resume).get("项目经历", []) if entry.get("title")
+        ]
+        mapped_refs = {ref for row in matrix if row["status"] in {"supported", "weak"}
+                       for ref in re.findall(r"(?:bullet|line)#\d+", str(row.get("bullet_ref", "")))}
+        bullets, _ = _bullet_rows(resume)
+        mapped_entries = {str(row["entry"]) for row in bullets if f"bullet#{row['number']}" in mapped_refs}
+        mapped_entries.update(str(row["entry"]) for row in resume_lines(resume) if row["id"] in mapped_refs)
+        for entry in project_entries:
+            title = entry["title"]
+            if entry["raw"] not in mapped_entries:
+                failures.append(
+                    _failure("R2.4", f"项目经历「{_short(title)}」", "未映射到任何 JD 条目，考虑压缩或退出正文")
+                )
     must_have = [row for row in matrix if row.get("kind") == "must_have"]
     supported = sum(1 for row in must_have if row["status"] == "supported")
     ratio = supported / len(must_have) if must_have else 1.0

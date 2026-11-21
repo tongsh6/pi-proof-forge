@@ -94,4 +94,5 @@ class LLMEvaluationEngine:
             job_profile_id=base.job_profile_id,
             total_score=total,
             dimension_scores=dimensions,
+            quality_report=base.quality_report,
         )

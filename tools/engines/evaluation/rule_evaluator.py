@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
+import copy
 import datetime
+import hashlib
 import re
 from pathlib import Path
 from typing import TypedDict
@@ -228,28 +230,62 @@ def evaluate_rule(
 
 
 class RuleEvaluationEngine:
-    """domain 模型适配：使用真实规则评测（覆盖/量化/空话/篇幅/追溯）。"""
+    """domain 入口：同批已核来源生成规则参考指标与四层质量报告。"""
 
     def evaluate(self, resume: ResumeOutput, profile: JobProfile) -> Scorecard:
         from tools.infra.persistence.review_snapshot import validate_generation_trace
 
+        from . import quality_report, tiered_evaluator
+
+        if resume.job_profile_id != profile.id:
+            raise ValueError("quality_target_changed")
         verified_trace = None
         if resume.generation_trace is not None:
-            if not validate_generation_trace(resume.content, resume.generation_trace):
-                raise ValueError('generation_trace_invalid')
-            verified_trace = resume.generation_trace
+            verified_trace = copy.deepcopy(resume.generation_trace)
+            if not validate_generation_trace(resume.content, verified_trace):
+                raise ValueError("generation_trace_invalid")
+        quality_trace = verified_trace or {}
+        job_meta = quality_trace.get("inputs", {}).get("job_profile")
+        job_path = job_meta["path"] if job_meta else None
+        if job_path and Path(job_path).stem != profile.id:
+            raise ValueError("quality_target_changed")
+        cards = quality_report._load_quality_cards(quality_trace)
+        career = quality_report._load_quality_career(quality_trace)
+        job_context = quality_report._load_job_context(job_path, trace=quality_trace)
         result = evaluate_rule(
             resume_text=resume.content,
-            must_have=list(profile.must_have),
-            keywords=list(profile.keywords),
+            must_have=list(job_context.get("must_have", [])) if job_path else list(profile.must_have),
+            keywords=list(job_context.get("keywords", [])) if job_path else list(profile.keywords),
             now=datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),
             input_name=f"{resume.version}.md",
             job_profile_name=profile.id,
             verified_trace=verified_trace,
         )
+        quality = tiered_evaluator.build_quality_report(
+            resume=resume.content,
+            trace=quality_trace,
+            career_profile=career,
+            cards=cards,
+            semantic_review=None,
+            job_context=job_context,
+            pdf_check=None,
+            judgments=None,
+            resume_version=hashlib.sha256(resume.content.encode("utf-8")).hexdigest(),
+            job_profile_id=profile.id,
+            legacy_scores={
+                "rule_total": result["total_score"],
+                "llm_expression": result["expression_score"],
+            },
+        )
+        if verified_trace is not None and (
+            resume.generation_trace != verified_trace
+            or not validate_generation_trace(resume.content, verified_trace)
+        ):
+            raise ValueError("generation_trace_invalid")
         return Scorecard(
             resume_version=resume.version,
             job_profile_id=profile.id,
             total_score=round(result["total_score"] / 100, 4),
             dimension_scores=dict(result["dimension_scores"]),
+            quality_report=quality,
         )
