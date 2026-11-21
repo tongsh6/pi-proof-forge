@@ -206,6 +206,8 @@ def build_resume_plan(
         rendered_ids = tuple(fact.fact_id for fact in (*actions, *results))
         if context_fact is not None and context:
             rendered_ids = (context_fact.fact_id, *rendered_ids)
+        if role_fact is not None and role_text:
+            rendered_ids = (role_fact.fact_id, *rendered_ids)
         push(rendered_ids)
         projects.append(
             ProjectBlock(

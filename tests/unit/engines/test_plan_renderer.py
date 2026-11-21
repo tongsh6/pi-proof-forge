@@ -242,12 +242,13 @@ def test_renderer_records_explicit_background_on_its_actual_line(explicitly_boun
 def test_renderer_keeps_unbound_scope_description_without_guessing_source(explicitly_bound_background):
     index, plan, context_fact = explicitly_bound_background
     block, = plan.projects
-    # The real preview shape has only action/result facts and no declared context occurrence.
-    facts = tuple(fact for fact in index.facts if fact.field in {"actions", "results"})
+    # Preview keeps the actual role binding but no declared context occurrence.
+    facts = tuple(fact for fact in index.facts if fact.field in {"actions", "results", "role_scope"})
     index = FactIndex(facts=facts, by_id={fact.fact_id: fact for fact in facts})
-    ids = tuple(fact.fact_id for fact in facts)
-    block = replace(block, fact_ids=ids)
-    plan = ResumePlan(projects=(block,), fact_ids=ids)
+    ids = tuple(fact.fact_id for fact in facts if fact.field in {"actions", "results"})
+    registered_ids = tuple(fact.fact_id for fact in facts)
+    block = replace(block, fact_ids=registered_ids)
+    plan = ResumePlan(projects=(block,), fact_ids=registered_ids)
     claims = []
     text = render_plan(plan, index, profile={}, job_context={}, claims=claims)
 
@@ -255,3 +256,115 @@ def test_renderer_keeps_unbound_scope_description_without_guessing_source(explic
     assert {row["fact_id"] for row in claims if row.get("field") in {"actions", "results"}} == set(ids)
     assert all(text.splitlines()[row["render_line"] - 1] == "- " + row["text"]
                for row in claims if row.get("field") in {"actions", "results"})
+
+
+@pytest.fixture
+def explicitly_bound_role(explicitly_bound_background):
+    """Declare the role occurrence independently of the plan producer."""
+    index, plan, _context_fact = explicitly_bound_background
+    original = index.get("ec_a:role_scope:0")
+    assert original is not None
+    role_fact = replace(original, text=(
+        "主导接口对接与固定样例验收；总体架构由平台组负责，本人不承担平台整体改造。"))
+    index = replace(index,
+                    facts=tuple(role_fact if fact.fact_id == original.fact_id else fact
+                                for fact in index.facts),
+                    by_id={**index.by_id, role_fact.fact_id: role_fact})
+    block, = plan.projects
+    block = replace(block, role=role_fact.text,
+                    fact_ids=tuple(dict.fromkeys((*block.fact_ids, role_fact.fact_id))))
+    plan = replace(plan, projects=(block,),
+                   fact_ids=tuple(dict.fromkeys((*plan.fact_ids, role_fact.fact_id))))
+    return index, plan, role_fact
+
+
+@pytest.mark.parametrize("invalid", [
+    "unresolved_id",
+    "multiple_roles",
+    "profile_role",
+    "wrong_field",
+    "missing_binding",
+    "empty_role",
+    "different_complete_value",
+    "block_only_registration",
+    "plan_only_registration",
+])
+def test_renderer_rejects_explicit_invalid_role_binding(explicitly_bound_role, invalid):
+    index, plan, role_fact = explicitly_bound_role
+    block, = plan.projects
+    role_id = role_fact.fact_id
+    replacement_id = None
+
+    if invalid == "unresolved_id":
+        replacement_id = "unresolved_role_occurrence"
+    elif invalid == "multiple_roles":
+        other = replace(role_fact, fact_id="ec_b:role_scope:0", source_id="ec_b")
+        index = replace(index, facts=(*index.facts, other),
+                        by_id={**index.by_id, other.fact_id: other})
+        block = replace(block, fact_ids=(*block.fact_ids, other.fact_id))
+        plan = replace(plan, fact_ids=(*plan.fact_ids, other.fact_id))
+    elif invalid in {"profile_role", "wrong_field"}:
+        other = (Fact(fact_id="personal_profile:role_scope:0", source_id="personal_profile",
+                      field="role_scope", text=role_fact.text, kind="profile")
+                 if invalid == "profile_role" else
+                 replace(role_fact, fact_id="ec_a:actions:99", field="actions"))
+        index = replace(index, facts=(*index.facts, other),
+                        by_id={**index.by_id, other.fact_id: other})
+        replacement_id = other.fact_id
+    elif invalid == "missing_binding":
+        block = replace(block, fact_ids=tuple(fid for fid in block.fact_ids if fid != role_id))
+        plan = replace(plan, fact_ids=tuple(fid for fid in plan.fact_ids if fid != role_id))
+    elif invalid == "empty_role":
+        block = replace(block, role="")
+    elif invalid == "different_complete_value":
+        block = replace(block, role="主导接口对接与固定样例验收。")
+    elif invalid == "block_only_registration":
+        plan = replace(plan, fact_ids=tuple(fid for fid in plan.fact_ids if fid != role_id))
+    elif invalid == "plan_only_registration":
+        block = replace(block, fact_ids=tuple(fid for fid in block.fact_ids if fid != role_id))
+    else:
+        raise AssertionError(invalid)
+
+    if replacement_id is not None:
+        block = replace(block, fact_ids=tuple(
+            replacement_id if fid == role_id else fid for fid in block.fact_ids))
+        plan = replace(plan, fact_ids=tuple(
+            replacement_id if fid == role_id else fid for fid in plan.fact_ids))
+    plan = replace(plan, projects=(block,))
+    with pytest.raises(ValueError):
+        render_plan(plan, index, profile={}, job_context={})
+
+
+def test_renderer_records_complete_role_on_its_actual_line(explicitly_bound_role):
+    index, plan, role_fact = explicitly_bound_role
+    block, = plan.projects
+    plan = replace(plan, projects=(replace(block, role="  " + role_fact.text + "\n"),))
+    claims = []
+    text = render_plan(plan, index, profile={}, job_context={}, claims=claims)
+
+    actual, = [row for row in claims if row.get("field") == "role_scope"]
+    assert actual["source_kind"] == "evidence"
+    assert actual["evidence_id"] == role_fact.source_id
+    assert actual["fact_id"] == role_fact.fact_id
+    assert actual["text"] == render_fact_text(role_fact.text)
+    assert text.splitlines()[actual["render_line"] - 1] == "角色：" + actual["text"]
+    assert "总体架构由平台组负责，本人不承担平台整体改造。" in actual["text"]
+    assert {row["fact_id"] for row in claims if row.get("field") in {"actions", "results"}} == {
+        "ec_a:actions:0", "ec_a:results:0"}
+
+
+def test_renderer_keeps_work_when_no_role_is_displayed_or_registered(explicitly_bound_role):
+    index, plan, role_fact = explicitly_bound_role
+    block, = plan.projects
+    block = replace(block, role="", fact_ids=tuple(
+        fid for fid in block.fact_ids if fid != role_fact.fact_id))
+    plan = replace(plan, projects=(block,), fact_ids=tuple(
+        fid for fid in plan.fact_ids if fid != role_fact.fact_id))
+    claims = []
+    text = render_plan(plan, index, profile={}, job_context={}, claims=claims)
+
+    assert "角色：" not in text
+    assert not any(row.get("field") == "role_scope" for row in claims)
+    for fact in (*block.key_work, *block.outcomes):
+        claim, = [row for row in claims if row.get("fact_id") == fact.fact_id]
+        assert text.splitlines()[claim["render_line"] - 1] == "- " + claim["text"]

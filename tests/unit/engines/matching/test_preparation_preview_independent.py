@@ -169,3 +169,66 @@ def test_composed_scope_background_remains_presentation_without_full_card_contex
     assert cited["fact_id"] == "ec:actions:0"
     assert cited["quote"] == kw["current_facts"]["ec:actions:0"]["text"]
 
+
+def test_preview_binds_actual_role_without_counting_it_as_supported_work(monkeypatch):
+    from tests.unit.engines.test_fact_index import reviewed_result
+
+    module = importlib.import_module("tools.engines.generation.preparation_preview")
+    kw = fixture()
+    role = "负责订单接口与消息重试机制的对接；总体架构由平台组负责，本人不承担平台整体改造。"
+    result_text = "隔离回归环境中，故障切换无需人工介入即可完成；生产自动切换不在本次职责范围内。"
+    qualifiers = ["本人仅承担接口对接", "所有验证限于隔离回归环境"]
+    full_context = "该项目完整场景未被岗位引用，不得作为片段背景夹带。"
+    for facts in (kw["audit_facts"], kw["current_facts"]):
+        for fact in facts.values():
+            if fact["source_id"] == "ec":
+                fact["source_role"] = role
+        facts["ec:role_scope:0"]["text"] = role
+        facts["ec:actions:0"]["source_qualifiers"] = list(qualifiers)
+        facts["ec:results:0"] = {
+            "source_id": "ec", "field": "results", "text": result_text,
+            "source_role": role, "source_qualifiers": list(qualifiers),
+        }
+        facts["ec:context:0"] = {
+            "source_id": "ec", "field": "context", "text": full_context, "source_role": role,
+        }
+    kw["assessments"][0]["citations"].append({"fact_id": "ec:results:0", "quote": result_text})
+    kw["result_reviews"] = {"ec:results:0": reviewed_result("ec", 0, result_text)}
+    assert "ec:time_range:0" not in kw["current_facts"], "internal excerpts need no invented project period"
+
+    actual_render = module.render_plan
+    captured = {"claims": []}
+
+    def observe_render(plan, index, **kwargs):
+        captured["text"] = actual_render(plan, index, claims=captured["claims"], **kwargs)
+        return captured["text"]
+
+    monkeypatch.setattr(module, "render_plan", observe_render)
+    result = build(**kw)
+    scope = "责任范围原文：" + "；".join(qualifiers)
+    assert "# 内部定向事实预览（片段，非投递版）" in result["markdown"]
+    assert "不是完整简历或全岗位匹配结论" in result["markdown"]
+    assert "角色：" + role in result["markdown"]
+    assert "背景：" + scope in result["markdown"]
+    assert full_context not in result["markdown"]
+    assert "未引用隐私项目动作" not in result["markdown"]
+    assert result["preview_fact_count"] == 2
+    assert {row["fact_id"] for row in result["claims"]
+            if row["usage"] == "supported_excerpt"} == {"ec:actions:0", "ec:results:0"}
+    role_context, = [row for row in result["claims"] if row["field"] == "role_scope"]
+    assert role_context["fact_id"] == "ec:role_scope:0"
+    assert role_context["quote"] == role and role_context["usage"] == "context"
+    assert any(row["requirement_id"] == "r2" and row["status"] == "unassessed"
+               for row in result["limitations"])
+    background, = [row for row in captured["claims"] if row.get("field") == "context"]
+    assert background["source_kind"] == "presentation" and background["text"] == scope
+    actual_role, = [row for row in captured["claims"] if row.get("field") == "role_scope"]
+    assert actual_role["source_kind"] == "evidence"
+    assert actual_role["evidence_id"] == "ec"
+    assert actual_role["fact_id"] == "ec:role_scope:0"
+    assert actual_role["text"] == role
+    assert captured["text"].splitlines()[actual_role["render_line"] - 1] == "角色：" + role
+    for fact_id in ("ec:actions:0", "ec:results:0"):
+        claim, = [row for row in captured["claims"] if row.get("fact_id") == fact_id]
+        assert captured["text"].splitlines()[claim["render_line"] - 1] == "- " + claim["text"]
+

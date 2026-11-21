@@ -24,32 +24,37 @@ def _checked_fact_text(text: str) -> str:
     return value
 
 
-def _project_contexts(plan: ResumePlan, index: FactIndex) -> tuple[Fact | None, ...]:
-    """Resolve explicit background bindings before either review or rendering."""
-    contexts: list[Fact | None] = []
+def _project_bindings(plan: ResumePlan, index: FactIndex) -> tuple[dict[str, Fact], ...]:
+    """Resolve project structure before either background review or rendering."""
+    bindings: list[dict[str, Fact]] = []
     for block in plan.projects:
-        value = _checked_fact_text(block.background)
         registered = [index.get(fact_id) for fact_id in block.fact_ids]
         if any(item is None for item in registered):
             raise ValueError("unbound_resume_fact")
-        bound = [item for item in registered if item is not None and item.field == "context"]
-        if len(bound) > 1:
-            raise ValueError("unbound_resume_fact")
-        context = bound[0] if bound else None
-        if context is not None and (
-            context.kind != "evidence"
-            or not value
-            or render_fact_text(context.text) != value
-        ):
-            raise ValueError("unbound_resume_fact")
-        contexts.append(context)
+        current: dict[str, Fact] = {}
+        for field, text in (("context", block.background), ("role_scope", block.role)):
+            value = _checked_fact_text(text)
+            bound = [item for item in registered if item is not None and item.field == field]
+            if len(bound) > 1:
+                raise ValueError("unbound_resume_fact")
+            if not bound:
+                if field == "role_scope" and value:
+                    raise ValueError("unbound_resume_fact")
+                continue
+            item = bound[0]
+            if item.kind != "evidence" or not value or render_fact_text(item.text) != value:
+                raise ValueError("unbound_resume_fact")
+            current[field] = item
+        bindings.append(current)
     registered = [index.get(fact_id) for fact_id in plan.fact_ids]
     if any(item is None for item in registered):
         raise ValueError("unbound_resume_fact")
-    plan_context_ids = {item.fact_id for item in registered if item is not None and item.field == "context"}
-    if plan_context_ids != {item.fact_id for item in contexts if item is not None}:
-        raise ValueError("unbound_resume_fact")
-    return tuple(contexts)
+    for field in ("context", "role_scope"):
+        plan_ids = {item.fact_id for item in registered if item is not None and item.field == field}
+        block_ids = {current[field].fact_id for current in bindings if field in current}
+        if plan_ids != block_ids:
+            raise ValueError("unbound_resume_fact")
+    return tuple(bindings)
 
 
 def render_plan(
@@ -173,15 +178,17 @@ def render_plan(
                 lines.append("- " + from_fact(achievement))
 
     if plan.projects:
-        project_contexts = _project_contexts(plan, index)
+        project_bindings = _project_bindings(plan, index)
 
         lines.extend(["", "## 项目经历"])
-        for position, (block, context_fact) in enumerate(zip(plan.projects, project_contexts)):
-            # Group headings remain presentation; an explicitly bound background retains its own source.
+        for position, (block, bindings) in enumerate(zip(plan.projects, project_bindings)):
+            context_fact = bindings.get("context")
+            role_fact = bindings.get("role_scope")
+            # Group headings and derived scope backgrounds retain their presentation responsibility.
             title = fact(block.title, "presentation", "title")
             lines.append(f"### {title}" + (f"（{block.period}）" if block.period else ""))
-            if block.role:
-                lines.append("角色：" + fact(block.role, "presentation", "role_scope"))
+            if role_fact is not None:
+                lines.append("角色：" + from_fact(role_fact))
             if block.background:
                 lines.append("背景：" + (from_fact(context_fact) if context_fact is not None
                                         else fact(block.background, "presentation", "context")))

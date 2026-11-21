@@ -56,7 +56,12 @@ def test_adopted_role_qualifiers_are_preserved_without_word_replacement(role, ve
     content = build_template_resume(version, [current], personal_profile=PROFILE, job_context=JOB, claims=claims)
     assert "角色：" + role in content
     assert current["role_scope"] == role
-    assert any(c["text"] == role and c["source_kind"] == "presentation" for c in claims)
+    role_claim, = [c for c in claims if c.get("fact_id") == "ec-role:role_scope:0"]
+    assert role_claim["source_kind"] == "evidence"
+    assert role_claim["evidence_id"] == "ec-role"
+    assert role_claim["field"] == "role_scope"
+    assert role_claim["text"] == role
+    assert content.splitlines()[role_claim["render_line"] - 1] == "角色：" + role
     result, = [c for c in claims if c.get("fact_id") == "ec-role:results:0"]
     assert result["text"] == current["results"][0]
     assert result["text"] in content.splitlines()[result["render_line"] - 1]
@@ -165,3 +170,39 @@ def test_unconfirmed_inferred_time_is_not_promoted_by_card_eligibility(level):
                                "evidence": [{"material_id": "m", "document_id": "d", "excerpt": "候选时期"}]})
     with pytest.raises(ValueError, match="no_presentable_resume_facts"):
         build_template_resume("A", [current], personal_profile=PROFILE)
+
+
+@pytest.mark.parametrize("level,confirmed,visible", [
+    ("L5", False, False),
+    ("L3", False, False),
+    ("L3", True, True),
+], ids=("hidden-unproven-role", "hidden-unconfirmed-role", "confirmed-inferred-role"))
+def test_l9_role_occurrence_follows_existing_provenance_admission(level, confirmed, visible):
+    from copy import deepcopy
+
+    current = dated_card(role_scope_level=level)
+    current["role_scope_provenance"] = {
+        "level": level, "confirmed_by_user": confirmed,
+        "evidence": [{"material_id": "m", "document_id": "d",
+                      "excerpt": current["role_scope"]}],
+    }
+    before = deepcopy(current)
+    claims = []
+    content = build_template_resume("A", [current], personal_profile=PROFILE, claims=claims)
+    assert ("角色：" + current["role_scope"] in content.splitlines()) is visible
+    for field in ("actions", "results"):
+        row, = [claim for claim in claims if claim.get("fact_id") == f"{current['id']}:{field}:0"]
+        assert row["text"] == current[field][0]
+        assert content.splitlines()[row["render_line"] - 1] == "- " + current[field][0]
+    role_rows = [claim for claim in claims if claim.get("field") == "role_scope"]
+    if visible:
+        assert len(role_rows) == 1
+        role = role_rows[0]
+        assert role.get("fact_id") == current["id"] + ":role_scope:0"
+        assert role["source_kind"] == "evidence"
+        assert role["evidence_id"] == current["id"]
+        assert role["text"] == current["role_scope"]
+        assert content.splitlines()[role["render_line"] - 1] == "角色：" + current["role_scope"]
+    else:
+        assert role_rows == []
+    assert current == before

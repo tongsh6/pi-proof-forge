@@ -79,7 +79,8 @@ def build_targeted_excerpt(*, assessments, requirements, audit_facts, current_fa
         title_fact = current_facts.get(f"{source_id}:title:0")
         if not title_fact or not str(title_fact.get("text") or "").strip():
             continue
-        role_fact = current_facts.get(f"{source_id}:role_scope:0")
+        role_fact_id = f"{source_id}:role_scope:0"
+        role_fact = current_facts.get(role_fact_id)
         if not role_fact or not str(role_fact.get("text") or "").strip():
             continue
         role = str(role_fact["text"])
@@ -99,6 +100,9 @@ def build_targeted_excerpt(*, assessments, requirements, audit_facts, current_fa
             qualifier_fact_id = next(fid for fid, fact in chosen if qualifier in fact.get("source_qualifiers", []))
             claims.append({"fact_id":qualifier_fact_id, "source_id":source_id, "field":"source_qualifiers",
                            "quote":qualifier, "usage":"context", "requirement_ids":[], "support_statuses":[]})
+        role_item = Fact(fact_id=role_fact_id, source_id=source_id, field=role_fact["field"],
+                         text=role, kind="evidence")
+        facts_for_index.append(role_item)
         rendered_facts = []
         for fact_id, fact in chosen:
             item = Fact(fact_id=fact_id, source_id=source_id, field=fact["field"], text=fact["text"], kind="evidence",
@@ -112,7 +116,7 @@ def build_targeted_excerpt(*, assessments, requirements, audit_facts, current_fa
             background=("责任范围原文：" + "；".join(qualifiers)) if qualifiers else "",
             key_work=tuple(f for f in rendered_facts if f.field == "actions"),
             outcomes=tuple(f for f in rendered_facts if f.field == "results"),
-            fact_ids=tuple(fid for fid, _ in chosen)))
+            fact_ids=(role_item.fact_id, *(fid for fid, _ in chosen))))
     if not blocks:
         raise ValueError("no_presentable_supported_work")
     index = FactIndex(tuple(facts_for_index))
@@ -125,4 +129,4 @@ def build_targeted_excerpt(*, assessments, requirements, audit_facts, current_fa
             claims.append({"fact_id":f"job_profile:{field}", "source_id":"job_profile", "field":field,
                            "quote":target[field], "usage":"context", "requirement_ids":[], "support_statuses":[]})
     return {"markdown":notice + rendered, "claims":claims, "limitations":limitations,
-            "preview_fact_count":len(facts_for_index)}
+            "preview_fact_count":sum(claim["usage"] == "supported_excerpt" for claim in claims)}

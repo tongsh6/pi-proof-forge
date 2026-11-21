@@ -498,3 +498,165 @@ def test_background_omission_cannot_launder_invalid_context(invalid, with_review
     with pytest.raises(ValueError):
         build_template_resume("A", [card], **kwargs)
     assert calls == []
+
+
+def test_l9_merged_project_uses_the_actual_role_source_not_the_action_card():
+    _, action_card = inputs()
+    action_card.update(
+        project_key="共同接口联调项目", role_scope="",
+        actions=["完成请求解析与幂等校验接口实现"], results=[], result_reviews={},
+    )
+    role = "主导契约映射与联调验收，仅负责本人接口模块，不负责平台总体架构。"
+    role_card = {
+        **deepcopy(action_card), "id": "ec-role-owner", "role_scope": role,
+        "actions": [], "results": ["完成接口错误码与字段映射的验收记录归档。"],
+    }
+    role_card.pop("result_reviews")
+    role_card = reviewed_card_results(role_card, measurement_quotes={0: None})
+    before = deepcopy([action_card, role_card])
+    claims = []
+    markdown = build_template_resume("A", [action_card, role_card], claims=claims)
+    assert markdown.count("### 共同接口联调项目（") == 1
+    assert "角色：" + role in markdown.splitlines()
+    action, = [row for row in claims if row.get("field") == "actions"]
+    assert action["fact_id"] == action_card["id"] + ":actions:0"
+    assert markdown.splitlines()[action["render_line"] - 1] == "- " + action_card["actions"][0]
+    result, = [row for row in claims if row.get("field") == "results"]
+    assert result["fact_id"] == role_card["id"] + ":results:0"
+    assert result["text"] == role_card["results"][0]
+    role_rows = [row for row in claims if row.get("field") == "role_scope"]
+    assert len(role_rows) == 1
+    assert role_rows[0].get("fact_id") == role_card["id"] + ":role_scope:0"
+    assert role_rows[0]["source_kind"] == "evidence"
+    assert role_rows[0]["evidence_id"] == role_card["id"]
+    assert role_rows[0]["text"] == role
+    assert markdown.splitlines()[role_rows[0]["render_line"] - 1] == "角色：" + role
+    assert [action_card, role_card] == before
+
+
+def test_l9_same_role_text_cannot_borrow_another_identity_or_result_credit():
+    from tools.engines.evaluation.tiers.common import load_quality_config
+    from tools.engines.evaluation.tiers.strong import evaluate_strong
+    from tools.engines.matching.semantic_review import resume_assessment
+
+    _, first = inputs()
+    role = "主导 3 个接口的联调验收，仅负责契约映射，不负责平台架构。"
+    first.update(
+        project_key="共同接口验收项目", role_scope=role,
+        actions=["完成接口请求映射与错误码核对"], results=[], result_reviews={},
+    )
+    second = {
+        **deepcopy(first), "id": "ec-same-role",
+        "actions": ["完成独立回放用例与边界条件验收"],
+        "results": [role], "result_reviews": {},
+    }
+    claims = []
+    markdown = build_template_resume("B", [first, second], claims=claims)
+    assert markdown.splitlines().count("角色：" + role) == 1
+    assert "- " + role not in markdown.splitlines()
+    entries = [
+        (first["id"], "role_scope", "r-used"),
+        (second["id"], "role_scope", "r-same-text"),
+        (second["id"], "results", "r-unreviewed-result"),
+    ]
+    report = {
+        "facts": {
+            f"{source}:{field}:0": {"source_id": source, "field": field, "text": role}
+            for source, field, _ in entries
+        },
+        "requirements": [{"id": requirement, "text": "具有可追溯的接口联调职责"}
+                         for _, _, requirement in entries],
+        "assessments": [
+            {"requirement_id": requirement, "status": "supported",
+             "citations": [{"fact_id": f"{source}:{field}:0", "quote": role}]}
+            for source, field, requirement in entries
+        ],
+    }
+    coverage = resume_assessment(report, claims, occurrence_coverage_known=True)
+    statuses = {row["requirement_id"]: row["resume_status"] for row in coverage["requirements"]}
+    assert statuses["r-same-text"] == "not_present"
+    assert statuses["r-unreviewed-result"] == "not_present"
+    quality = evaluate_strong(
+        resume=markdown, cards={first["id"]: first, second["id"]: second},
+        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(),
+    )
+    assert quality.metrics["quant_total"] == 0
+    assert statuses["r-used"] == "supported"
+    role_claim, = [row for row in claims if row.get("fact_id") == first["id"] + ":role_scope:0"]
+    assert markdown.splitlines()[role_claim["render_line"] - 1] == "角色：" + role
+
+
+@pytest.mark.parametrize("entry", ("formal", "guided"))
+def test_l9_role_trace_rejects_changed_line_even_when_full_source_remains_elsewhere(generation, monkeypatch, entry):
+    from tools.infra.llm import client as llm
+    from tools.infra.persistence.review_snapshot import read_generation_trace
+    from tools.orchestration.generation_flow import GenerationFlowConfig, run_generation_flow
+    from tools.orchestration.evaluation_flow import EvaluationFlowConfig, run_evaluation_flow
+
+    def unexpected_http(*args, **kwargs):
+        pytest.fail("角色来源回归不得调用模型或外部服务")
+
+    monkeypatch.setattr(llm.request, "urlopen", unexpected_http)
+    assembler, identity, report, paths = generation
+    role = "主导 3 个接口的契约联调，仅覆盖隔离测试，不负责平台架构。"
+    raw = paths["card"].read_text()
+    old_role = 'role_scope: "负责接口联调"'
+    old_context = 'context: "合成队列处理验收"'
+    assert raw.count(old_role) == raw.count(old_context) == 1
+    raw = raw.replace(old_role, "role_scope: " + json.dumps(role, ensure_ascii=False))
+    raw = raw.replace(old_context, "context: " + json.dumps(role, ensure_ascii=False))
+    paths["card"].write_text(raw)
+    before = paths["card"].read_bytes()
+    root = paths["profile"].parent
+    if entry == "formal":
+        matching = root / "matching-role.yaml"
+        matching.write_text(f'top_cards:\n  - id: "{identity.id}"\n')
+        output_dir = root / "formal-role"
+        assert run_generation_flow(GenerationFlowConfig(
+            matching_report_path=matching, output_dir=output_dir,
+            personal_profile_path=paths["profile"], evidence_dir=paths["card"].parent,
+            job_profile_path=paths["job"],
+        )) == 0
+        output = output_dir / "resume_matching-role_A.md"
+        other_trace, other_valid = read_generation_trace(output_dir / "resume_matching-role_B.md")
+        assert other_valid and other_trace["resume_sha256"]
+    else:
+        resume = assembler.generate(report, [identity], "role-source")
+        output = root / "guided-role.md"
+        output.write_text(resume.content)
+        output.with_suffix(".trace.json").write_text(json.dumps(resume.generation_trace))
+    content = output.read_text()
+    trace, valid = read_generation_trace(output)
+    assert valid
+    assert trace["inputs"][identity.id]["sha256"] == hashlib.sha256(before).hexdigest()
+    lines = content.splitlines()
+    assert lines.count("角色：" + role) == 1
+    assert lines.count("背景：" + role) == 1
+    result, = [row for row in trace["claims"] if row.get("fact_id") == identity.id + ":results:0"]
+    assert lines[result["render_line"] - 1] == "- " + RESULT
+    quality_path = root / (entry + "-role-quality.md")
+    assert run_evaluation_flow(EvaluationFlowConfig(
+        input_path=output, output_path=quality_path, job_profile_path=paths["job"],
+    )) == 0
+    quality = json.loads(quality_path.with_suffix(".json").read_text())
+    assert quality["traceability"]["status"] == "verified"
+    assert quality["quality_report"]["tiers"]["strong"]["metrics"]["quant_total"] == 0.5
+    assert quality["quality_report"]["auto_pass"] is False
+
+    role_line = lines.index("角色：" + role)
+    lines[role_line] = "角色：主导 3 个接口的契约联调。"
+    changed_content = "\n".join(lines) + "\n"
+    assert "背景：" + role in changed_content.splitlines()
+    assert changed_content.splitlines()[result["render_line"] - 1] == "- " + RESULT
+    changed_trace = deepcopy(trace)
+    changed_trace["resume_sha256"] = hashlib.sha256(changed_content.encode()).hexdigest()
+    assert changed_trace["claims"] == trace["claims"]
+    output.write_text(changed_content)
+    output.with_suffix(".trace.json").write_text(json.dumps(changed_trace))
+    _, valid = read_generation_trace(output)
+    assert paths["card"].read_bytes() == before
+    assert valid is False
+    role_claim, = [row for row in trace["claims"] if row.get("fact_id") == identity.id + ":role_scope:0"]
+    assert role_claim["evidence_id"] == identity.id
+    assert role_claim["text"] == role
+    assert role_claim["render_line"] == role_line + 1

@@ -128,7 +128,7 @@ def build_template_resume(version: str, cards: list[CardView], *,
     from tools.engines.generation.fact_index import build_fact_index
     from tools.engines.generation.fact_selector import SelectionBudget, select_facts
     from tools.engines.generation.resume_plan import build_resume_plan
-    from tools.engines.generation.plan_renderer import _project_contexts, render_plan
+    from tools.engines.generation.plan_renderer import _project_bindings, render_plan
 
     profile, target = personal_profile or {}, job_context or {}
     career = dict(profile.get("career") or {})
@@ -163,7 +163,8 @@ def build_template_resume(version: str, cards: list[CardView], *,
     if not plan.projects and not plan.work:
         raise ValueError("no_presentable_resume_facts")
     if review_backgrounds is not None:
-        contexts = _project_contexts(plan, index)
+        bindings = _project_bindings(plan, index)
+        contexts = tuple(binding.get("context") for binding in bindings)
         eligible_ids = {item.fact_id for item in contexts if item is not None and not item.requirement_ids}
         if eligible_ids:
             omitted_ids = eligible_ids.intersection(review_backgrounds(plan, index))
