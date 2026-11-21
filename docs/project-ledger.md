@@ -147,6 +147,17 @@ Last updated: 2026-11-22
 - 实际请求为 3086 个逻辑 JSON 字符、10656 个 wire 字节，明确关闭沿 shared client 发为 reasoning_effort=none，无 thinking/chat_template_kwargs，finish_reason=stop。实际请求 SHA 为 5a3298daeebfe76df2757baed47ab365523cfa5184e185aeafc48414812c01f5，运行记录 SHA 为 d1d0408e5fe3726284f066e5fc0fde84803ec9897223452a98bedb5c12e8dd8f，均已独立重算。此直接调用计量不冒称 TaskRunner 预算。
 - 原卡前后字节完全一致，时间/职责仍空、candidate_pool_eligible=false，没有确认候选。真实招聘站、正式生成与投递均为零；原生 UI、quality judge 真实模型链及 confirmInference 的末端来源复核未由本片验收。下一片核定候选接受的原始依据与连续确认版本接续，P0-026 继续进行。
 
+## 2026-11-22 推断候选确认的来源依据与接续（切片 L5，限定工程范围已完成）
+
+- 沿现 inferFields/confirmInference 和候选 state 补齐，复用既有 candidate_hash 选择身份、card_sha256 作为唯一同卡确认进度。查重确认候选引用与旧不可逆摘要不能恢复全部实际输入；在原 state 增唯一 input_basis，记录实际已核路径/SHA、原采用文档三元身份及现协议/公共上下文摘要，无原文副本、平行账本、新 RPC 或业务脚本。现 attempt_fingerprint 改为整份原 basis 的 canonical 摘要，防止只删去一组依赖后仍接受旧候选；确认只复核原集合，不重检索全库或补造旧依据。
+- 接受匹配请求/当前卡/服务端状态三个版本，复核来源、当前许可和原采用档案及间接依赖。原样接受只推进现卡 SHA，原 basis/attempt 不改，保住已采用职业档案的两字段双顺序连续确认；目标同一实际文件的受控自变更不扩展为跨卡豁免。改值记 L4 并撤同卡余项，不计否决；精确否决不授事实信用，来源失效仍可撤回。关闭后不接受旧 L3；显式空或非字符串修改值拒绝，不回落原值。
+- 原 writer 复用单文件原子写并返回本次实际写入字节的 SHA；同一原卡 raw 用于解析与保留字段。写卡前复核来源/卡/state；卡写失败不改状态，卡写成而 state 保存失败则明确失败、保留真实待审核卡及原/并发状态，旧 cursor 阻止 fresh-client 重放。UI 精确移除已操作候选、L4 撤余并同步计数，错误后刷新实际详情/对账且保当前选卡；设置读取错误不隐藏证据，迟到推断不恢复已关闭 L3。不宣称两文件事务或跨进程 CAS。
+- 独立 API 首轮 28 failed / 4 passed，复核后准确分类为 26 个业务 RED、1 个卡原子发布机制 RED、1 项前置不成立：原跨卡原文反例没有 field_sources，职业档案只读另一卡而未采用其原文。通过真实 saveDraft 补实际绑定并断言被采用路径/SHA后，该项作为追加有效控制，不补造历史 RED。原断言保留，连同实现后新增的五项显式值控制，确认组 37 passed。推断内部四项旧协议/缺依据 RED及一项完整结构删依赖 RED转绿，稳定对照保留。Chrome 原七项与后补两个异步 RED转绿，actions 15 项（含四个原 Node正控）与原 settings 28 项共 43 passed；6 个旧页面 fixture 仅补真实 settings 消费者，原 19 项断言保留。
+- 同树最终全量 2928 passed、1 skipped、101 subtests passed（55.48 秒），架构 v2、路线图、AIEF、TypeScript 与差异检查通过。包含原两页 PDF、首屏/末页内容边界与 trace；不是原生 Tauri 页面深验，也不扩称模型语义全部完成。
+- 实际合成 App→本机 Splash 首次 7 RPC、1 次 HTTP 200：模型把原时间引文的 2023-06 写成 2023-6，应用因非原文引文丢弃时间候选，保留有效 L3 职责。原“两字段均有效”验收未达预期，失败记录保留；没有改写响应、补来源或重复调用模型。随后在同一隔离应用数据上追加 3 个真实 RPC 回读来源、确认有效职责、读取卡，0 网络请求；职责保持 L3/原出处/用户确认，卡转 pending 且不可入池，时间仍空，原 basis/attempt 不变、cursor 与实际文件 SHA一致、候选清空。两字段连续确认的正控本片由独立 API/Chrome覆盖，本次真实模型仅确认了一个有效字段。
+- 实际请求为 3086 逻辑 JSON 字符、10656 wire 字节，SHA 59e8acf1aa58bdb95fc727dffda52aca26f34c47a025240931bb6519fbba4927；首次程序/记录 SHA 分别为 55e0bb165abb5e1463d3b648502cf2b204534ffea16c972c9d3abd3907efb58c / 0c6d9d87c0f3b2202bd32066a05c051ed888afd817920e2e2572c32ea501bd1d，后续确认程序/记录 SHA 为 ee1bed28b61d252bd0d029fca81a3e3180b5cdc241a29beb1882be0d2a5d6b6b / f02e23e4f571f65380a3a67af841f6b87e1ce809b474b56ddd84655bad87a9b6。程序、wire、两记录、原文件及持久 state 已独立回读。资料全合成，总计 10 RPC、1 次本机模型请求；真实招聘站、正式生成和投递为零。
+- P0-026 继续进行。下一片先核场景/成果去重的完整语境、呈现与评分职责，不能用同卡、同文或字符串包含替代语义；Agent 四层、原生与真实样本验收仍按原任务队列推进。
+
 ## 2026-11-21 简历结果证据边界
 
 - R3.2 只消费正文实际采用、经精确 trace 校验的结果 Fact。同卡同文 action 不能借用未呈现的 results。受控负例的量化比例从 1.0 降为 0.0，实际采用结果的正控保持 1.0；两种原始样例均未 auto_pass，不构成投递门禁绕过。
