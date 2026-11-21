@@ -147,6 +147,14 @@ Last updated: 2026-11-22
 - 实际请求为 3086 个逻辑 JSON 字符、10656 个 wire 字节，明确关闭沿 shared client 发为 reasoning_effort=none，无 thinking/chat_template_kwargs，finish_reason=stop。实际请求 SHA 为 5a3298daeebfe76df2757baed47ab365523cfa5184e185aeafc48414812c01f5，运行记录 SHA 为 d1d0408e5fe3726284f066e5fc0fde84803ec9897223452a98bedb5c12e8dd8f，均已独立重算。此直接调用计量不冒称 TaskRunner 预算。
 - 原卡前后字节完全一致，时间/职责仍空、candidate_pool_eligible=false，没有确认候选。真实招聘站、正式生成与投递均为零；原生 UI、quality judge 真实模型链及 confirmInference 的末端来源复核未由本片验收。下一片核定候选接受的原始依据与连续确认版本接续，P0-026 继续进行。
 
+## 2026-11-22 背景自身的精确事实来源（切片 K4b1，限定工程范围已完成）
+
+- 查重确认现 ProjectBlock.fact_ids/ResumePlan.fact_ids、FactIndex 和 renderer.from_fact 已有真实职责。生产仅改 plan 与 renderer：在结构装配时保留真实 context Fact，同次取得背景全文和身份，登记原 block/plan IDs；合并项目不借首张代表卡或同文。renderer 按实际索引核显式绑定的唯一性、类型、完整展示值和两处一致性，并在真正背景行记录来源、字段和 Fact ID。无新增字段、接口、来源副本或业务脚本。
+- 背景是原结构事实，不增加可选 Fact 配额；只有自己的真实呈现可满足其精确岗位引用，非 bullet 背景不借 results 或 R3.2。正式与 guided 沿同一 producer，背景实际来源随 evidence claim 据实进入现 trace 输入；不因旧计数省去合法依赖。内部 preview 只有 actions/results 身份，范围拼接说明保留 presentation，不扩成完整背景。
+- 独立真实链先 `5 failed / 25 passed`（0.11 秒），显式 renderer 输入组先 `8 failed / 9 passed`（0.07 秒），无夹具错误；共 13 个业务 RED。强反例把 context 与结果设为同文，删去背景环境限定、重算整体正文 hash而不改 claims，原全文仍在 result bullet，旧 trace错误通过；修复后以真实背景行拒绝。另验长背景、合并 B来源、同文 A/B引用分离、未知/多/非证据/空/不完整/单边绑定拒绝，保同文未采用结果无信用及原 preview 正控。
+- 原断言和夹具冻结后，独立两组分别 `30 passed`（0.10 秒）、`17 passed`（0.04 秒）；此前被首断言挡住的完整来源/文本/实际行检查全部执行。最终同树全量 `2946 passed、1 skipped、101 subtests passed`（54.83 秒），架构 v2、路线图、AIEF 与 diff 检查通过，含既有两页合成 PDF/首屏/尾页边界与 trace。
+- 本片没有 Splash 或外部模型请求、真实招聘访问、真人正式件或投递。没有把所有身份被人为删掉后与合法 preview 形状一致的对象冒称可辨，也没有新增通用防篡改框架。下一片 K4b2 在实际选材之后纳入有界语义呈现，现卡选择/岗位匹配/事后 judge 不能借作其权威；未知或不可用保全文，精确岗位正引 context保留。Agent 四层与原生/真实验收继续 pending。
+
 ## 2026-11-22 完整项目场景呈现（切片 K4a，限定工程范围已完成）
 
 - 对齐 core、设计与任务摘要原先相反的去重方向：保留已选完整成果 bullet 和独立来源，只可省经完整语义判断确认冗余的背景；未知保留双方。语义去重仍 pending，不以字符串包含、同卡或结果核定代授信用。
