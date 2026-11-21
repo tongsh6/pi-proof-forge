@@ -147,6 +147,20 @@ Last updated: 2026-11-22
 - 实际请求为 3086 个逻辑 JSON 字符、10656 个 wire 字节，明确关闭沿 shared client 发为 reasoning_effort=none，无 thinking/chat_template_kwargs，finish_reason=stop。实际请求 SHA 为 5a3298daeebfe76df2757baed47ab365523cfa5184e185aeafc48414812c01f5，运行记录 SHA 为 d1d0408e5fe3726284f066e5fc0fde84803ec9897223452a98bedb5c12e8dd8f，均已独立重算。此直接调用计量不冒称 TaskRunner 预算。
 - 原卡前后字节完全一致，时间/职责仍空、candidate_pool_eligible=false，没有确认候选。真实招聘站、正式生成与投递均为零；原生 UI、quality judge 真实模型链及 confirmInference 的末端来源复核未由本片验收。下一片核定候选接受的原始依据与连续确认版本接续，P0-026 继续进行。
 
+## 2026-11-22 guided Agent 四层质量与固定审核（切片 M1，限定工程与合成应用验收完成）
+
+- 查重复用 RuleEvaluationEngine、同次版本读取、共同四层计算、Scorecard.quality_report、ReviewSnapshotStore 和现 QualityReportPanel；没有新 Engine、RPC、持久实体或业务脚本。RuleEvaluationEngine 直接消费 trace 绑定的实际卡/职业档案/岗位字节，同批输入用于旧参考指标和四层报告，报告绑定正文 UTF-8 SHA 与目标，Scorecard 保入口版本标签。实际读取校验与末端 trace 复核共同防换值后恢复；独立无岗位绑定的诊断能力不补造岗位事实。
+- guided 不注入模型或拼造正式 semantic；没有当前正文映射时保留未判，不再从空矩阵推出所有项目无关。有效已评映射的真正未覆盖负控保持。已呈现的实测结果沿共同 R3.2，旧规则或 LLM 覆盖参考不改 auto_pass。原显式 LLMEvaluationEngine 只保传报告，该 CLI-only 能力不冒称新的 App 语义能力。
+- AgentLoop 将本次已有 Scorecard 传入现 Store.create；Store 在唯一 PDF 导出前捕获报告副本，核入口标签/目标、报告正文 SHA/目标，导出后用实际 Markdown/PDF 字节封入原 quality_snapshot/quality_sha256 与 manifest。全部成功后才回填候选；失败不污染调用方。native 的同类摘要/产物校验收归同一 Store，旧 digest 转发路径退役。已有 native report=null 仍诚实表示未记录判项，不由旧分数补绿；新 guided 必须有实际报告。
+- 初次独立引擎 18 例为 15 failed / 3 passed（0.26 秒），guided API 原真实来源用例另 1 failed（0.10 秒）：缺四层报告、目标冲突、评估返回后变源和空矩阵误判均已复现。三个实际 SHA reader 的 ABA 与四层期间变源钩子当时因未接消费者尚未触发，不宣称旧实现曾实际读到 B；GREEN 时 consumed/evaluated 均实际执行并拒绝。原组 18 passed（0.16 秒），后补显式 LLM 高覆盖不改四层的控制后全文件 70 passed（0.26 秒）。同文未采用结果量化 0，实际采用实测正控 0.5；原前置 fixture 错误不计业务 RED。
+- 独立快照/API/页面首组 11 failed / 5 passed（0.37 秒），实际覆盖发布前绑定错配、发布后只改/删报告、pending/恢复执行与实际组件无四层；原组转 16 passed。后补八项 Scorecard 构造控制验证单次导出、报告预捕获、身份/缺报告拒绝和失败原子性；只作为追加控制。五个受影响文件 67 passed（0.59 秒）；两条 native 原负控仅把错误归属迁为 review_snapshot_invalid，禁止上传及队列字节断言保留。
+- 集成复验曾出现两例 REVIEW_SNAPSHOT_BLOCKED：既有合法线索未单独声明岗位关联，本轮明确目标没有传入审核候选。保留原线索夹具，在 AgentLoop 只补本轮实际目标，非空冲突仍拒；不补造 JD 状态、来源指纹或审核批准。真实 guided 文件 2 passed（0.98 秒），完整正文/来源/量化/目标/实际 PDF 和摘要断言全部执行。测试曾预期重复 quality_passed 包装字段，按既有 generic 合同仅移除该冗余半句，保留 report.auto_pass 与全部未判断言。
+- 独立审查补出跨队列 all_pending 原样返回未核报告的 API 缺口；当前 UI 不消费此字段，批准/恢复本来仍会拒绝，未称投递绕过。新增两份真实队列的合法/篡改对照先 2 failed（0.07 秒），再用同一 ready/invalid 投影逐个按本队列 ID 核 Store；合法保报告，失效移除报告并清正文，不改磁盘队列。审批 API 与 Node 页面 27 passed（0.41 秒）。页面复用真实 TypeScript 组件显示四层/未判/建议及封存参考分，旧裸分不盖过报告；该证据不是 Chrome 或原生窗口深验。
+- 最终全量 3016 passed、1 skipped、101 subtests passed（58.93 秒），TypeScript、架构 v2、路线图、AIEF 与差异检查通过。现审批仍以事实/快照和授权为边界，不因 auto_pass=false 新增分析硬阻断；缺失的正式语义判项与 PDF 裁切校验诚实保留。
+- 合成实际应用先验证显式岗位关联，再以缺关联线索复验最终候选；复用 K4b2 经真实 API/本机模型复审的纯合成材料、档案和岗位，只在外部线索输入边界准备本地合成 lead，未伪造来源批准或访问招聘站。两次各 9 个真实 Router RPC、实际 PDF 导出，应用 HTTP/socket/model 请求均为零。最终流在质量报告仍 pending/auto_pass=false、量化 0.5 时返回 ready；完整结果、guided 完整背景和精确 trace 保持。仅改报告后 pending=invalid，批准返回 review_snapshot_invalid 且队列/正文/PDF 不被更改；恢复原记录后批准返回 checked_not_submitted、success=false，最终 REVIEWED_CHECK_ONLY。目标关联正确而 jd_status/source_jd_sha256 仍空，原 lead、卡、档案与岗位文件字节保持。
+- 最终应用运行记录 SHA 为 32041068abf4f74ff0ec127cd42955b64bfeab008b188dcf0142a2fd687a9af0，Markdown 为 5eb0d87e75c2bd0e531c495b2e558d1ddce9f8416795de6d2b940ffc5d0f8098，PDF 为 e9bc7a71dd18ed8b36501a11472720822b85e84f223cc3a6a8fb8d014103380f，质量快照为 36eac020ea276b13cf65e434bd84c3a1aa259567a75f8518e1009ff7f79b577b；记录、实际产物、manifest 与 canonical 质量摘要已独立重算一致，生产 Python 源前后未变。原生页面、真实 JD/正式件/实际投递仍未验收，P0-026 继续进行。
+- 下一片先核正式 Quick Run 的质量判项请求/缓存职责；该路径有实际 API 消费者。当前显式模型 Agent 仅从 CLI 注入，guided API 仍零模型；不能把升级旧 evaluator 或接入内部 advisory 报告冒充 App 正式语义闭环。
+
 ## 2026-11-22 实际正文的有界背景语义去重（切片 K4b2，限定工程与有限合成应用验收完成）
 
 - 查重沿现 Quick Run 配置、generation_flow、共同 builder/ResumePlan/renderer、TaskContract/TaskRunner 与 readiness.reasons 的真实消费者补齐。模型在实际选材完成后只看同项目最终标题/期间/角色/所属工作、完整背景与实际行动/成果，返回 keep/omit/unknown；不引入预算外、范围排除或别的项目事实。精确岗位正引背景保护，合法 omit 只移除背景及 block/plan 原 context IDs，完整结果与自己的 claims/实际行保持。guided 不注入该能力、零模型调用，无新 RPC、持久账本、缓存或业务脚本。
