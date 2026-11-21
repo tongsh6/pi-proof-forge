@@ -25,10 +25,10 @@ METADATA = {
 def _parsed(**overrides):
     base = {
         "source_material_ids": ["mat_1"],
-        "title": "统一运动中心改造",
+        "title": "合成活动平台改造",
         "context": "会员中心活动报名链路复杂。",
-        "actions": ["我负责统一运动中心改造，推动活动报名聚合"],
-        "results": ["我推动统一运动中心改造上线"],
+        "actions": ["我负责合成活动平台改造，推动活动报名聚合"],
+        "results": ["我推动合成活动平台改造上线"],
         "artifacts": [{"type": "text_document", "ref": "mat_1", "label": "工作日志"}],
         "stack": ["Java"],
         "tags": ["会员"],
@@ -45,11 +45,11 @@ def test_build_draft_accepts_l2_metadata_time_and_l1_role():
                                    "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "key": "filename_date:2023-08-15"}]},
             role_scope="活动报名聚合负责人",
             role_scope_provenance={"level": "L1", "confidence": 0.8,
-                                   "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "excerpt": "我负责统一运动中心改造"}]},
+                                   "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "excerpt": "我负责合成活动平台改造"}]},
         ),
         SELECTED,
         metadata=METADATA,
-        source_text="2023-08 工作日志。我负责统一运动中心改造，推动活动报名聚合上线。",
+        source_text="2023-08 工作日志。我负责合成活动平台改造，推动活动报名聚合上线。",
     )
     assert draft["time_range_provenance"]["level"] == "L2"
     assert draft["role_scope_provenance"]["level"] == "L1"
@@ -67,7 +67,7 @@ def test_build_draft_drops_unverifiable_or_contradictory_candidates():
         ),
         SELECTED,
         metadata=METADATA,
-        source_text="2023-08 工作日志。我负责统一运动中心改造。",
+        source_text="2023-08 工作日志。我负责合成活动平台改造。",
     )
     assert "time_range_provenance" not in draft
     assert "role_scope_provenance" not in draft
@@ -86,9 +86,9 @@ def test_prompt_injects_metadata_and_level_rules():
 
 def test_write_and_load_roundtrip_keeps_provenance(tmp_path):
     provenance = {"level": "L3", "confidence": 0.62, "evidence": [
-        {"material_id": "mat_1", "document_id": "doc_1", "excerpt": "我推动统一运动中心改造"}]}
+        {"material_id": "mat_1", "document_id": "doc_1", "excerpt": "我推动合成活动平台改造"}]}
     fields = {
-        "id": "ec_1", "title": "统一运动中心", "time_range": "2023-03 ~ 2023-09",
+        "id": "ec_1", "title": "合成活动平台", "time_range": "2023-03 ~ 2023-09",
         "context": "活动报名", "role_scope": "推动者", "status": "saved_incomplete",
         "created_at": "now", "updated_at": "now", "actions": ["改造"], "results": ["上线"],
         "stack": [], "artifacts": [], "tags": [],
@@ -99,14 +99,14 @@ def test_write_and_load_roundtrip_keeps_provenance(tmp_path):
         detail = evidence._load_evidence_detail("ec_1")
         cards = evidence._load_evidence_cards()
     assert detail["time_range_provenance"]["level"] == "L3"
-    assert detail["time_range_provenance"]["evidence"][0]["excerpt"] == "我推动统一运动中心改造"
+    assert detail["time_range_provenance"]["evidence"][0]["excerpt"] == "我推动合成活动平台改造"
     assert cards[0]["time_range_level"] == "L3"
     assert cards[0]["role_scope_level"] == "L1"
 
 
 def _card_yaml(provenance_json: str = "") -> str:
     return (
-        'id: "ec_1"\ntitle: "统一运动中心"\ntime_range: "2023-03 ~ 2023-09"\n'
+        'id: "ec_1"\ntitle: "合成活动平台"\ntime_range: "2023-03 ~ 2023-09"\n'
         'context: "活动报名"\nrole_scope: "负责人"\nstatus: "saved_incomplete"\n'
         'created_at: "now"\nupdated_at: "now"\n'
         f'time_range_provenance_json: {json.dumps(provenance_json) if provenance_json else "\"\""}\n'

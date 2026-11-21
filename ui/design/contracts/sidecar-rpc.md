@@ -540,20 +540,20 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 }
 ```
 
-`result`
+`result`（以下 JD、偏好与分析均为合成示例）
 
 ```json
 {
   "meta": { "correlation_id": "corr_001" },
   "direction": {
     "status": "excluded",
-    "reason": "该岗位核心职责为业务功能开发，与已确认的 Tech Lead 方向存在偏差",
+    "reason": "示例岗位以运营报表实现为主，与示例偏好中的基础设施职责存在偏差",
     "criterion_index": 0,
-    "jd_quote": "负责得物App电商业务系统核心开发",
+    "jd_quote": "为演示业务实现运营统计报表，并维护报表导出接口。",
     "preference": {
       "kind": "primary",
-      "text": "产品型公司 Tech Lead",
-      "quote": "主方向：产品 / 内部平台型 Tech Lead"
+      "text": "基础设施研发",
+      "quote": "合成偏好：希望主要负责通用基础设施研发。"
     },
     "preferences_revision": "sha256...",
     "cache_hit": true,

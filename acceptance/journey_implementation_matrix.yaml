@@ -3,6 +3,8 @@ mainline: "user_journey_closed_loop"
 roadmap: "docs/execution-roadmap.md"
 depth_standard: "docs/acceptance-depth.md"
 current_focus: "small_company_high_match_delivery"
+# 既有状态保留历史工程决策；真实账号、岗位、投递与页面运行证据只在本机数据区保存。
+# 下列测试/代码路径说明可复现的契约覆盖，不单独证明真实 App 旅程；本次整理未重做真实验收。
 
 vision_alignment:
   source: "PLAN.md"
@@ -218,7 +220,6 @@ steps:
       evidence:
         - "tests/acceptance/test_scenario_generate_review_and_complete_evidence_card.py"
         - "tests/unit/sidecar/test_evidence_handler.py"
-        - "outputs/acceptance/acceptance_evidence_review_20260521/journey-report.json"
       covers:
         - "raw_source_traceability"
         - "review_required_before_save"
@@ -246,7 +247,6 @@ steps:
       evidence:
         - "tests/acceptance/test_scenario_setup_job_target.py"
         - "tests/unit/sidecar/test_jobs_handler.py"
-        - "outputs/acceptance/acceptance_job_target_20260521/journey-report.json"
       covers:
         - "pasted_jd_to_draft_profile"
         - "review_required_before_save"
@@ -338,12 +338,10 @@ steps:
     depends_on:
       - "agent_run_guided_batch"
     acceptance:
-      script: "CUA 原生动作记录：outputs/acceptance/liepin_official_readonly/native-readonly-live-20260928.json"
+      script: "外部真实 Tauri 页面验证官方只读认证、搜索与清理；本机运行证据不纳入应用仓库"
       depth: "deep"
       evidence:
-        - "outputs/acceptance/liepin_official_readonly/native-readonly-live-20260928.json"
-        - "outputs/acceptance/liepin_official_readonly/authorization-link-20260928.json"
-        # 以下为辅助契约证据，不能独立替代上述真实原生动作链。
+        # 辅助契约证据不能独立替代真实原生动作链。
         - "tests/unit/infra/test_liepin_api.py"
         - "tests/unit/sidecar/test_liepin_readonly_handlers.py"
         - "tests/unit/gui/test_liepin_api_bridge.py"
@@ -449,9 +447,6 @@ steps:
         - "tools/acceptance/acceptance_runner.py"
         - "tools/acceptance/external_l3.py"
         - "tests/acceptance/test_acceptance_runner.py"
-        - "outputs/acceptance/acceptance_closed_loop_20260522/closed-loop-audit.json"
-        - "outputs/acceptance/acceptance_closed_loop_20260522/acceptance-report.json"
-        - "outputs/acceptance/acceptance_closed_loop_20260522/journey-report.json"
         - "outputs/quick_runs/qr_*.json"
         - "outputs/agent_runs/ar_*.json"
         - "outputs/submissions/liepin/sc_*/submission_log.json"
@@ -485,9 +480,6 @@ steps:
         - "tools/acceptance/acceptance_runner.py"
         - "tools/acceptance/external_l3.py"
         - "tests/acceptance/test_acceptance_runner.py"
-        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
-        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.md"
-        - "outputs/acceptance/acceptance_external_l3/journey-report.json"
       covers:
         - "user_authorized_external_session"
         - "explicit_final_submit_gate"
@@ -516,8 +508,6 @@ steps:
       evidence:
         - "tools/acceptance/external_l3.py"
         - "tests/acceptance/test_acceptance_runner.py"
-        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.json"
-        - "outputs/acceptance/acceptance_external_l3/external-l3-validation.md"
       covers:
         - "operator_handoff_created"
         - "required_env_presence_without_values"
@@ -545,18 +535,12 @@ steps:
     acceptance:
       script: 真实 Tauri 两路线详情、反馈保存和重启读回；External L3 saved_app_records 只读验收
       depth: deep
-      # 2026-10-01：复用真实 10+1 回执，两路线原生反馈读回与统一验收均通过。
+      # 历史原生与业务验收证据留在本机；以下为应用契约回归入口。
       evidence:
-      - outputs/acceptance/acceptance_app_delivery_20261001/external-l3-validation.json
-      - outputs/acceptance/official_delivery_prerequisites/submission-feedback-native-20261001.json
-      - outputs/acceptance/official_delivery_prerequisites/pdf-app-completed-20260930.json
       - tests/unit/sidecar/test_native_pdf_delivery.py
-      - outputs/acceptance/official_delivery_prerequisites/ten-job-completed-20260929.json
-      - outputs/acceptance/official_delivery_prerequisites/default-resume-app-closed-loop-20260929.json
-      - outputs/acceptance/official_delivery_prerequisites/input-binding-20260928.json
       - tests/unit/infra/test_liepin_job_detail.py
       - tests/unit/sidecar/test_official_job_profile_binding.py
-      - tests/unit/domain/test_agent_loop.py
+      - tests/unit/orchestration/test_agent_loop.py
       - tests/unit/gui/test_jobs_liepin_detail_ui.py
       covers:
       - reviewed_complete_jd_and_original_job_identity
@@ -591,11 +575,6 @@ steps:
       script: python3 -m tools.acceptance.external_l3 --run-id <audit-id> --saved-submission <submission-id> --page-evidence <native-page-evidence>
       depth: deep
       evidence:
-      - outputs/acceptance/acceptance_app_delivery_20261001/external-l3-validation.json
-      - outputs/acceptance/acceptance_app_delivery_20261001/external-l3-validation.md
-      - outputs/acceptance/official_delivery_prerequisites/ten-job-completed-20260929.json
-      - outputs/acceptance/official_delivery_prerequisites/pdf-app-completed-20260930.json
-      - outputs/acceptance/official_delivery_prerequisites/submission-feedback-native-20261001.json
       - tests/acceptance/test_saved_app_delivery_validation.py
       covers:
       - real_app_page_evidence_and_restart_bound_to_submission_ids
@@ -609,8 +588,7 @@ steps:
       - sensitive_business_payload_excluded_from_audit_report
       - read_only_runbook_and_completion_blockers_recorded
 
-  # 2026-10-01：S2/S3 已验收，S4 每日目标为唯一 next，其余平台仍待实施。
-  # 2026-10-10：S4 两日真实批次与跨日结果核验完成，按用户决定收口为 deep_verified；S5 BOSS 只读为唯一 next。
+  # 每日受控投递依赖单次闭环；既有状态不代表本次发布完成了新的真实批次验收。
   - id: daily_authorized_delivery
     order: 19
     status: deep_verified
@@ -626,15 +604,12 @@ steps:
     depends_on:
     - authorized_external_l3_live_run
     acceptance:
-      script: 外部真实 Tauri 页面自动化：daily_authorized_delivery（两日真实批次各 1/1 与跨日结果已核验，2026-10-10 按用户决定收口；每日 3 次上限仅隔离测试）
+      script: 外部真实 Tauri 页面验证每日受控投递与跨日结果；三次上限须另有隔离契约回归，真实运行记录留在本机
       depth: deep
       evidence:
-      - outputs/acceptance/daily-authorized-delivery-20261005/native-inactive-validation.json
-      - outputs/acceptance/app-workflow-20261008/native-validation.json
-      - outputs/acceptance/daily-recovery-20261008/native-validation.json
-      - outputs/acceptance/daily-candidates-20261008/native-validation.json
-      - outputs/acceptance/daily-candidates-20261008/authorized-execution.json
-      - outputs/acceptance/daily-cross-day-20261009/validation.json
+      - tests/unit/sidecar/test_daily_delivery.py
+      - tests/unit/infra/test_daily_delivery_store.py
+      - tests/unit/gui/test_daily_delivery_ui.py
       covers:
       - asia_shanghai_daily_success_total_max_three_across_enabled_platforms
       - persistent_dedup_and_unknown_reservation_after_restart
@@ -797,7 +772,7 @@ steps:
       - reused_real_page_evidence_and_specific_gap_verification
       - read_only_delivery_and_feedback_statuses_separate
 
-  # 2026-10-11：用户决定先深化 App 与猎聘渠道，新增猎聘投递反馈回流为唯一 next；S7 脉脉回到 not_started。
+  # 反馈回流沿用既有任务与状态；历史用户会话和平台结果不随应用资产发布。
   - id: liepin_feedback_sync
     order: 26
     status: deep_verified
@@ -815,14 +790,11 @@ steps:
     - authorized_external_l3_live_run
     - daily_authorized_delivery
     acceptance:
-      script: 外部真实 Tauri 页面自动化：liepin_feedback_sync（三次真实只读同步 16/16 匹配已留档，2026-10-11 按用户决定收口；同步由用户点击触发、切片 3 沟通页回复未做）
+      script: 外部真实 Tauri 页面验证用户触发的只读同步、未知状态与历史读回；沟通页回复读取仍待实施
       depth: deep
       evidence:
-      - outputs/acceptance/liepin-feedback-sync-20261011/first-run-sync.json
-      - outputs/acceptance/liepin-feedback-sync-20261011/first-run-latest.json
-      - outputs/acceptance/liepin-feedback-sync-20261011/third-run-sync.json
-      - outputs/acceptance/liepin-feedback-sync-20261011/third-run-latest.json
-      - outputs/acceptance/liepin-feedback-sync-20261011/validation.json
+      - tests/unit/sidecar/test_liepin_feedback_sync.py
+      - tests/unit/gui/test_overview_feedback_funnel_ui.py
       covers:
       - read_only_sync_in_app_session_without_sending_or_business_clicks
       - platform_status_matched_by_job_identity_and_recorded_with_history
@@ -830,13 +802,13 @@ steps:
       - feedback_items_and_overview_funnel_consume_platform_status
       - records_page_discovery_failure_reported_without_fabrication
 
-  # 2026-10-12：用户决定其他平台（BOSS/智联/51job/脉脉/拉勾）暂不接入，先深化 App 能力；投递实验改为“JD 高匹配 + 微小公司”的猎聘岗位，磨练面试。
+  # 当前唯一 next：深化 App 的岗位语义匹配、事实保真生成与授权后的反馈闭环。
   - id: small_company_high_match_delivery
     order: 27
     status: next
     journey_stage: agent_run
     owner_surface: ui/src/pages/jobs/index.tsx
-    user_goal: 在 App 内按官方公司规模筛出上海 100 人以下且 JD 高匹配的猎聘岗位，完成完整 JD 读取、画像审核、匹配/简历/Scorecard，由用户授权投递并追踪面试反馈，用小公司演练为大公司求职做准备。
+    user_goal: 在 App 内按已确认偏好与官方公司事实筛选合适岗位，完成完整 JD 读取、语义匹配、可追溯简历与 Scorecard，再在明确授权范围内投递并追踪反馈；具体城市和公司规模取值属于本机用户数据。
     vision_link: 用真实高匹配岗位检验“证据卡 → 可解释匹配 → 保真简历 → Scorecard 反驱 → 投递反馈”闭环的生成质量，而不是低匹配批次。
     design_refs:
     - PLAN.md
@@ -847,35 +819,24 @@ steps:
     - daily_authorized_delivery
     - liepin_feedback_sync
     acceptance:
-      script: 外部真实 Tauri 页面自动化：small_company_high_match_delivery（首笔高匹配实投与状态回流已验，待面试反馈）
+      script: 外部真实 Tauri 页面自动化：small_company_high_match_delivery
       depth: deep_required
       evidence:
       - tests/unit/sidecar/test_liepin_readonly_handlers.py
       - tests/unit/infra/test_liepin_job_detail.py
       - tests/unit/infra/test_job_lead_binding_url.py
-      - tests/unit/matching/test_semantic_review.py
-      - outputs/acceptance/p0-026-semantic-20261012/validation.json
-      - outputs/acceptance/p0-026-semantic-20261012/native-page-observations.json
+      - tests/unit/engines/matching/test_semantic_review.py
       - tests/unit/sidecar/test_job_preferences.py
       - tests/unit/gui/test_job_preferences_ui.py
-      - outputs/acceptance/p0-026-job-preferences-20261012/native-page-observations.json
-      - outputs/acceptance/p0-026-fact-enrichment-20261012/native-page-observations.json
-      - tests/unit/matching/test_requirement_clauses.py
+      - tests/unit/engines/matching/test_requirement_clauses.py
       - tests/unit/sidecar/test_native_pdf_quality.py
       - tests/unit/gui/test_pdf_quality_summary.py
-      - outputs/acceptance/p0-026-assessment-20261013/validation.json
-      - tests/unit/domain/test_resume_projection.py
-      - outputs/acceptance/p0-026-fact-priority-20261014/validation.json
-      - outputs/acceptance/p0-026-gap-review-20261014/validation.json
-      - tests/unit/domain/test_tiered_evaluator.py
-      - tests/unit/domain/test_evaluation_quality.py
+      - tests/unit/engines/test_resume_projection.py
+      - tests/unit/engines/test_tiered_evaluator.py
+      - tests/unit/engines/test_evaluation_quality.py
       - tests/unit/gui/test_quality_report_ui.py
-      - outputs/acceptance/quality-advice-20261022/validation.json
-      - outputs/acceptance/quality-advice-20261022/render_validation.json
-      - tests/unit/matching/test_fit_precheck.py
+      - tests/unit/engines/matching/test_fit_precheck.py
       - tests/unit/gui/test_fit_precheck_ui.py
-      - outputs/acceptance/fit-precheck-20261022/validation.json
-      - outputs/acceptance/fit-precheck-20261022/page_validation.json
       covers:
       - official_company_facts_persisted_and_size_filter_in_app
       - headhunter_detail_and_freeform_complete_jd_read_with_identity_rules

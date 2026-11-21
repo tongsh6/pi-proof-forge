@@ -2127,7 +2127,7 @@
                           "id": "deaUs",
                           "name": "ovFunnelSynced",
                           "fill": "$text-secondary",
-                          "content": "16/16 synced with platform status / 已同步",
+                          "content": "Demo status layout / 合成状态布局",
                           "fontFamily": "Inter",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -2248,7 +2248,7 @@
                                       "id": "YJS8N",
                                       "name": "cellCount",
                                       "fill": "$text-primary",
-                                      "content": "2",
+                                      "content": "—",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "700"
@@ -2307,7 +2307,7 @@
                                       "id": "c6CzJ",
                                       "name": "cellCount",
                                       "fill": "$text-primary",
-                                      "content": "8",
+                                      "content": "—",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "700"
@@ -2376,7 +2376,7 @@
                                       "id": "AbfzZ",
                                       "name": "cellCount",
                                       "fill": "$text-primary",
-                                      "content": "0",
+                                      "content": "—",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "700"
@@ -2436,7 +2436,7 @@
                                       "id": "v55nwZ",
                                       "name": "cellCount",
                                       "fill": "$text-primary",
-                                      "content": "0",
+                                      "content": "—",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "700"
@@ -2504,7 +2504,7 @@
                                       "id": "tQSn6",
                                       "name": "cellCount",
                                       "fill": "$text-primary",
-                                      "content": "4",
+                                      "content": "—",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "700"
@@ -2563,7 +2563,7 @@
                                       "id": "jt9UM",
                                       "name": "cellCount",
                                       "fill": "$text-primary",
-                                      "content": "2",
+                                      "content": "—",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "700"
@@ -2632,7 +2632,7 @@
                                       "id": "MNktb",
                                       "name": "cellCount",
                                       "fill": "$text-primary",
-                                      "content": "0",
+                                      "content": "—",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "700"
@@ -2692,7 +2692,7 @@
                                       "id": "mzJnJ",
                                       "name": "cellCount",
                                       "fill": "$text-primary",
-                                      "content": "0",
+                                      "content": "—",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "700"
@@ -3133,7 +3133,7 @@
                           "type": "text",
                           "id": "Tw1IO",
                           "fill": "#94A3B8",
-                          "content": "Tong Shuanglong\n13800000000 · you@example.com\nShanghai · Product-minded Platform Engineer",
+                          "content": "Demo Candidate\n13800000000 · you@example.com\nExample City · Platform Engineer",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -3343,7 +3343,7 @@
                               "type": "text",
                               "id": "c6gQi",
                               "fill": "#EEF4FF",
-                              "content": "Resume v5 · Arc'teryx Platform",
+                              "content": "Demo Resume v5 · Example Platform",
                               "fontFamily": "Inter",
                               "fontSize": 13,
                               "fontWeight": "600"
@@ -3376,7 +3376,7 @@
                               "type": "text",
                               "id": "41vrT",
                               "fill": "#EEF4FF",
-                              "content": "Resume v4 · Anthropic Infra",
+                              "content": "Demo Resume v4 · Example Infra",
                               "fontFamily": "Inter",
                               "fontSize": 13,
                               "fontWeight": "600"
@@ -4433,7 +4433,7 @@
                                   "id": "M32j3",
                                   "name": "evRowTitleText",
                                   "fill": "$text-primary",
-                                  "content": "统一运动中心 · 会员活动链路重构",
+                                  "content": "合成活动平台 · 会员活动链路重构",
                                   "fontFamily": "Inter",
                                   "fontSize": 12,
                                   "fontWeight": "600"
@@ -4506,7 +4506,7 @@
                                   "id": "Y3whHW",
                                   "name": "evRowRoleText",
                                   "fill": "$text-secondary",
-                                  "content": "参与 / 推动 · 平台负责人",
+                                  "content": "示例：参与协作 · 服务开发",
                                   "fontFamily": "Inter",
                                   "fontSize": 11,
                                   "fontWeight": "normal"
@@ -5607,7 +5607,7 @@
                                   "id": "IQmvn",
                                   "name": "evFieldValueText",
                                   "fill": "$text-primary",
-                                  "content": "统一运动中心 · 会员活动链路重构",
+                                  "content": "合成活动平台 · 会员活动链路重构",
                                   "fontFamily": "Inter",
                                   "fontSize": 12,
                                   "fontWeight": "normal"
@@ -5690,7 +5690,7 @@
                               "id": "lwkLE",
                               "name": "evFieldSource",
                               "fill": "$text-muted",
-                              "content": "来源：2023-03 周报 · 会员活动复盘",
+                              "content": "来源：2023-03 合成周报 · 示例服务复盘",
                               "fontFamily": "Inter",
                               "fontSize": 9,
                               "fontWeight": "normal"
@@ -5736,7 +5736,7 @@
                                   "id": "KYRty",
                                   "name": "evFieldValueText",
                                   "fill": "$text-primary",
-                                  "content": "参与 / 推动 · 平台负责人",
+                                  "content": "示例：参与协作 · 服务开发",
                                   "fontFamily": "Inter",
                                   "fontSize": 12,
                                   "fontWeight": "normal"
@@ -5771,7 +5771,7 @@
                               "id": "o12qmz",
                               "name": "evFieldSource",
                               "fill": "$text-muted",
-                              "content": "来源：会员活动复盘",
+                              "content": "来源：合成示例服务复盘",
                               "fontFamily": "Inter",
                               "fontSize": 9,
                               "fontWeight": "normal"
@@ -6445,7 +6445,7 @@
                               "id": "yUW9l",
                               "name": "evInferExcerpt",
                               "fill": "$text-muted",
-                              "content": "原文“2023 年 3 月起负责会员活动链路改造”",
+                              "content": "合成原文“2023 年 3 月起负责示例服务改造”",
                               "fontFamily": "JetBrains Mono",
                               "fontSize": 9,
                               "fontWeight": "normal"
@@ -7194,7 +7194,7 @@
                           "id": "fdPqC",
                           "name": "leadRow1Text",
                           "fill": "$text-primary",
-                          "content": "Arc'teryx · Senior Platform Engineer · Liepin · Updated 2h ago",
+                          "content": "Demo Co A · Platform Engineer · Liepin · Updated 2h ago",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -7231,7 +7231,7 @@
                           "id": "frgiC",
                           "name": "leadRow2Text",
                           "fill": "$text-primary",
-                          "content": "Anthropic · Developer Experience Engineer · Referral · Favorited",
+                          "content": "Demo Co B · Developer Experience · Referral · Favorited",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -9554,7 +9554,7 @@
                       "id": "D9BLC",
                       "name": "subTableText",
                       "fill": "$text-primary",
-                      "content": "Company / 公司      Position / 职位      Channel / 通道      Date / 日期      Status      Action\nArc'teryx · SUB-023 · Liepin · 2026-03-07 · Done · eye\nAnthropic · SUB-022 · Email ↩ · 2026-03-06 · Fallback · eye\nAcme Cloud · SUB-021 · Liepin · 2026-03-04 · Failed · rotate-ccw",
+                      "content": "Demo / 合成示例      Position / 职位      Channel / 通道      Date / 日期      Status      Action\nDemo Co A · SUB-023 · Liepin · 2026-03-07 · Done · eye\nDemo Co B · SUB-022 · Email ↩ · 2026-03-06 · Fallback · eye\nDemo Co C · SUB-021 · Liepin · 2026-03-04 · Failed · rotate-ccw",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 11,
                       "fontWeight": "normal"
@@ -9616,7 +9616,7 @@
                           "id": "AaRxv",
                           "name": "subBasicText",
                           "fill": "$text-primary",
-                          "content": "SUB-023 · Arc'teryx\nSenior Platform Engineer · Liepin · Done",
+                          "content": "Demo SUB-023 · Demo Co A\nPlatform Engineer · Liepin · Done",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -15948,7 +15948,7 @@
                           "id": "aHp0l",
                           "name": "setMaterialSourcesTitle",
                           "fill": "$text-primary",
-                          "content": "worklog-private / 本地工作资料（引用根）",
+                          "content": "sample-materials / 合成演示资料（引用根）",
                           "fontFamily": "Inter",
                           "fontSize": 12,
                           "fontWeight": "600"
@@ -16372,7 +16372,7 @@
                   "id": "lfE7F",
                   "name": "evMaterialText",
                   "fill": "$text-primary",
-                  "content": "EC+ 工作日志 · 2023-03 周报",
+                  "content": "合成项目资料 · 2023-03 示例周报",
                   "fontFamily": "Inter",
                   "fontSize": 11,
                   "fontWeight": "normal"
@@ -16507,7 +16507,7 @@
                   "id": "G6yQcG",
                   "name": "evPreviewLine1",
                   "fill": "$text-secondary",
-                  "content": "## 2023-03-06 会员活动链路改造周报",
+                  "content": "## 2023-03-06 示例服务改造（合成）",
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 10,
                   "fontWeight": "normal"
@@ -16517,7 +16517,7 @@
                   "id": "YQRSn",
                   "name": "evPreviewLine2",
                   "fill": "$text-secondary",
-                  "content": "本周我负责统一活动报名入口，推动报名状态聚合……",
+                  "content": "演示：我负责示例服务接口改造。",
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 10,
                   "fontWeight": "normal"
@@ -16527,7 +16527,7 @@
                   "id": "OxeDA",
                   "name": "evPreviewLine3",
                   "fill": "$text-secondary",
-                  "content": "报名转化率提升约两成，活动配置耗时从 2 天缩短到 4 小时。",
+                  "content": "演示：测试环境处理耗时由 12 ms 降至 8 ms。",
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 10,
                   "fontWeight": "normal"

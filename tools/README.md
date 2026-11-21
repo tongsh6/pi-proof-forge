@@ -9,7 +9,7 @@
 python3 -m tools.cli.entrypoints <command> [args]
 ```
 
-命令：`extract` / `match` / `generate` / `evaluate` / `pipeline` / `agent` / `check` / `kb`
+命令：`extract` / `extract-batch` / `match` / `generate` / `evaluate` / `pipeline` / `agent` / `check` / `kb`
 
 - 业务命令：入口只做参数解析并调用编排层（`tools/orchestration/`），业务实现位于
   `tools/engines/`，外部 IO/模型适配位于 `tools/infra/`。
@@ -49,6 +49,44 @@ python3 -m tools.cli.entrypoints extract \
   App 管理的统一入口 `http://127.0.0.1:47831/v1`。
 - `--api-key`：默认取 `LLM_API_KEY`；本地 keyless provider 无需密钥。
 - keyless 本地 provider 缺少 base_url 时必须显式提供，不会静默落到 OpenAI 地址。
+
+### 批量证据提炼（项目级）
+
+把材料目录按项目聚类，产出待审核的证据卡草稿（不调用模型也能产出「项目规模卡」）：
+
+```bash
+# 先看有哪些项目簇（不写文件）
+python3 -m tools.cli.entrypoints extract-batch \
+  --material-id <material_id> --dry-run --min-documents 3
+
+# 规则模式：产出项目规模卡（文档构成 + 规模事实，全部来自目录统计）
+python3 -m tools.cli.entrypoints extract-batch --material-id <material_id>
+
+# LLM 模式：产出业务卡（事实必须逐字可定位，否则剔除）
+LLM_PROVIDER=lm_studio LLM_MODEL=qwen3.8-27b@q8_0 \
+LLM_BASE_URL=http://127.0.0.1:1234/v1 LLM_TIMEOUT=900 \
+python3 -m tools.cli.entrypoints extract-batch --material-id <material_id> --use-llm
+
+# 后处理：回填来源绑定/project_key/卡分类、规范化时间与计划值
+python3 -m tools.cli.entrypoints extract-batch --material-id <material_id> --repair
+
+# 入池：按宪法第 1 条硬门槛逐卡校验（results/artifacts/来源），不合规直接拒绝
+python3 -m tools.cli.entrypoints extract-batch --material-id <material_id> --approve-batch
+```
+
+- `--min-documents`：少于该文档数的簇不提炼（过滤碎片）；
+- `--exclude-clusters assets,模板`：排除噪音簇；
+- `--force`：忽略进度记录重跑；进度文件在 `outputs/batch_extract/<material_id>.json`，支持断点续跑与单簇失败隔离；
+- 产出的卡默认 `status: draft` + `candidate_pool_eligible: false`，必须审核后才能进入候选池。
+
+### 投递就绪检查
+
+```bash
+python3 -m tools.cli.entrypoints check delivery-ready --root . --check-llm
+```
+
+只读检查职业档案确认状态、入池卡合规性、可原生投递岗位、猎聘凭据存在性，
+输出未就绪原因清单；不写文件、不访问平台、不读凭据内容。
 
 ### 匹配评分
 
@@ -138,7 +176,7 @@ material_id/document_id/sha256；附件目录、日期线索和设计计划不�
 python3 -m tools.cli.entrypoints kb build
 python3 -m tools.cli.entrypoints kb verify --json
 python3 -m tools.cli.entrypoints kb coverage --status unindexed
-python3 -m tools.cli.entrypoints kb coverage --status metadata_only --path '00-EC+/' --json
+python3 -m tools.cli.entrypoints kb coverage --status metadata_only --path 'sample-project/' --json
 python3 -m tools.cli.entrypoints kb find --title-token 'DAG' --json
 python3 -m tools.cli.entrypoints kb read <material_id> <document_id>
 ```

@@ -8,7 +8,7 @@ from tools.infra import evidence_provenance as prov
 
 def test_normalize_l1_l2_l3_l4_and_invalid():
     l1 = prov.normalize_provenance(
-        {"level": "L1", "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "excerpt": "2023 年我负责统一运动中心"}]},
+        {"level": "L1", "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "excerpt": "2023 年我负责合成活动平台"}]},
         field="time_range",
     )
     assert l1["level"] == "L1" and l1["precision"] == "month" and l1["evidence"][0]["excerpt"]
@@ -20,7 +20,7 @@ def test_normalize_l1_l2_l3_l4_and_invalid():
     assert l2["level"] == "L2" and l2["precision"] == "year" and l2["confidence"] == 1.0
     l3 = prov.normalize_provenance(
         {"level": "L3", "confidence": 0.62,
-         "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "excerpt": "我推动统一运动中心改造"}],
+         "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "excerpt": "我推动合成活动平台改造"}],
          "first_person_hits": {"owner": 7, "participant": 2}},
         field="role_scope",
     )
