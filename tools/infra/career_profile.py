@@ -71,9 +71,20 @@ def career_from_scalars(fields):
     except (ValueError,TypeError):raise ValueError('career_profile_invalid') from None
 
 
-def inspect_career(fields, evidence_dir:Path):
+def inspect_career(fields, evidence_dir:Path, *, captured_sources=None):
+    """诊断仍返回可序列化状态；生成可另外接收本次读取的来源快照。"""
     from tools.infra.evidence_sources import assert_captured_source, validated_source_inputs
     career=career_from_scalars(fields);missing=[];hashes={};source_hashes={}
+    snapshots = {}
+
+    def capture(key, path, digest):
+        if captured_sources is None:
+            return
+        previous = snapshots.get(key, captured_sources.get(key))
+        if previous is not None and (previous[0].resolve() != path.resolve() or previous[1] != digest):
+            raise ValueError('material_source_changed')
+        snapshots.setdefault(key, (path.absolute(), digest))
+
     def gap(field,label):missing.append({'field':field,'label':label})
     for field in BASIC_FIELDS:
         if not fields.get(field,'').strip():gap(field,{'name':'姓名','phone':'手机号','email':'邮箱','city':'城市','current_position':'当前职位'}[field]+'未填写')
@@ -94,18 +105,23 @@ def inspect_career(fields, evidence_dir:Path):
                 if path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(evidence_dir.resolve()):
                     raw=path.read_bytes();hashes[ref]=hashlib.sha256(raw).hexdigest();doc=parse_simple_yaml(raw.decode());s=doc['scalars'];l=doc['lists']
                     valid=s.get('status')=='saved_eligible' and s.get('candidate_pool_eligible')=='true' and bool(l.get('results')) and bool(l.get('artifacts'))
-                    if s.get('source_material_fingerprints_json'):
-                        try:
-                            paths=validated_source_inputs(doc,evidence_dir.parent/'materials')
-                            captured={}
-                            for key,path in paths.items():
-                                digest=hashlib.sha256(path.read_bytes()).hexdigest()
-                                assert_captured_source(paths,key,digest)
-                                captured[key]=digest
-                            if captured:
-                                source_hashes[ref]=captured
-                        except (ValueError,OSError):
-                            valid=False;source_hashes[ref]='invalid'
+                    capture('career_evidence:' + ref, path, hashes[ref])
+                    try:
+                        paths=validated_source_inputs(doc,evidence_dir.parent/'materials')
+                        captured={}
+                        for key,source in paths.items():
+                            digest=hashlib.sha256(source.read_bytes()).hexdigest()
+                            assert_captured_source(paths,key,digest)
+                            captured[key]=digest
+                            capture(key, *paths.snapshots[key])
+                        if captured:
+                            source_hashes[ref]=captured
+                    except (ValueError,OSError):
+                        if captured_sources is not None:
+                            raise
+                        valid=False;source_hashes[ref]='invalid'
+                elif captured_sources is not None:
+                    raise ValueError('generation_input_changed')
                 if not valid:gap('evidence.'+ref,'关联证据不可用或尚未审核：'+ref)
     body={'basic':{k:fields.get(k,'') for k in BASIC_FIELDS},'career':career,'evidence_hashes':hashes}
     if source_hashes:body['source_hashes']=source_hashes
@@ -113,6 +129,9 @@ def inspect_career(fields, evidence_dir:Path):
     try:review=json.loads(fields.get('career_review_json') or '{}')
     except ValueError:review={}
     reviewed=not missing and review.get('revision')==revision
+    if captured_sources is not None:
+        for key, snapshot in snapshots.items():
+            captured_sources.setdefault(key, snapshot)
     return {'career':career,'revision':revision,'career_status':{'reviewed':reviewed,'missing':missing,'reviewed_at':review.get('reviewed_at',''),'ready':reviewed},'evidence_hashes':hashes}
 
 

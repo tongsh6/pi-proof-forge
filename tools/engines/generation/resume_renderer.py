@@ -10,7 +10,7 @@ from typing import Any
 from tools.infra import evidence_provenance as provenance
 from tools.infra.evidence_fact_scope import personal_claim_exclusions
 from tools.infra.evidence_pool import pool_eligible_scalars
-from tools.infra.evidence_sources import assert_captured_source, validated_source_inputs
+from tools.infra.evidence_sources import ValidatedSourcePaths, assert_captured_source, validated_source_inputs
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 CardView = dict[str, Any]
@@ -173,7 +173,9 @@ def load_generation_context(profile_path: Path, job_path: Path | None, *,
     evidence_dir = profile_path.parent / "evidence_cards"
     if not evidence_dir.is_dir():
         evidence_dir = Path("evidence_cards")
-    profile = {**fields, **inspect_career(fields, evidence_dir)}
+    career_sources = {}
+    profile = {**fields, **inspect_career(fields, evidence_dir, captured_sources=career_sources)}
+    profile["material_inputs"] = ValidatedSourcePaths(career_sources)
     profile["current_position"] = profile.get("current_position") or profile.get("current_title", "")
     target = {}
     if job_path is not None:
@@ -238,20 +240,23 @@ def build_generation_trace(
     from tools.infra.career_profile import career_generation_issues
 
     career_reasons = career_generation_issues(profile, selected_cards)
-    # 职业档案引用的证据卡目录同样不能只看 profile 同级：profile 可能在临时
-    # 目录，此时应回退到工作区 evidence_cards，否则 trace 的 inputs 全部不存在。
-    profile_evidence_dir = Path(str(paths["personal_profile"])).parent / "evidence_cards"
-    if not profile_evidence_dir.is_dir():
-        profile_evidence_dir = Path("evidence_cards")
-    for ref in profile.get("evidence_hashes", {}):
-        paths["career_evidence:" + ref] = profile_evidence_dir / f"{ref}.yaml"
-        expected["career_evidence:" + ref] = profile["evidence_hashes"][ref]
+    career_inputs = profile.get("material_inputs", ValidatedSourcePaths())
+    for ref, digest in profile.get("evidence_hashes", {}).items():
+        snapshot = career_inputs.snapshots.get("career_evidence:" + ref)
+        if snapshot is None or snapshot[1] != digest:
+            raise ValueError("generation_input_changed")
+    source_groups = [career_inputs, *(card.get("material_inputs", {}) for card in selected_cards)]
     for card in selected_cards:
         expected[card["id"]] = card["source_sha256"]
-        for key, (source, digest) in getattr(card.get("material_inputs"), "snapshots", {}).items():
-            if paths.get(key) != source:
+    for sources in source_groups:
+        for key, (source, digest) in getattr(sources, "snapshots", {}).items():
+            if not key.startswith("career_evidence:"):
+                assert_captured_source(sources, key, digest)
+            if ((key in paths and paths[key].resolve() != source.resolve())
+                    or (key in expected and expected[key] != digest)):
                 raise ValueError("material_source_changed")
-            expected[key] = digest
+            paths.setdefault(key, source)
+            expected.setdefault(key, digest)
     trace_inputs = {}
     for key, path in paths.items():
         if not path.is_file() or path.is_symlink():
@@ -260,11 +265,12 @@ def build_generation_trace(
         if not expected.get(key) or digest != expected[key]:
             raise ValueError("generation_input_changed")
         trace_inputs[key] = {"path": str(path.resolve()), "exists": True, "sha256": digest}
-    for card in selected_cards:
-        for key, source in card.get("material_inputs", {}).items():
+    for sources in source_groups:
+        for key, source in sources.items():
             if trace_inputs[key]["path"] != str(source.resolve()):
                 raise ValueError("material_source_changed")
-            assert_captured_source(card["material_inputs"], key, trace_inputs[key]["sha256"])
+            if not key.startswith("career_evidence:"):
+                assert_captured_source(sources, key, trace_inputs[key]["sha256"])
     return {
         "schema_version": 1,
         "version": version,
