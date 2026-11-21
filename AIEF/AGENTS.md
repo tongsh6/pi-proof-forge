@@ -33,7 +33,7 @@
 - context/INDEX.md
 
 说明：
-- 所有业务命令统一走 `python3 -m tools.cli.entrypoints`（extract/match/generate/evaluate/pipeline/agent）；阶段实现位于 engines/orchestration，入口层不再保留按阶段拆分的脚本。
+- 产品能力经现有应用 API 与用例承接；CLI 保留工程调用和当前 `pipeline` / `agent` 运行适配，不作独立审批或写卡权威。现有命令仍经 `python3 -m tools.cli.entrypoints` 调用，阶段实现位于 engines/orchestration；不因收回批量业务而删除 Quick Run 所需的进程隔离。
 
 知识库：
 

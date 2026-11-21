@@ -9,7 +9,7 @@
 | 语义评审 | `semantic_matching.py` | 卡相关性 + 事实引用 | 结构化 JSON + **精确转录事实编号** |
 | 方向评估 | `job_preferences.assess_direction` | aligned/needs_review/excluded | JSON + 引用 JD 原文 |
 | 画像草稿 | `jobs_profiles.generate_profile_draft` | must_have/keywords | JSON + 语义归纳 |
-| 证据提炼 | `batch_extract.py` | 卡字段 + 逐字事实 | JSON + **事实必须在原文可定位** |
+| 证据提炼与复审 | `evidence.generateDraft` / `evidence.saveDraft`（`evidence_draft.py`） | 未批准草稿 + 精确来源，复审后保存 | JSON + 原文可定位；定位不等于发生性核定 |
 | 质量评估 | `quality_report.py` | 分层评分 | JSON + 判断 |
 
 模型不稳定表现为 6 种，当前**分散在 95 处 `except ValueError`/`except Exception`** 里各自处理：

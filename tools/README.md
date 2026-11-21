@@ -1,7 +1,7 @@
 # 工具说明
 
-本文件是 `tools/` 的命令行文档唯一真源。所有业务命令统一通过 v2 CLI 入口调用；
-`tools/` 根目录不再保留按阶段拆分的脚本。
+本文件是 `tools/` 的命令行文档唯一真源。产品能力经现有应用 API 与用例承接；
+保留的 CLI 用于工程调用及现有运行适配，不拥有独立审批或写卡权威。
 
 ## 统一 CLI 入口
 
@@ -9,7 +9,7 @@
 python3 -m tools.cli.entrypoints <command> [args]
 ```
 
-命令：`extract` / `extract-batch` / `match` / `generate` / `evaluate` / `pipeline` / `agent` / `check` / `kb`
+命令：`extract` / `match` / `generate` / `evaluate` / `pipeline` / `agent` / `check` / `kb`
 
 - 业务命令：入口只做参数解析并调用编排层（`tools/orchestration/`），业务实现位于
   `tools/engines/`，外部 IO/模型适配位于 `tools/infra/`。
@@ -50,34 +50,15 @@ python3 -m tools.cli.entrypoints extract \
 - `--api-key`：默认取 `LLM_API_KEY`；本地 keyless provider 无需密钥。
 - keyless 本地 provider 缺少 base_url 时必须显式提供，不会静默落到 OpenAI 地址。
 
-### 批量证据提炼（项目级）
+### 材料提炼与复审（应用入口）
 
-把材料目录按项目聚类，产出待审核的证据卡草稿（不调用模型也能产出「项目规模卡」）：
+材料通过 App 现有目录导入或引用进入材料库；在证据页选择精确文档，沿
+`evidence.generateDraft` 生成未批准草稿，再经 `evidence.saveDraft` 完成来源核验与复审保存。
+多文档补证复用同一来源绑定和复审入口，提炼结果不会自动入池。
 
-```bash
-# 先看有哪些项目簇（不写文件）
-python3 -m tools.cli.entrypoints extract-batch \
-  --material-id <material_id> --dry-run --min-documents 3
-
-# 规则模式：产出项目规模卡（文档构成 + 规模事实，全部来自目录统计）
-python3 -m tools.cli.entrypoints extract-batch --material-id <material_id>
-
-# LLM 模式：产出业务卡（事实必须逐字可定位，否则剔除）
-LLM_PROVIDER=lm_studio LLM_MODEL=qwen3.8-27b@q8_0 \
-LLM_BASE_URL=http://127.0.0.1:1234/v1 LLM_TIMEOUT=900 \
-python3 -m tools.cli.entrypoints extract-batch --material-id <material_id> --use-llm
-
-# 后处理：回填来源绑定/project_key/卡分类、规范化时间与计划值
-python3 -m tools.cli.entrypoints extract-batch --material-id <material_id> --repair
-
-# 入池：按宪法第 1 条硬门槛逐卡校验（results/artifacts/来源），不合规直接拒绝
-python3 -m tools.cli.entrypoints extract-batch --material-id <material_id> --approve-batch
-```
-
-- `--min-documents`：少于该文档数的簇不提炼（过滤碎片）；
-- `--exclude-clusters assets,模板`：排除噪音簇；
-- `--force`：忽略进度记录重跑；进度文件在 `outputs/batch_extract/<material_id>.json`，支持断点续跑与单簇失败隔离；
-- 产出的卡默认 `status: draft` + `candidate_pool_eligible: false`，必须审核后才能进入候选池。
+本切片退役 `extract-batch` 的独立写卡、后处理和批量批准路径，不提供兼容命令。
+自动项目聚类、断点续跑与批量调度尚未通过 App 实现；现有逐文档流程不宣称与这些自动能力等价。
+Quick Run 仍使用 `pipeline` 进程隔离，其他现有运行适配保留。
 
 ### 投递就绪检查
 
@@ -206,9 +187,9 @@ python3 -m tools.cli.entrypoints check submission-readiness \
 
 # 从已验证 Job Lead 生成 External L3 确认包（默认脱敏 JSON，不触发外部提交）
 python3 -m tools.acceptance.external_l3_job_lead_bridge \
-  --lead-source job_leads/jl-validated-20260513.yaml \
+  --lead-source "<job_lead_file>" \
   --lead-index 1 \
-  --resume-pdf uploaded_resumes/rv_49ab4b78.pdf \
+  --resume-pdf "<resume_pdf_file>" \
   --profile profiles/candidate_profile.yaml \
   --session-dir outputs/submissions
 ```

@@ -497,11 +497,12 @@ App 求职偏好接续（2026-10-12，用户强调以 App 能力为主）：
 
 背景：原始材料丰富时，证据卡的时期与主题覆盖仍可能不均。App 需要核对材料和已有卡片，展示可追溯依据及覆盖缺口，并沿现有批量提炼和复审流程完成分析与整合；具体材料清单、覆盖统计和运行结果保留在本地业务数据中。
 
-- 批量导入沿用既有目录型材料：按时期/主题精选文档复制到 `~/backup-manifest/pi-proof-forge/material-bundles-<日期>/<bundle>/`，经 `material.upload`（目录）导入为一份 `# Source:` 分节的文本材料；文件名含密码/密钥/凭据/`local-paths` 字样的文档以及超过 60000 字或少于 40 字的文档不进入材料库。
-- 批量提炼沿用既有链路：对每篇精选文档调用 `evidence.generateDraft(source_document_id)` 生成草稿，再 `evidence.saveDraft(save_mode=eligible)`；结果必须逐字可追溯（既有 `no_fabrication_guard`），不可追溯时降为 `saved_incomplete`，不放宽守卫。助手代为审核时 `review.reviewer` 必须标明批次（如 `experiment_batch_<日期>`），台账记录数量，用户可在证据页复核或删除。
+- 材料整理复用 App 已有的目录导入、引用式材料和精确文档列举/读取入口；不要求预先复制到开发者约定目录或手改业务文件。材料筛选、来源身份与当前原文版本沿既有材料契约核验。
+- 提炼与入池只走既有应用复审链：`evidence.generateDraft(source_document_id)` 返回未批准草稿，`evidence.saveDraft` 按完整事实数组、来源、审核确认及逐事实范围守卫保存为不完整或合格。提炼成功、来源可定位、结果非空、批次名或 `review.reviewer` 记录均不能单独授予批准；计划词命中或未命中不构成发生性判断。来源或复审校验失败不放宽守卫、不部分写入。
+- 本切片退役 `extract-batch` 的独立写卡、修复与批准路径，不建立替代脚本、兼容入口、新 API 或队列。App 已有逐文档提炼和多文档来源复审承接相应业务；自动遍历聚类、断点续跑与批量调度尚未产品化，不能把删除 CLI 记作这些能力已迁移或验收完成。
 - 新增只读接口 `evidence.reconcile`（可选 `evidence_ids`）：对每张卡报告 `pool_status`（eligible / incomplete / legacy=无状态旧卡 / 其他状态原值）、`has_source`、`traceable_results`、`untraceable_results`（在所声明来源文档中找不到原文的结果）、`suggested_sources`（无来源或不可追溯时在全部文本材料里逐字找到的材料与文档）、`verbatim_candidates`（来源文本中相似度 ≥ 0.55 的最接近原句，仅供替换参考）、`missing_fields`（time_range / role_scope / results / artifacts）、`date_hints`（缺时间时来源文本出现的年月，最多 8 个）、`possible_duplicates`（标题二元组 Jaccard ≥ 0.5 的其他卡，最多 3 个）；以及汇总计数。接口不修改任何卡。
 - 证据页在材料来源折叠区之后增加“材料对账”折叠区：展开时才调用一次对账，摘要行显示六个计数，清单只列有问题的卡（不可追溯优先），每行给原因串与“查看”进入详情；“重新对账”图标按钮重跑。修正仍走既有详情编辑与保存。
-- 修复被改写结果的推荐流程：按 `verbatim_candidates`（相似度 ≥ 0.7）把结果替换为原句、无原句的结果删除，再以同一来源文档按 `eligible` 重新保存；结果为空的卡保持 `saved_incomplete`。
+- `verbatim_candidates` 与相似度只用于寻找待核对的原文，不作为自动替换、删除事实或批准入池的依据。采用完整原句、修改事实或来源后沿同一复审入口核对并保存；暂不能核实的内容保留待补边界，结果为空的卡仍按现有规则保存不完整。不得为让来源校验通过而剪掉条件、拼接语句或把非量化成果丢弃。
 - 证据卡自动关联工作经历（`profile.autoLinkEvidence`）：只处理可用（`saved_eligible`）且尚未关联的卡，三类信号——来源材料标签命中公司别名（全称、去城市前缀与行业/组织形式后缀的核心名、括号简称如合成示例 `DEMO`，过滤泛词）、同一材料已被该工作下的卡引用、项目时间落在任职区间——指向唯一一段工作时建议关联；信号指向不同工作或无信号时不决定，列为待手动勾选。`apply` 为真且 `expected_revision` 匹配时写入 `career_json`，档案修订号随之变化、回到待确认，由用户在简历中心重新确认；一段工作最多可关联 200 张卡。简历中心职业档案编辑器提供“自动关联证据”按钮（有未保存修改时禁用）。
 - 大证据池下的早期匹配曾以规则前 12 张预筛避免整池超时；现已由“证据约束的语义匹配”取代该 Quick Run LLM 路径。`--llm-max-cards` / `PPF_MATCH_LLM_MAX_CARDS` 改为每批上限（默认 8），全部卡都参与分批评审；保留规则报告与兼容排序 helper，不以旧预筛语义限制新模式。
 
