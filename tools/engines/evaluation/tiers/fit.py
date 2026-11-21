@@ -46,7 +46,11 @@ def _judge_candidates(judgments: dict | None) -> list[dict[str, object]]:
 def _fit_matrix(resume: str, semantic_review: dict | None, judgments: dict | None = None) -> tuple[list[dict[str, object]], list[dict]]:
     if not isinstance(semantic_review, dict) or semantic_review.get("mode") != "semantic":
         return [], []
-    bullets, _marker = _bullet_rows(resume)
+    if semantic_review.get("occurrence_coverage_known") is not True:
+        return [], []
+    bullets, marker = _bullet_rows(resume)
+    bullet_at_line = {int(b["line"]) + 1: b for b in bullets}
+    line_count = len(resume.splitlines())
     rows: list[dict[str, object]] = []
     gap_rows: list[dict] = []
     for requirement in semantic_review.get("requirements", []):
@@ -54,18 +58,13 @@ def _fit_matrix(resume: str, semantic_review: dict | None, judgments: dict | Non
             continue
         resume_status = str(requirement.get("resume_status", "not_present"))
         status = "supported" if resume_status == "supported" else "weak" if resume_status == "partial" else "absent"
-        bullet_refs: list[str] = []
-        first_screen = False
-        for citation in requirement.get("citations", []) or []:
-            quote = _normalize(citation.get("quote", ""))
-            if not quote:
-                continue
-            for bullet in bullets:
-                if quote in str(bullet["body"]):
-                    ref = f"bullet#{bullet['number']}"
-                    if ref not in bullet_refs:
-                        bullet_refs.append(ref)
-                    first_screen = first_screen or bool(bullet["first_screen"])
+        render_lines = sorted({line for citation in requirement.get("citations", []) or []
+                               if citation.get("in_resume") is True
+                               for line in citation.get("render_lines", [])
+                               if type(line) is int and 1 <= line <= line_count})
+        bullet_refs = [f"bullet#{bullet_at_line[line]['number']}" if line in bullet_at_line else f"line#{line}"
+                       for line in render_lines]
+        first_screen = bool(render_lines) and any(line - 1 < marker for line in render_lines)
         row = {
             "jd_item_id": str(requirement.get("requirement_id", "")),
             "jd_item": _short(requirement.get("text", ""), 120),
@@ -92,21 +91,21 @@ def _fit_matrix(resume: str, semantic_review: dict | None, judgments: dict | Non
                 continue
             row["status"] = item.get("status", row["status"])
             evidence = pool.get(str(row["jd_item_id"]), {})
-            evidence_status = evidence.get("status", "insufficient")
-            ceiling = "supported" if evidence_status == "supported" else "weak" if evidence_status == "partial" else "absent"
+            emitted = evidence.get("resume_status")
+            ceiling = "supported" if emitted == "supported" else "weak" if emitted == "partial" else "absent"
             rank = {"absent": 0, "weak": 1, "supported": 2}
             capped = rank.get(str(row["status"]), 0) > rank[ceiling]
             if capped:
                 row["status"] = ceiling
             refs = [
                 ref for ref in re.findall(r"(?:bullet|line)#\d+", str(item.get("bullet_ref", "")))
-                if ref in bullet_index
+                if ref in bullet_index and ref in row["bullet_ref"].split("、")
             ]
             if refs:
                 row["bullet_ref"] = "、".join(dict.fromkeys(refs))
                 row["first_screen"] = any(bool(bullet_index[ref]["first_screen"]) for ref in refs)
             row["judged"] = True
-            row["reason"] = (f"证据池支撑为 {evidence_status}：" + str(evidence.get("reason", ""))) if capped else item.get("reason", "")
+            row["reason"] = ("本次正文未呈现相应精确事实：" + str(evidence.get("reason", ""))) if capped else item.get("reason", "")
     for row in rows:
         if row["status"] == "absent":
             gap_rows.append({"item": row["jd_item"], "reason": _short(row.get("reason", ""), 200)})
@@ -146,6 +145,8 @@ def evaluate_fit(
     failures: list[QualityFailure] = []
     if not isinstance(semantic_review, dict) or semantic_review.get("mode") != "semantic":
         failures.append(_failure("R2.1", "semantic_review", "缺少语义评审，无法建立 JD 支撑矩阵"))
+    elif semantic_review.get("occurrence_coverage_known") is not True:
+        failures.append(_failure("R2.1", "semantic_review", "旧稿缺少逐条事实呈现记录，请重新生成以核验覆盖。"))
     matrix, gap_rows = _fit_matrix(resume, semantic_review, judgments)
     responsibilities = [row for row in matrix if row.get("kind") == "responsibility"]
     top_count = int(thresholds["first_screen_required_jd_items"])
@@ -210,7 +211,8 @@ def evaluate_fit(
             failures.append(_failure("R2.3", "must-have", detail))
     metrics = {
         "fit_score": semantic_review.get("fit_score") if isinstance(semantic_review, dict) else None,
-        "resume_score": semantic_review.get("resume_score") if isinstance(semantic_review, dict) else None,
+        "resume_score": semantic_review.get("resume_score") if isinstance(semantic_review, dict)
+        and semantic_review.get("occurrence_coverage_known") is True else None,
         "supported": sum(1 for row in matrix if row["status"] == "supported"),
         "weak": sum(1 for row in matrix if row["status"] == "weak"),
         "absent": sum(1 for row in matrix if row["status"] == "absent"),

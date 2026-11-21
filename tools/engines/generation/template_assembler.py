@@ -10,6 +10,7 @@ import datetime
 import re
 from collections.abc import Sequence
 
+from tools.domain.assessment_support import positive_citations
 from tools.domain.invariants import check_no_fabrication
 from tools.domain.models import EvidenceCard, MatchingReport, ResumeOutput
 from tools.errors.exceptions import FabricationGuardError
@@ -99,22 +100,14 @@ def cited_card_ids(semantic_report: dict | None) -> list[str]:
     facts = semantic_report.get("facts") if isinstance(semantic_report.get("facts"), dict) else {}
     ordered: list[str] = []
 
-    def collect(citations: object) -> None:
-        for citation in citations if isinstance(citations, list) else []:
-            if not isinstance(citation, dict):
-                continue
+    for assessment in semantic_report.get("assessments") or []:
+        if not isinstance(assessment, dict):
+            continue
+        for citation, _ in positive_citations(assessment):
             fact = facts.get(citation.get("fact_id", ""))
             source_id = str((fact or {}).get("source_id", ""))
             if source_id and source_id not in ordered:
                 ordered.append(source_id)
-
-    for assessment in semantic_report.get("assessments") or []:
-        if not isinstance(assessment, dict):
-            continue
-        collect(assessment.get("citations"))
-        for check in assessment.get("checks") or []:
-            if isinstance(check, dict):
-                collect(check.get("citations"))
     return ordered
 
 

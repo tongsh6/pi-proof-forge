@@ -56,7 +56,8 @@ def _merge_semantic_review(
         != semantic["inputs"]["job_profile"]["sha256"]
     ):
         raise ValueError("semantic_inputs_or_trace_changed")
-    review = resume_assessment(semantic, trace["claims"])
+    review = resume_assessment(semantic, trace["claims"],
+                               occurrence_coverage_known=trace.get("occurrence_lineage_version") == 1)
     review["direction_review"] = semantic.get("direction_review")
     review["assessment_scope"] = semantic.get("assessment_scope")
     review.update(
@@ -86,10 +87,11 @@ def _render_semantic_markdown(
         for row in review["requirements"]
         if row["resume_status"] != "supported"
     )
+    coverage = f"{review['resume_score']}/100" if review["occurrence_coverage_known"] else "未核验，请重新生成"
     semantic_lines = [
         "## 语义匹配（模型判读，原文引用已核验）",
         f"- 证据池岗位适配: {review['fit_score']}/100",
-        f"- 简历要求覆盖: {review['resume_score']}/100",
+        f"- 简历要求覆盖: {coverage}",
         f"- 表达质量: {rule_result['expression_score']}/100（不含关键词分）",
         f"- 全部证据评审: {len(semantic['reviewed_card_ids'])} 张",
     ]
@@ -185,7 +187,7 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
             return 1
 
     llm_available = llm.llm_request_available(
-        provider=os.getenv("LLM_PROVIDER", ""), api_key=config.api_key, model=config.model
+        provider=os.getenv("LLM_PROVIDER", ""), api_key=config.api_key, model=config.model, base_url=config.base_url
     )
     if config.use_llm and llm_available and semantic_review is None:
         prompt = rule_evaluator.load_prompt(
@@ -223,9 +225,11 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
         print("LLM mode required but model/api_key is missing")
         return 1
 
+    # 四层报告与规则评测共用快照核验；失效来源不能因原句仍相同而恢复权威。
+    quality_trace = trace if trace_valid else {}
     quality_judgments, judge_meta, judge_decisions = quality_report._run_quality_judge(
         resume_text=resume_text,
-        trace=trace,
+        trace=quality_trace,
         semantic_review=semantic_review,
         job_profile_path=str(job_profile_path) if job_profile_path else None,
         use_llm=config.use_llm,
@@ -237,9 +241,9 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
     try:
         quality = tiered_evaluator.build_quality_report(
             resume=resume_text,
-            trace=trace,
-            career_profile=quality_report._load_quality_career(trace),
-            cards=quality_report._load_quality_cards(trace),
+            trace=quality_trace,
+            career_profile=quality_report._load_quality_career(quality_trace),
+            cards=quality_report._load_quality_cards(quality_trace),
             semantic_review=semantic_review,
             job_context=quality_report._load_job_context(
                 str(job_profile_path) if job_profile_path else None

@@ -199,6 +199,7 @@ def _entries(resume: str) -> dict[str, list[dict[str, str]]]:
 def inspect_bullet_trace(resume: str, trace: dict | None) -> dict:
     """校验 bullet 是否被生成 trace 的 claims 完整覆盖。"""
     claims = trace.get("claims") if isinstance(trace, dict) else None
+    exact = isinstance(trace, dict) and trace.get("occurrence_lineage_version") == 1
     rows, _marker = _bullet_rows(resume)
     facts = sorted(
         (
@@ -217,11 +218,14 @@ def inspect_bullet_trace(resume: str, trace: dict | None) -> dict:
         remaining = body
         sources: list[dict[str, str]] = []
         for claim in facts:
+            if exact and claim.get("render_line") != row["line"] + 1:
+                continue
             text = str(claim.get("text", ""))
             if text and text in remaining:
                 remaining = remaining.replace(text, "")
                 sources.append(
-                    {key: str(claim.get(key, "")) for key in ("source_kind", "field", "evidence_id")}
+                    {key: str(claim.get(key, "")) for key in ("source_kind", "field", "evidence_id", "fact_id")}
+                    | {"text": text}
                 )
         covered = bool(sources) and not re.sub(r"[\s:：·、|*]", "", remaining)
         evidence_ids = sorted({source["evidence_id"] for source in sources if source.get("evidence_id")})

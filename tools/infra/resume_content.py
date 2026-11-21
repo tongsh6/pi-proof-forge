@@ -19,20 +19,60 @@ def _file(root,value):
     return path
 
 
-def content_body_issues(profile,text,*,display_policy='complete_v1'):
+# 系统生成的简历必须完整覆盖已确认事实；用户在自己平台上维护的简历只校验
+# 核心事实——平台脱敏（姓名显示「童先生」）与人工省略（技能只写标签）会让
+# 投递永远无法通过，而那不是事实造假风险。
+_CORE_FIELDS = {'work': ('company', 'title', 'start', 'end'),
+                'education': ('school', 'degree', 'start', 'end')}
+_FULL_FIELDS = {'work': ('company', 'title', 'start', 'end', 'scope'),
+                'skills': ('category', 'description'),
+                'education': ('school', 'degree', 'start', 'end'),
+                'extras': ('title', 'description')}
+CONTENT_POLICIES = frozenset({'strict', 'user_maintained'})
+
+
+def _compact_for_compare(value) -> str:
+    """比较用归一化：去空白/标点，年月统一成 6 位数字。"""
+    text = str(value or "")
+    text = re.sub(
+        r"(\d{4})\s*[-/年.]\s*(\d{1,2})",
+        lambda match: f"{match.group(1)}{int(match.group(2)):02d}",
+        text,
+    )
+    return re.sub(r"[\s#*|·、（）()：:—\-]", "", text).casefold()
+
+
+def _degree_key(value) -> str:
+    """学位比较键：允许学习形式与括号说明差异（全日制大专 vs 大专）。"""
+    text = re.sub(r"（[^）]*）|\([^)]*\)", "", str(value or ""))
+    return re.sub(r"(?:非)?全日制", "", text).strip()
+
+
+def content_body_issues(profile,text,*,display_policy='complete_v1',policy='strict'):
     """只检查已确认事实是否覆盖；不推断年限、技术水平或业务成果。"""
-    compact=lambda value:re.sub(r'[\s#*|·、（）]','',str(value)).casefold()
-    body=compact(text);values=[profile.get(k,'') for k in ('name','phone','email','city','current_position')]
-    career=profile['career']
-    targeted=display_policy=='targeted_v1'
-    fields=({'work':('company','title','start','end'),'education':('school','major','degree','start','end')} if targeted else
-            {'work':('company','title','start','end','scope'),'skills':('category','description'),'education':('school','major','degree','start','end'),'extras':('title','description')})
+    if policy not in CONTENT_POLICIES:
+        raise ValueError('invalid_content_policy')
+    body=_compact_for_compare(text);career=profile['career']
+    if policy=='user_maintained':
+        values=[];fields=_CORE_FIELDS;include_contributions=False
+    elif display_policy=='targeted_v1':
+        values=[profile.get(k,'') for k in ('name','phone','email','city','current_position')]
+        fields={'work':('company','title','start','end'),'education':('school','major','degree','start','end')}
+        include_contributions=False
+    else:
+        values=[profile.get(k,'') for k in ('name','phone','email','city','current_position')]
+        fields=_FULL_FIELDS;include_contributions=True
     for group,keys in fields.items():
         if group=='education' and career['education_visibility']=='omit':continue
         for row in career[group]:
-            values.extend(row.get(k,'') for k in keys)
-            if group=='work' and not targeted:values.extend(row.get('contributions',[]))
-    return ['批准正文缺少已确认职业档案中的内容'] if any(compact(v) not in body for v in values if v) else []
+            for key in keys:
+                value=row.get(key,'')
+                for item in (value if isinstance(value,list) else [value]):
+                    if not item:continue
+                    values.append(_degree_key(item) if key=='degree' else str(item))
+            if group=='work' and include_contributions:
+                values.extend(row.get('contributions',[]))
+    return ['批准正文缺少已确认职业档案中的内容'] if any(_compact_for_compare(v) not in body for v in values if v) else []
 
 
 def current_career(root):
@@ -112,3 +152,58 @@ def require_default_content(root,metadata,text=None):
     if metadata.get('content_schema_version')!=1 or metadata.get('career_revision')!=profile['revision'] or (text is not None and content_body_issues(profile,text)):
         raise ValueError('resume_content_unverified')
     return profile['revision']
+
+def _compact_for_compare(value) -> str:
+    """比较用归一化：去空白/标点，年月统一成 6 位数字。
+
+    人工维护的简历常把 "2021-03" 写成「2021年3月」，严格子串匹配会把格式
+    差异误判成内容缺失。
+    """
+    text = str(value or "")
+    text = re.sub(
+        r"(\d{4})\s*[-/年.]\s*(\d{1,2})",
+        lambda match: f"{match.group(1)}{int(match.group(2)):02d}",
+        text,
+    )
+    return re.sub(r"[\s#*|·、（）()：:—\-]", "", text).casefold()
+
+
+def content_body_gaps(profile, text, *, display_policy="complete_v1"):
+    """列出简历相对已确认档案省略了哪些字段（只报告，不判定通过与否）。
+
+    与 `content_body_issues` 的分工：后者是投递闸门（有则阻断），本函数是
+    诊断报告（列出省略项，供人决定补内容还是接受省略）。两者共用同一套
+    字段范围，避免"闸门说不行但不知差在哪"。
+    """
+    career = profile["career"]
+    targeted = display_policy == "targeted_v1"
+    fields = (
+        {"work": ("company", "title", "start", "end"), "education": ("school", "major", "degree", "start", "end")}
+        if targeted
+        else {
+            "work": ("company", "title", "start", "end", "scope"),
+            "skills": ("category", "description"),
+            "education": ("school", "major", "degree", "start", "end"),
+            "extras": ("title", "description"),
+        }
+    )
+    body = _compact_for_compare(text)
+    gaps: list[dict[str, str]] = []
+    for group, keys in fields.items():
+        if group == "education" and career["education_visibility"] == "omit":
+            continue
+        for row in career[group]:
+            for key in keys:
+                value = row.get(key, "")
+                for item in value if isinstance(value, list) else [value]:
+                    if item and _compact_for_compare(item) not in body:
+                        gaps.append({"group": group, "row": str(row.get("id") or ""), "field": key, "text": str(item)[:80]})
+            if group == "work" and not targeted:
+                for item in row.get("contributions") or []:
+                    if _compact_for_compare(item) not in body:
+                        gaps.append({"group": group, "row": str(row.get("id") or ""), "field": "contributions", "text": str(item)[:80]})
+    for key in ("name", "phone", "email", "city", "current_position"):
+        value = profile.get(key, "")
+        if value and _compact_for_compare(value) not in body:
+            gaps.append({"group": "basic", "row": "profile", "field": key, "text": str(value)[:80]})
+    return gaps

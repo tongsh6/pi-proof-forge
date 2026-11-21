@@ -97,17 +97,28 @@ def test_agent_empty_keywords_keep_neutral_score():
     assert RuleEvaluationEngine().evaluate(resume, profile).dimension_scores["coverage"] == 0.5
 
 
-def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypatch):
+@pytest.mark.parametrize("changed_input", ["card", "material", "resume"])
+def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypatch, changed_input):
     source = tmp_path / "e1.yaml"
     source.write_text('results:\n  - "接口延迟降低 30%"\n')
+    material = tmp_path / "source.txt"
+    material.write_text("测试环境的接口延迟降低 30%。\n")
     resume = tmp_path / "resume.md"
-    resume.write_text("- 接口延迟降低 30%\n")
+    resume.write_text("## 项目经历\n### 接口服务（2025）\n- 接口延迟降低 30%\n<!-- first-screen-end -->\n")
     trace = {
         "schema_version": 1,
+        "occurrence_lineage_version": 1,
+        "generation_strategy": "locked_evidence_fields",
         "resume_sha256": hashlib.sha256(resume.read_bytes()).hexdigest(),
         "evidence_card_ids": ["e1"],
-        "inputs": {"e1": {"path": str(source), "exists": True, "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}},
-        "claims": [{"text": "接口延迟降低 30%", "source_kind": "evidence", "evidence_id": "e1", "field": "results"}],
+        "inputs": {
+            key: {"path": str(path), "exists": True, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for key, path in (("e1", source), ("material:m1", material))
+        },
+        "claims": [{
+            "text": "接口延迟降低 30%", "source_kind": "evidence",
+            "evidence_id": "e1", "field": "results", "fact_id": "e1:results:0", "render_line": 3,
+        }],
     }
     resume.with_suffix(".trace.json").write_text(json.dumps(trace))
     output = tmp_path / "scorecard.md"
@@ -116,11 +127,24 @@ def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypa
     result = json.loads(output.with_suffix(".json").read_text())
     assert result["traceability"]["verified_bullets"] == 1
     assert "证据引用检查: 100% (1/1)" in output.read_text()
-    source.write_text('results:\n  - "只完成接口开发"\n')
+    report = result["quality_report"]
+    assert not any(f["rule"] == "R1.1" for f in report["tiers"]["eligible"]["failures"])
+    assert report["tiers"]["strong"]["metrics"]["quant_first_screen"] == 1.0
+    assert report["tiers"]["strong"]["metrics"]["quant_total"] == 1.0
+    assert report["auto_pass"] is False
+
+    # 保持结果原句、Fact ID 和呈现行不变，仅改变已绑定输入/正文版本。
+    changed = {"card": source, "material": material, "resume": resume}[changed_input]
+    changed.write_text(changed.read_text() + "\n# 来源或正文版本已更新\n")
     assert evaluate_cli.main() == 0
     result = json.loads(output.with_suffix(".json").read_text())
     assert result["traceability"]["status"] == "unverified"
     assert result["traceability"]["verified_bullets"] == 0
+    report = result["quality_report"]
+    assert report["tiers"]["strong"]["metrics"]["quant_first_screen"] == 0.0
+    assert report["tiers"]["strong"]["metrics"]["quant_total"] == 0.0
+    assert any(f["rule"] == "R1.1" for f in report["tiers"]["eligible"]["failures"])
+    assert report["auto_pass"] is False
 
 
 def _quality_fixture(tmp_path):

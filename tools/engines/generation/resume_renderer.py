@@ -17,6 +17,7 @@ from typing import Any, NotRequired, TypedDict, cast
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.generation import template_assembler
 from tools.infra import evidence_provenance as provenance
+from tools.infra.evidence_fact_scope import personal_claim_exclusions
 from tools.infra.career_profile import career_generation_issues
 
 
@@ -87,6 +88,7 @@ def extract_top_card_ids(report_text: str) -> list[str]:
 
 def load_cards(evidence_dir: Path, card_ids: list[str], material_dir: Path | None = None) -> list[CardView]:
     from tools.infra.evidence_sources import validated_source_inputs
+    material_root = material_dir if material_dir is not None else evidence_dir.parent / "materials"
     card_map: dict[str, CardView] = {}
     if not card_ids or any(not re.fullmatch(r"[A-Za-z0-9_-]+", card_id) for card_id in card_ids):
         raise ValueError("selected_evidence_missing_or_invalid")
@@ -94,16 +96,19 @@ def load_cards(evidence_dir: Path, card_ids: list[str], material_dir: Path | Non
         file_path = evidence_dir / f"{card_id}.yaml"
         if not file_path.is_file():
             raise ValueError("selected_evidence_missing_or_invalid")
-        doc = parse_simple_yaml(read_text(str(file_path)))
+        raw = file_path.read_bytes()
+        doc = parse_simple_yaml(raw.decode("utf-8"))
         if not doc["lists"].get("results") or not doc["lists"].get("artifacts") or not doc["scalars"].get("title"):
             raise ValueError("selected_evidence_ineligible")
         role_scope = doc["scalars"].get("role_scope", "").strip()
         if role_scope.casefold() in {"[]", "{}", "null", "none"}:
             role_scope = ""
+        material_inputs = validated_source_inputs(doc, material_root)
         card_map[card_id] = {
-            "material_inputs": validated_source_inputs(doc, material_dir if material_dir is not None else evidence_dir.parent/'materials'),
+            "material_inputs": material_inputs,
+            "personal_claim_exclusions": personal_claim_exclusions(doc, material_root, card_id=file_path.stem, validated_sources=material_inputs),
             "id": card_id,
-            "source_sha256": hashlib.sha256(file_path.read_bytes()).hexdigest(),
+            "source_sha256": hashlib.sha256(raw).hexdigest(),
             "title": doc["scalars"].get("title", card_id),
             "raw_source": doc["scalars"].get("raw_source", ""),
             "time_range": doc["scalars"].get("time_range", ""),
@@ -123,6 +128,66 @@ def load_cards(evidence_dir: Path, card_ids: list[str], material_dir: Path | Non
     for card_id in card_ids:
         if card_id in card_map:
             cards.append(card_map[card_id])
+    return cards
+
+
+def load_all_cards(evidence_dir: Path, material_dir: Path | None = None) -> list[CardView]:
+    """加载目录下全部已入池证据卡，供事实级选材使用。
+
+    与 `load_cards` 的差别：不依赖匹配报告的 top_cards 截断，也不因单卡缺字段
+    而整体失败——不可用卡直接跳过，由选材层决定用哪些事实。
+    """
+    from tools.infra.evidence_sources import validated_source_inputs
+
+    material_root = material_dir if material_dir is not None else evidence_dir.parent / "materials"
+    cards: list[CardView] = []
+    for file_path in sorted(evidence_dir.glob("*.yaml")):
+        try:
+            raw = file_path.read_bytes()
+            doc = parse_simple_yaml(raw.decode("utf-8"))
+        except (ValueError, OSError):
+            continue
+        scalars = doc["scalars"]
+        from tools.infra.evidence_pool import pool_eligible_scalars
+
+        candidate_id = str(scalars.get("id") or file_path.stem)
+        if not pool_eligible_scalars(scalars, card_id=candidate_id):
+            continue
+        if not doc["lists"].get("results") or not doc["lists"].get("artifacts") or not scalars.get("title"):
+            continue
+        role_scope = scalars.get("role_scope", "").strip()
+        if role_scope.casefold() in {"[]", "{}", "null", "none"}:
+            role_scope = ""
+        card_id = str(scalars.get("id") or file_path.stem)
+        try:
+            material_inputs = validated_source_inputs(doc, material_root)
+            exclusions = personal_claim_exclusions(doc, material_root, card_id=file_path.stem, validated_sources=material_inputs)
+        except ValueError as exc:
+            # 来源校验失败必须点名到卡：整批"来源不合格"无法定位是哪张卡。
+            raise ValueError(f"{file_path.stem}:{exc}") from exc
+        cards.append(
+            {
+                "material_inputs": material_inputs,
+                "personal_claim_exclusions": exclusions,
+                "id": card_id,
+                "source_sha256": hashlib.sha256(raw).hexdigest(),
+                "title": scalars.get("title", card_id),
+                "raw_source": scalars.get("raw_source", ""),
+                "time_range": scalars.get("time_range", ""),
+                "context": scalars.get("context", ""),
+                "role_scope": role_scope,
+                "actions": doc["lists"].get("actions", []),
+                "results": doc["lists"].get("results", []),
+                "stack": doc["lists"].get("stack", []),
+                "artifacts": doc["lists"].get("artifacts", []),
+                "time_range_provenance": provenance.field_provenance(scalars, "time_range"),
+                "role_scope_provenance": provenance.field_provenance(scalars, "role_scope"),
+                "time_range_level": provenance.field_level(scalars, "time_range"),
+                "role_scope_level": provenance.field_level(scalars, "role_scope"),
+                "project_key": str(scalars.get("project_key") or ""),
+                "card_category": str(scalars.get("card_category") or "project"),
+            }
+        )
     return cards
 
 

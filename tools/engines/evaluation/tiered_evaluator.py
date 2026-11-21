@@ -46,7 +46,6 @@ from .tiers.common import (
 from .tiers.distinct import _candidate_highlights, evaluate_distinct
 from .tiers.eligible import (
     _hard_condition_failures,
-    _pdf_failures,
     _provenance,
     _provenance_level,
     _structure_failures,

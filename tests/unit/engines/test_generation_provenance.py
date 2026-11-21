@@ -1,4 +1,4 @@
-"""职责表达保留已采纳范围，来源等级与确认记录仍可追溯。"""
+"""职责表达保留已采纳范围；人物、项目及指标均为合成样例。"""
 from __future__ import annotations
 
 import json
@@ -55,8 +55,8 @@ def test_time_precision_and_adopted_role_rendering():
     assert ta.role_text("平台负责人", "L1") == "平台负责人"
     assert ta.role_text("平台负责人", "L3") == "平台负责人"
     assert ta.role_text("平台负责人", "L5") == ""
-    assert ta.downgrade_wording("负责统一运动中心改造并主导上线", "L3") == "负责统一运动中心改造并主导上线"
-    assert ta.downgrade_wording("负责统一运动中心改造", "L1") == "负责统一运动中心改造"
+    assert ta.downgrade_wording("负责合成活动平台改造并主导上线", "L3") == "负责合成活动平台改造并主导上线"
+    assert ta.downgrade_wording("负责合成活动平台改造", "L1") == "负责合成活动平台改造"
     assert ta.visible_in_resume(card("ec-2", title="无时间", time_range="", role_scope="", time_level="L5")) is False
 
 
@@ -96,15 +96,15 @@ def test_inferred_role_keeps_adopted_scope_in_resume_and_trace_without_changing_
 def test_build_template_resume_applies_levels_first_screen_and_trace_provenance():
     cards = [
         card("ec-1", title="交易服务重构", time_range="2021-03 ~ 2024-03", role_scope="负责人"),
-        card("ec-2", title="统一运动中心", time_range="2022-03 ~ 2022-09", role_scope="平台负责人",
+        card("ec-2", title="合成活动平台", time_range="2022-03 ~ 2022-09", role_scope="平台负责人",
              time_level="L3", role_level="L3", precision="year",
-             actions=["负责统一运动中心改造", "推动活动报名聚合"],
-             results=["主导会员中心上线"]),
+             actions=["负责合成活动平台改造", "推动活动报名聚合"],
+             results=["主导合成活动平台上线"]),
         card("ec-3", title="无时间项目", time_range="", role_scope="", time_level="L5"),
     ]
     semantic = {
         "facts": {"f1": {"source_id": "ec-2"}},
-        "assessments": [{"requirement_id": "d1", "citations": [{"fact_id": "f1"}]}],
+        "assessments": [{"requirement_id": "d1", "status": "supported", "citations": [{"fact_id": "f1"}]}],
     }
     claims: list[dict] = []
     content = build_template_resume(
@@ -113,15 +113,15 @@ def test_build_template_resume_applies_levels_first_screen_and_trace_provenance(
     )
     # JD 引用的 L3 卡优先，且 L5 卡不进入正文。
     assert "无时间项目" not in content
-    assert content.index("统一运动中心") < content.index("交易服务重构")
+    assert content.index("合成活动平台") < content.index("交易服务重构")
     # 时间按精度显示；L3 来源等级不改变已采纳职责和原文行动。
-    assert "### 统一运动中心（2022）" in content
+    assert "### 合成活动平台（2022）" in content
     assert "角色：平台负责人" in content
-    segment = content[content.index("统一运动中心"):content.index("交易服务重构")]
-    assert "负责统一运动中心改造" in segment and "主导会员中心上线" in segment
+    segment = content[content.index("合成活动平台"):content.index("交易服务重构")]
+    assert "负责合成活动平台改造" in segment and "主导合成活动平台上线" in segment
     # 首屏标记位于第一条经历之后：第一条经历 bullet 在首屏内。
     first, rest = content.split(FIRST_SCREEN_MARKER)
-    assert "统一运动中心" in first and "交易服务重构" in rest
+    assert "合成活动平台" in first and "交易服务重构" in rest
     # trace claims 带字段等级与依据。
     time_claim = next(item for item in claims if item["field"] == "time_range" and item["evidence_id"] == "ec-2")
     role_claim = next(item for item in claims if item["field"] == "role_scope" and item["evidence_id"] == "ec-2")
@@ -135,7 +135,7 @@ def test_load_cards_reads_provenance_levels(tmp_path):
     evidence = tmp_path / "evidence"
     evidence.mkdir()
     (evidence / "ec-l3.yaml").write_text(
-        'id: "ec-l3"\ntitle: "统一运动中心"\ntime_range: "2022"\ncontext: "背景"\nrole_scope: "平台负责人"\n'
+        'id: "ec-l3"\ntitle: "合成活动平台"\ntime_range: "2022"\ncontext: "背景"\nrole_scope: "平台负责人"\n'
         'time_range_provenance_json: \'{"level":"L3","precision":"year","evidence":[{"material_id":"mat_1","document_id":"doc_1","excerpt":"2022 年持续投入"}]}\'\n'
         'role_scope_provenance_json: \'{"level":"L3","evidence":[{"material_id":"mat_1","document_id":"doc_1","excerpt":"我推动改造"}]}\'\n'
         'actions:\n  - "负责改造"\nresults:\n  - "上线"\nartifacts:\n  - "报告.pdf"\n',
@@ -162,9 +162,9 @@ class FakeClient:
 
 
 def test_rewriter_detects_role_strength_and_time_precision_violations():
-    original = "# 张三\n\n## 项目经历\n### 统一运动中心（2022）\n角色：平台负责人\n- 参与统一运动中心改造\n"
+    original = "# 张三\n\n## 项目经历\n### 合成活动平台（2022）\n角色：平台负责人\n- 参与合成活动平台改造\n"
     resume = ResumeOutput("A", "jp", original, "markdown")
-    stronger = original.replace("参与统一运动中心改造", "负责统一运动中心改造")
+    stronger = original.replace("参与合成活动平台改造", "负责合成活动平台改造")
     result = LLMRewriter(FakeClient(stronger), "m").rewrite(
         resume, "jd", "company", level_context={"max_role_level": "L3", "time_precision": "year"})
     assert result.content == original
@@ -172,7 +172,7 @@ def test_rewriter_detects_role_strength_and_time_precision_violations():
     result = LLMRewriter(FakeClient(more_precise), "m").rewrite(
         resume, "jd", "company", level_context={"max_role_level": "L3", "time_precision": "year"})
     assert result.content == original
-    safe = original.replace("参与统一运动中心改造", "推动统一运动中心改造")
+    safe = original.replace("参与合成活动平台改造", "推动合成活动平台改造")
     result = LLMRewriter(FakeClient(safe), "m").rewrite(
         resume, "jd", "company", level_context={"max_role_level": "L3", "time_precision": "year"})
     assert result.content == safe
@@ -180,10 +180,10 @@ def test_rewriter_detects_role_strength_and_time_precision_violations():
 
 def test_template_assembler_engine_uses_levels():
     from tools.domain.models import MatchingReport
-    card_l3 = EvidenceCard(id="ec-2", title="统一运动中心", raw_source="m", results=("系统上线完成",),
+    card_l3 = EvidenceCard(id="ec-2", title="合成活动平台", raw_source="m", results=("系统上线完成",),
                            artifacts=("报告.pdf",), period="2022-03 ~ 2022-09", context="背景", role_scope="平台负责人")
     with_provenance = EvidenceCard(
-        id="ec-2", title="统一运动中心", raw_source="m", results=("系统上线完成",), artifacts=("报告.pdf",),
+        id="ec-2", title="合成活动平台", raw_source="m", results=("系统上线完成",), artifacts=("报告.pdf",),
         period="2022-03 ~ 2022-09", context="背景", role_scope="平台负责人",
         time_range_provenance={"level": "L3", "precision": "year", "evidence": [{"material_id": "m", "document_id": "d", "excerpt": "2022"}]},
         role_scope_provenance={"level": "L3", "evidence": [{"material_id": "m", "document_id": "d", "excerpt": "我推动"}]},
@@ -209,13 +209,13 @@ def test_action_result_pairing_requires_lexical_association_and_unique_use():
 
     pairs, unpaired_actions, unpaired_results = pair_actions_results(
         ["将核心存储迁移至 MongoDB", "修复聚合查询慢查询", "整理接口文档"],
-        ["迁移后 20 万名单往返次数从 201,208 次降至 508 次",
-         "慢查询 P95 从 2 秒降至 300 毫秒",
-         "服务 6 个品牌"],
+        ["迁移后 1 万条合成记录往返次数从 10,200 次降至 120 次",
+         "慢查询 P95 从 4 秒降至 250 毫秒",
+         "服务 3 类合成业务"],
     )
     assert len(pairs) == 2
     assert unpaired_actions == ["整理接口文档"]
-    assert unpaired_results == ["服务 6 个品牌"]
+    assert unpaired_results == ["服务 3 类合成业务"]
     used = set()
     for action, results in pairs:
         text = paired_bullet_text(action, results)
@@ -227,12 +227,12 @@ def test_action_result_pairing_requires_lexical_association_and_unique_use():
 
 def test_generation_pairs_action_with_related_result_inside_first_screen():
     card = {
-        "id": "ec-1", "title": "站内消息存储改造", "time_range": "2024 ~ 2025", "role_scope": "负责人",
-        "context": "发送链改造。",
+        "id": "ec-1", "title": "合成批处理存储改造", "time_range": "2024 ~ 2025", "role_scope": "负责人",
+        "context": "测试导出链改造。",
         "actions": ["将核心存储迁移至 MongoDB 并重写查询索引",
-                    "对大名单发送链采用流式批量写入"],
-        "results": ["慢查询 P95 从 2 秒降至 300 毫秒",
-                    "20 万名单发送链往返次数从 201,208 次降至 508 次"],
+                    "对测试导出链采用流式批量写入"],
+        "results": ["慢查询 P95 从 4 秒降至 250 毫秒",
+                    "1 万条合成记录导出链往返次数从 10,200 次降至 120 次"],
         "stack": ["Java"], "artifacts": ["报告"],
     }
     claims: list[dict] = []
@@ -247,7 +247,8 @@ def test_generation_pairs_action_with_related_result_inside_first_screen():
 
     report = evaluate_strong(resume=text, cards={"ec-1": card}, trace={"claims": claims},
                              config=load_quality_config())
-    assert report.metrics["quant_first_screen"] == 1.0
+    # 历史模板不带精确 Fact ID/行号的 trace，可验证展示但不能获得现行 R3.2 分数。
+    assert report.metrics["quant_first_screen"] == 0.0
 
 
 def test_work_history_responsibilities_render_without_achievement_bullets():
@@ -279,7 +280,7 @@ def test_first_screen_priority_orders_by_quantified_pairs_not_original_first_car
     quantified = {
         "id": "ec_quant", "title": "性能治理",
         "actions": ["执行慢查询改写与索引优化"],
-        "results": ["门店预约列表查询 2–3s → 300–400ms"],
+        "results": ["合成数据列表查询 4–5s → 200–300ms"],
     }
     ordered = first_screen_priority([context_only, quantified])
     assert [card["id"] for card in ordered] == ["ec_quant", "ec_context"]

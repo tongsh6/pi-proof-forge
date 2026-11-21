@@ -26,6 +26,8 @@ def ready_run(root,monkeypatch):
 
 
 def test_existing_review_queue_binds_content_without_second_approval_store(tmp_path,monkeypatch):
+    # This test isolates content binding; native current-source authority has a separate real-record fixture.
+    monkeypatch.setattr("tools.sidecar.handlers.daily_delivery.require_current_pdf_queue_target", lambda _: None)
     from tools.infra.resume_content import validate_generated_content,require_queue_content
     from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
     run,pdf,profile=ready_run(tmp_path,monkeypatch);proof=validate_generated_content(tmp_path,run)
@@ -94,3 +96,30 @@ def test_default_route_cannot_bypass_missing_career(tmp_path,monkeypatch):
     request=DeliveryRequest('run','lead','liepin','','https://www.liepin.com/job/123.shtml',False,{'delivery_kind':'platform_default','delivery_attempt_id':'a','platform_job_id':'123','platform_job_type':'2'})
     result=channel.deliver(request)
     assert isinstance(result,Err) and result.error.reason=='career_profile_unconfirmed' and result.error.not_submitted
+
+
+def test_content_body_gaps_reports_missing_fields_without_blocking():
+    from tools.infra.resume_content import content_body_gaps
+
+    profile = {
+        "name": "张三", "phone": "13800000000", "email": "a@b.c", "city": "上海", "current_position": "工程师",
+        "career": {
+            "education_visibility": "show",
+            "work": [{"id": "w1", "company": "甲", "title": "后端", "start": "2021-03", "end": "", "scope": "保险系统", "contributions": ["负责核心开发"]}],
+            "skills": [{"id": "s1", "category": "存储治理", "description": "索引优化与容量治理"}],
+            "education": [{"id": "e1", "school": "复旦", "major": "软件", "degree": "本科", "start": "2020-09", "end": "2022-06"}],
+            "extras": [{"id": "x1", "title": "个人项目", "description": "插件体系"}],
+        },
+    }
+    text = "张三 13800000000 a@b.c 上海 工程师 甲 后端 2021年3月 复旦 软件 本科 2020年9月 2022年6月"
+
+    gaps = content_body_gaps(profile, text)
+
+    fields = {(gap["group"], gap["field"]) for gap in gaps}
+    # 时间格式差异（2021-03 vs 2021年3月）不应算缺失
+    assert ("work", "start") not in fields
+    assert ("education", "start") not in fields
+    # 真实省略项应被列出
+    assert ("skills", "description") in fields
+    assert ("extras", "title") in fields
+    assert ("work", "contributions") in fields

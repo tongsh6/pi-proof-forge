@@ -410,3 +410,154 @@ def test_quick_run_real_pipeline_generates_pdf_and_independent_trace(tmp_path, m
     )
     assert changed["traceability"]["resume_traceable"] is False
     assert changed["resume_readiness"]["quality_passed"] is False
+
+
+def _write_two_page_career(project: Path) -> list[str]:
+    from tools.infra.career_profile import inspect_career
+    from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
+
+    projects = [
+        ("fulfilment", "Fulfillment replay ledger", "Tracked delayed inventory updates across store checkout and warehouse workers.",
+         ["Introduced an append-only reconciliation ledger for fulfillment events",
+          "Isolated retry runs from live stock updates", "Mapped damaged event batches to the original warehouse request"],
+         ["Removed redundant fulfillment replays during the morning import", "Reduced damaged batch review time from 55 minutes to 12 minutes"]),
+        ("changes", "Deployment rollback controls", "Released inventory API changes through consistent staging and handover windows.",
+         ["Defined release hold points for store inventory services",
+          "Automated backwards-compatible database checks in the release pipeline", "Recorded reversible configuration for each checkout service"],
+         ["Reduced rollback preparation from 30 minutes to 8 minutes", "Passed three release rehearsals with consistent stock reconciliation"]),
+        ("routing", "Warehouse allocation safeguards", "Protected inventory reservations during warehouse routing and switchovers.",
+         ["Wrote a routing guard for stale warehouse reservations", "Built per-region queue monitoring for the inventory service",
+          "Added explicit rollback notes for warehouse operators"],
+         ["Limited stale reservation handling to a single delivery route", "Warehouse staff confirmed the route recovery checklist"]),
+    ]
+    cards = project / "evidence_cards"
+    original = "ec_quick_acceptance"
+    seed = parse_simple_yaml((cards / f"{original}.yaml").read_text(encoding="utf-8"))
+    selected = [original]
+    for year, (key, title, context, actions, results) in enumerate(projects, 2022):
+        card_id, material_id = f"ec_{key}", f"material_{key}"
+        selected.append(card_id)
+        source = project / "materials" / f"{material_id}.md"
+        source.write_text("\n".join([title, context, *actions, *results]), encoding="utf-8")
+        fields = {**seed["scalars"], "id": card_id, "title": title, "context": context,
+                  "raw_source": str(source), "time_range": f"{year}-01 ~ {year}-12", "role_scope": "Backend Engineer"}
+        lists = {**seed["lists"], "actions": actions, "results": results, "source_material_ids": [material_id]}
+        (cards / f"{card_id}.yaml").write_text(dump_yaml(fields, lists), encoding="utf-8")
+    work = [
+        {"id": "w-new", "company": "Synthetic Retail Labs", "department": "Commerce systems",
+         "title": "Backend Tech Lead", "start": "2024-01", "end": "2025-12", "current": False,
+         "scope": "Owned store inventory integration and release reliability",
+         "contributions": ["Designed Java inventory APIs for peak traffic",
+                           "Reduced inventory lookup retries through versioned stock events",
+                           "Reviewed release plans with distribution and store engineering"],
+         "evidence_ids": [original, "ec_routing"]},
+        {"id": "w-old", "company": "Synthetic Warehouse Systems", "department": "Fulfillment Platform",
+         "title": "Backend Engineer", "start": "2021-01", "end": "2023-12", "current": False,
+         "scope": "Built fulfillment tracking and rollback automation",
+         "contributions": ["Implemented recovery tooling for fulfillment event failures",
+                           "Verified schema updates against staging inventory snapshots",
+                           "Documented handover procedures with warehouse operations"],
+         "evidence_ids": ["ec_fulfilment", "ec_changes"]},
+    ]
+    career = {
+        "schema_version": 1, "summary": "Backend engineer focused on stable inventory and fulfillment services.",
+        "work": work, "education_visibility": "show",
+        "education": [{"id": "education", "school": "Synthetic Institute of Computing", "major": "Software Engineering",
+                       "degree": "Bachelor", "start": "2016-09", "end": "2020-06", "current": False}],
+        "skills": [{"id": skill_id, "category": category, "description": description, "evidence_ids": [card_id]}
+                   for skill_id, category, description, card_id in [
+                       ("a", "Backend engineering", "Java and Kafka inventory integration", original),
+                       ("b", "Deployment", "Release pipeline checks and rollback coordination", "ec_changes"),
+                       ("c", "Reliability", "Monitoring and operational recovery for stock reservations", "ec_routing")]],
+        "extras": [],
+    }
+    profile = {"name": "Test candidate", "phone": "13800000000", "email": "candidate@example.com",
+               "city": "Shanghai", "current_position": "Backend Engineer", "career_json": json.dumps(career)}
+    profile["career_review_json"] = json.dumps({"revision": inspect_career(profile, cards)["revision"]})
+    assert inspect_career(profile, cards)["career_status"]["reviewed"]
+    (project / "personal_profile.yaml").write_text(dump_yaml(profile, {}), encoding="utf-8")
+    return selected
+
+
+def test_quick_run_two_page_pdf_has_lead_and_usable_tail(tmp_path, monkeypatch):
+    import subprocess
+    import sys
+
+    from tools.infra.export.pdf_exporter import _find_chromium
+
+    swift = shutil.which("swift")
+    if sys.platform != "darwin" or not swift or _find_chromium() is None:
+        pytest.skip("Physical page fixture requires macOS PDFKit and a Chromium renderer")
+    # Physical expectations are independent of the logical first-screen Markdown marker.
+    lead = ["Designed Java inventory APIs for peak traffic", "Reduced inventory lookup retries through versioned stock events"]
+    tail = ["Warehouse allocation safeguards", "Wrote a routing guard for stale warehouse reservations",
+            "Warehouse staff confirmed the route recovery checklist", "Synthetic Institute of Computing"]
+
+    shutil.copytree(ROOT / "tools", tmp_path / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+    _write_active_job_profile(tmp_path)
+    _write_material_and_evidence(tmp_path)
+    _write_policy(tmp_path / "policy.yaml")
+    selected = _write_two_page_career(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PPF_POLICY_PATH", str(tmp_path / "policy.yaml"))
+    monkeypatch.setattr(agent, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(agent, "_QUICK_RUN_DIR", tmp_path / "outputs/quick_runs")
+    started = handle_quick_start({
+        "meta": {"correlation_id": "two-page-rules-pipeline"}, "job_profile_id": "jp_quick_acceptance",
+        "options": {"evidence_ids": selected, "use_llm": False},
+    })
+    assert started["status"] == "RUNNING"
+    result = _wait_quick_run(started["run_id"], timeout=60.0)
+    assert result["status"] == "DONE" and result["resume_pdf"], result
+    assert result["traceability"]["resume_traceable"]
+    assert result["resume_readiness"]["deliverable"] is False
+    resume = tmp_path / result["traceability"]["resume_a"]
+    lines = resume.read_text(encoding="utf-8").splitlines()
+    claims = json.loads(resume.with_suffix(".trace.json").read_text(encoding="utf-8"))["claims"]
+    # Verify independently located final body occurrences for visible project and work facts.
+    traced = {
+        lead[0]: "personal_profile:career.work.w-new.contributions:0",
+        lead[1]: "personal_profile:career.work.w-new.contributions:1",
+        tail[1]: "ec_routing:actions:0",
+        tail[2]: "ec_routing:results:1",
+    }
+    for literal, fact_id in traced.items():
+        entry, = [claim for claim in claims if claim.get("text") == literal]
+        position = entry["render_line"]
+        assert type(position) is int and 1 <= position <= len(lines)
+        assert lines[position - 1].endswith(literal)
+        assert entry["fact_id"] == fact_id
+    script = tmp_path / "inspect_pdf.swift"
+    script.write_text(r"""
+import Foundation
+import PDFKit
+let args = CommandLine.arguments
+guard let pdf = PDFDocument(url: URL(fileURLWithPath: args[1])),
+      pdf.pageCount == 2, let first = pdf.page(at: 0), let second = pdf.page(at: 1)
+else { fatalError("Expected a readable, naturally two-page PDF") }
+let excerpts = try JSONDecoder().decode([[String]].self, from: Data(args[2].utf8))
+for (number, page) in [first, second].enumerated() {
+    let box = page.bounds(for: .mediaBox)
+    precondition(abs(box.width - 595.3) < 3 && abs(box.height - 841.9) < 3, "Expected an A4 page")
+    let text = page.string ?? ""
+    for literal in excerpts[number] {
+        let hits = pdf.findString(literal, withOptions: [])
+        precondition(hits.count == 1 && hits[0].pages == [page] && text.contains(literal), "Missing/misplaced/duplicate: \(literal)")
+        let bounds = hits[0].bounds(for: page)
+        precondition(!bounds.isEmpty && box.contains(bounds), "Bounds outside the page: \(literal)")
+        if number == 0 { precondition(bounds.minY >= box.midY, "Whole lead must be in the physical top half: \(literal)") }
+    }
+    for marker in ["ec_quick_acceptance", "ec_changes", "ec_fulfilment", "ec_routing", "Evidence trace", "first-screen-end"] {
+        precondition(!text.contains(marker), "Internal markers must not print")
+    }
+}
+""", encoding="utf-8")
+    monkeypatch.setenv("SWIFT_MODULECACHE_PATH", str(tmp_path / "swift-cache"))
+    inspected = subprocess.run(
+        [swift, str(script), str(tmp_path / result["resume_pdf"]), json.dumps([lead, tail])],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    if "no such module 'PDFKit'" in inspected.stderr:
+        pytest.skip("This macOS Swift SDK does not provide PDFKit")
+    assert inspected.returncode == 0, inspected.stdout + inspected.stderr
+    # Selected text geometry is not a measurement of whole-document clipping or viewport layout.

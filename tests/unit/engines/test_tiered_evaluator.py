@@ -1,6 +1,7 @@
 """Phase A：四层简历质量标准、规则判项与质量报告结构。"""
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
@@ -154,6 +155,7 @@ def semantic_review(statuses=("supported",)):
         )
     return {
         "mode": "semantic",
+        "occurrence_coverage_known": True,
         "fit_score": 80,
         "resume_score": 80,
         "requirements": rows,
@@ -173,12 +175,20 @@ def job_context():
 
 
 def build(resume=RESUME, cards=None, claims=None, pdf_check=..., semantic=None, highlights=None, profile=None, context=None, judgments=None, decisions=None):
+    # Author exact coordinates for this synthetic scored-document fixture,
+    # outside the production matcher. Ambiguous occurrences are not resolved here.
+    semantic = copy.deepcopy(semantic) if semantic is not None else semantic_review()
+    for row in semantic.get("requirements", []):
+        for cite in row.get("citations", []):
+            if "render_lines" not in cite and cite.get("in_resume"):
+                positions = [i for i, line in enumerate(resume.splitlines(), 1) if cite.get("quote") in line]
+                cite["render_lines"] = positions if len(positions) == 1 else []
     return te.build_quality_report(
         resume=resume,
         trace=trace(claims if claims is not None else claims_for_resume()),
         career_profile=profile if profile is not None else career_profile(),
         cards=cards if cards is not None else {"ec_00000001": card()},
-        semantic_review=semantic if semantic is not None else semantic_review(),
+        semantic_review=semantic,
         job_context=context if context is not None else job_context(),
         pdf_check={"pages": 2, "clipped": False} if pdf_check is ... else pdf_check,
         highlights=highlights,
@@ -225,7 +235,7 @@ def test_r1_1_untraceable_bullet_fails():
 def test_r1_6_internal_ids_and_paths_are_rejected():
     report = build(resume=RESUME.replace("Java、Redis", "Java、Redis、ec_1234abcd"))
     assert "R1.6" in rules(report, "eligible")
-    report = build(resume=RESUME.replace("上海", "/Users/loong/private"))
+    report = build(resume=RESUME.replace("上海", "/Users/example/private"))
     assert "R1.6" in rules(report, "eligible")
 
 
@@ -389,7 +399,7 @@ def test_judged_mode_clears_pending_and_feeds_matrix_and_highlights():
     assert report["quality_judge"] is None  # judge_meta 由调用方传入，纯函数不伪造
     fit = report["tiers"]["fit"]
     assert fit["matrix"][0]["judged"] is True
-    assert fit["matrix"][0]["first_screen"] is True
+    assert fit["matrix"][0]["first_screen"] is False  # the judge named bullet #1, not the cited occurrence
     distinct = report["tiers"]["distinct"]
     assert distinct["highlights"][0]["highlight_id"] == "hl_b1_d1"
     assert distinct["metrics"]["candidate_count"] == 1
@@ -447,11 +457,58 @@ def test_quantification_requires_result_text_not_version_number_coincidence():
     assert not te._has_verifiable_quant("2023 年完成升级 Java 8", ["2023 年完成升级 Java 8"])
 
 
+@pytest.mark.parametrize(("rendered_field", "expected_ratio"), [("actions", 0.0), ("results", 1.0)])
+def test_r3_2_counts_only_the_result_fact_actually_rendered(rendered_field, expected_ratio):
+    # 同一张卡的两项事实同文同数字；同事范围排除 results:0 时，正文只引用 actions:0。
+    # 精确行追溯已能区分这两项事实；R3.2 不得退回整卡 results 池取分。
+    from tools.engines.evaluation.tiers.common import inspect_bullet_trace
+
+    sentence = "压测 P95 从 200 ms 降至 120 ms"
+    resume = f"## 项目经历\n### 合成性能场景\n- {sentence}\n<!-- first-screen-end -->\n"
+    claims = [{
+        "text": sentence, "source_kind": "evidence", "field": rendered_field,
+        "evidence_id": "ec_same", "fact_id": f"ec_same:{rendered_field}:0", "render_line": 3,
+    }]
+    evidence = {"ec_same": {"actions": [sentence], "results": [sentence]}}
+    actual_trace = {"occurrence_lineage_version": 1, "claims": claims}
+    rows = inspect_bullet_trace(resume, actual_trace)["bullets"]
+    assert rows[0]["verified"] is True
+    assert rows[0]["sources"][0]["field"] == rendered_field
+
+    strong = te.evaluate_strong(resume=resume, cards=evidence, trace=actual_trace,
+                                config=te.load_quality_config())
+    assert strong.metrics["quant_first_screen"] == expected_ratio
+    assert strong.metrics["quant_total"] == expected_ratio
+    assert any(item.rule == "R3.2" for item in strong.failures) is (expected_ratio == 0.0)
+
+
+@pytest.mark.parametrize(("version", "fact_id", "expected_ratio"), [
+    (None, "ec_1:results:0", 0.0),
+    (1, "", 0.0),
+    (1, "ec_1:results:7", 0.0),
+    (1, "ec_1:results:0", 1.0),
+])
+def test_r3_2_requires_exact_result_occurrence_not_legacy_word_match(version, fact_id, expected_ratio):
+    sentence = "测试范围 P95 从 200 ms 降至 120 ms"
+    resume = f"## 项目经历\n- {sentence}\n<!-- first-screen-end -->\n"
+    claim = {"text": sentence, "field": "results", "source_kind": "evidence",
+             "evidence_id": "ec_1", "fact_id": fact_id, "render_line": 2}
+    provenance = {"claims": [claim]}
+    if version is not None:
+        provenance["occurrence_lineage_version"] = version
+    result = te.evaluate_strong(resume=resume, cards={"ec_1": {"results": [sentence]}},
+                                trace=provenance, config=te.load_quality_config())
+    assert result.metrics["quant_total"] == expected_ratio
+    assert result.metrics["quant_first_screen"] == expected_ratio
+
+
 def test_project_mapping_accepts_visible_context_line():
     resume = "## 项目经历\n### 售后服务（2024 ~ 2025）\n场景：多品牌售后履约\n- 设计履约流程\n"
     judged = judged_payload(r2_1=[{"jd_item_id": "d1", "status": "weak", "bullet_ref": "line#3",
                                   "citations": ["line#3"], "reason": "相关业务场景"}])
-    result = build(resume=resume, judgments=judged)
+    semantic = semantic_review(("partial",))
+    semantic["requirements"][0]["citations"][0].update(quote="多品牌售后履约", render_lines=[3])
+    result = build(resume=resume, semantic=semantic, judgments=judged)
     assert "R2.4" not in rules(result, "fit")
 
 
@@ -464,11 +521,13 @@ def test_resume_judge_cannot_upgrade_partial_pool_support_to_full_support():
 
 def test_verified_result_text_is_an_outcome_without_numeric_metric():
     resume = "## 项目经历\n### 接口对接（2024）\n- 实现用友 NC 接口集成\n"
-    claims = [{"text": "实现用友 NC 接口集成", "source_kind": "evidence", "evidence_id": "ec_1", "field": "results"}]
+    claims = [{"text": "实现用友 NC 接口集成", "source_kind": "evidence", "evidence_id": "ec_1",
+               "field": "results", "fact_id": "ec_1:results:0", "render_line": 3}]
     judged = judged_payload(r3_1=[{"bullet": 1, "scene": True, "action": True, "result": False,
                                    "citations": ["ec_1"], "reason": "没有量化指标"}])
     result = te.evaluate_strong(resume=resume, cards={"ec_1": {"results": ["实现用友 NC 接口集成"]}},
-        trace={"claims": claims}, config=te.load_quality_config(), judgments=judged)
+        trace={"occurrence_lineage_version": 1, "claims": claims},
+        config=te.load_quality_config(), judgments=judged)
     assert not any(f.rule == "R3.1" for f in result.failures)
     assert any(f.rule == "R3.2" for f in result.failures)
 
@@ -827,6 +886,7 @@ def test_apply_pdf_check_keeps_advice_when_tiers_are_sparse():
 def test_must_have_gap_counts_follow_support_status_and_split_kinds():
     semantic = {
         "mode": "semantic",
+        "occurrence_coverage_known": True,
         "fit_score": 50,
         "resume_score": 40,
         "requirements": [
@@ -857,3 +917,54 @@ def test_must_have_gap_counts_follow_support_status_and_split_kinds():
     assert any("正文未表达" in reason for reason in advice["reasons"])
     assert any("补充硬性要求相关的证据卡" == action for action in advice["next_actions"])
     assert any("正文表达出来并前置" in action for action in advice["next_actions"])
+
+
+def test_exact_later_occurrence_cannot_use_an_equal_first_screen_bullet_or_judge_reference():
+    resume = "## 项目经历\n- 完成平台抽象\n<!-- first-screen-end -->\n- 完成平台抽象\n"
+    semantic = semantic_review()
+    semantic["requirements"][0]["citations"][0]["render_lines"] = [4]
+    decision = judged_payload(r2_1=[{"jd_item_id":"d1","status":"supported","bullet_ref":"bullet#1"}])
+    result = build(resume=resume, semantic=semantic, judgments=decision)
+    row = result["tiers"]["fit"]["matrix"][0]
+    assert row["status"] == "supported" and row["bullet_ref"] == "bullet#2"
+    assert row["first_screen"] is False
+    semantic["requirements"][0]["resume_status"] = "not_present"
+    semantic["requirements"][0]["citations"][0].update(in_resume=False, render_lines=[])
+    result = build(resume=resume, semantic=semantic, judgments=decision)
+    row = result["tiers"]["fit"]["matrix"][0]
+    assert row["status"] == "absent" and not row["bullet_ref"] and not row["first_screen"]
+
+
+def test_one_exact_claim_never_verifies_a_separate_identical_bullet():
+    from tools.engines.evaluation.tiers.common import inspect_bullet_trace
+    resume = "## 项目经历\n- 完成平台抽象\n- 完成平台抽象\n"
+    checks = inspect_bullet_trace(resume, {"occurrence_lineage_version":1,"claims":[
+        {"text":"完成平台抽象","source_kind":"evidence","field":"actions",
+         "evidence_id":"ec_fixture","fact_id":"ec_fixture:actions:0","render_line":3}
+    ]})
+    assert [item["verified"] for item in checks["bullets"]] == [False,True]
+
+
+@pytest.mark.parametrize("pages,clipped,verified,passed,advice", [
+    (2, None, False, False, "apply"),
+    (2, False, True, True, "apply"),
+    (2, True, True, False, "strengthen"),
+    (3, None, False, False, "strengthen"),
+    (None, True, False, False, "strengthen"),
+])
+def test_pdf_checks_require_independent_page_and_clip_evidence(pages, clipped, verified, passed, advice):
+    check = {"pages": pages, "clipped": clipped}
+    fixture = {"resume": FIRST_SCREEN_PROJECT_RESUME, "claims": first_screen_project_claims(),
+               "highlights": first_screen_highlight()}
+    for rep in (build(pdf_check=check, **fixture), te.apply_pdf_check(build(pdf_check=None, **fixture), check)):
+        tier = rep["tiers"]["eligible"]
+        assert tier["metrics"]["pdf_check_state"] == ("verified" if verified else "unverified")
+        assert tier["metrics"]["pdf_pages"] == pages
+        assert tier["metrics"]["clip_check"] is clipped
+        assert tier["passed"] is passed
+        assert rep["delivery_advice"]["recommendation"] == advice
+        assert te.recompute_auto_pass({"tiers": {**rep["tiers"],
+            "fit": {"passed": True}, "strong": {"passed": True}, "distinct": {"passed": True}}}) is passed
+        reasons = [f["reason"] for f in tier["failures"] if f["rule"] == "R1.5"]
+        assert any("超过" in r for r in reasons) is (pages == 3)
+        assert any("存在裁切" in r for r in reasons) is (clipped is True)

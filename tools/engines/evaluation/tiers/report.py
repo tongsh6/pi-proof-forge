@@ -15,7 +15,7 @@ from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 from .common import *
 from .distinct import evaluate_distinct
-from .eligible import evaluate_eligible
+from .eligible import PDF_CHECK_PENDING, evaluate_eligible, pdf_artifact_check
 from .fit import _judge_candidates, _pending_rules, evaluate_fit
 from .strong import evaluate_strong
 
@@ -50,15 +50,21 @@ def _delivery_advice(
     strong_failures = [failure for failure in (strong.get("failures") or []) if isinstance(failure, dict)]
     pending_rules = [str(rule) for rule in (llm_pending or [])]
     pdf_pending = _pdf_check_pending(eligible)
-    # PDF 未渲染时只排除页数/裁切这一条；首屏摘要/核心经历等已可判缺口必须保留。
+    # 只排除尚未核验的子项；已证实的超页/裁切和首屏缺口照常参与建议。
     real_eligible = [
         failure for failure in eligible_failures
         if not (
             failure.get("rule") == "R1.5"
             and failure.get("target") == "pdf"
-            and pdf_pending
+            and failure.get("gap_kind") == PDF_CHECK_PENDING
         )
     ]
+    pdf_metrics = eligible.get("metrics") or {}
+    unchecked_pdf = "PDF 页数与裁切"
+    if pdf_pending and pdf_metrics.get("pdf_pages") is not None:
+        unchecked_pdf = "PDF 裁切"
+    elif pdf_pending and pdf_metrics.get("clip_check") is not None:
+        unchecked_pdf = "PDF 页数"
     gap_counts = {"evidence_missing": 0, "not_expressed": 0}
     for failure in fit_failures:
         if failure.get("rule") != "R2.2":
@@ -146,7 +152,7 @@ def _delivery_advice(
         recommendation = "apply"
         unverified: list[str] = []
         if pdf_pending:
-            unverified.append("PDF 页数与裁切")
+            unverified.append(unchecked_pdf)
         if pending_rules:
             unverified.append("LLM 判项（" + "、".join(pending_rules) + "）")
         if unverified:
@@ -166,7 +172,7 @@ def _delivery_advice(
             reasons.append("突出层未通过：可作为差异化补充，但不是投递前置条件")
         actions.append("准备投递 PDF 并核对目标岗位；最终发送仍由你确认")
     if pdf_pending and recommendation != "apply":
-        reasons.append("PDF 尚未回填页数与裁切校验（评估阶段未渲染），投递前会再次校验，不按简历缺口处理")
+        reasons.append(f"{unchecked_pdf}尚未核验，不按简历内容缺口处理")
     summaries = dict(_RECOMMENDATION_SUMMARIES)
     if recommendation == "apply" and (pdf_pending or pending_rules):
         summaries["apply"] = "建议投递：除未校验项外，已校验的合格层与对位层通过。"
@@ -300,20 +306,11 @@ def apply_pdf_check(report: dict[str, object], pdf_check: dict) -> dict[str, obj
         if isinstance(failure, dict)
         and not (failure.get("rule") == "R1.5" and failure.get("target") == "pdf")
     ]
-    pages = pdf_check.get("pages")
-    max_pages = int(thresholds["eligible"]["max_pdf_pages"])  # type: ignore[index]
-    new_pdf_failures: list[QualityFailure] = []
-    if not isinstance(pages, int) or pages < 1:
-        new_pdf_failures.append(_failure("R1.5", "pdf", "PDF 页数不可用"))
-    elif pages > max_pages:
-        new_pdf_failures.append(_failure("R1.5", "pdf", f"PDF {pages} 页，超过 {max_pages} 页上限"))
-    if pdf_check.get("clipped") is True:
-        new_pdf_failures.append(_failure("R1.5", "pdf", "PDF 存在裁切"))
+    new_pdf_failures, pdf_metrics = pdf_artifact_check(pdf_check, thresholds)
     eligible["failures"] = failures + [failure.to_dict() for failure in new_pdf_failures]
     metrics = eligible.get("metrics") if isinstance(eligible.get("metrics"), dict) else {}
-    metrics["pdf_pages"] = pages
-    metrics["clip_check"] = pdf_check.get("clipped")
-    metrics["pdf_check_state"] = "verified"
+    metrics.update(pdf_metrics)
+    metrics["reason_count"] = len(eligible["failures"])
     eligible["metrics"] = metrics
     eligible["passed"] = not eligible["failures"]
     for name in ("fit", "strong", "distinct"):

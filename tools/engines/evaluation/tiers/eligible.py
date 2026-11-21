@@ -16,19 +16,34 @@ from tools.infra.persistence.yaml_io import parse_simple_yaml
 from .common import *
 
 
-def _pdf_failures(pdf_check: dict | None, first_screen: str, thresholds: dict) -> list[QualityFailure]:
+PDF_CHECK_PENDING = "pdf_check_pending"
+
+
+def pdf_artifact_check(pdf_check: dict | None, thresholds: dict) -> tuple[list[QualityFailure], dict]:
+    """Measure pages and clipping independently; absence is never a passing check."""
+    check = pdf_check if isinstance(pdf_check, dict) else {}
+    pages = check.get("pages")
+    clipped = check.get("clipped")
+    pages = pages if type(pages) is int and pages > 0 else None
+    clipped = clipped if type(clipped) is bool else None
     failures: list[QualityFailure] = []
-    if not isinstance(pdf_check, dict):
-        failures.append(_failure("R1.5", "pdf", "PDF 未渲染，页数与裁切尚未校验"))
-    else:
-        pages = pdf_check.get("pages")
-        max_pages = int(thresholds["eligible"]["max_pdf_pages"])
-        if not isinstance(pages, int) or pages < 1:
-            failures.append(_failure("R1.5", "pdf", "PDF 页数不可用"))
-        elif pages > max_pages:
-            failures.append(_failure("R1.5", "pdf", f"PDF {pages} 页，超过 {max_pages} 页上限"))
-        if pdf_check.get("clipped") is True:
-            failures.append(_failure("R1.5", "pdf", "PDF 存在裁切"))
+    max_pages = int(thresholds["eligible"]["max_pdf_pages"])
+    if pages is None:
+        failures.append(_failure("R1.5", "pdf", "PDF 页数尚未校验", gap_kind=PDF_CHECK_PENDING))
+    elif pages > max_pages:
+        failures.append(_failure("R1.5", "pdf", f"PDF {pages} 页，超过 {max_pages} 页上限"))
+    if clipped is None:
+        failures.append(_failure("R1.5", "pdf", "PDF 裁切尚未校验", gap_kind=PDF_CHECK_PENDING))
+    elif clipped:
+        failures.append(_failure("R1.5", "pdf", "PDF 存在裁切"))
+    return failures, {
+        "pdf_pages": pages, "clip_check": clipped,
+        "pdf_check_state": "verified" if pages is not None and clipped is not None else "unverified",
+    }
+
+
+def _first_screen_failures(first_screen: str, thresholds: dict) -> list[QualityFailure]:
+    failures: list[QualityFailure] = []
     if thresholds["eligible"]["require_summary"] and not any(
         token in first_screen for token in ("当前定位", "求职意向", "职业概述", "摘要")
     ):
@@ -291,7 +306,9 @@ def evaluate_eligible(
                 )
 
     # R1.5 篇幅/首屏/裁切。
-    failures.extend(_pdf_failures(pdf_check, first_screen, thresholds))
+    pdf_failures, pdf_metrics = pdf_artifact_check(pdf_check, thresholds)
+    failures.extend(pdf_failures)
+    failures.extend(_first_screen_failures(first_screen, thresholds))
 
     # R1.6 候选人可见正文不得含内部追溯信息。
     matched = _INTERNAL_TRACE_RE.search(resume)
@@ -308,10 +325,7 @@ def evaluate_eligible(
         trace_result["total_bullets"],
         trace_result,
         {
-            "pdf_pages": (pdf_check or {}).get("pages"),
-            "clip_check": (pdf_check or {}).get("clipped"),
-            # 结构化标记 PDF 是否已回填；供投递建议区分“未校验”与真实篇幅/裁切缺口。
-            "pdf_check_state": "unverified" if not isinstance(pdf_check, dict) else "verified",
+            **pdf_metrics,
             "first_screen_mode": _mode,
             "reason_count": len(failures),
         },

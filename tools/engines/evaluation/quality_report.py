@@ -112,7 +112,7 @@ def _run_quality_judge(
     jd_items = _judge_jd_items(semantic_review)
     meta: dict[str, Any] = {"cache": "disabled", "reason": "llm_not_configured_or_no_jd_items"}
     llm_available = llm_request_available(
-        provider=os.getenv("LLM_PROVIDER", ""), api_key=api_key, model=model
+        provider=os.getenv("LLM_PROVIDER", ""), api_key=api_key, model=model, base_url=base_url
     )
     if not (use_llm and llm_available and jd_items):
         return None, meta, decisions

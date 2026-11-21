@@ -167,7 +167,7 @@ def test_gui_multiline_jd_round_trips_into_generation(generation_inputs):
     assert target["keywords"] == ["Java", "Redis", "Kafka"]
 
 
-def test_high_score_without_real_gaps_is_quality_passed_but_needs_review(monkeypatch, generation_inputs):
+def test_high_score_with_pdf_clip_check_pending_still_allows_manual_review(monkeypatch, generation_inputs):
     from tools.cli.commands import evaluate as evaluate_cli
     from tools.sidecar.handlers import agent
 
@@ -214,12 +214,18 @@ def test_high_score_without_real_gaps_is_quality_passed_but_needs_review(monkeyp
     monkeypatch.setattr(agent, "_PROJECT_ROOT", output.parent)
     result = agent._quick_run_result_details("target", "", "", selected_evidence_card_ids=["ec-1"])
     assert result["resume_readiness"]["evaluation_score"] >= 78
-    # 工作职责改为非 bullet 后，旧版量化启发式可能留下“核对量化依据”建议；
-    # 四层门禁只消费 quality_report/auto_pass，这里确认不会伪造成阻断。
-    assert result["resume_readiness"]["auto_pass"] is True
-    assert result["resume_readiness"]["quality_report"]["auto_pass"] is True
+    # 实际导出仍只计页，不能因高分和预置判项全过而声称无裁切。
+    assert result["resume_pdf"]
+    assert result["resume_readiness"]["auto_pass"] is False
+    quality = result["resume_readiness"]["quality_report"]
+    assert quality["auto_pass"] is False
+    pdf_metrics = quality["tiers"]["eligible"]["metrics"]
+    assert pdf_metrics["pdf_pages"] == 1 and pdf_metrics["clip_check"] is None
+    assert pdf_metrics["pdf_check_state"] == "unverified"
     assert "evaluation_reference_score" not in result["resume_readiness"]
-    assert result["resume_readiness"]["quality_passed"] is True
+    assert result["resume_readiness"]["quality_passed"] is False
+    assert result["resume_readiness"]["manual_override_allowed"] is True
+    assert result["resume_readiness"]["quality_gate_blocking"] is False
     assert result["resume_readiness"]["status"] == "NEEDS_REVIEW"
     assert result["resume_readiness"]["deliverable"] is False
 
@@ -295,7 +301,9 @@ def test_thin_evidence_generates_explicit_missing_fields(monkeypatch,generation_
     assert run_generation_cli(monkeypatch,generation_inputs)==0
     trace=json.loads((generation_inputs[-1]/'resume_mr-target_A.trace.json').read_text())
     assert trace['readiness']['status']=='NEEDS_EVIDENCE'
-    assert {'ec-1.role_scope','ec-1.time_range','skills'}<=set(trace['readiness']['missing_evidence_fields'])
+    assert {'ec-1.time_range','skills'}<=set(trace['readiness']['missing_evidence_fields'])
+    # 本人职责缺失属于表达完整性提示，不再作为内容完整性硬阻断
+    assert 'ec-1.role_scope' in trace['readiness']['missing_soft_fields']
     assert trace['readiness']['deliverable'] is False
 
 
@@ -306,7 +314,7 @@ def test_empty_role_placeholder_is_not_a_personal_responsibility(monkeypatch, ge
     assert run_generation_cli(monkeypatch, generation_inputs) == 0
     resume = generation_inputs[-1] / 'resume_mr-target_A.md'
     trace = json.loads(resume.with_suffix('.trace.json').read_text())
-    assert 'ec-1.role_scope' in trace['readiness']['missing_evidence_fields']
+    assert 'ec-1.role_scope' in trace['readiness']['missing_soft_fields']
     assert '角色：' + placeholder not in resume.read_text()
 
 
@@ -357,3 +365,70 @@ def test_generation_and_evaluation_reuse_verified_semantic_selection(monkeypatch
     monkeypatch.setattr('sys.argv', ['evaluate', '--input', str(resume), '--output', str(output/'invalid.md'), '--job-profile', str(job), '--use-llm', '--require-llm', '--model', 'test', '--api-key', 'local'])
     assert evaluate_cli.main() == 1
     assert not (output/'invalid.md').exists()
+
+
+def test_same_project_action_order_follows_explicit_jd_responsibility_rank(monkeypatch, generation_inputs):
+    from tools.engines.matching.semantic_matching import run_semantic_matching, write_semantic_report
+
+    profile, job, evidence, report, output = generation_inputs
+    responsibilities = ("负责库存异常恢复", "负责交易一致性复核", "负责供应商账单审核", "负责通知失败处理")
+    actions = ("实现库存事件的断点续跑", "构建通知失败后的幂等补发")
+    fact_ids = ("ec-1:actions:0", "ec-1:actions:1")
+    binding = {responsibilities[0]: dict(fact_id=fact_ids[0], quote=actions[0]),
+               responsibilities[3]: dict(fact_id=fact_ids[1], quote=actions[1])}
+    card = evidence / "ec-1.yaml"
+    card.write_text(card.read_text().replace(
+        '  - "使用 Java 重构交易服务"',
+        ''.join(f'  - "{action}"\n' for action in actions).rstrip(),
+    ))
+    jd = job.with_suffix(".txt")
+    job.write_text('target_role: "后端工程师"\ncompany: "目标公司"\nsource_jd: "job.txt"\n')
+
+    class Transport:
+        chat_completions_url = "http://localhost/v1/chat/completions"
+
+        def post_json(self, url, payload, **kwargs):
+            data = json.loads(payload["messages"][1]["content"])
+            if data["stage"] == "recall":
+                return self.wrap({"cards": [{"id": "ec-1", "score": 90, "reason": "两条工作证据",
+                    "requirement_ids": ["d1", "d4"], "citations": list(binding.values())}]})
+            assessments = []
+            for req in data["requirements"]:
+                cite = binding.get(req["text"].split(". ", 1)[-1])
+                assessments.append({"requirement_id": req["id"],
+                    "status": "supported" if cite else "insufficient", "reason": "按测试事实逐一核对",
+                    "citations": [cite] if cite else []})
+            return self.wrap({"assessments": assessments})
+
+        @staticmethod
+        def wrap(body):
+            return {"choices": [{"message": {"content": json.dumps(body)}}]}
+
+        @staticmethod
+        def extract_content(response):
+            return response["choices"][0]["message"]["content"]
+
+    monkeypatch.setattr("tools.infra.llm.client.LLMClient.post_json",
+                        lambda *args, **kwargs: pytest.fail("unexpected real model call"))
+    # Swap only duties #1 and #4. The two unsupported middle duties remain untouched.
+    swapped = (responsibilities[3], *responsibilities[1:3], responsibilities[0])
+    for ordered, expected in ((responsibilities, fact_ids), (swapped, fact_ids[::-1])):
+        jd.write_text("工作职责\n" + "\n".join(f"{n}. {duty}" for n, duty in enumerate(ordered, 1)) + "\n")
+        current = run_semantic_matching(job_path=job, evidence_files=[card], personal_profile=profile,
+                                        client=Transport(), model="test", cache_dir=output.parent / "cache")
+        positive = {row["requirement_id"]: [cite["fact_id"] for cite in row["citations"]]
+                    for row in current["assessments"] if row["status"] == "supported"}
+        assert positive == {"d1": [expected[0]], "d4": [expected[1]]}
+        write_semantic_report(report, current)
+        assert run_generation_cli(monkeypatch, generation_inputs, "--use-llm", "--require-llm") == 0
+        resume = output / "resume_mr-target_A.md"
+        markdown = resume.read_text()
+        lines = markdown.splitlines()
+        trace = json.loads(resume.with_suffix(".trace.json").read_text())
+        by_line = sorted((claim["render_line"], claim["fact_id"], claim["text"]) for claim in trace["claims"]
+                         if claim.get("fact_id") in fact_ids)
+        assert [item[1] for item in by_line] == list(expected)
+        assert "## 项目经历" in lines[:by_line[0][0]]
+        assert not any(line.startswith("#") for line in lines[by_line[0][0]:by_line[1][0]])
+        for line, fact_id, word in by_line:
+            assert word == actions[fact_ids.index(fact_id)] and word in lines[line - 1] and markdown.count(word) == 1

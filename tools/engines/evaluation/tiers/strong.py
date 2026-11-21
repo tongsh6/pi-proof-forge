@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tools.domain.models import QualityFailure, TierResult
+from tools.domain.quality_text import render_fact_text
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.evaluation.llm_judge import resume_lines
 from tools.infra.persistence.yaml_io import parse_simple_yaml
@@ -44,14 +45,25 @@ def evaluate_strong(
         quant_total = quant_first = 0.0
     else:
         quant_flags: list[bool] = []
+        verified_results_by_bullet: dict[int, list[str]] = {}
         for bullet in experience:
-            row = verified_rows.get(int(bullet["number"]), {})
-            evidence_ids = list(row.get("evidence_ids", []))
-            pool = [
-                str(value)
-                for evidence_id in evidence_ids
-                for value in cards.get(evidence_id, {}).get("results", []) or []
-            ]
+            number = int(bullet["number"])
+            row = verified_rows.get(number, {})
+            # 只有此行实际采用的 results Fact 能证明成果，不能借同卡其他结果取分。
+            pool: list[str] = []
+            if trace.get("occurrence_lineage_version") == 1 and row.get("verified"):
+                for source in row.get("sources", []):
+                    if source.get("source_kind") != "evidence" or source.get("field") != "results":
+                        continue
+                    evidence_id = source.get("evidence_id", "")
+                    stored_results = cards.get(evidence_id, {}).get("results", []) or []
+                    if any(
+                        render_fact_text(str(value)) == source.get("text")
+                        and source.get("fact_id") == f"{evidence_id}:results:{index}"
+                        for index, value in enumerate(stored_results)
+                    ):
+                        pool.append(str(source["text"]))
+            verified_results_by_bullet[number] = pool
             quant_flags.append(_has_verifiable_quant(str(bullet["body"]), pool))
         quant_total = sum(quant_flags) / len(quant_flags)
         first_flags = [
@@ -94,7 +106,13 @@ def evaluate_strong(
             )
     casing: dict[str, set[str]] = {}
     for bullet in experience:
-        for token in re.findall(r"[A-Za-z][A-Za-z0-9+#.]{2,}", str(bullet["body"])):
+        # 只统计独立词：代码标识符内部（APPLY_RULE、repair-service-manager、
+        # RepairOrderQuery）的片段不算术语大小写不一致。
+        for match in re.finditer(
+            r"(?<![A-Za-z0-9_\-./])([A-Za-z][A-Za-z0-9+#.]{2,})(?![A-Za-z0-9_\-/])",
+            str(bullet["body"]),
+        ):
+            token = match.group(1)
             casing.setdefault(token.casefold(), set()).add(token)
     for variants in casing.values():
         if len(variants) > 1:
@@ -111,10 +129,8 @@ def evaluate_strong(
             if item is None:
                 failures.append(_failure("R3.1", f"bullet#{bullet['number']}", "缺少带引用的三段判定"))
                 continue
-            verified = verified_rows.get(int(bullet["number"]), {})
-            if verified.get("verified") and any(source.get("field") == "results"
-                                                for source in verified.get("sources", [])):
-                # 直接呈现已核验成果原文即有结果段，非数值交付无需额外量化。
+            if verified_results_by_bullet.get(int(bullet["number"])):
+                # 与 R3.2 共用已核实、已呈现的结果事实，非数值交付同样算结果段。
                 item = {**item, "result": True}
             missing = [label for label, key in (("场景", "scene"), ("动作", "action"), ("结果", "result")) if not item.get(key)]
             if missing:

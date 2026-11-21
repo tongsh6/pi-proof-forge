@@ -155,6 +155,7 @@ def has_llm_env() -> bool:
         provider=os.getenv("LLM_PROVIDER", ""),
         api_key=os.getenv("LLM_API_KEY", ""),
         model=os.getenv("LLM_MODEL", ""),
+        base_url=os.getenv("LLM_BASE_URL", ""),
     )
 
 
