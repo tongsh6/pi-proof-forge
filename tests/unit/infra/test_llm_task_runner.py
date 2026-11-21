@@ -105,6 +105,45 @@ def test_ambiguous_json_never_becomes_a_completed_decision(content):
     assert validated == []
 
 
+@pytest.mark.parametrize("second_finish", ["stop", "length"], ids=["truncated-then-complete", "twice-truncated"])
+def test_protocol_truncation_cannot_complete_even_with_valid_json(second_finish):
+    prepared = _request({"messages": [{"role": "user", "content": "完整合成输入"}]})
+    calls, extracted, validated = [], [], []
+
+    def call(current):
+        calls.append(current)
+        first = len(calls) == 1
+        return {"choices": [{
+            "finish_reason": "length" if first else second_finish,
+            "message": {"content": json.dumps({"selection": "unfinished" if first else "complete"})},
+        }]}
+
+    def extract(response):
+        extracted.append(response)
+        return response["choices"][0]["message"]["content"]
+
+    def validate(parsed):
+        validated.append(parsed)
+        return parsed
+
+    run = execute(
+        SEMANTIC_MATCHING, model="synthetic", prepare=lambda: prepared,
+        call=call, extract=extract, validate=validate,
+    )
+    if second_finish == "stop":
+        assert run.status == "complete"
+        assert run.outcome.result == {"selection": "complete"}
+        assert validated == [{"selection": "complete"}]
+        assert len(extracted) == 1
+    else:
+        assert run.status == "unavailable"
+        assert run.reason_code == "output_truncated"
+        assert run.outcome.result is None
+        assert extracted == [] and validated == []
+    assert run.attempts == len(calls) == 2
+    assert all(current is prepared for current in calls)
+
+
 def test_service_failure_is_unavailable_without_retry():
     calls = {"n": 0}
 

@@ -23,6 +23,7 @@ from tools.infra.llm.task_contract import (
     REASON_INVALID_JSON,
     REASON_INVALID_REQUEST,
     REASON_MODE_MISSING,
+    REASON_OUTPUT_TRUNCATED,
     REASON_TIMEOUT,
     TaskContract,
     TaskOutcome,
@@ -143,6 +144,12 @@ def execute(
             return rejected(REASON_TIMEOUT, str(exc)[:200])
         except Exception as exc:  # noqa: BLE001 - 服务层失败统一降级为"不可用"
             return rejected(REASON_MODE_MISSING, str(exc)[:200])
+
+        choices = response.get("choices") if isinstance(response, Mapping) else None
+        if (isinstance(choices, list) and choices and isinstance(choices[0], Mapping)
+                and choices[0].get("finish_reason") == "length"):
+            last_reason, last_detail = REASON_OUTPUT_TRUNCATED, "模型响应标记输出截断"
+            continue
 
         try:
             content = extract(response)
