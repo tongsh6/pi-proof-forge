@@ -355,6 +355,80 @@ def test_ambiguous_saved_scope_requires_explicit_recovery_without_losing_sibling
     assert len(rows) == (1 if resolution == "revoke" else 2)
 
 
+def test_incomplete_save_preserves_scope_without_granting_authority(sample):
+    _, path, params, scope = _scoped_review(sample)
+    scope["attribution"] = "teammate"
+    params["review"]["fact_scope"] = scope
+    evidence.handle_evidence_save_draft(params)
+    accepted = json.loads(parse_simple_yaml(path.read_text())["scalars"]["reviewed_facts_json"])["fact_scope_v1"]
+
+    # 暂存为不完整不能撤销已核定范围，也不能让它继续充当候选事实。
+    params["review"].pop("fact_scope")
+    params["save_mode"] = "incomplete"
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    saved = evidence.handle_evidence_save_draft(params)
+    assert saved["candidate_pool_eligible"] is False
+    detail = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+    assert detail["fact_scope_review"] == []
+    pending = json.loads(parse_simple_yaml(path.read_text())["scalars"]["reviewed_facts_json"])
+    assert pending["fact_scope_v1"] == accepted
+
+    # 再次普通复审仍须保留同事范围，不能借状态往返恢复整卡归功。
+    params["save_mode"] = "eligible"
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    row, = _live_scope(path)
+    assert row["fact_id"] == f"{path.stem}:actions:0"
+    assert row["attribution"] == "teammate"
+
+
+@pytest.mark.parametrize("save_mode", ["incomplete", "eligible"])
+def test_incomplete_review_cannot_silently_replace_scope_binding(sample, save_mode):
+    _, path, params, scope = _scoped_review(sample)
+    params["review"]["fact_scope"] = scope
+    evidence.handle_evidence_save_draft(params)
+    params["review"].pop("fact_scope")
+    params["save_mode"] = "incomplete"
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+
+    ref = params["draft"]["source_documents"][0]
+    quote = evidence.handle_read_material_document({"material_id": ref["material_id"], "document_id": ref["document_id"]})["text"]
+    params["draft"]["field_sources"][-1]["quote"] = quote
+    params["save_mode"] = save_mode
+    before = path.read_bytes()
+    params["expected_sha256"] = hashlib.sha256(before).hexdigest()
+    with pytest.raises(ValueError, match="fact_scope_unverifiable"):
+        evidence.handle_evidence_save_draft(params)
+    assert path.read_bytes() == before
+
+    # 仍沿原有显式采纳修复精确目标，不需要另建恢复记录。
+    params["save_mode"] = "eligible"
+    params["review"]["fact_scope"] = {**scope, "source": {**scope["source"], "quote": quote}}
+    evidence.handle_evidence_save_draft(params)
+    row, = _live_scope(path)
+    assert row["sources"][0]["quote"] == quote
+
+
+def test_ordinary_title_edit_keeps_scope_through_pending_review(sample):
+    _, path, params, scope = _scoped_review(sample)
+    scope["attribution"] = "teammate"
+    params["review"]["fact_scope"] = scope
+    evidence.handle_evidence_save_draft(params)
+    evidence.handle_evidence_update({"meta": META, "evidence_id": path.stem, "patch": {"title": "合成平台架构"}})
+    detail = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+    assert detail["candidate_pool_eligible"] is False
+    assert detail["fact_scope_review"] == []
+
+    params["draft"]["title"] = "合成平台架构"
+    params["review"].pop("fact_scope")
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    row, = _live_scope(path)
+    assert row["attribution"] == "teammate"
+    assert row["fact_id"] == f"{path.stem}:actions:0"
+
+
 def test_exact_source_scope_requires_explicit_review_and_supports_revoke(sample):
     root,path,params,scope = _scoped_review(sample)
     params['draft']['field_sources'][-1]['fake_scope'] = scope
@@ -464,17 +538,23 @@ def test_scope_conflict_keeps_both_sources_and_revoke_keeps_sibling(sample):
     assert _live_scope(path) == []
 
 
-def test_generic_edit_pending_scope_does_not_resurface_in_ordinary_reapproval(sample):
-    _,path,params,scope = _scoped_review(sample)
-    params['review']['fact_scope']=scope
+def test_changed_fact_pending_scope_cannot_resurface_or_disappear_on_ordinary_reapproval(sample):
+    _, path, params, scope = _scoped_review(sample)
+    params["review"]["fact_scope"] = scope
     evidence.handle_evidence_save_draft(params)
     assert _live_scope(path)
-    evidence.handle_evidence_update({'meta':META,'evidence_id':path.stem,'patch':{'title':'已修改标题'}})
-    assert _live_scope(path)==[]
-    params['expected_sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
-    del params['review']['fact_scope']
-    evidence.handle_evidence_save_draft(params)
-    assert _live_scope(path)==[]
+    replacement = params["draft"]["results"]
+    evidence.handle_evidence_update({"meta": META, "evidence_id": path.stem, "patch": {"actions": replacement}})
+    assert _live_scope(path) == []
+    params["draft"]["actions"] = replacement
+    params["draft"]["field_sources"][-1].update(value=replacement, quote=replacement)
+    params["review"].pop("fact_scope")
+    before = path.read_bytes()
+    params["expected_sha256"] = hashlib.sha256(before).hexdigest()
+    # 已改事实不能借普通复审复活旧范围，也不能把旧约束当作不存在。
+    with pytest.raises(ValueError, match="fact_scope_unverifiable"):
+        evidence.handle_evidence_save_draft(params)
+    assert path.read_bytes() == before
 
 
 @pytest.mark.parametrize('sample', [('实现会员时间轴页面并接入平台已有接口。','完成预约能力的测试验收，覆盖改期流程。')], indirect=True)

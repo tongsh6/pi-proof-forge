@@ -571,13 +571,13 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
             if changed_sources and not field_sources:raise ValueError('field_source_required_for_merge')
         preserved=_preserved_blocks(original)
     reviewed_facts = {key:normalized_draft[key] for key in SOURCE_FIELDS}
-    if save_mode == "eligible":
-        if scope_provided and changed_sources:
-            raise ValueError("fact_scope_review_requires_unchanged_sources")
-        scopes = apply_fact_scope(existing_doc, normalized_draft, field_sources, source_documents,
-                                  review.get("fact_scope"), provided=scope_provided, documents=documents)
-        if scopes:
-            reviewed_facts[FACT_SCOPE_KEY] = scopes
+    if scope_provided and changed_sources:
+        raise ValueError("fact_scope_review_requires_unchanged_sources")
+    # 暂存仍维护既有事实约束；候选权威继续由保存状态和读时校验决定。
+    scopes = apply_fact_scope(existing_doc, normalized_draft, field_sources, source_documents,
+                              review.get("fact_scope"), provided=scope_provided, documents=documents)
+    if scopes:
+        reviewed_facts[FACT_SCOPE_KEY] = scopes
     now = _origin._utcnow_iso()
     fields = {
         "id": evidence_id,

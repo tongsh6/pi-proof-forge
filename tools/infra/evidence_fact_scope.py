@@ -83,20 +83,30 @@ def _retained(rows, fields, bindings, refs, *, validate):
     return valid
 
 
+def _stored_scope(scalars):
+    """维护同一复审快照的既有约束，不因暂存或待复审而将其视为已撤销。"""
+    try:
+        snapshot = json.loads(scalars.get("reviewed_facts_json") or "{}")
+    except (ValueError, TypeError) as exc:
+        raise ValueError("fact_scope_invalid") from exc
+    if not isinstance(snapshot, dict):
+        raise ValueError("fact_scope_invalid")
+    return snapshot.get(KEY, [])
+
+
 def _saved(scalars):
     if scalars.get("review_decision") != "approved" or scalars.get("status") != "saved_eligible":
         return []
     try:
-        snapshot = json.loads(scalars.get("reviewed_facts_json") or "{}")
-        return snapshot.get(KEY, [])
-    except (ValueError, AttributeError):
+        return _stored_scope(scalars)
+    except ValueError:
         return []
 
 
 def apply_fact_scope(existing, fields, bindings, refs, directive, *, provided, documents):
     """Called only after the existing save route validates all cited source documents."""
     original = {**existing["scalars"], **existing["lists"]} if existing else {}
-    saved = _saved(original)
+    saved = _stored_scope(original)
     if not isinstance(saved, list):
         raise ValueError("fact_scope_invalid")
     rows = _retained(saved, fields, bindings, refs, validate=_bound)
