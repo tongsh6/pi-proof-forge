@@ -74,7 +74,7 @@ def test_body_only_claims_actual_facts_and_keeps_every_full_condition():
     text = build_template_resume("B", [card], personal_profile=profile, claims=claims)
     assert card == original
     trace = {"occurrence_lineage_version": 1, "claims": claims}
-    checked = inspect_bullet_trace(text, trace)
+    checked = inspect_bullet_trace(text, trace, career_profile=profile)
     assert checked["verified_bullets"] == checked["total_bullets"]
     result, = [c for c in claims if c.get("fact_id") == "ec-projection:results:0"]
     assert result["text"] == original["results"][0]
@@ -162,7 +162,7 @@ def test_same_text_project_context_never_lends_result_identity_or_measurement(re
     assert assessment["requirements"][0]["resume_status"] == ("supported" if expected_result else "not_present")
     quality = evaluate_strong(
         resume=markdown, cards={card["id"]: card},
-        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(),
+        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(), career_profile={},
     )
     assert quality.metrics["quant_total"] == pytest.approx(1 / 3 if review == "measured" else 0.0, abs=0.0001)
 
@@ -279,7 +279,7 @@ def test_same_text_backgrounds_only_cover_the_rendered_context_identity():
     assert statuses["r-unreviewed-result"] == "not_present"
     quality = evaluate_strong(
         resume=markdown, cards={first["id"]: first, second["id"]: second},
-        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(),
+        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(), career_profile={},
     )
     assert quality.metrics["quant_total"] == 0.0
     assert statuses["r-used"] == "supported"
@@ -407,7 +407,7 @@ def test_background_review_only_changes_the_adopted_context(decision, monkeypatc
     }
     quality = evaluate_strong(
         resume=markdown, cards={card["id"]: card},
-        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(),
+        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(), career_profile={},
     )
     assert quality.metrics["quant_total"] == pytest.approx(0.25, abs=0.0001)
 
@@ -578,7 +578,7 @@ def test_l9_same_role_text_cannot_borrow_another_identity_or_result_credit():
     assert statuses["r-unreviewed-result"] == "not_present"
     quality = evaluate_strong(
         resume=markdown, cards={first["id"]: first, second["id"]: second},
-        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(),
+        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(), career_profile={},
     )
     assert quality.metrics["quant_total"] == 0
     assert statuses["r-used"] == "supported"

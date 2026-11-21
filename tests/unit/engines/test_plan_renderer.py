@@ -131,7 +131,8 @@ def test_same_text_action_and_result_are_scored_by_rendered_fact(excluded_field,
     sentence = "P95 从 200 ms 降至 120 ms"
     item = card(actions=[sentence], results=[sentence],
                 personal_claim_exclusions=[f"ec_a:{excluded_field}:0"])
-    text, claims = render(cards=[item])
+    career_data = career()
+    text, claims = render(cards=[item], career_data=career_data)
     occurrences = [claim for claim in claims if claim.get("text") == sentence
                    and claim.get("field") in {"actions", "results"}]
     assert len(occurrences) == 1
@@ -139,7 +140,7 @@ def test_same_text_action_and_result_are_scored_by_rendered_fact(excluded_field,
     assert occurrences[0]["render_line"] > 0
     assert text.splitlines()[occurrences[0]["render_line"] - 1] == f"- {sentence}"
 
-    quality = evaluate_strong(resume=text, cards={"ec_a": item},
+    quality = evaluate_strong(resume=text, cards={"ec_a": item}, career_profile={"career": career_data},
         trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config())
     assert (quality.metrics["quant_first_screen"] > 0) is counts_quant
     assert (quality.metrics["quant_total"] > 0) is counts_quant

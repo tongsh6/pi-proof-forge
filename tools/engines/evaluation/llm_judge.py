@@ -9,9 +9,10 @@ import re
 from typing import Any
 from tools.domain.quality_text import matches_fact_occurrence
 from tools.infra.evidence_provenance import parse_provenance
+from tools.engines.generation.fact_index import Fact, build_fact_index
 
-PROMPT_VERSION = 7
-JUDGE_SCHEMA_VERSION = 1
+PROMPT_VERSION = 10
+JUDGE_SCHEMA_VERSION = 2
 
 _RULES = ("r1_4", "r2_1", "r3_1", "r3_5", "r4_1")
 _STATUSES = {"supported", "weak", "absent"}
@@ -81,12 +82,24 @@ def summarize_cards(cards: dict[str, dict], *, claims: list[dict]) -> list[dict[
     return summary
 
 
+def _profile_facts(career_profile: dict) -> tuple[Fact, ...]:
+    """以同次已确认档案展开既有规范身份；不读取或补写来源。"""
+    if not isinstance(career_profile, dict):
+        return ()
+    status = career_profile.get("career_status")
+    if not isinstance(status, dict) or status.get("reviewed") is not True:
+        return ()
+    return build_fact_index([], career_profile.get("career")).facts
+
+
 def build_judge_prompt(
     *,
     bullets: list[dict[str, object]],
     cards: dict[str, dict],
     jd_items: list[dict[str, str]],
-    r1_4_required_bullets: set[int],
+    r1_4_required_lines: set[int],
+    r1_4_lines: list[dict[str, object]],
+    career_profile: dict,
     resume_text: str = "",
     trace: dict | None = None,
     sections: tuple[str, ...] | None = None,
@@ -106,6 +119,8 @@ def build_judge_prompt(
     lines = resume_lines(resume_text)
     visible_lines = {int(row["id"].split("#", 1)[1]) for row in lines}
     visible_lines.update(row["render_line"] for row in bullet_lines if row["render_line"] is not None)
+    visible_lines.update(int(row["render_line"]) for row in r1_4_lines)
+    profile_facts = _profile_facts(career_profile)
     claims: list[dict] = []
     for original in (trace.get("claims") or []) if isinstance(trace, dict) else []:
         if not isinstance(original, dict) or original.get("render_line") not in visible_lines:
@@ -124,7 +139,17 @@ def build_judge_prompt(
         "resume_lines": lines,
         "bullets": bullet_lines,
         "claims": claims,
-        "r1_4_required_bullets": sorted(r1_4_required_bullets),
+        "r1_4_required_lines": sorted(r1_4_required_lines),
+        "r1_4_lines": [
+            {key: row.get(key, "") for key in ("render_line", "text", "section", "entry")}
+            for row in r1_4_lines
+        ],
+        "career": career_profile.get("career", {}) if profile_facts else {},
+        "profile_facts": [
+            {"fact_id": fact.fact_id, "source_id": fact.source_id, "field": fact.field,
+             "text": fact.text, "work_id": fact.work_id}
+            for fact in profile_facts
+        ],
         "cards": summarize_cards(cards, claims=claims),
         "jd_items": [
             {"id": item.get("id", ""), "kind": item.get("kind", "must_have"), "text": str(item.get("text", ""))}
@@ -133,7 +158,7 @@ def build_judge_prompt(
     }
     selected = tuple(section for section in (sections or _RULES) if section in _RULES)
     schema = {
-        "r1_4": '  "r1_4": [{"bullet": <int>, "supported": <bool>, "citations": ["ec_..."], "reason": "<short>"}]',
+        "r1_4": '  "r1_4": [{"render_line": <int>, "status": "not_applicable|supported|unsupported", "citations": ["ec_..."], "reason": "<short>"}]',
         "r2_1": '  "r2_1": [{"jd_item_id": "<id>", "status": "supported|weak|absent", "bullet_ref": "bullet#N 或 line#N；absent 时为空", '
                 '"citations": ["bullet#N 或 line#N 或 ec_...；absent 可用 resume"], "reason": "<short>"}]',
         "r3_1": '  "r3_1": [{"bullet": <int>, "scene": <bool>, "action": <bool>, "result": <bool>, '
@@ -145,9 +170,11 @@ def build_judge_prompt(
     }
     schema_text = "{\n" + ",\n".join(schema[section] for section in selected) + "\n}\n"
     return (
-        "You are a strict resume-quality judge. Judge ONLY from the provided bullets, evidence cards and JD items.\n"
-        "每项判断必须引用输入中存在的 bullet#N、line#N 或证据卡 id。仅 absent 可引用 resume，"
+        "You are a strict resume-quality judge. Judge ONLY from the provided resume lines, evidence cards, current career sources and JD items.\n"
+        "每项判断必须引用输入中存在的 bullet#N、line#N 或证据卡 id；R1 还可引用 profile_facts 的原 Fact ID。仅 absent 可引用 resume，"
         "表示已审阅本次完整正文。理由用简短中文，不虚构事实。\n"
+        "各组分别评价其约定对象。相关正文和来源可以帮助理解，但不能把别组或别处的成功、失败直接当作本组的正反证，"
+        "也不能补出本组对象没有表达的内容。每项理由须说明其被评对象与相关来源及 JD 的实际关系。\n"
         "claims 按实际 render_line 记录正文已采用的来源身份；行动和结果的 index/value 是原字段位置与完整原文，"
         "不能按同文或同卡替换身份。cards 是完整原卡核验语境，role_scope_provenance 和 fact_scope_review "
         "提供已有职责与范围；它们可以支持或反驳正文已经表达的职责和条件，但不能补出未呈现的行动、成果、"
@@ -158,11 +185,25 @@ def build_judge_prompt(
         "时间等结构 claims 可能按已核来源降低显示精度，不把完整日期未展示当作事实冲突。\n"
         "Return ONLY a JSON object (no markdown fence) with EXACTLY these keys: " + ", ".join(selected) + "\n"
         + schema_text
-        + "Rules: when r1_4 is requested, cover exactly INPUT r1_4_required_bullets, "
-        "each once with a cited boolean judgment; no omissions, duplicates or extra targets. "
-        "判断责任强度要结合卡内已审核职责与具体行动；不要求简历或证据句反复出现“我”，"
-        "已经用户确认的 L3 职责可以保留主导/负责人，不因等级自动否定；仍须核对行动与职责范围，"
-        "也不能将团队成果、系统功能或限定参与提升为独立负责。"
+        + "Rules: when r1_4 is requested, cover exactly INPUT r1_4_required_lines, "
+        "each once by render_line with status/citations/reason; no omissions, duplicates or extra targets. "
+        "r1_4_lines 是本次真实完整表达。先在完整语境中识别是否向候选人归属工作行为、交付或相应职责身份，"
+        "包括隐含关系；不按章节、对象名称或动词筛选适用性。共同核对主体、否定、时态、环境、"
+        "本人参与/主导强度和分工范围；不要求每句出现我，不把同事成果归本人，也不抹掉本人有限对接或参与价值。"
+        "一般事实有出处不等于完整责任命题成立，字段中出现某项事实也不能代替对责任关系的判断。"
+        "not_applicable 仅表示完整表达没有向候选人归属职责，不表示缺来源；supported 表示当前来源支持完整责任表达；"
+        "unsupported 表示当前来源不足以支持或明确反驳该表达，不表示本人不具备能力或事实已经证伪。"
+        "无法完成合法判断保留缺项，不能改成 not_applicable。"
+        "supported 至少引用一个当前卡 id 或 profile_facts 的原 Fact ID；仅正文 line#/bullet# 不能证明自身责任。"
+        "每个引用都必须真实存在，不能混入无效引用；引用不限于被评行本身已绑定来源，充分独立语境可支持已有表达。"
+        "reason 简短说明有无责任归属、决定状态的真实来源关系及关键限定；仅说名称相同、字段存在或可追溯不足以支持责任主张。"
+        "career 与 profile_facts 来自同一当前已确认档案，原工作 id/current/期间/分工共同约束来源，不跨任职拼接。"
+        "当前定位是专业定位，不必表示现受雇于某家公司。综合已确认经历、现职业概述与技能中的实际实践和职责依据，"
+        "连同各自时间条件判断该职业身份；current=false 不自动否定，历史同名职位也不能单独证明当前专业定位。"
+        "当前定位没有 occurrence 不自动失败，也不能伪造来源直通。"
+        "各字段等级只约束实际字段：角色字段 L5 或未确认 L3 不跨字段否定独立有来源的行动/成果。"
+        "已确认且有出处的 L3 可保原主导范围；同 Fact 当前 scope/result row 是核验依据，"
+        "established/self 不自动证明主导、独立完成或全权负责。"
         "r2_1 must cover EVERY jd_item id exactly once. supported/weak 的 bullet_ref 必须填写正文 bullet#N 或 line#N，"
         "不可用卡中未出现在正文的内容补足正文覆盖。可引用多个正文位置。absent 引用 [\"resume\"] 表示已核对全部正文，"
         "并说明缺少什么，不引用无关成果。其余 citations 可用真实 bullet#N、line#N 或卡 id，不能留空。"
@@ -173,11 +214,17 @@ def build_judge_prompt(
         "不是每条都必须有量化指标（量化比例由 R3.2 单独检查）。个人项目可引用其正文 bullet，"
         "不因无独立卡 id 而省略判定。只评价实际正文，不从证据卡补出未呈现的行动和成果。"
         "r3_5 judges 职业概述 in resume_lines (<=3 lines, role/scale match, no generic adjectives). "
+        "被评对象仅为实际职业概述原句，不把其他位置的表述并入摘要。role_scale_match 核对摘要实际表达的定位、"
+        "职责强度和规模与相关来源及 JD 是否相符；其他正文可作来源对照，但其独立缺陷不能证明摘要失配。"
+        "摘要及其相关来源内容、JD 未变时，不因其他位置的错误改变本项结论。"
+        "职责强度与岗位匹配按完整含义判断，不要求特定动词。把表达润色建议与已有判项依据分开，"
+        "缺少某个动词或存在可优化写法，不自动构成职责或规模不匹配。"
+        "不能从任务颗粒度、工作环境或工作类型外推个人资历、职级或总体能力。"
+        "来源及 JD 未给出的资历与层级保持未知，未知本身不是职责或规模冲突的反证。"
         "r4_1 nominates 0-3 differentiated highlights that exceed the JD requirement in one of the four dimensions; "
         "only use L1 when the actual rendered claim and its complete source evidence directly show it.\n"
         "INPUT JSON:\n" + json.dumps(payload, ensure_ascii=False)
     )
-
 
 def _as_int(value: object) -> int | None:
     if isinstance(value, bool):
@@ -215,16 +262,19 @@ def _clean_string(value: object, limit: int) -> str:
 def validate_role_judgments(
     value: object,
     *,
-    required_bullets: set[int],
+    required_lines: set[int],
+    r1_4_lines: list[dict[str, object]],
     bullets: list[dict[str, object]],
     cards: dict[str, dict] | None,
-    resume_text: str,
+    career_profile: dict,
 ) -> tuple[list[dict[str, Any]], bool, int]:
-    """原目标先核唯一性；坏引用或值不能把重复回答洗成唯一。"""
+    """原目标先核唯一性；任一非法引用均不能被过滤成完整判项。"""
     if not isinstance(value, list):
         return [], False, 0
+    actual_lines = {row["render_line"] for row in r1_4_lines if type(row.get("render_line")) is int}
     bullet_numbers = {int(row["number"]) for row in bullets if type(row.get("number")) is int}
-    card_ids = set(cards or {}) | {str(row["id"]) for row in resume_lines(resume_text)}
+    independent_ids = set(cards or {}) | {fact.fact_id for fact in _profile_facts(career_profile)}
+    citation_ids = independent_ids | {f"line#{number}" for number in actual_lines}
     seen: set[int] = set()
     duplicated: set[int] = set()
     accepted: list[dict[str, Any]] = []
@@ -233,35 +283,51 @@ def validate_role_judgments(
         if not isinstance(item, dict):
             rejected += 1
             continue
-        bullet = _as_int(item.get("bullet"))
-        if bullet not in required_bullets or bullet not in bullet_numbers:
+        number = item.get("render_line")
+        if type(number) is not int or number not in required_lines or number not in actual_lines:
             rejected += 1
             continue
-        if bullet in seen:
-            duplicated.add(bullet)
+        if number in seen:
+            duplicated.add(number)
             rejected += 1
             continue
-        seen.add(bullet)
-        cites = _citations(item.get("citations"), bullet_numbers, card_ids)
-        if not cites or type(item.get("supported")) is not bool:
+        seen.add(number)
+        status = item.get("status")
+        references = item.get("citations")
+        if (
+            set(item) != {"render_line", "status", "citations", "reason"}
+            or not isinstance(status, str)
+            or status not in {"not_applicable", "supported", "unsupported"}
+            or not isinstance(references, list) or not references
+            or not isinstance(item.get("reason"), str) or not item["reason"].strip()
+        ):
+            rejected += 1
+            continue
+        checked = [_citations([reference], bullet_numbers, citation_ids) for reference in references]
+        if any(len(reference) != 1 for reference in checked):
+            rejected += 1
+            continue
+        cites = sorted({reference[0] for reference in checked})
+        if status == "supported" and not independent_ids.intersection(cites):
             rejected += 1
             continue
         accepted.append({
-            "bullet": bullet, "supported": item["supported"], "citations": cites,
+            "render_line": number, "status": status, "citations": cites,
             "reason": _clean_string(item.get("reason"), 300),
         })
-    rejected += sum(item["bullet"] in duplicated for item in accepted)
-    accepted = [item for item in accepted if item["bullet"] not in duplicated]
-    complete = not duplicated and {item["bullet"] for item in accepted} == required_bullets
+    rejected += sum(item["render_line"] in duplicated for item in accepted)
+    accepted = [item for item in accepted if item["render_line"] not in duplicated]
+    complete = not duplicated and {item["render_line"] for item in accepted} == required_lines
     return accepted, complete, rejected
-
 
 def parse_judgments(
     content: str,
     *,
     bullets: list[dict[str, object]],
     jd_items: list[dict[str, str]],
-    r1_4_required_bullets: set[int],
+    r1_4_required_lines: set[int],
+    r1_4_lines: list[dict[str, object]],
+    career_profile: dict,
     cards: dict[str, dict] | None = None,
     resume_text: str = "",
 ) -> dict[str, Any] | None:
@@ -288,8 +354,8 @@ def parse_judgments(
                               "judged_sections": judged_sections, "rejected_items": 0}
 
     r1_4, role_complete, rejected = validate_role_judgments(
-        loaded.get("r1_4"), required_bullets=r1_4_required_bullets,
-        bullets=bullets, cards=cards, resume_text=resume_text,
+        loaded.get("r1_4"), required_lines=r1_4_required_lines,
+        r1_4_lines=r1_4_lines, bullets=bullets, cards=cards, career_profile=career_profile,
     )
     if role_complete:
         judged_sections.append("r1_4")

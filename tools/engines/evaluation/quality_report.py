@@ -135,12 +135,16 @@ def _run_quality_judge(
     """同份完整请求决定准入和缓存；只修未完成组，失败保留已核 partial。"""
     resume_sha256 = hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
     decisions = quality_judge_cache.load_decisions(Path.cwd(), resume_sha256)
-    _failures, r1_4_required_bullets = r1_4_requirements(
-        trace_result=tiered_evaluator.inspect_bullet_trace(resume_text, trace),
-        career_profile=career_profile, cards=cards,
+    trace_result = tiered_evaluator.inspect_bullet_trace(
+        resume_text, trace, career_profile=career_profile,
     )
+    r1_4_required_lines = r1_4_requirements(trace_result=trace_result)
+    r1_4_lines = trace_result["lines"]
+    # Keep the H snapshot immutable; only validated source identities enter the prompt.
+    judge_trace = {**trace, "claims": trace_result["claims"]}
     if isinstance(trace.get("claims"), list):
-        rendered_ids = {str(claim.get("evidence_id", "")) for claim in trace["claims"] if isinstance(claim, dict)}
+        rendered_ids = {str(claim.get("evidence_id", "")) for claim in judge_trace["claims"]
+                        if claim.get("source_kind") == "evidence"}
         cards = {key: card for key, card in cards.items() if key in rendered_ids}
     jd_items = _judge_jd_items(semantic_review)
     meta: dict[str, Any] = {"cache": "disabled", "reason": "llm_not_configured_or_no_jd_items"}
@@ -153,7 +157,7 @@ def _run_quality_judge(
     job_profile_id = Path(job_profile_path).stem if job_profile_path else ""
     all_sections = tuple(llm_judge._RULES)
     requested = tuple(
-        section for section in all_sections if section != "r1_4" or r1_4_required_bullets
+        section for section in all_sections if section != "r1_4" or r1_4_required_lines
     )
     merged: dict[str, Any] = {
         "schema_version": llm_judge.JUDGE_SCHEMA_VERSION,
@@ -161,7 +165,7 @@ def _run_quality_judge(
         "judged_sections": [],
         "rejected_items": 0,
     }
-    if not r1_4_required_bullets:
+    if not r1_4_required_lines:
         merged["r1_4"] = []
         merged["judged_sections"] = ["r1_4"]
     meta = {
@@ -172,7 +176,8 @@ def _run_quality_judge(
     def parse_current(value):
         return llm_judge.parse_judgments(
             json.dumps(value, ensure_ascii=False), bullets=bullets, jd_items=jd_items,
-            cards=cards, resume_text=resume_text, r1_4_required_bullets=r1_4_required_bullets,
+            cards=cards, resume_text=resume_text, career_profile=career_profile,
+            r1_4_required_lines=r1_4_required_lines, r1_4_lines=r1_4_lines,
         )
 
     def validated_cache(cached):
@@ -210,8 +215,9 @@ def _run_quality_judge(
                     {"role": "system", "content": "You are a strict judge. Return ONLY the JSON object."},
                     {"role": "user", "content": llm_judge.build_judge_prompt(
                         bullets=bullets, cards=cards, jd_items=jd_items,
-                        resume_text=resume_text, trace=trace, sections=sections,
-                        r1_4_required_bullets=r1_4_required_bullets)},
+                        resume_text=resume_text, trace=judge_trace, sections=sections,
+                        career_profile=career_profile, r1_4_lines=r1_4_lines,
+                        r1_4_required_lines=r1_4_required_lines)},
                 ],
             },
         )

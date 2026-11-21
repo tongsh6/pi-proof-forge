@@ -159,7 +159,7 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
         now=now,
         input_name=input_path.name,
         job_profile_name=job_profile_path.name if job_profile_path else None,
-        verified_trace=trace if trace_valid else None,
+        career_profile=career, verified_trace=trace if trace_valid else None,
     )
 
     final_markdown = rule_result["markdown"]

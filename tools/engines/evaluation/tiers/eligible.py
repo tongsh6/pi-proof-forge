@@ -130,52 +130,12 @@ def _structure_failures(resume: str, career: dict) -> list[QualityFailure]:
     return failures
 
 
-def r1_4_requirements(
-    *, trace_result: dict, career_profile: dict, cards: dict[str, dict],
-) -> tuple[list[QualityFailure], set[int]]:
-    """保留确定性职责失败，返回其余仍需语义判定的原 bullet 身份。"""
-    strong_rows = [
-        row for row in trace_result["bullets"]
-        if _STRONG_ROLE_RE.search(str(row.get("text", "")))
-    ]
-    confirmed_profile_texts: set[str] = set()
-    if career_profile.get("career_status", {}).get("reviewed"):
-        career = career_profile.get("career", {})
-        for group, label in (("skills", "category"), ("extras", "title")):
-            for entry in career.get(group, []):
-                description = str(entry.get("description", ""))
-                confirmed_profile_texts.update((
-                    _normalize(description),
-                    _normalize(str(entry.get(label, "")) + "：" + description),
-                ))
-        confirmed_profile_texts.update(
-            _normalize(text) for entry in career.get("work", [])
-            for text in entry.get("contributions", [])
-        )
-    failures: list[QualityFailure] = []
-    required: set[int] = set()
-    for row in strong_rows:
-        for evidence_id in row.get("evidence_ids", []):
-            source = cards.get(evidence_id, {})
-            level = _provenance_level(source, "role_scope")
-            role = _provenance(source, "role_scope")
-            confirmed = role.get("confirmed_by_user") is True and bool(role.get("evidence"))
-            if level == "L5" or (level == "L3" and not confirmed):
-                failures.append(_failure(
-                    "R1.4", f"bullet#{row['number']} / {evidence_id}",
-                    f"角色措辞“{_short(row['text'], 20)}”缺少已确认的职责依据（{level}）",
-                ))
-                break
-        else:
-            if (
-                row.get("verified")
-                and _normalize(row["text"]) in confirmed_profile_texts
-                and all(source.get("source_kind") == "personal_profile" for source in row.get("sources", []))
-            ):
-                continue
-            required.add(int(row["number"]))
-    return failures, required
-
+def r1_4_requirements(*, trace_result: dict) -> set[int]:
+    """只让共享覆盖已核的完整当前档案原句直通；其余实际行交语义判断。"""
+    return {
+        int(row["render_line"]) for row in trace_result["lines"]
+        if not row["profile_only"]
+    }
 
 def evaluate_eligible(
     *,
@@ -190,7 +150,7 @@ def evaluate_eligible(
 ) -> TierResult:
     thresholds = config.thresholds
     first_screen, _rest, _mode = _split_first_screen(resume)
-    trace_result = inspect_bullet_trace(resume, trace)
+    trace_result = inspect_bullet_trace(resume, trace, career_profile=career_profile)
     failures: list[QualityFailure] = []
 
     # R1.1 正文每条 bullet 可追溯到证据卡或已确认职业档案。
@@ -298,27 +258,20 @@ def evaluate_eligible(
                 _failure("R1.3", f"工作经历「{_short(entry['title'])}」", "经历缺少时间（至少到年）")
             )
 
-    # R1.4 的目标、确定失败与模型完成条件分别沿同一职责核对。
-    role_failures, required_bullets = r1_4_requirements(
-        trace_result=trace_result, career_profile=career_profile, cards=cards,
-    )
-    failures.extend(role_failures)
+    # R1.4 以完整实际行判断适用性与责任范围；未判归 pending，不当反证。
+    required_lines = r1_4_requirements(trace_result=trace_result)
     if isinstance(judgments, dict):
         role_items, _complete, _rejected = validate_role_judgments(
-            judgments.get("r1_4"), required_bullets=required_bullets,
-            bullets=trace_result["bullets"], cards=cards, resume_text=resume,
+            judgments.get("r1_4"), required_lines=required_lines,
+            r1_4_lines=trace_result["lines"], bullets=trace_result["bullets"],
+            cards=cards, career_profile=career_profile,
         )
-        judged = {item["bullet"]: item for item in role_items}
-        for number in sorted(required_bullets):
-            item = judged.get(number)
-            if item is None:
-                failures.append(_failure("R1.4", f"bullet#{number}", "缺少带引用的角色措辞判定"))
-            elif item["supported"] is False:
+        for item in role_items:
+            if item["status"] == "unsupported":
                 failures.append(_failure(
-                    "R1.4", f"bullet#{number} / {'、'.join(item['citations'])}",
-                    f"角色措辞缺少已引用证据支持：{item['reason']}",
+                    "R1.4", f"line#{item['render_line']} / {'、'.join(item['citations'])}",
+                    f"角色表达缺少当前来源支持：{item['reason']}",
                 ))
-
     # R1.5 篇幅/首屏/裁切。
     pdf_failures, pdf_metrics = pdf_artifact_check(pdf_check, thresholds)
     failures.extend(pdf_failures)

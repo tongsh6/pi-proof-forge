@@ -9,6 +9,7 @@ import pytest
 
 from tools.engines.evaluation import tiered_evaluator as te
 from tests.unit.engines.test_fact_index import reviewed_card_results, reviewed_result
+from tests.unit.engines.test_generation_engines import generation
 
 
 def career_profile(**overrides):
@@ -17,7 +18,7 @@ def career_profile(**overrides):
         "career_status": {"reviewed": True, "ready": True, "missing": []},
         "career": {
             "schema_version": 1,
-            "summary": "负责平台架构与交付。",
+            "summary": "负责平台架构与交付，覆盖 8 个品牌。",
             "education_visibility": "show",
             "work": [
                 {
@@ -60,6 +61,7 @@ def card(card_id="ec_00000001", **overrides):
         "context": "多品牌微服务散落。",
         "results": ["查询耗时从 2 秒降至 300 毫秒", "覆盖 8 个品牌"],
         "artifacts": ["性能报告.pdf"],
+        "stack": ["Java", "Redis"],
         "actions": ["完成平台抽象"],
     }
     value.update(overrides)
@@ -69,6 +71,7 @@ def card(card_id="ec_00000001", **overrides):
 def trace(claims, inputs=None):
     return {
         "claims": claims,
+        "occurrence_lineage_version": 1,
         "inputs": inputs or {},
         "evidence_card_ids": ["ec_00000001"],
         "status": "verified",
@@ -109,25 +112,38 @@ Java、Redis
 
 
 def claims_for_resume():
+    # Explicit source identities and physical coordinates for the RESUME fixture.
+    profile_rows = [
+        ("career.summary", "负责平台架构与交付，覆盖 8 个品牌。", 7),
+        ("career.skills.s1.category", "架构", 10),
+        ("career.skills.s1.description", "平台治理", 10),
+        ("career.work.w1.company", "示例科技", 21),
+        ("career.work.w1.company", "示例科技", 26),
+        ("career.work.w1.title", "平台负责人", 26),
+        ("career.work.w1.start", "2021-03", 26),
+        ("career.education.e1.school", "示例大学", 29),
+        ("career.education.e1.start", "2010-09", 29),
+        ("career.education.e1.end", "2014-06", 29),
+        ("career.education.e1.major", "软件工程", 30),
+        ("career.education.e1.degree", "本科", 30),
+    ]
+    evidence_rows = [
+        ("stack", 0, "Java", 15), ("stack", 1, "Redis", 15),
+        ("title", 0, "统一平台建设", 18),
+        ("time_range", 0, "2022-03 ~ 2023-09", 18),
+        ("role_scope", 0, "平台负责人", 19),
+        ("context", 0, "多品牌微服务散落。", 20),
+        ("actions", 0, "完成平台抽象", 22),
+        ("results", 0, "查询耗时从 2 秒降至 300 毫秒", 23),
+    ]
     return [
-        {"text": "张三", "source_kind": "personal_profile", "field": "name", "evidence_id": ""},
-        {"text": "13800000000", "source_kind": "personal_profile", "field": "phone", "evidence_id": ""},
-        {"text": "zhangsan@example.com", "source_kind": "personal_profile", "field": "email", "evidence_id": ""},
-        {"text": "上海", "source_kind": "personal_profile", "field": "city", "evidence_id": ""},
-        {"text": "平台负责人", "source_kind": "personal_profile", "field": "current_position", "evidence_id": ""},
-        {"text": "负责平台架构与交付，覆盖 8 个品牌。", "source_kind": "personal_profile", "field": "career.summary", "evidence_id": ""},
-        {"text": "架构：平台治理", "source_kind": "personal_profile", "field": "career.skills.s1.category", "evidence_id": ""},
-        {"text": "Java", "source_kind": "evidence", "field": "stack", "evidence_id": "ec_00000001"},
-        {"text": "统一平台建设", "source_kind": "evidence", "field": "title", "evidence_id": "ec_00000001"},
-        {"text": "2022-03 ~ 2023-09", "source_kind": "evidence", "field": "time_range", "evidence_id": "ec_00000001"},
-        {"text": "平台负责人", "source_kind": "evidence", "field": "role_scope", "evidence_id": "ec_00000001"},
-        {"text": "多品牌微服务散落。", "source_kind": "evidence", "field": "context", "evidence_id": "ec_00000001"},
-        {"text": "示例科技", "source_kind": "personal_profile", "field": "career.work.w1.company", "evidence_id": ""},
-        {"text": "平台负责人", "source_kind": "personal_profile", "field": "career.work.w1.title", "evidence_id": ""},
-        {"text": "完成平台抽象", "source_kind": "evidence", "field": "actions", "evidence_id": "ec_00000001"},
-        {"text": "查询耗时从 2 秒降至 300 毫秒", "source_kind": "evidence", "field": "results", "evidence_id": "ec_00000001"},
-        {"text": "示例大学", "source_kind": "personal_profile", "field": "career.education.e1.school", "evidence_id": ""},
-        {"text": "软件工程 · 本科", "source_kind": "personal_profile", "field": "career.education.e1.major", "evidence_id": ""},
+        {"text": text, "source_kind": "personal_profile", "field": field, "evidence_id": "",
+         "fact_id": f"personal_profile:{field}:0", "render_line": line}
+        for field, text, line in profile_rows
+    ] + [
+        {"text": text, "source_kind": "evidence", "field": field, "evidence_id": "ec_00000001",
+         "fact_id": f"ec_00000001:{field}:{index}", "render_line": line}
+        for field, index, text, line in evidence_rows
     ]
 
 
@@ -268,7 +284,7 @@ def test_r1_8_required_resume_sections():
     assert "R1.8" in rules(report, "eligible")
 
 
-def test_r1_4_unconfirmed_l3_ownership_requires_confirmation():
+def test_r1_4_unconfirmed_l3_ownership_remains_pending_without_semantics():
     cards = {"ec_00000001": card(role_scope_provenance={"level": "L3", "evidence": []})}
     claims = claims_for_resume()
     claims = [
@@ -280,7 +296,9 @@ def test_r1_4_unconfirmed_l3_ownership_requires_confirmation():
         cards=cards,
         claims=claims,
     )
-    assert "R1.4" in rules(report, "eligible")
+    assert "R1.4" in report["llm_pending"]
+    assert "R1.4" not in rules(report, "eligible")
+    assert report["auto_pass"] is False
 
 
 @pytest.mark.parametrize("serialized", [False,True])
@@ -296,6 +314,7 @@ def test_r1_4_confirmed_l3_ownership_is_not_rejected_only_for_its_level(serializ
     report=build(resume=RESUME.replace("- 完成平台抽象","- 负责完成平台抽象"),
                  cards={"ec_00000001":value},claims=claims)
     assert "R1.4" not in rules(report,"eligible")
+    assert "R1.4" in report["llm_pending"]
 
 
 def test_fit_tier_matrix_marks_first_screen_and_top_three_requirements():
@@ -340,7 +359,7 @@ def test_quality_report_auto_pass_requires_all_tiers_and_no_pending_llm_rules():
     report = build()
     assert report["tiers"]["eligible"]["passed"] is True
     assert report["auto_pass"] is False
-    assert "R1.4" not in report["llm_pending"]
+    assert "R1.4" in report["llm_pending"]
     assert set(report["llm_pending"]) >= {"R2.1", "R3.1", "R3.5", "R4.1"}
     assert report["legacy_scores"] == {"rule_total": None, "llm_expression": None}
 
@@ -371,11 +390,23 @@ def test_quality_config_loads_thresholds_and_filler_lexicon():
 
 def judged_payload(*, semantic_ids=("d1",), r1_4=None, r3_1=None, r3_5=None, r4_1=None, r2_1=None):
     return {
-        "schema_version": 1,
-        "prompt_version": 1,
+        "schema_version": 2,
+        "prompt_version": 10,
         "judged_sections": ["r1_4", "r2_1", "r3_1", "r3_5", "r4_1"],
         "rejected_items": 0,
-        "r1_4": r1_4 if r1_4 is not None else [],
+        "r1_4": r1_4 if r1_4 is not None else [
+            {"render_line": line, "status": status, "citations": [source], "reason": reason}
+            for line, status, source, reason in [
+                (3, "supported", "personal_profile:career.work.w1.title:0", "当前任职确认了平台负责人定位"),
+                (15, "not_applicable", "line#15", "此行只列技术栈"),
+                (18, "not_applicable", "line#18", "此行是项目名称及期间"),
+                (19, "supported", "ec_00000001", "项目角色范围与卡片一致"),
+                (20, "not_applicable", "line#20", "此行说明系统背景"),
+                (22, "supported", "ec_00000001", "本人活动来自该卡行动"),
+                (23, "not_applicable", "line#23", "此行说明性能变化而未提升职责"),
+                (26, "supported", "personal_profile:career.work.w1.title:0", "完整任职上下文与当前档案一致"),
+            ]
+        ],
         "r2_1": r2_1 if r2_1 is not None else [
             {"jd_item_id": jd_id, "status": "supported", "bullet_ref": "bullet#1",
              "citations": ["ec_00000001"], "reason": "首屏技能区支撑"} for jd_id in semantic_ids
@@ -411,7 +442,7 @@ def test_judged_mode_clears_pending_and_feeds_matrix_and_highlights():
 
 def test_judged_r3_1_and_r3_5_and_r1_4_failures_are_reported():
     payload = judged_payload(
-        r1_4=[{"bullet": 2, "supported": False, "citations": ["ec_00000001"], "reason": "卡中没有本人负责表述"}],
+        r1_4=[{"render_line": 22, "status": "unsupported", "citations": ["ec_00000001"], "reason": "卡中没有本人负责表述"}],
         r3_1=[
             {"bullet": 2, "scene": True, "action": False, "result": True, "citations": ["ec_00000001"], "reason": "缺动作"},
             {"bullet": 3, "scene": True, "action": True, "result": True, "citations": ["ec_00000001"], "reason": ""},
@@ -426,7 +457,7 @@ def test_judged_r3_1_and_r3_5_and_r1_4_failures_are_reported():
     report = build(resume=RESUME.replace("- 完成平台抽象", "- 负责完成平台抽象"), claims=claims, judgments=payload)
     all_rules = rules(report, "eligible") + rules(report, "strong")
     assert all_rules.count("R1.4") == 1
-    # 此旧 trace 未核验精确结果 occurrence；judge 的 True 不能为第二条另授结果信用。
+    # 没有当前结果核定；judge 的 True 不能为第二条另授结果信用。
     assert all_rules.count("R3.1") == 2
     assert all_rules.count("R3.5") >= 2
 
@@ -478,11 +509,11 @@ def test_r3_2_counts_only_the_result_fact_actually_rendered(rendered_field, expe
     evidence = {"ec_same": reviewed_card_results(
         {"id": "ec_same", "actions": [sentence], "results": [sentence]}, measurement_quotes={0: sentence})}
     actual_trace = {"occurrence_lineage_version": 1, "claims": claims}
-    rows = inspect_bullet_trace(resume, actual_trace)["bullets"]
+    rows = inspect_bullet_trace(resume, actual_trace, career_profile={})["bullets"]
     assert rows[0]["verified"] is True
     assert rows[0]["sources"][0]["field"] == rendered_field
 
-    strong = te.evaluate_strong(resume=resume, cards=evidence, trace=actual_trace,
+    strong = te.evaluate_strong(resume=resume, cards=evidence, trace=actual_trace, career_profile={},
                                 config=te.load_quality_config())
     assert strong.metrics["quant_first_screen"] == expected_ratio
     assert strong.metrics["quant_total"] == expected_ratio
@@ -504,7 +535,7 @@ def test_r3_2_requires_exact_result_occurrence_not_legacy_word_match(version, fa
     if version is not None:
         provenance["occurrence_lineage_version"] = version
     evidence = reviewed_card_results({"id": "ec_1", "results": [sentence]}, measurement_quotes={0: sentence})
-    result = te.evaluate_strong(resume=resume, cards={"ec_1": evidence},
+    result = te.evaluate_strong(resume=resume, cards={"ec_1": evidence}, career_profile={},
                                 trace=provenance, config=te.load_quality_config())
     assert result.metrics["quant_total"] == expected_ratio
     assert result.metrics["quant_first_screen"] == expected_ratio
@@ -527,7 +558,7 @@ def test_r3_consumes_one_current_result_review_instead_of_judge_or_digits(review
     judgments = judged_payload(r3_1=[{"bullet": 1, "scene": True, "action": True,
         "result": not expected_result, "citations": ["ec_1"], "reason": "独立表达判项不能另授结果信用"}])
     result = te.evaluate_strong(
-        resume=resume, cards={"ec_1": {"results": [value], "result_reviews": reviews}},
+        resume=resume, cards={"ec_1": {"results": [value], "result_reviews": reviews}}, career_profile={},
         trace={"occurrence_lineage_version": 1, "claims": [claim]},
         config=te.load_quality_config(), judgments=judgments)
     assert any(f.rule == "R3.1" for f in result.failures) is (not expected_result)
@@ -558,7 +589,7 @@ def test_verified_result_text_is_an_outcome_without_numeric_metric():
     judged = judged_payload(r3_1=[{"bullet": 1, "scene": True, "action": True, "result": False,
                                    "citations": ["ec_1"], "reason": "没有量化指标"}])
     evidence = reviewed_card_results({"id": "ec_1", "results": ["实现用友 NC 接口集成"]})
-    result = te.evaluate_strong(resume=resume, cards={"ec_1": evidence},
+    result = te.evaluate_strong(resume=resume, cards={"ec_1": evidence}, career_profile={},
         trace={"occurrence_lineage_version": 1, "claims": claims},
         config=te.load_quality_config(), judgments=judged)
     assert not any(f.rule == "R3.1" for f in result.failures)
@@ -600,10 +631,10 @@ def l8_role_inputs():
     }
 
 
-@pytest.mark.parametrize("case", ["confirmed-profile", "no-role-assertion"])
+@pytest.mark.parametrize("case", ["confirmed-profile", "ordinary-confirmed-profile"])
 def test_l8_empty_role_review_set_does_not_require_model(l8_role_inputs, case):
     inputs = l8_role_inputs
-    if case == "no-role-assertion":
+    if case == "ordinary-confirmed-profile":
         text = "完成接口模块对接，并记录固定样例验收结果。"
         inputs["resume"] = "## 核心能力\n- " + text
         inputs["career_profile"]["career"]["skills"][0]["description"] = text
@@ -651,7 +682,7 @@ def test_l8_profile_bypass_requires_current_verbatim_exclusive_complete_source(l
 
 
 @pytest.mark.parametrize("level", ["L5", "L3"])
-def test_l8_deterministic_role_failure_remains_without_model_pending(l8_role_inputs, level):
+def test_unconfirmed_role_level_needs_semantics_and_keeps_unsupported_failure(l8_role_inputs, level):
     inputs = l8_role_inputs
     claim = inputs["trace"]["claims"][0]
     claim.update(source_kind="evidence", field="actions", fact_id="ec_00000001:actions:0",
@@ -661,14 +692,22 @@ def test_l8_deterministic_role_failure_remains_without_model_pending(l8_role_inp
 
     report = te.build_quality_report(**inputs)
 
-    failures = [item for item in report["tiers"]["eligible"]["failures"] if item["rule"] == "R1.4"]
-    assert len(failures) == 1
-    assert "bullet#1" in failures[0]["target"] and "ec_00000001" in failures[0]["target"]
-    assert level in failures[0]["reason"]
-    assert report["tiers"]["eligible"]["passed"] is False
-    assert "R1.4" not in report["llm_pending"]
-    assert set(report["llm_pending"]) == {"R2.1", "R2.3", "R3.1", "R3.5", "R4.1", "R4.4"}
+    assert "R1.4" not in rules(report, "eligible")
+    assert "R1.4" in report["llm_pending"]
+    assert set(report["llm_pending"]) - {"R1.4"} == {"R2.1", "R2.3", "R3.1", "R3.5", "R4.1", "R4.4"}
     assert report["auto_pass"] is False
+
+    inputs["judgments"] = judged_payload(
+        r1_4=[{"render_line": 2, "status": "unsupported", "citations": ["ec_00000001"],
+                "reason": "当前来源未建立本人接口模块主导责任。"}], r2_1=[], r3_1=[], r4_1=[],
+    )
+    reviewed = te.build_quality_report(**inputs)
+    failures = [item for item in reviewed["tiers"]["eligible"]["failures"] if item["rule"] == "R1.4"]
+    assert len(failures) == 1
+    assert "line#2" in failures[0]["target"] and "ec_00000001" in failures[0]["target"]
+    assert reviewed["tiers"]["eligible"]["passed"] is False
+    assert "R1.4" not in reviewed["llm_pending"]
+    assert reviewed["auto_pass"] is False
 
 
 def test_l8_confirmed_sourced_l3_still_requires_semantic_review(l8_role_inputs):
@@ -703,9 +742,9 @@ def test_l8_direct_report_rechecks_role_coverage_and_rejects_duplicate_judgments
          "evidence_id": "ec_00000001", "text": text, "render_line": index + 2}
         for index, text in enumerate([first, second])
     ]
-    valid_first = {"bullet": 1, "supported": True, "citations": ["ec_00000001"], "reason": "模块责任有据"}
-    valid_second = {"bullet": 2, "supported": True, "citations": ["ec_00000001"], "reason": "归档责任有据"}
-    rejected_first = {**valid_first, "supported": False, "reason": "该职责没有依据"}
+    valid_first = {"render_line": 2, "status": "supported", "citations": ["ec_00000001"], "reason": "模块责任有据"}
+    valid_second = {"render_line": 3, "status": "supported", "citations": ["ec_00000001"], "reason": "归档责任有据"}
+    rejected_first = {**valid_first, "status": "unsupported", "reason": "该职责没有依据"}
     if case == "missing-second":
         rows = [valid_first]
     elif case == "false-true":
@@ -732,14 +771,19 @@ def test_verbatim_confirmed_profile_role_does_not_need_duplicate_model_confirmat
     profile = career_profile()
     profile["career"]["skills"][0]["description"] = text
     claims = [{"text": text, "source_kind": "personal_profile",
-               "field": "career.skills.s1.description", "evidence_id": ""}]
+               "field": "career.skills.s1.description", "evidence_id": "",
+               "fact_id": "personal_profile:career.skills.s1.description:0", "render_line": 2}]
     report = build(resume="## 核心能力\n- " + text, claims=claims, profile=profile,
                    judgments=judged_payload(r1_4=[]))
     assert "R1.4" not in rules(report, "eligible")
+    assert "R1.4" not in report["llm_pending"]
+    assert "R1.1" not in rules(report, "eligible")
     profile["career"]["skills"][0]["description"] = "参与联调"
     report = build(resume="## 核心能力\n- " + text, claims=claims, profile=profile,
                    judgments=judged_payload(r1_4=[]))
-    assert "R1.4" in rules(report, "eligible")
+    assert "R1.1" in rules(report, "eligible")
+    assert "R1.4" in report["llm_pending"]
+    assert report["auto_pass"] is False
 
 
 def test_highlight_decisions_reject_and_select_are_applied():
@@ -819,9 +863,14 @@ Java、Redis
 
 
 def first_screen_project_claims():
-    claims = claims_for_resume()
+    positions = {7: 6, 15: 22, 18: 9, 19: 10, 20: 11, 22: 12, 23: 13, 26: 19, 29: 25, 30: 26}
+    claims = [
+        {**claim, "render_line": positions[claim["render_line"]]}
+        for claim in claims_for_resume() if claim["render_line"] in positions
+    ]
     claims.append(
-        {"text": "覆盖 8 个品牌", "source_kind": "evidence", "field": "results", "evidence_id": "ec_00000001"}
+        {"text": "覆盖 8 个品牌", "source_kind": "evidence", "field": "results", "evidence_id": "ec_00000001",
+         "fact_id": "ec_00000001:results:1", "render_line": 14}
     )
     return claims
 
@@ -859,9 +908,10 @@ Java、Redis
 
 
 def no_summary_claims():
+    positions = {6: 15, 9: 5, 10: 6, 11: 7, 12: 8, 13: 9, 14: 10, 19: 18, 22: 21, 25: 24, 26: 25}
     return [
-        claim for claim in first_screen_project_claims()
-        if claim["text"] != "当前定位：平台负责人"
+        {**claim, "render_line": positions[claim["render_line"]]}
+        for claim in first_screen_project_claims()
     ]
 
 
@@ -1015,6 +1065,20 @@ def test_pdf_pending_must_not_hide_first_screen_summary_gap():
 
 def test_delivery_advice_apply_clears_unverified_wording_after_judge_and_pdf():
     judged = judged_payload(
+        r1_4=[
+            {"render_line": line, "status": status, "citations": [source], "reason": reason}
+            for line, status, source, reason in [
+                (3, "supported", "personal_profile:career.work.w1.title:0", "当前档案任职支持定位"),
+                (9, "not_applicable", "line#9", "项目名称与期间"),
+                (10, "supported", "ec_00000001", "卡片支持该项目角色"),
+                (11, "not_applicable", "line#11", "系统背景"),
+                (12, "supported", "ec_00000001", "原行动为本人活动"),
+                (13, "not_applicable", "line#13", "性能变化陈述"),
+                (14, "not_applicable", "line#14", "覆盖规模陈述"),
+                (19, "supported", "personal_profile:career.work.w1.title:0", "同一当前任职记录"),
+                (22, "not_applicable", "line#22", "技术栈列表"),
+            ]
+        ],
         r2_1=[{"jd_item_id": "d1", "status": "supported", "bullet_ref": "bullet#1",
                "citations": ["ec_00000001"], "reason": "首屏项目支撑"}]
     )
@@ -1128,7 +1192,7 @@ def test_one_exact_claim_never_verifies_a_separate_identical_bullet():
     checks = inspect_bullet_trace(resume, {"occurrence_lineage_version":1,"claims":[
         {"text":"完成平台抽象","source_kind":"evidence","field":"actions",
          "evidence_id":"ec_fixture","fact_id":"ec_fixture:actions:0","render_line":3}
-    ]})
+    ]}, career_profile={})
     assert [item["verified"] for item in checks["bullets"]] == [False,True]
 
 
@@ -1155,3 +1219,307 @@ def test_pdf_checks_require_independent_page_and_clip_evidence(pages, clipped, v
         reasons = [f["reason"] for f in tier["failures"] if f["rule"] == "R1.5"]
         assert any("超过" in r for r in reasons) is (pages == 3)
         assert any("存在裁切" in r for r in reasons) is (clipped is True)
+
+
+@pytest.mark.parametrize("case", [
+    "current", "sibling-id", "field", "source-owner", "current-value",
+    "no-career", "unconfirmed", "other-physical-line",
+])
+def test_l10_profile_trace_credit_requires_current_identity_and_line(l8_role_inputs, case):
+    inputs = l8_role_inputs
+    claim = inputs["trace"]["claims"][0]
+    text = claim["text"]
+    if case == "sibling-id":
+        claim["fact_id"] = "personal_profile:career.skills.s1.description:1"
+    elif case == "field":
+        inputs["career_profile"]["career"]["summary"] = text
+        claim["field"] = "career.summary"
+    elif case == "source-owner":
+        claim["evidence_id"] = "ec_00000001"
+    elif case == "current-value":
+        inputs["career_profile"]["career"]["summary"] = text
+        inputs["career_profile"]["career"]["skills"][0]["description"] = "参与接口字段整理，不承担验收主导。"
+    elif case == "no-career":
+        inputs["career_profile"] = {}
+    elif case == "unconfirmed":
+        inputs["career_profile"]["career_status"]["reviewed"] = False
+    elif case == "other-physical-line":
+        inputs["resume"] += "\n- " + text
+        claim["render_line"] = 3
+
+    report = te.build_quality_report(**inputs)
+
+    metrics = report["tiers"]["eligible"]["metrics"]
+    assert metrics["total_bullets"] == (2 if case == "other-physical-line" else 1)
+    assert metrics["verified_bullets"] == (1 if case in {"current", "other-physical-line"} else 0)
+    assert ("R1.1" in rules(report, "eligible")) is (case != "current")
+    assert ("R1.4" in report["llm_pending"]) is (case != "current")
+    assert set(report["llm_pending"]) - {"R1.4"} == {"R2.1", "R2.3", "R3.1", "R3.5", "R4.1", "R4.4"}
+    assert report["auto_pass"] is False
+
+
+@pytest.mark.parametrize("layout", [
+    "bullet", "role", "duty", "summary", "background", "employment", "position", "body-contact-value",
+])
+def test_l10_unjudged_responsibility_is_pending_by_actual_line_not_trigger_word(l8_role_inputs, layout):
+    inputs = l8_role_inputs
+    text = "统筹接口模块的联调方案、边界检查与验收归档。"
+    lines = {
+        "bullet": ["## 项目经历", "- " + text],
+        "role": ["## 项目经历", "角色：" + text],
+        "duty": ["## 工作经历", "职责：" + text],
+        "summary": ["## 职业概述", text],
+        "background": ["## 项目经历", "背景：" + text],
+        "employment": ["## 工作经历", "### 合成实验室 · 接口统筹工程师（2024-01 ~ 2025-06）"],
+        "position": ["# 合成候选人", "当前定位：接口统筹工程师"],
+        "body-contact-value": [
+            "## 项目经历", "- 统筹接口异常处置，归档至 owner@example.invalid，追踪编号 12345678。"],
+    }[layout]
+    inputs["resume"] = "\n".join(lines)
+    inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+    inputs["cards"]["ec_00000001"]["actions"] = [text]
+    if layout in {"employment", "position"}:
+        inputs["trace"]["claims"] = [{
+            "text": "接口统筹工程师", "source_kind": "personal_profile",
+            "field": "current_position", "evidence_id": "",
+        }]
+    else:
+        value = lines[1].removeprefix("- ").removeprefix("角色：").removeprefix("职责：").removeprefix("背景：")
+        field = "role_scope" if layout == "role" else "context" if layout == "background" else "actions"
+        inputs["cards"]["ec_00000001"][field] = [value] if field == "actions" else value
+        inputs["trace"]["claims"] = [{
+            "text": value, "source_kind": "evidence", "field": field,
+            "fact_id": f"ec_00000001:{field}:0", "evidence_id": "ec_00000001", "render_line": 2,
+        }]
+
+    report = te.build_quality_report(**inputs)
+
+    assert "R1.4" in report["llm_pending"]
+    assert "R1.4" not in rules(report, "eligible")
+    assert report["auto_pass"] is False
+
+
+@pytest.mark.parametrize("case", [
+    "supported", "unsupported", "unknown", "self-citation-only", "other-person", "denied-responsibility",
+])
+def test_l10_direct_report_uses_semantic_role_status_and_independent_source(l8_role_inputs, case):
+    inputs = l8_role_inputs
+    text = "统筹接口模块的联调方案、边界检查与验收归档。"
+    status = "supported"
+    citation = "ec_00000001"
+    if case == "unsupported":
+        text = "统筹整个平台的总体方案、生产容量规划与发布。"
+        status = "unsupported"
+        inputs["cards"]["ec_00000001"]["role_scope"] = "仅参与接口字段整理，总体方案与生产发布由平台组承担"
+    elif case == "unknown":
+        status = "unknown"
+    elif case == "self-citation-only":
+        citation = "line#2"
+    elif case == "other-person":
+        text = "平台总体架构由另一团队负责，本条仅说明项目分工。"
+        status = "not_applicable"
+        citation = "line#2"
+    elif case == "denied-responsibility":
+        text = "本人未负责该项目的总体架构，也未承担生产发布。"
+        status = "not_applicable"
+        citation = "line#2"
+    inputs["resume"] = "## 项目经历\n- " + text
+    inputs["cards"]["ec_00000001"]["actions"] = [text]
+    inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+    inputs["trace"]["claims"] = [{
+        "source_kind": "evidence", "field": "actions", "fact_id": "ec_00000001:actions:0",
+        "evidence_id": "ec_00000001", "text": text, "render_line": 2,
+    }]
+    inputs["judgments"] = judged_payload(
+        r1_4=[{"render_line": 2, "status": status, "citations": [citation],
+               "reason": "核对完整表达中的本人范围、他人主体及来源限制。"}],
+        r2_1=[], r3_1=[], r4_1=[],
+    )
+
+    report = te.build_quality_report(**inputs)
+
+    assert ("R1.4" in report["llm_pending"]) is (case in {"unknown", "self-citation-only"})
+    assert ("R1.4" in rules(report, "eligible")) is (case == "unsupported")
+    assert report["tiers"]["eligible"]["metrics"]["verified_bullets"] == 1
+    assert report["auto_pass"] is False
+
+
+def test_l10_unknown_card_role_does_not_negate_independently_reviewed_result(l8_role_inputs):
+    inputs = l8_role_inputs
+    text = "本人负责的接口模块已完成联调验收，并交付完整的固定样例记录。"
+    inputs["resume"] = "## 项目经历\n- " + text
+    inputs["cards"] = {"ec_00000001": reviewed_card_results(
+        card(role_scope="", role_scope_provenance={"level": "L5"}, results=[text]),
+        measurement_quotes={0: None},
+    )}
+    inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+    inputs["trace"]["claims"] = [{
+        "source_kind": "evidence", "field": "results", "fact_id": "ec_00000001:results:0",
+        "evidence_id": "ec_00000001", "text": text, "render_line": 2,
+    }]
+
+    pending = te.build_quality_report(**inputs)
+    assert "R1.4" not in rules(pending, "eligible")
+    assert "R1.4" in pending["llm_pending"]
+    inputs["judgments"] = judged_payload(
+        r1_4=[{"render_line": 2, "status": "supported", "citations": ["ec_00000001"],
+               "reason": "该结果有独立的本人范围核定，未宣称整个平台职责。"}],
+        r2_1=[], r3_1=[], r4_1=[],
+    )
+    reviewed = te.build_quality_report(**inputs)
+    assert "R1.4" not in rules(reviewed, "eligible")
+    assert "R1.4" not in reviewed["llm_pending"]
+    assert reviewed["tiers"]["strong"]["metrics"]["quant_total"] == 0
+
+
+def test_l10_structural_header_has_no_role_target_or_jd_credit(l8_role_inputs):
+    inputs = l8_role_inputs
+    inputs["resume"] = "# 合成候选人\n13800000000 | synthetic@example.invalid\n求职意向：平台统筹负责人\n## 项目经历\n<!-- first-screen-end -->\n"
+    inputs["trace"]["claims"] = []
+    inputs["semantic_review"] = {
+        "mode": "semantic", "occurrence_coverage_known": True,
+        "fit_score": 0, "resume_score": 0,
+        "requirements": [{
+            "requirement_id": "d1", "kind": "must_have", "text": "平台总体方案统筹",
+            "status": "insufficient", "resume_status": "not_present", "citations": [],
+        }],
+    }
+    inputs["judgments"] = judged_payload(
+        r1_4=[], r2_1=[{"jd_item_id": "d1", "status": "supported", "bullet_ref": "line#3",
+                        "citations": ["line#3"], "reason": "仅有求职意向文字"}],
+        r3_1=[], r4_1=[],
+    )
+
+    report = te.build_quality_report(**inputs)
+
+    assert "R1.4" not in report["llm_pending"]
+    assert "R1.1" in rules(report, "eligible")
+    assert report["tiers"]["eligible"]["metrics"]["total_bullets"] == 0
+    assert report["tiers"]["fit"]["matrix"][0]["status"] == "absent"
+    assert not report["tiers"]["fit"]["matrix"][0]["bullet_ref"]
+    assert report["tiers"]["strong"]["metrics"]["quant_total"] == 0
+    assert report["auto_pass"] is False
+
+
+def test_l10_extra_role_lines_do_not_change_bullet_or_result_credit(l8_role_inputs):
+    inputs = l8_role_inputs
+    action = "实现接口字段映射并完成固定样例回放。"
+    result = "在单客户端隔离回放中，耗时由 20 毫秒降至 12 毫秒。"
+    role = "统筹 37 个接口的联调组织，不承担平台生产发布。"
+    inputs["cards"] = {"ec_00000001": reviewed_card_results(
+        card(actions=[action], results=[result], role_scope=role), measurement_quotes={0: result},
+    )}
+    inputs["resume"] = "## 项目经历\n- " + action + "\n- " + result
+    inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+    inputs["trace"]["claims"] = [
+        {"source_kind": "evidence", "field": field, "fact_id": f"ec_00000001:{field}:0",
+         "evidence_id": "ec_00000001", "text": value, "render_line": line}
+        for field, value, line in (("actions", action, 2), ("results", result, 3))
+    ]
+    inputs["semantic_review"] = {
+        "mode": "semantic", "occurrence_coverage_known": True, "fit_score": 0, "resume_score": 0,
+        "requirements": [{"requirement_id": "d1", "kind": "must_have", "text": "平台总体方案统筹",
+                          "status": "insufficient", "resume_status": "not_present", "citations": []}],
+    }
+    original = te.build_quality_report(**inputs)
+    inputs["resume"] = "\n".join([
+        "# 合成候选人", "当前定位：平台总体方案统筹", "求职意向：平台总体方案统筹",
+        "## 项目经历", "角色：" + role, "- " + action, "- " + result,
+    ])
+    for row in inputs["trace"]["claims"]:
+        row["render_line"] += 4
+    inputs["trace"]["claims"].append({
+        "source_kind": "evidence", "field": "role_scope", "fact_id": "ec_00000001:role_scope:0",
+        "evidence_id": "ec_00000001", "text": role, "render_line": 5,
+    })
+    inputs["judgments"] = judged_payload(
+        r1_4=[], r2_1=[{"jd_item_id": "d1", "status": "supported", "bullet_ref": "line#2",
+                       "citations": ["line#2"], "reason": "只有头部定位"}],
+        r3_1=[], r4_1=[],
+    )
+    expanded = te.build_quality_report(**inputs)
+
+    for report in (original, expanded):
+        assert report["tiers"]["eligible"]["metrics"]["total_bullets"] == 2
+        assert report["tiers"]["eligible"]["metrics"]["verified_bullets"] == 2
+        assert report["tiers"]["strong"]["metrics"]["quant_total"] == 0.5
+        assert report["tiers"]["fit"]["matrix"][0]["status"] == "absent"
+        assert not report["tiers"]["fit"]["matrix"][0]["bullet_ref"]
+
+
+def test_l10_rule_engine_rechecks_profile_identity_before_trace_credit(generation, monkeypatch):
+    from dataclasses import replace
+    from tests.unit.engines.test_complete_resume import complete_profile
+    from tools.domain.models import JobProfile
+    from tools.engines.evaluation.rule_evaluator import RuleEvaluationEngine
+    from tools.infra.llm import client as llm
+    from tools.sidecar.handlers import profile as profile_api
+
+    def unexpected_http(*args, **kwargs):
+        pytest.fail("规则评测的来源回归不得调用模型或外部服务")
+
+    monkeypatch.setattr(llm.request, "urlopen", unexpected_http)
+    assembler, identity, matching, paths = generation
+    basic = complete_profile()
+    for work in basic["career"]["work"]:
+        work["evidence_ids"] = [identity.id]
+    for skill in basic["career"]["skills"]:
+        skill["evidence_ids"] = [identity.id]
+    monkeypatch.setattr(profile_api, "_PROFILE_PATH", paths["profile"])
+    meta = {"correlation_id": "l10-profile-source"}
+    current = profile_api.handle_profile_get({"meta": meta})["profile"]
+    profile_api.handle_profile_update({
+        "meta": meta, "expected_revision": current["revision"], "patch": basic,
+    })
+    current = profile_api.handle_profile_get({"meta": meta})["profile"]
+    profile_api.handle_profile_review({
+        "meta": meta, "expected_revision": current["revision"], "confirmed": True,
+    })
+    assert profile_api.handle_profile_get({"meta": meta})["profile"]["career_status"]["reviewed"]
+    before = {name: paths[name].read_bytes() for name in ("card", "profile", "job", "jd")}
+    resume = assembler.generate(matching, [identity], "l10-profile-source")
+    job = JobProfile(id=matching.job_profile_id, title="工程师", keywords=(), level="")
+    engine = RuleEvaluationEngine()
+    valid = engine.evaluate(resume, job)
+    valid_metrics = valid.quality_report["tiers"]["eligible"]["metrics"]
+    assert valid_metrics["verified_bullets"] == valid_metrics["total_bullets"]
+
+    damaged = copy.deepcopy(resume.generation_trace)
+    claim, = [row for row in damaged["claims"] if row.get("field") == "career.skills.s1.description"]
+    assert claim["fact_id"] == "personal_profile:career.skills.s1.description:0"
+    claim["fact_id"] = "personal_profile:career.skills.s1.description:1"
+    changed = replace(resume, generation_trace=damaged)
+    try:
+        invalid = engine.evaluate(changed, job)
+    except ValueError as exc:
+        assert str(exc) == "generation_trace_invalid"
+    else:
+        assert invalid.quality_report["tiers"]["eligible"]["metrics"]["verified_bullets"] == valid_metrics["verified_bullets"] - 1
+        assert "R1.1" in rules(invalid.quality_report, "eligible")
+        assert invalid.dimension_scores["citation"] < valid.dimension_scores["citation"]
+    assert changed.content == resume.content
+    assert {name: paths[name].read_bytes() for name in before} == before
+
+
+def test_l10_individually_valid_profile_facts_do_not_confirm_cross_work_relationship(l8_role_inputs):
+    inputs = l8_role_inputs
+    first = inputs["career_profile"]["career"]["work"][0]
+    second = copy.deepcopy(first)
+    second.update({
+        "id": "w2", "company": "另一合成公司", "title": "接口负责人",
+        "start": "2020-01", "end": "2022-12", "current": False,
+    })
+    inputs["career_profile"]["career"]["work"].append(second)
+    inputs["resume"] = "## 工作经历\n### 示例科技 · 接口负责人（2020-01 ~ 2022-12）"
+    inputs["trace"]["claims"] = [
+        {"source_kind": "personal_profile", "evidence_id": "", "field": f"career.work.{work['id']}.{field}",
+         "fact_id": f"personal_profile:career.work.{work['id']}.{field}:0", "text": work[field], "render_line": 2}
+        for work, field in ((first, "company"), (second, "title"), (second, "start"), (second, "end"))
+    ]
+
+    report = te.build_quality_report(**inputs)
+
+    assert "R1.4" in report["llm_pending"]
+    assert "R1.4" not in rules(report, "eligible")
+    assert report["tiers"]["eligible"]["metrics"]["total_bullets"] == 0
+    assert report["auto_pass"] is False

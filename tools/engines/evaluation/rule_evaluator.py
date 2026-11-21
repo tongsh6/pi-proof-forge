@@ -62,7 +62,7 @@ def evaluate_rule(
     now: str,
     input_name: str,
     job_profile_name: str | None,
-    *, verified_trace: dict | None = None,
+    *, career_profile: dict, verified_trace: dict | None = None,
 ) -> RuleResult:
     lines: list[str] = [line for line in resume_text.splitlines() if line.strip()]
     bullet_lines: list[str] = [
@@ -126,10 +126,13 @@ def evaluate_rule(
         length_penalty += min(40, (line_count - 120))
     length_score = max(0, 100 - length_penalty)
 
-    traceability = inspect_bullet_trace(resume_text, verified_trace)
+    checked_trace = inspect_bullet_trace(resume_text, verified_trace, career_profile=career_profile)
+    traceability = {
+        key: checked_trace[key] for key in ("status", "verified_bullets", "total_bullets")
+    }
     traceability["bullets"] = [
         {"bullet": row["number"], "verified": row["verified"], "sources": row["sources"]}
-        for row in traceability["bullets"]
+        for row in checked_trace["bullets"]
     ]
     evidence_cited = traceability["verified_bullets"]
     citation_ratio = (evidence_cited / total_bullets) if total_bullets else 0.0
@@ -259,7 +262,7 @@ class RuleEvaluationEngine:
             now=datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),
             input_name=f"{resume.version}.md",
             job_profile_name=profile.id,
-            verified_trace=verified_trace,
+            career_profile=career, verified_trace=verified_trace,
         )
         quality = tiered_evaluator.build_quality_report(
             resume=resume.content,

@@ -9,8 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tools.domain.models import QualityFailure, TierResult
+from tools.domain.quality_text import render_fact_text
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
-from tools.engines.evaluation.llm_judge import resume_lines
+from tools.engines.evaluation.llm_judge import _profile_facts, resume_lines
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -73,7 +74,6 @@ _INTERNAL_TRACE_RE = re.compile(
     r"|mat_[0-9a-f]{6,}|\.trace\.json|outputs/|app-data/|materials/",
     re.I,
 )
-_STRONG_ROLE_RE = re.compile(r"负责|主导|独立负责|全权负责|设计并落地")
 _DEGREE_RANK = {"博士": 4, "硕士": 3, "研究生": 3, "本科": 2, "学士": 2, "大专": 1, "专科": 1}
 
 
@@ -192,57 +192,117 @@ def _entries(resume: str) -> dict[str, list[dict[str, str]]]:
     return result
 
 
-def inspect_bullet_trace(resume: str, trace: dict | None) -> dict:
-    """校验 bullet 是否被生成 trace 的 claims 完整覆盖。"""
+def inspect_bullet_trace(
+    resume: str, trace: dict | None, *, career_profile: dict,
+) -> dict:
+    """一次覆盖核对供 bullet 追溯与逐行职责判断共用；不改变 bullet 统计域。"""
     claims = trace.get("claims") if isinstance(trace, dict) else None
     exact = isinstance(trace, dict) and trace.get("occurrence_lineage_version") == 1
-    rows, _marker = _bullet_rows(resume)
+    raw_lines = resume.splitlines()
+    bullets, marker = _bullet_rows(resume)
+    profile_index = {fact.fact_id: fact for fact in _profile_facts(career_profile)}
+
+    accepted_claims: list[dict] = []
+    for claim in claims or []:
+        if not isinstance(claim, dict):
+            continue
+        if (claim.get("source_kind") == "personal_profile"
+                or str(claim.get("fact_id", "")).startswith("personal_profile:")):
+            source = profile_index.get(str(claim.get("fact_id", "")))
+            line = claim.get("render_line")
+            if (
+                not exact or claim.get("source_kind") != "personal_profile"
+                or source is None or source.kind != "profile"
+                or source.source_id != "personal_profile"
+                or claim.get("evidence_id", "") != ""
+                or claim.get("field") != source.field
+                or render_fact_text(source.text) != claim.get("text")
+                or type(line) is not int or not 1 <= line <= len(raw_lines)
+                or str(claim["text"]) not in render_fact_text(raw_lines[line - 1])
+            ):
+                continue
+        accepted_claims.append(dict(claim))
     facts = sorted(
         (
-            claim
-            for claim in (claims or [])
-            if isinstance(claim, dict)
-            and claim.get("source_kind") in {"evidence", "personal_profile"}
-            and claim.get("text")
+            claim for claim in accepted_claims
+            if claim.get("source_kind") in {"evidence", "personal_profile"} and claim.get("text")
         ),
-        key=lambda claim: len(str(claim["text"])),
-        reverse=True,
+        key=lambda claim: len(str(claim["text"])), reverse=True,
     )
+
+    rows_by_line = {
+        row["line"] + 1: {**row, "render_line": row["line"] + 1}
+        for row in bullets
+    }
+    for row in resume_lines(resume):
+        number = int(str(row["id"]).split("#", 1)[1])
+        rows_by_line.setdefault(number, {
+            **row, "render_line": number, "line": number - 1,
+            "body": re.sub(r"^#{1,6}\s+", "", str(row["text"])),
+        })
+    # The renderer's positioning line is a current factual statement, whereas
+    # the name/contact/target-role header remains outside the capability domain.
+    for number, text in enumerate(raw_lines, 1):
+        stripped = text.strip()
+        if stripped.startswith("## "):
+            break
+        if stripped.startswith("当前定位："):
+            rows_by_line[number] = {
+                "render_line": number, "line": number - 1, "text": stripped,
+                "body": stripped, "section": "", "entry": "",
+                "first_screen": number - 1 < marker,
+            }
+
     checked: list[dict[str, object]] = []
-    for row in rows:
-        body = str(row["body"])
+    for number, row in sorted(rows_by_line.items()):
+        body = render_fact_text(str(row["body"]))
+        # These are existing renderer labels, not responsibility triggers.
+        if "number" not in row:
+            body = re.sub(r"^(?:角色|背景|场景|职责|所属工作)：", "", body)
         remaining = body
         sources: list[dict[str, str]] = []
+        work_ids: set[str] = set()
+        source_kinds: set[str] = set()
         for claim in facts:
-            if exact and claim.get("render_line") != row["line"] + 1:
+            if exact and claim.get("render_line") != number:
                 continue
             text = str(claim.get("text", ""))
+            if text and text in body:
+                source_kinds.add(str(claim.get("source_kind", "")))
+                if claim.get("source_kind") == "personal_profile":
+                    source = profile_index.get(str(claim["fact_id"]))
+                    if source is not None and source.work_id:
+                        work_ids.add(source.work_id)
             if text and text in remaining:
                 remaining = remaining.replace(text, "")
                 sources.append(
                     {key: str(claim.get(key, "")) for key in ("source_kind", "field", "evidence_id", "fact_id")}
                     | {"text": text}
                 )
-        covered = bool(sources) and not re.sub(r"[\s:：·、|*]", "", remaining)
-        evidence_ids = sorted({source["evidence_id"] for source in sources if source.get("evidence_id")})
-        checked.append(
-            {
-                "number": row["number"],
-                "text": row["text"],
-                "section": row["section"],
-                "first_screen": row["first_screen"],
-                "verified": covered,
-                "sources": sources,
-                "evidence_ids": evidence_ids,
-            }
+        # Punctuation can join known facts; Chinese qualifiers (including 至今)
+        # and relationships assembled across different jobs cannot disappear.
+        covered = (
+            bool(sources)
+            and len(work_ids) <= 1
+            and not re.sub(r"[\s:：·、|*（）()~\-–—]", "", remaining)
         )
+        evidence_ids = sorted({source["evidence_id"] for source in sources if source.get("evidence_id")})
+        checked.append({
+            **{key: row[key] for key in ("number", "entry") if key in row},
+            "render_line": number, "text": row["text"], "section": row["section"],
+            "first_screen": row["first_screen"], "verified": covered,
+            "profile_only": covered and source_kinds == {"personal_profile"},
+            "sources": sources, "evidence_ids": evidence_ids,
+        })
+    checked_bullets = [row for row in checked if "number" in row]
     return {
         "status": "verified" if claims is not None else "unverified",
-        "verified_bullets": sum(1 for row in checked if row["verified"]),
-        "total_bullets": len(checked),
-        "bullets": checked,
+        "verified_bullets": sum(1 for row in checked_bullets if row["verified"]),
+        "total_bullets": len(checked_bullets),
+        "bullets": checked_bullets,
+        "lines": checked,
+        "claims": accepted_claims,
     }
-
 
 def _failure(rule: str, target: str, reason: str, gap_kind: str = "") -> QualityFailure:
     return QualityFailure(
@@ -328,4 +388,4 @@ def load_quality_config(root: Path | None = None) -> QualityConfig:
 
 
 
-__all__ = ["split_first_screen", "extract_bullets", "_split_first_screen", "_normalize", "_compact", "_ym", "_now_ym", "_period_bounds", "_title_period", "_bullet_rows", "_entries", "inspect_bullet_trace", "_failure", "_short", "_report_metrics", "_unique", "_pdf_check_pending", "_advice_recomputable", "load_quality_config", "ROOT", "DEFAULT_THRESHOLDS", "FALLBACK_FILLER_TERMS", "PHASE_A_LLM_PENDING", "QualityConfig", "_ENTRY_SECTIONS", "_CONTACT_RE", "_INTERNAL_TRACE_RE", "_STRONG_ROLE_RE", "_DEGREE_RANK", "_FLAT_KEYS"]
+__all__ = ["split_first_screen", "extract_bullets", "_split_first_screen", "_normalize", "_compact", "_ym", "_now_ym", "_period_bounds", "_title_period", "_bullet_rows", "_entries", "inspect_bullet_trace", "_failure", "_short", "_report_metrics", "_unique", "_pdf_check_pending", "_advice_recomputable", "load_quality_config", "ROOT", "DEFAULT_THRESHOLDS", "FALLBACK_FILLER_TERMS", "PHASE_A_LLM_PENDING", "QualityConfig", "_ENTRY_SECTIONS", "_CONTACT_RE", "_INTERNAL_TRACE_RE", "_DEGREE_RANK", "_FLAT_KEYS"]

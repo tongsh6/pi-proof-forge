@@ -36,12 +36,13 @@ def evaluate_strong(
     resume: str,
     cards: dict[str, dict],
     trace: dict,
+    career_profile: dict,
     config: QualityConfig,
     judgments: dict | None = None,
 ) -> TierResult:
     thresholds = config.thresholds["strong"]
     bullets, _marker = _bullet_rows(resume)
-    trace_result = inspect_bullet_trace(resume, trace)
+    trace_result = inspect_bullet_trace(resume, trace, career_profile=career_profile)
     verified_rows = {int(row["number"]): row for row in trace_result["bullets"]}
     experience = [bullet for bullet in bullets if bullet["section"] in _ENTRY_SECTIONS]
     failures: list[QualityFailure] = []

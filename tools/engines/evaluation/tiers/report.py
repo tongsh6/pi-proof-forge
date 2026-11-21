@@ -242,7 +242,8 @@ def build_quality_report(
         resume=resume, semantic_review=semantic_review, job_context=job_context,
         config=config, judgments=judgments,
     )
-    strong = evaluate_strong(resume=resume, cards=cards, trace=trace, config=config, judgments=judgments)
+    strong = evaluate_strong(resume=resume, cards=cards, trace=trace, career_profile=career_profile,
+                             config=config, judgments=judgments)
     judge_candidates = _judge_candidates(judgments) if judgments is not None else None
     distinct = evaluate_distinct(
         resume=resume,
@@ -261,16 +262,15 @@ def build_quality_report(
     if blocked_by:
         for tier in ("fit", "strong", "distinct"):
             evaluated[tier]["blocked_by"] = blocked_by
-    _role_failures, required_bullets = r1_4_requirements(
-        trace_result=inspect_bullet_trace(resume, trace), career_profile=career_profile, cards=cards,
-    )
+    trace_result = inspect_bullet_trace(resume, trace, career_profile=career_profile)
+    required_lines = r1_4_requirements(trace_result=trace_result)
     _role_items, role_complete, _rejected = validate_role_judgments(
         judgments.get("r1_4") if isinstance(judgments, dict) else None,
-        required_bullets=required_bullets, bullets=extract_bullets(resume),
-        cards=cards, resume_text=resume,
+        required_lines=required_lines, r1_4_lines=trace_result["lines"],
+        bullets=trace_result["bullets"], cards=cards, career_profile=career_profile,
     )
     llm_pending = _pending_rules(
-        judgments, r1_4_complete=not required_bullets or role_complete,
+        judgments, r1_4_complete=not required_lines or role_complete,
     )
     all_passed = all(bool(tier["passed"]) for tier in evaluated.values())
     report: dict[str, object] = {

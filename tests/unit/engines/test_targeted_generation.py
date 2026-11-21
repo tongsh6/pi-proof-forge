@@ -300,13 +300,13 @@ def test_generation_prioritizes_semantically_cited_action_over_literal_keyword_o
     assert any(c.get('fact_id') == 'ec-1:actions:3' for c in claims)
 
 
-def test_actions_without_lexical_result_match_are_not_paired_as_bullets():
+def test_actions_without_lexical_result_match_are_not_paired_as_bullets(reviewed_profile_inputs):
     from tools.engines.evaluation.tiered_evaluator import inspect_bullet_trace
     card = {'id': 'ec-1', 'title': '交易平台', 'time_range': '2024 ~ 2025', 'role_scope': '负责人',
             'context': '多端交易交付。', 'actions': ['实现消费端接口与回调联调', '构建发布核对及回滚流程', '完成监控告警与指标接入', '主导前后端接口方案设计'],
             'results': ['完成 15 个业务系统的联调验收', '交付服务于 6 个品牌的订阅能力', '查询耗时从 2 秒降至 300 毫秒'],
             'stack': ['Java'], 'artifacts': ['报告']}
-    profile = {'career': {'skills': [{'id': 's1', 'category': '技术', 'description': '后端开发'}]}}
+    _, profile, _, _, _, _ = reviewed_profile_inputs([_profile_work('w1')])
     claims = []
     card = reviewed_card_results(card, measurement_quotes={2: card['results'][2]})
     text = build_template_resume('A', [card],
@@ -317,7 +317,7 @@ def test_actions_without_lexical_result_match_are_not_paired_as_bullets():
     assert '- ' + card['results'][0] in text
     for value in (card['actions'][0], card['results'][0]):
         assert value in text
-    checked = inspect_bullet_trace(text, {'claims': claims, 'occurrence_lineage_version': 1})
+    checked = inspect_bullet_trace(text, {'claims': claims, 'occurrence_lineage_version': 1}, career_profile=profile)
     assert checked['verified_bullets'] == checked['total_bullets']
 
 

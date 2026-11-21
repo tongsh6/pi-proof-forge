@@ -20,7 +20,6 @@ from .tiers.common import (
     _ENTRY_SECTIONS,
     _FLAT_KEYS,
     _INTERNAL_TRACE_RE,
-    _STRONG_ROLE_RE,
 )
 from .tiers.common import (
     split_first_screen,

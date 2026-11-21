@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from tests.unit.engines.test_generation_engines import generation, write_reviewed_result_sources
+from tests.unit.engines.test_generation_engines import career_generation, generation, write_reviewed_result_sources
 from tests.unit.sidecar.test_evidence_source_merge import _scoped_review, result_review_model, sample as source_sample
 
 from tools.cli.commands import evaluate as evaluate_cli
@@ -15,8 +15,8 @@ from tools.engines.evaluation.rule_evaluator import RuleEvaluationEngine
 from tools.infra.llm.client import LLMClient
 
 
-def evaluate(text, must_have=(), keywords=(), **kwargs):
-    return rule_evaluator.evaluate_rule(text, list(must_have), list(keywords), "now", "resume.md", "job.yaml", **kwargs)
+def evaluate(text, must_have=(), keywords=(), career_profile=None, **kwargs):
+    return rule_evaluator.evaluate_rule(text, list(must_have), list(keywords), "now", "resume.md", "job.yaml", career_profile=career_profile or {}, **kwargs)
 
 
 def test_requirements_are_not_in_keyword_denominator():
@@ -78,7 +78,10 @@ def test_trace_requires_full_bullet_not_a_supported_substring():
         {"text": "服务拆分", "source_kind": "personal_profile", "field": "career.skills.s.description", "fact_id": "personal_profile:career.skills.s.description:0", "render_line": 3},
         {"text": "Java负责人", "source_kind": "job_profile", "field": "target_role"},
     ]
-    result = evaluate("- 接口开发\n- 接口开发，业绩提升 90%\n- 架构：服务拆分\n- Java负责人", verified_trace={"occurrence_lineage_version": 1, "claims": claims})
+    career = {"career_status": {"reviewed": True}, "career": {"skills": [
+        {"id": "s", "category": "架构", "description": "服务拆分"}]}}
+    result = evaluate("- 接口开发\n- 接口开发，业绩提升 90%\n- 架构：服务拆分\n- Java负责人",
+                      career_profile=career, verified_trace={"occurrence_lineage_version": 1, "claims": claims})
     assert result["traceability"]["verified_bullets"] == 2
     assert [row["verified"] for row in result["traceability"]["bullets"]] == [True, False, True, False]
 
@@ -309,7 +312,8 @@ def _judge_fixture(tmp_path, monkeypatch):
         ],
     }
     payload = {
-        "r1_4": [{"bullet": 1, "supported": True, "citations": ["ec_1"], "reason": "卡中明确本人负责"}],
+        "r1_4": [{"render_line": line, "status": "supported", "citations": ["ec_1"],
+                  "reason": "合成完整判项；测试不代替语义核验。"} for line in (3, 6, 11, 12)],
         "r2_1": [{"jd_item_id": "d1", "status": "supported", "bullet_ref": "bullet#1",
                   "citations": ["ec_1"], "reason": ""}],
         "r3_1": [{"bullet": 1, "scene": True, "action": True, "result": True,
@@ -512,9 +516,12 @@ def test_quality_judge_uses_configured_provider_adapter(tmp_path, monkeypatch):
 def test_quality_judge_only_receives_evidence_used_in_actual_resume(tmp_path, monkeypatch):
     resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     cards = {**cards, "unused": {"results": ["未呈现的百万级成果"]}}
+    cards["ec_1"]["actions"] = ["负责完成平台抽象"]
     client = _FakeJudgeClient(content)
     quality_report._run_quality_judge(career_profile={}, resume_text=resume, cards=cards,
-        trace={"claims": [{"evidence_id": "ec_1", "text": "负责完成平台抽象"}]},
+        trace={"occurrence_lineage_version": 1, "claims": [{
+            "source_kind": "evidence", "evidence_id": "ec_1", "field": "actions",
+            "fact_id": "ec_1:actions:0", "text": "负责完成平台抽象", "render_line": 12}]},
         semantic_review=semantic, job_profile_path="job.yaml", use_llm=True, model="m", api_key="k",
         base_url="http://fake/v1", client_factory=lambda: client)
     data = json.loads(client.last_prompt.split("INPUT JSON:\n", 1)[1])
@@ -1186,7 +1193,11 @@ def test_quality_repair_budget_preserves_verified_sections_and_source_fence(
     old_md, old_json = b"existing report\n", b'{"existing":true}\n'
     config.output_path.write_bytes(old_md)
     config.output_path.with_suffix(".json").write_bytes(old_json)
-    state["contents"] = [json.dumps({"r1_4": []}), "{}"]
+    state["contents"] = [json.dumps({"r1_4": [
+        {"render_line": line, "status": "supported", "citations": ["ec-1"],
+         "reason": "合成完整首轮判项；本例仅验证修复预算及来源围栏。"}
+        for line in (3, 6, 11, 14, 15, 16, 19, 22, 23)
+    ]}), "{}"]
 
     def after_first_http():
         if len(state["sent"]) == 1:
@@ -1281,7 +1292,7 @@ def test_quality_repair_cannot_replace_an_already_verified_section(tmp_path, mon
     full = json.loads(state["default_content"])
     first = {"r1_4": full["r1_4"]}
     conflicting_repair = json.loads(state["default_content"])
-    conflicting_repair["r1_4"][0].update(supported=False, reason="第二轮返回相反的未请求判项")
+    conflicting_repair["r1_4"][0].update(status="unsupported", reason="第二轮返回相反的未请求判项")
     state["contents"] = [json.dumps(first), json.dumps(conflicting_repair)]
     judgments, meta, _ = quality_report._run_quality_judge(**args)
     assert len(state["sent"]) == 2
@@ -1343,8 +1354,9 @@ def _evaluate_generated_judge_request(tmp_path, monkeypatch, generation, cited_f
             reference = "bullet#" + str(bullets[0]["bullet"])
             # This response checks transport and deterministic guards, not model semantics.
             answer = {
-                "r1_4": [{"bullet": row["bullet"], "supported": True, "citations": [card_id],
-                           "reason": "合成协议响应；不作为语义验收。"} for row in bullets],
+                "r1_4": [{"render_line": line, "status": "supported", "citations": [card_id],
+                           "reason": "合成协议响应；不作为语义验收。"}
+                          for line in data["r1_4_required_lines"]],
                 "r2_1": [{"jd_item_id": row["id"], "status": "weak", "bullet_ref": reference,
                            "citations": [reference], "reason": "合成协议响应。"} for row in data["jd_items"]],
                 "r3_1": [{"bullet": row["bullet"], "scene": True, "action": True, "result": True,
@@ -1539,11 +1551,13 @@ def test_quality_role_coverage_requires_each_actual_responsibility(
     def reply(data, complete, attempt, prompt):
         required = {row["bullet"] for row in data["bullets"] if row["text"] in {action, value}}
         assert required == {2, 3}, "actual generated responsibility positions are the independent targets"
-        rows = [{**row, "supported": supported if row["bullet"] == 3 else True}
-                for row in complete["r1_4"] if row["bullet"] in required]
+        result_line = next(row["render_line"] for row in data["bullets"] if row["text"] == value)
+        rows = [{**row, "status": ("supported" if supported else "unsupported")
+                 if row["render_line"] == result_line else row["status"]}
+                for row in complete["r1_4"]]
         seen.append(prompt)
         if attempt == 1 and not initial_complete:
-            return {**complete, "r1_4": [row for row in rows if row["bullet"] != 3]}
+            return {**complete, "r1_4": [row for row in rows if row["render_line"] != result_line]}
         if attempt == 2:
             return {"r1_4": rows}
         return {**complete, "r1_4": rows}
@@ -1555,15 +1569,19 @@ def test_quality_role_coverage_requires_each_actual_responsibility(
     assert meta["repair_calls"] == (0 if initial_complete else 1)
     assert set(meta["judged_sections"]) == {"r1_4", "r2_1", "r3_1", "r3_5", "r4_1"}
     assert quality["llm_pending"] == []
+    result_line = next(row["render_line"] for row in _trace["claims"]
+                       if row.get("fact_id") == "ec-engine:results:0")
     failure = [row for row in quality["tiers"]["eligible"]["failures"]
-               if row["rule"] == "R1.4" and row["target"].startswith("bullet#3")]
+               if row["rule"] == "R1.4" and row["target"].startswith(f"line#{result_line} / ")]
     assert bool(failure) is (not supported), "a complete false judgment is a failure, not missing coverage"
     if not initial_complete:
         assert "EXACTLY these keys: r1_4\n" in seen[1]
     cache, = (tmp_path / "judge-cache").glob("*.json")
     cached = json.loads(cache.read_text())["judgments"]
-    assert {row["bullet"] for row in cached["r1_4"]} == {2, 3}
-    assert next(row for row in cached["r1_4"] if row["bullet"] == 3)["supported"] is supported
+    assert _markdown.splitlines()[17] == "Java"
+    assert {row["render_line"] for row in cached["r1_4"]} == {2, 6, 7, 8, 9, 10, 11, 18}
+    assert next(row for row in cached["r1_4"] if row["render_line"] == result_line)["status"] == (
+        "supported" if supported else "unsupported")
 
 
 @pytest.mark.parametrize("fault", ["missing", "invalid-citation"])
@@ -1575,11 +1593,12 @@ def test_quality_role_coverage_remains_pending_after_one_group_repair(
     def reply(data, complete, attempt, prompt):
         required = {row["bullet"] for row in data["bullets"] if row["text"] in {action, value}}
         assert required == {2, 3}
-        rows = [row for row in complete["r1_4"] if row["bullet"] in required]
+        result_line = next(row["render_line"] for row in data["bullets"] if row["text"] == value)
+        rows = complete["r1_4"]
         if fault == "missing":
-            rows = [row for row in rows if row["bullet"] != 3]
+            rows = [row for row in rows if row["render_line"] != result_line]
         else:
-            rows = [{**row, "citations": ["unknown-card"]} if row["bullet"] == 3 else row for row in rows]
+            rows = [{**row, "citations": ["unknown-card"]} if row["render_line"] == result_line else row for row in rows]
         seen.append(prompt)
         return {**complete, "r1_4": rows} if attempt == 1 else {"r1_4": rows}
 
@@ -1597,7 +1616,7 @@ def test_quality_role_coverage_remains_pending_after_one_group_repair(
 def test_quality_role_coverage_rechecks_a_normalized_cache_missing_a_required_row(tmp_path, monkeypatch):
     args, state = _quality_wire_transport(tmp_path, monkeypatch)
     first, _meta, _ = quality_report._run_quality_judge(**args)
-    assert first is not None and {row["bullet"] for row in first["r1_4"]} == {1}
+    assert first is not None and {row["render_line"] for row in first["r1_4"]} == {3, 6, 11, 12}
     cache, = (tmp_path / "judge-cache").glob("*.json")
     stored = json.loads(cache.read_text())
     stored["judgments"]["r1_4"] = []
@@ -1612,8 +1631,12 @@ def test_quality_role_coverage_rechecks_a_normalized_cache_missing_a_required_ro
 
 def test_quality_role_coverage_empty_need_does_not_request_a_role_repair(tmp_path, monkeypatch):
     args, state = _quality_wire_transport(tmp_path, monkeypatch)
-    args["resume_text"] = args["resume_text"].replace("负责完成平台抽象", "完成平台接口验收")
+    args["resume_text"] = "# 合成候选人\n13800000000 | candidate@example.com\n求职意向：平台工程师\n"
     answer = json.loads(state["default_content"])
+    answer["r2_1"] = [{"jd_item_id": "d1", "status": "absent", "bullet_ref": "",
+                       "citations": ["resume"], "reason": "只有结构头部，没有候选人能力事实。"}]
+    answer["r3_1"], answer["r4_1"] = [], []
+    answer["r3_5"].update(summary_lines=0, citations=["ec_1"])
     answer.pop("r1_4")
     state["default_content"] = json.dumps(answer)
     judgments, meta, _ = quality_report._run_quality_judge(**args)
@@ -1627,8 +1650,12 @@ def test_quality_role_coverage_empty_need_does_not_request_a_role_repair(tmp_pat
 
 def test_quality_role_coverage_empty_need_does_not_fill_a_missing_raw_cache_group(tmp_path, monkeypatch):
     args, state = _quality_wire_transport(tmp_path, monkeypatch)
-    args["resume_text"] = args["resume_text"].replace("负责完成平台抽象", "完成平台接口验收")
+    args["resume_text"] = "# 合成候选人\n13800000000 | candidate@example.com\n求职意向：平台工程师\n"
     answer = json.loads(state["default_content"])
+    answer["r2_1"] = [{"jd_item_id": "d1", "status": "absent", "bullet_ref": "",
+                       "citations": ["resume"], "reason": "只有结构头部，没有候选人能力事实。"}]
+    answer["r3_1"], answer["r4_1"] = [], []
+    answer["r3_5"].update(summary_lines=0, citations=["ec_1"])
     answer["r1_4"] = []
     state["default_content"] = json.dumps(answer)
     first, _meta, _ = quality_report._run_quality_judge(**args)
@@ -1640,3 +1667,203 @@ def test_quality_role_coverage_empty_need_does_not_fill_a_missing_raw_cache_grou
     second, meta, _ = quality_report._run_quality_judge(**args)
     assert len(state["sent"]) == 2 and meta["cache"] == "miss"
     assert second is not None and second["r1_4"] == []
+
+def test_l10_actual_generated_role_targets_cover_complete_structural_lines(
+        tmp_path, monkeypatch, generation):
+    _role_coverage_generation(generation)
+    markdown, trace, _view, data, result = _evaluate_generated_judge_request(
+        tmp_path, monkeypatch, generation, "ec-engine:results:0")
+    lines = markdown.splitlines()
+    role_claim, = [row for row in trace["claims"]
+                   if row.get("fact_id") == "ec-engine:role_scope:0"]
+    context_claim, = [row for row in trace["claims"]
+                      if row.get("fact_id") == "ec-engine:context:0"]
+    current_line = next(number for number, text in enumerate(lines, 1)
+                        if text.startswith("当前定位："))
+    expected = {current_line, role_claim["render_line"], context_claim["render_line"]}
+    expected.update(row["render_line"] for row in trace["claims"]
+                    if row.get("evidence_id") == "ec-engine"
+                    and row.get("field") in {"actions", "results"})
+    assert role_claim["text"] in lines[role_claim["render_line"] - 1]
+    assert result["quality_report"]["tiers"]["strong"]["metrics"]["quant_total"] == 0.3333
+    required = set(data.get("r1_4_required_lines", []))
+    assert expected <= required, "actual non-bullet roles, context and current positioning require the same R1 review"
+    sent_lines = {row["render_line"]: row for row in data.get("r1_4_lines", [])}
+    assert required <= set(sent_lines), "every requested physical line must actually be sent"
+    for number in expected:
+        assert sent_lines[number]["text"] == lines[number - 1].removeprefix("- ")
+    assert current_line not in {int(row["id"].removeprefix("line#")) for row in data["resume_lines"]}
+    assert not any(row.get("field") == "current_position" and row.get("fact_id")
+                   for row in trace["claims"]), "header positioning has no invented exact occurrence"
+
+
+def test_l10_actual_request_contains_current_confirmed_career_fact_sources(
+        tmp_path, monkeypatch, career_generation):
+    from tools.sidecar.handlers import profile as profile_api
+
+    generation, _materials, _indirect, _contribution, meta = career_generation
+    public = profile_api.handle_profile_get({"meta": meta})["profile"]
+    assert public["career_status"]["reviewed"] is True
+    current = next(row for row in public["career"]["work"] if row["id"] == "indirect")
+    historical = next(row for row in public["career"]["work"] if row["id"] == "w1")
+    assert current["current"] is True and historical["current"] is False
+    markdown, trace, _view, data, _result = _evaluate_generated_judge_request(
+        tmp_path, monkeypatch, generation, "ec-engine:results:0")
+    current_line = next(number for number, line in enumerate(markdown.splitlines(), 1)
+                        if line.startswith("当前定位："))
+    assert not any(row.get("render_line") == current_line and row.get("fact_id")
+                   for row in trace["claims"])
+
+    def objects(value):
+        if isinstance(value, dict):
+            yield value
+            for item in value.values():
+                yield from objects(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from objects(item)
+
+    payload = json.dumps(data, ensure_ascii=False)
+    for work in (current, historical):
+        for field in ("title", "company", "start", "scope"):
+            fact_id = f"personal_profile:career.work.{work['id']}.{field}:0"
+            assert fact_id in payload, "actual source identities must reach the model, not only citation allowlists"
+            assert work[field] in payload
+        original = [row for row in objects(data) if row.get("id") == work["id"]]
+        assert any(all(row.get(field) == work[field] for field in
+                       ("current", "start", "end", "scope", "contributions")) for row in original), (
+            "current and historical work conditions must accompany their original identities")
+
+@pytest.mark.parametrize("fault", ["self-only", "mixed-invalid"])
+def test_l10_role_wire_requires_independent_and_wholly_valid_sources(tmp_path, monkeypatch, fault):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    answer = json.loads(state["default_content"])
+    answer["r1_4"][0]["citations"] = (
+        ["bullet#1"] if fault == "self-only" else ["ec_1", "fabricated-independent-source"])
+    state["default_content"] = json.dumps(answer)
+    judged, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 2 and meta["repair_calls"] == 1
+    assert judged is not None
+    assert set(judged["judged_sections"]) == {"r2_1", "r3_1", "r3_5", "r4_1"}
+    assert not list((tmp_path / "judge-cache").glob("*.json"))
+
+
+@pytest.mark.parametrize("status", ["supported", "unsupported", "not_applicable"])
+def test_l10_role_wire_repairs_complete_line_group_and_preserves_three_states(tmp_path, monkeypatch, status):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    answer = json.loads(state["default_content"])
+    rows = [
+        {"render_line": number, "status": status if number == 12 else "supported",
+         "citations": ["ec_1"], "reason": "合成协议响应；完整责任语义由独立模型验收。"}
+        for number in (3, 6, 11, 12)
+    ]
+    answer["r1_4"] = rows[:-1]
+    state["contents"] = [json.dumps(answer), json.dumps({"r1_4": rows})]
+    judged, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 2 and meta["repair_calls"] == 1
+    assert judged is not None
+    assert set(judged["judged_sections"]) == {"r1_4", "r2_1", "r3_1", "r3_5", "r4_1"}
+    assert judged["r1_4"] == rows
+    assert judged["schema_version"] == 2 and judged["prompt_version"] == 10
+    repair = json.loads(state["sent"][1].data)["messages"][-1]["content"]
+    assert "EXACTLY these keys: r1_4\n" in repair
+    cached, = (tmp_path / "judge-cache").glob("*.json")
+    envelope = json.loads(cached.read_text())
+    assert envelope["cache_schema_version"] == 2
+    assert envelope["judgments"]["r1_4"] == rows
+
+
+@pytest.mark.parametrize("fault", ["self-only", "duplicate-same", "duplicate-conflicting"])
+def test_l10_new_role_protocol_incomplete_group_stays_partial_without_cache(tmp_path, monkeypatch, fault):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    answer = json.loads(state["default_content"])
+    rows = [
+        {"render_line": number, "status": "supported", "citations": ["ec_1"],
+         "reason": "合成协议响应。"} for number in (3, 6, 11, 12)
+    ]
+    if fault == "self-only":
+        rows[-1]["citations"] = ["bullet#1"]
+    else:
+        rows.append({**rows[-1], "status": "unsupported" if fault == "duplicate-conflicting" else "supported"})
+    answer["r1_4"] = rows
+    state["default_content"] = json.dumps(answer)
+    judged, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 2 and meta["repair_calls"] == 1
+    assert judged is not None
+    assert set(judged["judged_sections"]) == {"r2_1", "r3_1", "r3_5", "r4_1"}
+    assert not list((tmp_path / "judge-cache").glob("*.json"))
+
+
+def test_l10_request_drops_misbound_profile_claim_but_keeps_independent_current_fact(
+        tmp_path, monkeypatch, career_generation):
+    from tools.sidecar.handlers import profile as profile_api
+
+    _generation, _materials, _indirect, _contribution, meta = career_generation
+    public = profile_api.handle_profile_get({"meta": meta})["profile"]
+    assert public["career_status"]["reviewed"] is True
+    work = next(row for row in public["career"]["work"] if row["id"] == "w1")
+    value = work["contributions"][0]
+    assert value != work["scope"]
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    args["resume_text"] = args["resume_text"].replace("负责完成平台抽象", value)
+    args["career_profile"] = public
+    wrong_id = "personal_profile:career.work.w1.scope:0"
+    correct_id = "personal_profile:career.work.w1.contributions:0"
+    args["trace"] = {"claims": [{
+        "source_kind": "personal_profile", "evidence_id": "",
+        "field": "career.work.w1.contributions", "fact_id": wrong_id,
+        "text": value, "render_line": 12,
+    }]}
+    # All other sections use body locators, so removing unrelated cards is legitimate.
+    state["default_content"] = state["default_content"].replace('"ec_1"', '"bullet#1"')
+    quality_report._run_quality_judge(**args)
+    assert state["sent"]
+    prompt = json.loads(state["sent"][0].data)["messages"][-1]["content"]
+    data = json.loads(prompt.split("INPUT JSON:\n", 1)[1])
+    assert not any(row.get("fact_id") == wrong_id for row in data.get("claims", [])), (
+        "a sibling's real text cannot launder the wrong profile occurrence into accepted claims")
+    original_context = json.dumps(data, ensure_ascii=False)
+    assert correct_id in original_context and value in original_context
+
+def test_l10_header_uses_confirmed_current_career_source_without_inventing_occurrence(
+        tmp_path, monkeypatch, career_generation):
+    from tools.sidecar.handlers import profile as profile_api
+
+    _generation, _materials, _indirect, _contribution, meta = career_generation
+    public = profile_api.handle_profile_get({"meta": meta})["profile"]
+    assert public["career_status"]["reviewed"] is True
+    current = next(row for row in public["career"]["work"] if row["id"] == "indirect")
+    assert current["current"] is True
+    fact_id = "personal_profile:career.work.indirect.title:0"
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    args["career_profile"] = public
+    args["resume_text"] = args["resume_text"].replace("当前定位：平台负责人", "当前定位：" + current["title"])
+    assert args["trace"] == {}, "current positioning has no fabricated exact occurrence"
+    answer = json.loads(state["default_content"])
+    answer["r1_4"] = [
+        {"render_line": number, "status": "supported",
+         "citations": [fact_id if number == 3 else "ec_1"], "reason": "以本次真实当前任职为独立依据。"}
+        for number in (3, 6, 11, 12)
+    ]
+    state["default_content"] = json.dumps(answer)
+    judged, first, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 1 and first["repair_calls"] == 0
+    assert judged is not None and "r1_4" in judged["judged_sections"]
+    assert judged["r1_4"][0] == answer["r1_4"][0]
+    prompt = json.loads(state["sent"][0].data)["messages"][-1]["content"]
+    data = json.loads(prompt.split("INPUT JSON:\n", 1)[1])
+    assert fact_id in json.dumps(data, ensure_ascii=False) and current["title"] in prompt
+    assert not any(row.get("render_line") == 3 and row.get("fact_id") for row in data["claims"])
+
+    cache, = (tmp_path / "judge-cache").glob("*.json")
+    stored = json.loads(cache.read_text())
+    assert stored["cache_schema_version"] == 2
+    assert stored["judgments"]["schema_version"] == 2 and stored["judgments"]["prompt_version"] == 10
+    stored["judgments"].update(schema_version=1, prompt_version=7)
+    stored["judgments"]["r1_4"] = [{"bullet": 1, "supported": True, "citations": [fact_id], "reason": "旧协议"}]
+    cache.write_text(json.dumps(stored))
+    refreshed, second, _ = quality_report._run_quality_judge(**args)
+    assert second["cache"] == "miss" and len(state["sent"]) == 2
+    assert refreshed["r1_4"] == answer["r1_4"]
+    stable, third, _ = quality_report._run_quality_judge(**args)
+    assert third["cache"] == "hit" and len(state["sent"]) == 2 and stable == refreshed
