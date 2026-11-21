@@ -326,12 +326,14 @@ class AgentLoop:
                 round_index=round_index,
                 resume_version=resume.version,
             )
+            if not review_candidate['job_profile_id']:
+                review_candidate['job_profile_id'] = resume.job_profile_id
             if self._policy.delivery_mode == "manual":
                 from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
                 try:
                     review_candidate['snapshot'] = ReviewSnapshotStore().create(
                         self._run_id, review_candidate, resume.content, dry_run=self._dry_run,
-                        generation_trace=resume.generation_trace,
+                        generation_trace=resume.generation_trace, scorecard=scorecard,
                     )
                 except ValueError:
                     self._log_state('REVIEW', round_index, {'error': 'review_snapshot_export_failed'})
@@ -505,7 +507,10 @@ class AgentLoop:
         profile = self._job_profile
         if profile is None:
             profile = JobProfile(id="default", title="", keywords=(), level="")
-        return self._evaluation.evaluate(resume, profile)
+        scorecard = self._evaluation.evaluate(resume, profile)
+        if not validate_generation_trace(resume.content, resume.generation_trace):
+            raise ValueError('generation_trace_changed')
+        return scorecard
 
     def _run_gate(
         self,

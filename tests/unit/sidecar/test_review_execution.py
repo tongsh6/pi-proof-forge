@@ -3,7 +3,7 @@ import json
 import pytest
 
 from tools.sidecar.handlers import agent
-from tests.unit.infra.test_review_snapshot import candidate
+from tests.unit.infra.test_review_snapshot import candidate, quality_candidate
 
 
 @pytest.fixture
@@ -14,8 +14,10 @@ def review(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, '_AGENT_RUN_DIR', tmp_path / 'outputs/agent_runs')
     monkeypatch.setattr(agent, '_REVIEW_QUEUE_DIR', tmp_path / 'outputs/review_queue')
     monkeypatch.setattr(review_snapshot, '_render_pdf', lambda src, dst: dst.write_bytes(b'%PDF-test-only'))
-    def create(*, dry_run=True, snapshot=True):
-        item = {**candidate(), 'status': 'pending', 'round_index': 0}
+    def create(*, dry_run=True, snapshot=True, quality=False):
+        item = {**(quality_candidate() if quality else candidate()), 'status': 'pending', 'round_index': 0}
+        if quality:
+            item.update(matching_score=99, evaluation_score=99)
         if snapshot:
             item['snapshot'] = review_snapshot.ReviewSnapshotStore(agent._AGENT_RUN_DIR).create(
                 'run-1', item, '# 仅使用已有事实', dry_run=dry_run)
@@ -206,3 +208,80 @@ def test_native_pdf_pending_review_returns_original_route(review):
     agent._save_queue(path,queue)
     result=agent.handle_get_pending_review({'meta':{'correlation_id':'t'},'run_id':'run-1'})
     assert result['native_pdf_quick_run_id']=='qr_native'
+
+def test_m1_pending_quality_is_advisory_through_snapshot_and_approval(review, monkeypatch):
+    path = review(quality=True)
+    monkeypatch.setattr('urllib.request.urlopen', lambda *_a, **_k: pytest.fail('审核不得调用外部服务'))
+    monkeypatch.setattr('tools.channels.liepin.LiepinChannel.deliver', lambda *_: pytest.fail('检查不能发送'))
+    item, = agent.handle_get_pending_review({'meta': {'correlation_id': 'm1'}, 'run_id': 'run-1'})['candidates']
+    report = item['quality_snapshot']['quality_report']
+    assert item['snapshot_status'] == 'ready'
+    assert item['evaluation_score'] == 99
+    assert report['legacy_scores']['rule_total'] == 99
+    assert report['auto_pass'] is False and report['llm_pending']
+    digest = item['quality_sha256']
+    result = decide()
+    assert result['accepted'] == 1
+    assert result['delivery_results'][0]['code'] == 'checked_not_submitted'
+    saved, = json.loads(path.read_text())['candidates']
+    assert saved['status'] == 'approved'
+    assert saved['quality_sha256'] == digest
+    assert saved['quality_snapshot']['quality_report'] == report
+
+
+@pytest.mark.parametrize('consumer', ['pending', 'approve'])
+def test_m1_changed_quality_is_not_reviewable_with_unchanged_body_pdf(review, monkeypatch, consumer):
+    path = review(quality=True)
+    queue = json.loads(path.read_text())
+    queue['candidates'][0]['quality_snapshot']['quality_report']['gap_tasks'].append('审核之后被更换的评测结论')
+    agent._save_queue(path, queue)
+    before = path.read_bytes()
+    monkeypatch.setattr('tools.orchestration.approved_delivery.resume_approved_candidate',
+                        lambda *_: pytest.fail('损坏报告不能恢复执行'))
+    if consumer == 'pending':
+        item, = agent.handle_get_pending_review({'meta': {'correlation_id': 'm1'}, 'run_id': 'run-1'})['candidates']
+        assert item['snapshot_status'] == 'invalid'
+        assert item['resume_preview'] == ''
+    else:
+        with pytest.raises(ValueError, match='review_snapshot'):
+            decide()
+    assert path.read_bytes() == before
+
+@pytest.mark.parametrize('changed', [False, True], ids=['verified-other-queue', 'tampered-other-queue'])
+def test_m1_all_pending_verifies_quality_for_each_actual_run(review, monkeypatch, changed):
+    from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
+
+    primary_path = review(quality=True)
+    primary_bytes = primary_path.read_bytes()
+    content = '# 另一队列的独立正文'
+    other = {**quality_candidate(content), 'job_lead_id': 'other-lead', 'status': 'pending'}
+    other['snapshot'] = ReviewSnapshotStore(agent._AGENT_RUN_DIR).create(
+        'run-other', other, content, dry_run=True)
+    report = json.loads(json.dumps(other['quality_snapshot']['quality_report']))
+    if changed:
+        other['quality_snapshot']['quality_report']['gap_tasks'].append('另一队列被替换的质量结论')
+    other_path = agent._get_queue_file('run-other')
+    agent._save_queue(other_path, {'run_id': 'run-other', 'candidates': [other]})
+    other_bytes = other_path.read_bytes()
+    monkeypatch.setattr('urllib.request.urlopen', lambda *_a, **_k: pytest.fail('聚合读取不调用外部服务'))
+
+    result = agent.handle_get_pending_review({'meta': {'correlation_id': 'm1'}, 'run_id': 'run-1'})
+    primary, = result['candidates']
+    assert primary['job_lead_id'] == 'lead-1'
+    assert primary['snapshot_status'] == 'ready'
+    assert primary['resume_preview'] == '# 仅使用已有事实'
+    assert primary['quality_snapshot']['quality_report'] == json.loads(primary_bytes)['candidates'][0]['quality_snapshot']['quality_report']
+    assert result['run_id'] == 'run-1' and result['native_pdf_quick_run_id'] is None
+    assert len(result['all_pending']) == 2
+    returned, = [row for row in result['all_pending'] if row['job_lead_id'] == 'other-lead']
+    assert returned['run_id'] == 'run-other'
+    if changed:
+        assert returned.get('snapshot_status') == 'invalid'
+        assert 'quality_snapshot' not in returned
+        assert returned['resume_preview'] == ''
+    else:
+        assert returned.get('snapshot_status') == 'ready'
+        assert returned['quality_snapshot']['quality_report'] == report
+        assert returned['resume_preview'] == content
+    assert primary_path.read_bytes() == primary_bytes
+    assert other_path.read_bytes() == other_bytes

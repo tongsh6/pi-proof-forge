@@ -296,7 +296,24 @@ def test_guided_api_preserves_reviewed_fact_scope_and_generation_trace(source_sa
     monkeypatch.setenv("PPF_POLICY_PATH", str(project_root / "policy.yaml"))
     monkeypatch.setattr("tools.infra.persistence.review_snapshot._render_pdf",
                         lambda _source, destination: destination.write_bytes(b"%PDF-synthetic-test"))
-    result = handle_agent_start({
+    from tools.sidecar import server
+
+    def rpc(method, request_params):
+        response = server.process_request({
+            "jsonrpc": "2.0", "id": "guided-four-layer",
+            "method": method, "params": request_params,
+        })
+        assert "error" not in response, response
+        return response["result"]
+
+    calls = []
+
+    def unexpected_http(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("guided Agent must not call a configured local model")
+
+    monkeypatch.setattr("tools.infra.llm.client.request.urlopen", unexpected_http)
+    result = rpc("run.agent.start", {
         "meta": {"correlation_id": "guided-reviewed-scope"},
         "job_profile_id": "jp_agent_acceptance",
         "options": {
@@ -307,7 +324,7 @@ def test_guided_api_preserves_reviewed_fact_scope_and_generation_trace(source_sa
         },
     })
     assert result["status"] == "REVIEW_PENDING"
-    pending = handle_get_pending_review({"meta": params["meta"], "run_id": result["run_id"]})
+    pending = rpc("run.agent.getPendingReview", {"meta": params["meta"], "run_id": result["run_id"]})
     candidate, = pending["candidates"]
     content = candidate["resume_preview"]
     assert excluded not in content
@@ -326,6 +343,25 @@ def test_guided_api_preserves_reviewed_fact_scope_and_generation_trace(source_sa
     assert str((materials_dir / "m1.txt").resolve()) in {
         value["path"] for value in trace["inputs"].values()
     }
-    fetched = handle_agent_get({"meta": params["meta"], "run_id": result["run_id"]})
+    fetched = rpc("run.agent.get", {"meta": params["meta"], "run_id": result["run_id"]})
     assert fetched["run"]["delivery_plan"]["external_submission_attempted"] is False
     assert all(event["event_type"] != "DELIVER" for event in fetched["events"])
+    assert calls == []
+    assert candidate["status"] == "pending"
+    assert candidate["job_profile_id"] == "jp_agent_acceptance"
+    assert candidate["snapshot_status"] == "ready"
+    quality = candidate.get("quality_snapshot")
+    assert isinstance(quality, dict), "the real pending API must expose the evaluated quality snapshot"
+    assert quality["status"] == "bound"
+    assert quality["resume_sha256"] == hashlib.sha256(content.encode()).hexdigest()
+    assert quality["pdf_sha256"] == hashlib.sha256(Path(snapshot["resume_path"]).read_bytes()).hexdigest()
+    assert quality["auto_pass"] is False
+    report = quality["quality_report"]
+    assert set(report["tiers"]) == {"eligible", "fit", "strong", "distinct"}
+    assert report["resume_version"] == quality["resume_sha256"]
+    assert report["job_profile_id"] == "jp_agent_acceptance"
+    assert report["llm_pending"] and report["auto_pass"] is False
+    assert report["tiers"]["strong"]["metrics"]["quant_total"] == 0.0
+    assert "R2.4" not in {failure["rule"] for failure in report["tiers"]["fit"]["failures"]}
+    canonical = json.dumps(quality, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    assert candidate["quality_sha256"] == hashlib.sha256(canonical).hexdigest()

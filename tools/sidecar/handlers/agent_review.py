@@ -124,6 +124,23 @@ def _sync_review_run(run_id: str, queue: dict, results: list[dict]) -> None:
                            'payload': {**result, 'dry_run': result['status'] == 'checked', 'event_key': event_key}})
     atomic_write_json(run_file, payload)
 
+def _snapshot_candidate(run_id: str, candidate: dict[str, Any]) -> dict[str, Any]:
+    from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
+
+    projected = dict(candidate)
+    try:
+        snapshot = ReviewSnapshotStore(_agent_run_dir()).load(run_id, candidate)
+        projected.update(snapshot_status='ready', resume_preview=snapshot['resume_markdown'])
+        if snapshot['quality_snapshot'] is not None:
+            projected['quality_snapshot'] = snapshot['quality_snapshot']
+        else:
+            projected.pop('quality_snapshot', None)
+    except ValueError:
+        projected.update(snapshot_status='invalid', resume_preview='')
+        projected.pop('quality_snapshot', None)
+    return projected
+
+
 def handle_get_pending_review(params: dict[str, Any]) -> dict[str, Any]:
     """Return pending REVIEW candidates for the active run."""
     correlation_id = params["meta"]["correlation_id"]
@@ -133,15 +150,8 @@ def handle_get_pending_review(params: dict[str, Any]) -> dict[str, Any]:
     queue = _load_queue(queue_file)
 
     # Filter only pending candidates
-    pending = [c for c in queue.get("candidates", []) if c.get("status") == "pending"
-               or (c.get('status') == 'approved' and 'delivery' not in c)]
-    from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
-    for candidate in pending:
-        try:
-            snapshot = ReviewSnapshotStore(_agent_run_dir()).load(queue_file.stem, candidate)
-            candidate.update(snapshot_status='ready', resume_preview=snapshot['resume_markdown'])
-        except ValueError:
-            candidate.update(snapshot_status='invalid', resume_preview='')
+    pending = [_snapshot_candidate(queue_file.stem, c) for c in queue.get("candidates", [])
+               if c.get("status") == "pending" or (c.get('status') == 'approved' and 'delivery' not in c)]
 
     # 一次准备多个岗位时会有多个队列；只返回最新一个会让更早的待审任务在界面上
     # 消失（用户以为没准备成功）。这里额外聚合全部待审队列，保持既有字段不变。
@@ -158,7 +168,7 @@ def handle_get_pending_review(params: dict[str, Any]) -> dict[str, Any]:
             # 只列真正待审的：approved 但无 delivery 的是历史遗留决定，
             # 混进来会让待审列表变噪音（实测聚合出 21 条）。
             if candidate.get('status') == 'pending' and 'delivery' not in candidate:
-                all_pending.append({**candidate, 'run_id': path.stem})
+                all_pending.append({**_snapshot_candidate(path.stem, candidate), 'run_id': path.stem})
     for candidate in pending:
         all_pending.append({**candidate, 'run_id': queue_file.stem})
     # 最新的排前面：run_id 以时间戳开头，字典序即时间序。

@@ -1028,6 +1028,7 @@ export interface ReviewCandidateItem {
   round_index: number;
   resume_version: string;
   snapshot_status?: "ready" | "invalid";
+  quality_snapshot?: PdfQuality;
   delivery_kind?: "platform_default" | "generated_pdf";
   status?: string;
   resume_preview?: string;

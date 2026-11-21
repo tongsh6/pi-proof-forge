@@ -13,6 +13,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
+import { QualityReportPanel } from "@/components/quality-report";
 import { isLlmSecretConfigured } from "@/lib/llmConfig";
 import { confirmAction, notify } from "@/lib/ui";
 import {
@@ -721,22 +722,23 @@ export function AgentRunPage() {
                             {t("pages.agentRun.matchScore")}:{" "}
                             {candidate.matching_score ?? t("pages.agentRun.notEvaluated")}
                           </span>
-                          <span>
+                          {!candidate.quality_snapshot?.quality_report && <span>
                             {t("pages.agentRun.evalScore")}:{" "}
                             {candidate.evaluation_score ?? t("pages.agentRun.notEvaluated")}
-                          </span>
+                          </span>}
                           <span>
                             {t("pages.agentRun.round")}: {candidate.round_index}
                           </span>
                           <span>{t("pages.agentRun.resumeVersion")}: {candidate.resume_version}</span>
                           <span>{t(candidate.delivery_kind === "platform_default" ? "pages.agentRun.platformDefaultResume" : "pages.agentRun.generatedPdfResume")}</span>
                         </p>
-                        {candidate.snapshot_status === "ready" ? (
+                        {candidate.snapshot_status === "ready" ? <>
                           <details className="mt-3">
                             <summary className="cursor-pointer text-sm text-accent">{t("pages.agentRun.snapshotPreview")}</summary>
                             <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs text-text-secondary">{candidate.resume_preview}</pre>
                           </details>
-                        ) : <p className="mt-2 text-xs text-error">{t("pages.agentRun.snapshotInvalid")}</p>}
+                          <div className="mt-3"><QualityReportPanel report={candidate.quality_snapshot?.quality_report} /></div>
+                        </> : <p className="mt-2 text-xs text-error">{t("pages.agentRun.snapshotInvalid")}</p>}
                       </div>
                       <div className="flex shrink-0 gap-2">
                         {nativePdfQuickRunId ? <button type="button" className="rounded-card border border-accent px-3 py-1.5 text-xs text-accent"
