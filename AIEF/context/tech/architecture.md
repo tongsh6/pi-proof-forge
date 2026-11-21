@@ -68,6 +68,14 @@ config/composer 负责统一组装
 - `engines/` 实现 `domain/protocols.py` 中定义的接口
 - `orchestration/` 只负责 Stage 调度、状态流转和 Result 消费
 
+## LLM 结构化请求边界
+
+- `LLMClient.post_json` 统一传递调用方声明的输出结构。请求使用 `response_format={"type":"json_object"}` 且传入 `response_schema` 时，完整 schema 必须进入模型实际收到的请求；不能在某个 provider 下静默丢弃。
+- 现有 LM Studio 路径使用原生 `json_schema`。其他 JSON-object 路径保留已支持的协议格式，把同一份 schema 序列化为可信 system 输出约束；不按业务字段、模型名称或样例添加别名、补值或专门规则，也不假定端点支持原生 schema。
+- 调用方显式给出的其他 `response_format` 保持原意；未传 schema 时保持现有行为。构造请求不得修改调用方的 payload、messages 或 schema，重复调用不得累加格式约束。原始资料仍是 user 数据，不能被提升为 system 指令。
+- 客户端只负责结构合同的传递和现有 provider 协议适配。业务调用方继续校验 JSON、字段、引用及语义，保持既有有限修复策略；schema 可见不等于模型输出已通过校验，客户端不得改写错误输出以使其合格。
+- 回归以实际序列化的 `Request.data` 为依据，同时保留原生 schema、无 schema、显式格式及错误输出被业务校验拒绝的对照；应用验收仍须经过真实 RPC 与配置的模型调用。
+
 ## 数据流（高层）
 1. Raw materials → evidence extraction → evidence cards
 2. JD input → job profile

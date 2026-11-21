@@ -235,6 +235,20 @@ class LLMClient:
             ):
                 # 已定位这些型号会把结构化输出预算耗在推理中；仅调整本次请求。
                 payload = {**payload, "reasoning_effort": "none"}
+        if response_schema is not None and payload.get("response_format") == {"type": "json_object"}:
+            # JSON-object providers still need the complete caller-owned output contract.
+            # Native schema requests above, and explicit formats, keep their wire protocol.
+            instruction = (
+                "输出必须符合以下 JSON Schema；仅返回符合该结构的 JSON 对象，不输出 schema 本身：\n"
+                + json.dumps(dict(response_schema), ensure_ascii=False, sort_keys=True)
+            )
+            messages = cast(list[dict[str, Any]], payload.get("messages", []))
+            first = messages[0] if messages else None
+            if isinstance(first, dict) and first.get("role") == "system" and isinstance(first.get("content"), str):
+                messages = [{**first, "content": first["content"] + "\n\n" + instruction}, *messages[1:]]
+            else:
+                messages = [{"role": "system", "content": instruction}, *messages]
+            payload = {**payload, "messages": messages}
         if self._provider == "strata" and "reasoning_effort" not in payload:
             # Strata（Qwen3.8 本地 OpenAI 兼容服务）用请求顶层 reasoning_effort 控制思考，
             # 不识别 DeepSeek 风格 thinking 对象；结构化 JSON 请求把输出预算留给正文。
