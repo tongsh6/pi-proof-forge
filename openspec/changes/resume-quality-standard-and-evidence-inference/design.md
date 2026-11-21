@@ -98,11 +98,17 @@ employment_window: 2022-06 ~ 2024-03   # 来自已确认档案，按材料所属
 输出: candidates[] 写入 app-data/evidence_inference.json（按卡指纹 + 文档集合指纹 + 已确认任职上下文 + 公共指令指纹 + 任务版本）
 ```
 
-不写卡。对账面板新增"待确认推断"列：接受 → `evidence.update` 写字段与 provenance；修改后接受 → L4；否决 → 记录 `(card_fp, candidate_hash)`。
+候选不写卡。对账面板的"待确认推断"沿 `evidence.confirmInference`：接受写字段与 provenance；修改后接受记 L4；否决记录候选 hash，不混用普通编辑入口的来源权威。
 
 **L4 接线与版本边界**：现有 handler 先确定目标，再直接调用原 knowledge_index 构建器准备当前派生导航；不用 CLI/bootstrap，也不新增构建 RPC。全库 verify 继续是导航诊断，不能代替本次采用来源的授权和版本检查。原 read_document_texts/聚合/候选解析复用已有验证文本与 snapshots，并以材料、文档、SHA 三元身份贯穿；原 attempt_fingerprint 绑定实际采用的版本，不另存一份来源账本。卡的实际路径与已读 SHA 由现 handler 传入，任职上下文只解析一次；原应用用例暂存本批候选，缓存返回与整批发布共用原来源复核职责，全部实际输入及当前来源许可复核后一次写原状态文件，错误不覆盖候选状态或调用期间的合法更新。新召回守整份 manifest 准入，已存精确绑定按原窄复验，不静默刷新来源。完整验收与边界见 evidence-provenance R4.5；确认入口的来源复核紧接推进，保留连续字段确认/修改后 L4/否决既有语义。
 
 **L4 限定验收（2026-11-22）**：真实 Router 独立反例与原行为对照转绿，最终全量 2874 passed、1 skipped、101 subtests passed（50.74 秒），架构 v2 通过。移除原工程索引 bootstrap 后，一次合成应用验收完成 8 RPC、1 次本机 Splash，由 inferFields 创建索引并返回两条有出处候选，原卡字节不变且不可入池；没有确认、正式生成或投递。具体对照、请求及运行摘要见 [Project Ledger](../../../docs/project-ledger.md)。
+
+**L5 确认依据与受控接续（限定工程范围已完成）**：查重覆盖原候选 state、`ValidatedSourcePaths`、卡片来源指纹、`reviewed_facts/result_review` 和 generation trace。旧 `attempt_fingerprint` 只能比较摘要，候选 evidence 不能还原全部实际输入；后两者属于复审/正文权威，不承担待确认候选起源。因此在原状态增唯一 `input_basis`，由现 inference 捕获、现 confirm 复核，持久化原快照路径/SHA 与直接采用文档身份，无原文副本或新账本。原 `card_sha256` 是唯一确认进度，不新增游标；原样接受只推进它，原 basis/attempt 不改；现 attempt 校验整份原 basis 的 canonical 摘要后才允许接续，删去合法结构的依赖也不能沿用旧候选。确认复用既有 reader、当前根许可和精确/整份准入，按原采用集合验证，不重建索引/重新召回，也不把当前档案审核变化重新解释为原推断未使用该档案。只有同一目标实际路径可沿服务端确认进度接续，其他卡没有跨卡豁免。
+
+已有输出 `candidate_hash` 接入确认请求，选择身份与修改值分离；无身份请求拒绝。改值 L4 撤下同卡余项且不记否决；来源失效不可借改值继续接受。关闭推断拒绝既存 L3 接受，否决不授事实信用、仍可撤回。handler 用同次卡字节和现状态版本编排，不新增业务脚本；原卡 writer 复用单文件原子写。卡写成而 state 保存失败时承认部分持久化并明确失败，卡保持待审核，旧 cursor 阻止重放；不新增通用事务框架或假回滚。独立 API/页面反例及原同卡接续正控先于生产改动，详见 R4.6。
+
+**L5 验收边界（2026-11-22）**：独立来源/身份/写入/连续确认及真实浏览器反例转绿，全量 2928 passed、1 skipped、101 subtests passed（55.48 秒）。纯合成实际应用共 10 RPC、1 次本机 Splash：时间引文被模型改写而丢弃，保留并确认有效职责，卡仍待审且时间仍空。原两字段实际模型预期未达到，失败记录保留；两字段接续正控由独立 API/Chrome 验证，不混称实际模型全通过。完整证据与 SHA 见 Project Ledger；无正式生成或投递。
 
 ### 4.3 生成器消费等级
 
