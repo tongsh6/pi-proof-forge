@@ -97,7 +97,7 @@ def test_direction_binds_material_and_file_jd_to_reused_report(tmp_path,monkeypa
     draft=module.handle_generate({'meta':{},'material_id':'mat_p'})['draft']
     module.handle_save({'meta':{},'draft':draft,'confirmed':True,'expected_revision':module.get_preferences(profile._load_profile())['revision']})
     from tools.engines.matching import semantic_matching as infra
-    monkeypatch.setattr(infra,'_profile_facts',lambda _: {})
+    monkeypatch.setattr(infra,'_profile_facts',lambda *_a, **_k: {})
     jd=tmp_path/'job.txt';jd.write_text('负责产品平台长期架构建设')
     job=tmp_path/'job.yaml';job.write_text('target_role: "平台负责人"\nsource_jd: "job.txt"\nmust_have:\n  - "平台建设"\n')
     card=tmp_path/'ec1.yaml';card.write_text('title: "平台"\nresults:\n  - "完成平台的长期架构建设"\nartifacts:\n  - "报告"\n')
@@ -232,8 +232,11 @@ def test_direction_empty_response_blocks_cli_with_readable_error(tmp_path, monke
         '--personal-profile',str(profile._PROFILE_PATH),'--output',str(output),
         '--use-llm','--require-llm','--model','test','--api-key','local'])
     from tools.cli.commands import match as match_cli
+    # 方向评估是建议层：空响应降级为 unknown 并继续主评审（不阻断）；
+    # 主评审本身持续空响应时按失败隔离降级全部卡，显式失败。
     assert match_cli.main()==1
-    assert '求职方向评估未返回正文' in capsys.readouterr().out
-    assert len(calls)==2
+    captured = capsys.readouterr().out
+    assert 'semantic_all_cards_degraded' in captured
+    assert len(calls)==4  # 方向评估 2 次（原文+纠错）+ recall 2 次（原文+纠错）
     assert not output.exists()
     assert not list((tmp_path/'.semantic-cache').glob('*.json'))

@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from tools.engines.matching import fit_precheck as fit_precheck_engine
+from tools.engines.discovery.preparation_state import describe_preparation
+from tools.infra.job_preferences import load_preferences, validate_direction
+from tools.sidecar.handlers._shared.profile_state import profile_path
 from tools.infra.persistence.yaml_io import ParsedDoc
 from tools.sidecar.handlers import jobs as _origin
 from tools.sidecar.handlers.jobs import (
@@ -144,15 +147,62 @@ def _native_pdf_delivery_state(
         return {"supported": False, "reason": "job_binding_mismatch"}
     if str(scalars.get("source_jd_sha256", "")) != str(lead.get("source_jd_sha256", "")):
         return {"supported": False, "reason": "jd_fingerprint_mismatch"}
+    # 来源已审核不等于渠道支持上传定制 PDF。猎头岗保持平台默认简历路线，
+    # 这里只做前置能力提示；不替代每日执行器的快照门禁，不放宽来源/指纹校验。
+    from urllib.parse import urlsplit
+    if urlsplit(str(lead.get("url", ""))).path.startswith("/a/"):
+        return {"supported": False, "reason": "platform_default_only"}
+    from tools.domain.job_lead_state import current_jd_capture
+
+    if current_jd_capture(lead) is None:
+        return {"supported": False, "reason": "quick_official_capture_required"}
     return {"supported": True, "reason": ""}
 
+def _preparation_context():
+    try:
+        return load_preferences(profile_path()), ""
+    except (ValueError, OSError, TypeError, KeyError, AttributeError):
+        return None, "preferences_source_unavailable"
+
+
+def _saved_preparation(profile_id, fields, context, corpus, *, continuation_tickets=None):
+    lead, preferences, error = None, None, ""
+    if fields.get("preparation_json"):
+        preferences, error = context()
+        try:
+            lead_path = _find_lead_path(str(fields.get("job_lead_id") or ""))
+            if lead_path is not None:
+                lead = _read_yaml_doc(lead_path)["scalars"]
+        except (ValueError, OSError, TypeError, KeyError):
+            lead = None
+    state = describe_preparation(profile_id, fields, lead, preferences,
+                                 validate_direction=validate_direction, preferences_error=error)
+    if state["state"] == "fresh":
+        # Deliberately ignore historical assessed reports: this is current rule overlap only.
+        overlap = fit_precheck_engine.precheck_profile(fields, None, corpus)
+        state["evidence_precheck"] = {**overlap, **{
+            key: corpus.get(key, {} if key == "excluded_reasons" else 0)
+            for key in ("card_count", "source_freshness_unverified_count", "verified_source_count",
+                        "excluded_count", "excluded_reasons")}}
+    from tools.sidecar.handlers.preparation_semantic import read_semantic_preparation
+    state["semantic_matching"] = read_semantic_preparation(profile_id, continuation_tickets=continuation_tickets)
+    return state
+
+
 def _build_profile_item(
-    path: Path, snapshots: dict[str, MatchSnapshot], corpus: dict[str, Any]
+    path: Path, snapshots: dict[str, MatchSnapshot], corpus: dict[str, Any], preparation_context=None, *, continuation_tickets=None
 ) -> JobProfileItem | None:
     doc = _try_read_yaml_doc(path)
     if doc is None:
         return None
     job_profile_id = path.stem
+    fields = {**doc["scalars"], **doc["lists"]}
+    preparation = _saved_preparation(job_profile_id, fields, preparation_context or _preparation_context, corpus,
+                                     continuation_tickets=continuation_tickets)
+    try:
+        native = _native_pdf_delivery_state(doc["scalars"], job_profile_id)
+    except (ValueError, OSError, TypeError, KeyError):
+        native = {"supported": False, "reason": "job_source_unavailable"}
     snapshot = snapshots.get(job_profile_id)
     updated_at = (
         snapshot["updated_at"]
@@ -175,9 +225,8 @@ def _build_profile_item(
         "fit_state": snapshot["fit_state"] if snapshot is not None else "unassessed",
         "fit_failures": snapshot["fit_failures"] if snapshot is not None else 0,
         "fit_precheck": precheck,
-        "native_pdf_delivery": _native_pdf_delivery_state(
-            doc["scalars"], job_profile_id
-        ),
+        "native_pdf_delivery": native,
+        "preparation": preparation,
         "updated_at": updated_at,
         "business_domain": doc["scalars"].get("business_domain", ""),
         "source_jd": doc["scalars"].get("source_jd", ""),
@@ -280,7 +329,8 @@ def _sort_items(
         reverse=reverse,
     )
 
-def handle_jobs_list_profiles(params: dict[str, object]) -> dict[str, object]:
+def handle_jobs_list_profiles(params: dict[str, object], *,
+                              continuation_tickets: dict[str, str] | None = None) -> dict[str, object]:
     meta = cast(dict[str, str], params["meta"])
     correlation_id = meta["correlation_id"]
     cursor = _parse_cursor(params.get("cursor"))
@@ -291,8 +341,15 @@ def handle_jobs_list_profiles(params: dict[str, object]) -> dict[str, object]:
     snapshots = _load_matching_snapshots()
     corpus = _load_precheck_corpus()
     items: list[JobProfileItem] = []
+    context = None
+    def preparation_context():
+        nonlocal context
+        if context is None:
+            context = _preparation_context()
+        return context
     for path in _glob_files(_origin._JOB_PROFILE_DIR, "*.yaml"):
-        item = _build_profile_item(path, snapshots, corpus)
+        item = _build_profile_item(path, snapshots, corpus, preparation_context,
+                                   continuation_tickets=continuation_tickets)
         if item is not None:
             items.append(item)
     items = _apply_filters(items, filters)

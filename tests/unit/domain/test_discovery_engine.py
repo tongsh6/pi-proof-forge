@@ -209,9 +209,9 @@ class DiscoveryEngineTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             leads_dir = Path(tmp)
             (leads_dir / "jl-captured.yaml").write_text(
-                'generated_at: "2026-05-08T18:18:46Z"\n'
+                'generated_at: "2026-01-01T00:00:00Z"\n'
                 "items:\n"
-                '  - job_url: "https://www.liepin.com/job/1971416782.shtml"\n'
+                '  - job_url: "https://www.liepin.com/job/1911111111.shtml"\n'
                 '    position: "架构师"\n'
                 '    company_name: "Example Tech"\n'
                 "    direction: backend\n"
@@ -224,7 +224,7 @@ class DiscoveryEngineTests(unittest.TestCase):
         self.assertEqual(len(candidates), 1)
         self.assertEqual(
             candidates[0].job_url,
-            "https://www.liepin.com/job/1971416782.shtml",
+            "https://www.liepin.com/job/1911111111.shtml",
         )
         self.assertEqual(candidates[0].company, "Example Tech")
         self.assertEqual(candidates[0].confidence, 0.85)

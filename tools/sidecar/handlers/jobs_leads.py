@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
 
+from tools.domain.job_lead_state import JD_CAPTURE_KEY, retained_jd_capture
 from tools.infra.liepin_readonly import liepin_readonly
 from tools.sidecar.handlers import jobs as _origin
 from tools.sidecar.handlers.jobs import (
@@ -28,6 +29,14 @@ from tools.sidecar.handlers.jobs import (
     _utcnow_iso,
     _write_job_lead_file,
 )
+
+
+def _direction_flags(step: str) -> tuple[bool, tuple[str, ...]]:
+    """线索的 JD 方向判定；没有 JD 正文时返回未判定。"""
+    if not step.strip():
+        return False, ()
+    from tools.engines.matching.jd_direction import detect_direction_mismatch
+    return detect_direction_mismatch(step)
 
 
 def _build_lead_item(path: Path) -> JobLeadItem | None:
@@ -107,7 +116,13 @@ def handle_jobs_search_liepin(params: dict[str, Any]) -> dict[str, Any]:
     if (not isinstance(keyword, str) or not keyword.strip() or len(keyword) > 200
             or type(page) is not int or not 0 <= page <= 100):
         return {**base, **liepin_readonly.result("INVALID_INPUT")}
-    result = liepin_readonly.search(keyword.strip(), page)
+    from tools.infra.liepin_api import LiepinApiError, normalize_search_address
+    try:
+        address = normalize_search_address(params.get("address"))
+    except LiepinApiError:
+        return {**base, **liepin_readonly.result("INVALID_INPUT")}
+    filters = {"address": address} if address is not None else {}
+    result = liepin_readonly.search(keyword.strip(), page, **filters)
     if result["status"] != "pass":
         return {**base, **result}
     raw_items = result.pop("data")
@@ -152,6 +167,8 @@ def handle_jobs_search_liepin(params: dict[str, Any]) -> dict[str, Any]:
                 for key in ("status", "favorited", "job_profile_id", "created_at", "jd_status", "source_jd", "source_jd_sha256", "jd_origin"):
                     if key in previous:
                         fields[key] = previous[key]
+                if JD_CAPTURE_KEY in previous:
+                    fields[JD_CAPTURE_KEY] = retained_jd_capture(previous, fields)
             else:
                 fields["status"] = "new"
             is_new = not path.exists()

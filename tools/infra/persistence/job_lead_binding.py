@@ -4,34 +4,23 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
 
+from tools.domain.job_lead_state import JD_CAPTURE_KEY, canonical_liepin_detail_url, current_jd_capture
 from tools.infra.persistence.yaml_io import ParsedDoc, parse_simple_yaml
 
 
 def same_official_source_url(left: str, right: str) -> bool:
     """跟踪参数不改变职位身份；主机、协议与职位路径必须一致。"""
-    paths = []
-    for value in (left, right):
-        try:
-            parsed = urlsplit(value)
-            if (any(char.isspace() for char in value) or "\\" in value
-                    or parsed.scheme != "https" or parsed.hostname != "www.liepin.com"
-                    or parsed.username is not None or parsed.password is not None
-                    or parsed.port not in (None, 443)
-                    or not re.fullmatch(r"/(?:job|a)/[0-9]+\.shtml", parsed.path)):
-                return False
-            paths.append(parsed.path)
-        except (TypeError, ValueError):
-            return False
-    return paths[0] == paths[1]
+    canonical = canonical_liepin_detail_url(left)
+    return bool(canonical and canonical == canonical_liepin_detail_url(right))
 
 
 def reviewed_official_profile(lead: dict[str, str], profile_dir: Path) -> ParsedDoc | None:
     profile_id = lead.get("job_profile_id", "")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", profile_id):
         return None
-    if lead.get("jd_status") != "complete_reviewed":
+    if (lead.get("jd_status") != "complete_reviewed"
+            or (JD_CAPTURE_KEY in lead and not current_jd_capture(lead))):
         return None
     try:
         doc = parse_simple_yaml((profile_dir / f"{profile_id}.yaml").read_text(encoding="utf-8"))

@@ -323,3 +323,151 @@ def test_captcha_dispatch_redirect_is_reported_as_security_challenge(transport, 
     respond(status=302, headers={"Location": location})
     assert_error(lambda: detail.fetch_liepin_job_detail(URL, RAW_ID), "SECURITY_CHALLENGE")
     assert len(requests) == 1
+
+
+@pytest.mark.parametrize("body,status,reason,code", [
+    (page(extra="该职位已停止招聘"),200,"source_reports_unavailable","JOB_DETAIL_UNAVAILABLE"),
+    (page(title="登录猎聘"),200,"access_required","JOB_DETAIL_UNAVAILABLE"),
+    (b"<html><body>No posting</body></html>",200,"no_verified_detail","JOB_DETAIL_UNAVAILABLE"),
+    (b"not-found",404,"source_page_not_found","JOB_DETAIL_UNAVAILABLE"),
+    (b"other redirect",302,None,"JOB_DETAIL_UNAVAILABLE"),
+    (page(extra="请完成滑动验证"),200,None,"SECURITY_CHALLENGE"),
+    (b"blocked",500,None,"NETWORK_ERROR"),
+    (b"\xff",200,None,"INVALID_RESPONSE"),
+])
+def test_detail_observations_cross_transport_and_real_rpc_without_mutating_lead(transport, monkeypatch, tmp_path, body, status, reason, code):
+    from tools.sidecar.handlers import jobs
+    from tools.sidecar.server import process_request
+
+    monkeypatch.setattr(jobs, "_JOB_LEAD_DIR", tmp_path)
+    path = tmp_path/"jl_test.yaml"
+    jobs._write_job_lead_file(path, {"id":"jl_test","source":"liepin_official","platform":"liepin",
+                                    "platform_job_id":RAW_ID,"platform_job_type":"2","url":URL,
+                                    "jd_status":"summary_only"})
+    before = path.read_bytes()
+    respond, requests = transport
+    respond(body, status=status)
+    result = process_request({"id":"detail","method":"jobs.fetchLiepinDetail",
+                              "params":{"meta":{"correlation_id":"test"},"job_lead_id":"jl_test"}})["result"]
+    assert result["code"] == code and result.get("detail_reason") == reason
+    assert result["status"] == "blocked" and not result["jd_text"] and not result["source_url"]
+    assert len(requests)==1 and path.read_bytes()==before
+    assert SENSITIVE not in str(result)
+
+
+RELATED_URL = "https://www.liepin.com/job/1900099.shtml"
+RELATED_JD = JD.replace("Java & Python", "Go & Rust")
+
+
+def multiple_postings(posts, visible=""):
+    """Synthetic multi-role document, not a captured Liepin page."""
+    return (f'<html><head><title>固定职位页</title><script type="application/ld+json">'
+            + json.dumps({"@graph":[{"@type":"JobPosting", **post} for post in posts]}, ensure_ascii=False)
+            + f'</script></head><body>{visible}</body></html>').encode()
+
+
+def posting(raw, url, description):
+    return {"identifier":{"value":raw}, "url":url, "description":description}
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_only_exact_root_produces_full_jd_with_related_jobpostings(transport, reverse):
+    respond, requests = transport
+    posts = [posting(RAW_ID, URL, JD), posting("99", RELATED_URL, RELATED_JD)]
+    # A recommendation status marker cannot be promoted into requested-page status.
+    visible = '<aside>另一个岗位：该职位已停止招聘。岗位描述不适用于此页。</aside>'
+    respond(multiple_postings(posts[::-1] if reverse else posts, visible))
+    reply = detail.fetch_liepin_job_detail(URL, RAW_ID)
+    assert reply["platform_job_id"] == RAW_ID and reply["source_url"] == URL
+    assert reply["jd_text"] == JD and reply["source_jd_sha256"] == hashlib.sha256(JD.encode()).hexdigest()
+    assert len(requests) == 1
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_missing_root_or_unscoped_dom_do_not_borrow_related_posting(transport, reverse):
+    respond, requests = transport
+    other = posting("99", RELATED_URL, RELATED_JD)
+    # Exact location of the pause marker is not known. A prose line never proves root status.
+    respond(multiple_postings([other], '<div>该职位目前暂停招聘</div><aside>推荐另一岗位</aside>'))
+    with pytest.raises(detail.LiepinJobDetailError) as failure:
+        detail.fetch_liepin_job_detail(URL, RAW_ID)
+    assert failure.value.code == "JOB_DETAIL_UNAVAILABLE"
+    assert failure.value.detail_reason == "no_verified_detail"
+    posts = [posting(RAW_ID, URL, None), other]
+    respond(multiple_postings(posts[::-1] if reverse else posts,
+        f'<dd data-selector="job-intro-content">{RELATED_JD}</dd>'))
+    with pytest.raises(detail.LiepinJobDetailError) as failure:
+        detail.fetch_liepin_job_detail(URL, RAW_ID)
+    assert failure.value.code == "JOB_DETAIL_UNAVAILABLE"
+    assert failure.value.detail_reason == "no_verified_detail"
+    assert len(requests) == 2
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_multiple_postings_require_unique_exact_root_and_explicit_url(transport, reverse):
+    respond, _ = transport
+    root = posting(RAW_ID, URL, JD)
+    other = posting("99", RELATED_URL, RELATED_JD)
+    unresolved = [{key:value for key,value in root.items() if key != "url"}, other]
+    for posts, code in [
+        ([root, {**root, "description":RELATED_JD}], "INVALID_RESPONSE"),
+        ([{**root, "identifier":{"value":"99"}}, other], "JOB_ID_MISMATCH"),
+        ([{**root, "url":RELATED_URL}, other], "JOB_ID_MISMATCH"),
+        ([{**root, "identifier":{"value":True}}, other], "INVALID_RESPONSE"),
+        (unresolved, "JOB_DETAIL_UNAVAILABLE"),
+    ]:
+        respond(multiple_postings(posts[::-1] if reverse else posts))
+        assert_error(lambda: detail.fetch_liepin_job_detail(URL, RAW_ID), code)
+    respond(multiple_postings(unresolved[:1]))
+    assert detail.fetch_liepin_job_detail(URL, RAW_ID)["jd_text"] == JD
+
+
+def test_recommendation_only_does_not_revoke_existing_capture_in_real_rpc(transport, monkeypatch, tmp_path):
+    from tools.sidecar.handlers import jobs
+    from tools.sidecar.server import process_request
+    monkeypatch.setattr(jobs, "_JOB_LEAD_DIR", tmp_path)
+    path=tmp_path/"jl_test.yaml"
+    jobs._write_job_lead_file(path, {"id":"jl_test","source":"liepin_official","platform":"liepin",
+                                   "platform_job_id":RAW_ID,"platform_job_type":"2","url":URL,
+                                   "jd_status":"summary_only"})
+    def fetch():
+        return process_request({"id":"detail","method":"jobs.fetchLiepinDetail","params":{
+            "meta":{"correlation_id":"source-fixture"},"job_lead_id":"jl_test"}})["result"]
+    respond,requests=transport
+    respond()
+    assert fetch()["status"]=="pass"
+    before=path.read_bytes()
+    other=posting("99", RELATED_URL, RELATED_JD)
+    respond(multiple_postings([other], "<aside>该职位已停止招聘</aside>"))
+    result=fetch()
+    assert (result["status"],result["code"],result["detail_reason"])==(
+        "blocked","JOB_DETAIL_UNAVAILABLE","no_verified_detail")
+    assert not result["jd_text"] and path.read_bytes()==before and len(requests)==2
+
+
+def test_state_language_inside_requested_jd_does_not_change_source_status(transport):
+    respond,_=transport
+    scoped_prose=JD+"\n负责处理平台中该职位已停止招聘的历史状态。"
+    respond(page(description=scoped_prose))
+    assert detail.fetch_liepin_job_detail(URL, RAW_ID)["jd_text"]==scoped_prose
+
+
+def test_uncertain_unscoped_notice_blocks_new_capture_without_declaring_closed(transport):
+    respond, _ = transport
+    root = posting(RAW_ID, URL, JD)
+    related = posting("99", RELATED_URL, RELATED_JD)
+    respond(multiple_postings([root, related],
+            '<main><p><span>该职位</span>已下线</p></main><footer>站点条款</footer>'))
+    with pytest.raises(detail.LiepinJobDetailError) as err:
+        detail.fetch_liepin_job_detail(URL, RAW_ID)
+    assert (err.value.code, err.value.detail_reason) == ("JOB_DETAIL_UNAVAILABLE", "no_verified_detail")
+    respond(multiple_postings([root, related], '<aside><p>推荐卡：该职位已下线</p></aside><footer>站点条款</footer>'))
+    assert detail.fetch_liepin_job_detail(URL, RAW_ID)["jd_text"] == JD
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_same_raw_id_cannot_claim_two_company_detail_urls(transport, reverse):
+    respond,_=transport
+    posts=[posting(RAW_ID, URL, JD), posting(RAW_ID, RELATED_URL, RELATED_JD)]
+    respond(multiple_postings(posts[::-1] if reverse else posts))
+    assert_error(lambda: detail.fetch_liepin_job_detail(URL, RAW_ID), "INVALID_RESPONSE")

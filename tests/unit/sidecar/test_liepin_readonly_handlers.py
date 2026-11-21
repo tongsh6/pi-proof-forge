@@ -82,10 +82,7 @@ def test_credential_action_is_an_allowlist_and_does_not_echo_params():
 
 @pytest.fixture
 def official_client(monkeypatch, tmp_path):
-    class ApiError(Exception):
-        def __init__(self, code, message="private-response-must-not-leak"):
-            self.code = code
-            super().__init__(message)
+    from tools.infra.liepin_api import LiepinApiError as ApiError, normalize_search_address
 
     class Client:
         resume = "平台简历，只用于读取对照"
@@ -100,8 +97,8 @@ def official_client(monkeypatch, tmp_path):
                 raise self.error
             return self.resume
 
-        def search_jobs(self, token, keyword, page=0):
-            self.calls.append(("search", token, keyword, page))
+        def search_jobs(self, token, keyword, page=0, address=None):
+            self.calls.append(("search", token, keyword, page, address))
             if self.error:
                 raise self.error
             return self.items
@@ -109,6 +106,7 @@ def official_client(monkeypatch, tmp_path):
     fake = Client()
     monkeypatch.setitem(sys.modules, "tools.infra.liepin_api", SimpleNamespace(
         LiepinReadOnlyClient=lambda: fake, LiepinApiError=ApiError,
+        normalize_search_address=normalize_search_address,
     ))
     monkeypatch.setattr(jobs, "_JOB_LEAD_DIR", tmp_path / "job_leads")
     monkeypatch.setattr(jobs, "_JOB_PROFILE_DIR", tmp_path / "profiles")
@@ -277,6 +275,21 @@ def test_search_keeps_company_facts_for_small_company_screening(official_client)
     assert profile["company_size"] == "1-49人" and profile["financing_stage"] == "天使轮" and profile["industry"] == "互联网"
     listed = rpc("jobs.listProfiles")["items"][0]
     assert listed["company_size"] == "1-49人" and listed["financing_stage"] == "天使轮"
+
+
+def test_rpc_address_reaches_client_and_invalid_filter_never_invokes_it(official_client):
+    fake, _, tmp = official_client
+    rpc('settings.liepinCredential', action='set', token='synthetic-address-test')
+    fake.items = []
+    assert rpc('jobs.searchLiepin', keyword='Tech Lead', page=1, address=' 上海 ')['status']=='pass'
+    assert fake.calls[-1]==('search','synthetic-address-test','Tech Lead',1,'上海')
+    before = len(fake.calls)
+    for address in ('', ' ', 12, False, '上海\n', 'x'*101):
+        assert rpc('jobs.searchLiepin',keyword='Tech Lead',address=address)['code']=='INVALID_INPUT'
+    assert len(fake.calls)==before
+    assert list(tmp.iterdir())==[]
+    assert rpc('jobs.searchLiepin',keyword='Tech Lead')['status']=='pass'
+    assert fake.calls[-1]==('search','synthetic-address-test','Tech Lead',0,None)
 
 
 def test_search_without_company_facts_keeps_lead_contract(official_client):

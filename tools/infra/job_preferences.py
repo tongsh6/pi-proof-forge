@@ -30,7 +30,10 @@ def load_preferences(profile_path):
     if not value['items']:return None
     source=value['source'];filename=str(source.get('filename',''))
     if not filename or Path(filename).is_absolute():raise ValueError('job_preferences_source_changed')
-    materials_dir=profile_path.parent/'materials'
+    # profile 不在仓库根时（如 CLI 用 --personal-profile 指向别处），
+    # 材料目录回退到工作区 materials，避免误报"来源材料已变化"。
+    from tools.infra.material_paths import materials_dir_for
+    materials_dir=materials_dir_for(profile_path)
     path=materials_dir/filename
     if (not path.is_file() or path.is_symlink()
             or not path.resolve().is_relative_to(materials_dir.resolve())):

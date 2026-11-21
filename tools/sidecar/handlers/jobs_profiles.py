@@ -11,6 +11,9 @@ from typing import Any, cast
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from tools.domain.job_lead_state import JD_CAPTURE_KEY, current_jd_capture, invalidate_jd_capture, lead_has_complete_jd
+from tools.infra.persistence.job_lead_binding import reviewed_official_profile, same_official_source_url
+from tools.infra.llm.task_contract import JOB_PROFILE_DRAFT, REASON_OUTPUT_TRUNCATED
 from tools.sidecar.handlers import jobs as _origin
 from tools.sidecar.handlers._shared.llm_config import load_llm_config
 from tools.sidecar.handlers.jobs import (
@@ -131,7 +134,7 @@ def _job_draft_prompt(jd_text: str, source_url: str) -> str:
         f"JD:\n{jd_text}"
     )
 
-def handle_jobs_generate_profile_draft(params: dict[str, object]) -> dict[str, object]:
+def handle_jobs_generate_profile_draft(params: dict[str, object], *, llm_config_override: dict | None = None) -> dict[str, object]:
     meta = cast(dict[str, str], params["meta"])
     correlation_id = meta["correlation_id"]
     jd_text = str(params.get("jd_text", "")).strip()
@@ -142,7 +145,7 @@ def handle_jobs_generate_profile_draft(params: dict[str, object]) -> dict[str, o
     if not jd_text:
         raise ValueError("jd_text is required")
 
-    llm_config = load_llm_config()
+    llm_config = llm_config_override if llm_config_override is not None else load_llm_config()
     base_url = str(llm_config.get("base_url") or "").strip()
     if not base_url:
         return {
@@ -156,11 +159,13 @@ def handle_jobs_generate_profile_draft(params: dict[str, object]) -> dict[str, o
 
     payload = {
         "model": str(llm_config["model"]),
-        "messages": [{"role": "user", "content": _job_draft_prompt(jd_text, source_url)}],
+        "messages": [{"role": "user", "content": _job_draft_prompt(jd_text, source_url) + (
+            "\n严格来源模式：must_have、nice_to_have每项必须逐字复制JD中的完整要求条款，保留否定、条件和限定词；不得概括、补充、拼接。没有明确要求时返回空数组。"
+            if params.get("strict_extract") is True else "")}],
         "temperature": float(llm_config["temperature"]),
         "response_format": {"type": "json_object"},
     }
-    if llm_config['provider']=='lm_studio':payload['max_tokens']=1800
+    payload["max_tokens"] = JOB_PROFILE_DRAFT.capability.max_output_tokens
     try:
         client = _origin.LLMClient(
             base_url=base_url,
@@ -173,9 +178,16 @@ def handle_jobs_generate_profile_draft(params: dict[str, object]) -> dict[str, o
         response = client.post_json(
             client.chat_completions_url, payload, response_schema=_JOB_DRAFT_RESPONSE_SCHEMA
         )
-        choices=response.get('choices') or []
-        if choices and choices[0].get('finish_reason')=='length':
-            raise ValueError('job_profile_draft_output_limit')
+        choices = response.get("choices") or []
+        if choices and choices[0].get("finish_reason") == "length":
+            return {
+                "meta": {"correlation_id": correlation_id},
+                "status": "parse_output_truncated",
+                "code": REASON_OUTPUT_TRUNCATED,
+                "message": "JD 解析输出达到 token 上限，未生成可用草稿。请缩短 JD 或检查结构化输出的思考设置后重试。",
+                "draft": None,
+                "active_target_eligible": False,
+            }
         content = _origin.LLMClient.extract_content(response).strip()
     except Exception as exc:
         return {
@@ -269,12 +281,17 @@ def handle_jobs_save_profile_draft(params: dict[str, object]) -> dict[str, objec
     if mode == "complete" and missing:
         raise ValueError("complete job profile requires JD text, role, must_have, keywords, and summary")
     digest = hashlib.sha256(normalized["source_jd"].encode()).hexdigest()
-    from_public_detail = binding and lead.get("jd_origin") == "public_page" and lead.get("source_jd_sha256") == digest
+    capture = current_jd_capture(lead) if binding else None
+    from_public_detail = bool(capture and capture["source_jd_sha256"] == digest)
+    if mode == "complete" and binding and lead.get("source") == "liepin_official" and not from_public_detail:
+        raise ValueError("stored_jd_source_unverified")
+    if from_public_detail:
+        normalized["source_url"] = capture["source_url"]
     # 人工导入：没有官方线索绑定（或线索本身就是人工 JD）；平台按链接域名识别。
     manual_source = (not binding) or lead.get("source", "manual_jd") == "manual_jd"
     platform = str(normalized.get("platform") or lead.get("platform") or platform_from_url(normalized["source_url"]))
     if mode == "complete" and from_public_detail:
-        source_check = {"checked": True, "accessible": True, "status": "verified_public_detail", "verified_at": lead.get("fetched_at", "")}
+        source_check = {"checked": True, "accessible": True, "status": "verified_public_detail", "verified_at": capture["fetched_at"]}
     elif mode == "complete" and manual_source and platform in MANUAL_IMPORT_PLATFORMS and normalized["source_url"]:
         parsed_url = urlparse(normalized["source_url"])
         if parsed_url.scheme != "https" or not parsed_url.netloc:
@@ -308,10 +325,12 @@ def handle_jobs_save_profile_draft(params: dict[str, object]) -> dict[str, objec
         fields["platform"] = platform
     _write_job_profile_file(profile_path, fields)
     if binding:
-        lead.update({"job_profile_id": profile_id, "source_jd": normalized["source_jd"],
-                     "source_jd_sha256": digest, "jd_origin": fields["jd_origin"],
-                     "jd_status": "complete_reviewed" if mode == "complete" else "full_unreviewed",
-                     "updated_at": now})
+        lead.update({"job_profile_id": profile_id, "updated_at": now})
+        if lead.get("source") != "liepin_official" or from_public_detail:
+            # A user draft is separate; never replace the archived (even invalidated) captured body.
+            lead.update({"source_jd":normalized["source_jd"], "source_jd_sha256":digest,
+                         "jd_origin":fields["jd_origin"],
+                         "jd_status":"complete_reviewed" if mode == "complete" else "full_unreviewed"})
         if manual_source:
             lead.setdefault("import_mode", "manual")
             if platform and not lead.get("platform"):
@@ -335,23 +354,66 @@ def handle_jobs_fetch_liepin_detail(params: dict[str, Any]) -> dict[str, Any]:
             return {**base, "code": "INVALID_INPUT", "message": "请选择已保存的猎聘官方岗位线索。"}
         path, lead = binding
         detail = fetch_liepin_job_detail(lead["url"], expected_job_id=lead["platform_job_id"])
-        keep_review = lead.get("jd_status") == "complete_reviewed" and lead.get("source_jd_sha256") == detail["source_jd_sha256"]
+        current = _read_yaml_doc(path)["scalars"]
+        capture = {key:detail.get(key) for key in ("source_url", "platform_job_id", "source_jd_sha256", "fetched_at")}
+        capture["platform_job_type"] = current.get("platform_job_type")
+        captured = {**current, "source_jd": detail["jd_text"], "source_jd_sha256":detail["source_jd_sha256"],
+                    "jd_origin":"public_page", "jd_status":"full_unreviewed",
+                    JD_CAPTURE_KEY:json.dumps({**capture, "invalidated":False}, ensure_ascii=False)}
+        if (current.get("id") != lead.get("id") or current.get("platform_job_type") != lead.get("platform_job_type")
+                or not current_jd_capture(captured)):
+            return {**base, "code":"JOB_ID_MISMATCH", "message":"岗位身份或详情读取依据已变化，未保存正文。"}
+        lead = current
+        keep_review = (lead.get("source_jd_sha256") == detail["source_jd_sha256"]
+                       and reviewed_official_profile(lead, _origin._JOB_PROFILE_DIR) is not None)
         if not keep_review and lead.get("job_profile_id"):
             profile_path = _profile_path(lead["job_profile_id"])
             if profile_path.exists():
                 profile = _preserved_profile_fields(_read_yaml_doc(profile_path))
-                profile.update({"status": "saved_incomplete", "review_decision": "", "reviewed_at": "", "missing_items": ["review_required"]})
-                _write_job_profile_file(profile_path, profile)
+                same_unapproved_draft = (
+                    profile.get("status") == "draft" and not profile.get("review_decision")
+                    and not profile.get("reviewed_at") and profile.get("job_lead_id") == lead.get("id")
+                    and same_official_source_url(profile.get("source_url", ""), capture["source_url"])
+                    and profile.get("source_jd") == detail["jd_text"]
+                    and profile.get("source_jd_sha256") == capture["source_jd_sha256"]
+                    and all(profile.get(key) == lead.get(key) for key in
+                            ("source", "platform", "platform_job_id", "platform_job_type"))
+                )
+                if not same_unapproved_draft:
+                    profile.update({"status":"saved_incomplete", "review_decision":"", "reviewed_at":"",
+                                    "missing_items":["review_required"]})
+                    _write_job_profile_file(profile_path, profile)
         lead.update({"source_jd": detail["jd_text"], "source_jd_sha256": detail["source_jd_sha256"],
                      "jd_origin": "public_page", "fetched_at": detail["fetched_at"], "updated_at": _utcnow_iso(),
-                     "jd_status": "complete_reviewed" if keep_review else "full_unreviewed"})
+                     "jd_status": "complete_reviewed" if keep_review else "full_unreviewed",
+                     JD_CAPTURE_KEY:captured[JD_CAPTURE_KEY]})
         _write_job_lead_file(path, lead)
         return {**base, "status": "pass", "code": "OK", "message": "完整 JD 已读取，请解析并审核后保存。",
                 "job_lead_id": lead["id"], "job_profile_id": lead.get("job_profile_id", ""),
-                "jd_text": detail["jd_text"], "source_url": lead["url"],
+                "jd_text": detail["jd_text"], "source_url": capture["source_url"],
                 "source_jd_sha256": detail["source_jd_sha256"], "jd_status": lead["jd_status"]}
     except LiepinJobDetailError as exc:
-        return {**base, "code": exc.code, "message": exc.message}
+        if exc.code == "JOB_ID_MISMATCH" or exc.detail_reason in ("source_reports_unavailable", "source_page_not_found"):
+            raw_capture = lead.get(JD_CAPTURE_KEY)
+            invalidated = invalidate_jd_capture(raw_capture)
+            if raw_capture != invalidated:
+                try:
+                    latest = _read_yaml_doc(path)["scalars"]
+                    if (latest.get("id") == lead.get("id")
+                            and latest.get(JD_CAPTURE_KEY) == raw_capture
+                            and latest.get("platform_job_id") == lead.get("platform_job_id")
+                            and latest.get("platform_job_type") == lead.get("platform_job_type")
+                            and same_official_source_url(latest.get("url",""), lead.get("url",""))):
+                        was_current = current_jd_capture(latest) is not None
+                        _write_job_lead_file(path, {**latest, JD_CAPTURE_KEY:invalidated})
+                        if was_current:
+                            # For a blocked result a linked ID means this request
+                            # actually revoked that lead's current capture.
+                            base["job_profile_id"] = latest.get("job_profile_id") or ""
+                except (OSError, KeyError, ValueError):
+                    return {**base, "code":"STORAGE_ERROR", "message":"未能保存当前来源校验结果。"}
+        reason = {"detail_reason": exc.detail_reason} if exc.detail_reason else {}
+        return {**base, "code": exc.code, "message": exc.message, **reason}
     except KeyError:
         return {**base, "code": "NOT_FOUND", "message": "岗位线索不存在。"}
     except ValueError:
@@ -482,15 +544,18 @@ def handle_jobs_convert_lead(params: dict[str, object]) -> dict[str, object]:
         return {"meta": {"correlation_id": correlation_id}, "job_profile_id": s["job_profile_id"], "job_lead_id": job_lead_id}
     created_at = _utcnow_iso()
     job_profile_id = f"jp_{uuid4().hex[:8]}"
-    summary_only = s.get("source") == "liepin_official"
+    summary_only = not lead_has_complete_jd(s)
+    capture = current_jd_capture(s)
+    if not summary_only and s.get("source") == "liepin_official" and not capture:
+        raise ValueError("stored_jd_source_unverified")
     fields = {
         **_lead_identity(s),
         "target_role": s.get("position", s.get("title", "")),
         "company": s.get("company", ""),
-        "source_jd": s.get("source_jd", "") if summary_only else s.get("url", ""),
+        "source_jd": s.get("source_jd", ""),
         "source_jd_sha256": s.get("source_jd_sha256", ""),
         "jd_origin": s.get("jd_origin", ""),
-        "source_url": s.get("url", ""),
+        "source_url": capture["source_url"] if capture else s.get("url", ""),
         "job_lead_id": job_lead_id,
         "business_domain": "",
         "tone": "",

@@ -129,8 +129,14 @@ class LiepinReadOnlySession:
         text = result.pop("data", "")
         return {**result, "resume_text": text if result["status"] == "pass" else ""}
 
-    def search(self, keyword: str, page: int) -> dict[str, Any]:
-        return self._invoke("search", keyword=keyword, page=page)
+    def search(self, keyword: str, page: int, address: str | None = None) -> dict[str, Any]:
+        from tools.infra.liepin_api import LiepinApiError, normalize_search_address
+        try:
+            address = normalize_search_address(address)
+        except LiepinApiError:
+            return self.result("INVALID_INPUT")
+        filters = {"address": address} if address is not None else {}
+        return self._invoke("search", keyword=keyword, page=page, **filters)
 
     def _invoke(self, operation: str, **params: Any) -> dict[str, Any]:
         self._ensure_loaded()

@@ -1127,6 +1127,8 @@ class JobFitPrecheckTests(unittest.TestCase):
             "stack:",
         ]
         lines.extend(f'  - "{item}"' for item in (stack or []))
+        # Rule-precheck fixtures represent approved cards with the mandatory outcome/artifact fields.
+        lines.extend(["results:", '  - "Delivered fixture outcome"', "artifacts:", '  - "fixture-report.md"'])
         return "\n".join(lines) + "\n"
 
     def _workspace(self, root: Path) -> tuple[Path, Path, Path, Path]:
@@ -1334,7 +1336,7 @@ class JobFitPrecheckLegacyScorecardTests(unittest.TestCase):
             )
             (evidence_cards_dir / "ec_java.yaml").write_text(
                 'id: "ec_java"\ntitle: "Java 微服务与 Redis"\nstatus: "saved_eligible"\n'
-                'candidate_pool_eligible: "true"\nstack:\n  - "Java"\n  - "Redis"\n',
+                'candidate_pool_eligible: "true"\nstack:\n  - "Java"\n  - "Redis"\nresults:\n  - "Fixture outcome"\nartifacts:\n  - "fixture.md"\n',
                 encoding="utf-8",
             )
             params: dict[str, object] = {
@@ -1390,7 +1392,7 @@ class JobFitPrecheckUntrustedAssessmentTests(unittest.TestCase):
             )
             (evidence_cards_dir / "ec_java.yaml").write_text(
                 'id: "ec_java"\ntitle: "Java 服务"\nstatus: "saved_eligible"\n'
-                'candidate_pool_eligible: "true"\nstack:\n  - "Java"\n  - "Redis"\n',
+                'candidate_pool_eligible: "true"\nstack:\n  - "Java"\n  - "Redis"\nresults:\n  - "Fixture outcome"\nartifacts:\n  - "fixture.md"\n',
                 encoding="utf-8",
             )
             params: dict[str, object] = {
@@ -1518,11 +1520,11 @@ class NativePdfDeliveryStateTests(unittest.TestCase):
                 "\n".join(
                     [
                         'target_role: "Java技术专家"',
-                        'company: "得物App"',
+                        'company: "合成示例科技"',
                         'status: "active"',
                         'source: "v2ex"',
                         'import_mode: "manual"',
-                        'source_jd: "负责电商业务系统核心开发"',
+                        'source_jd: "负责合成示例交易系统的开发与维护"',
                     ]
                 )
                 + "\n",
@@ -1536,10 +1538,10 @@ class NativePdfDeliveryStateTests(unittest.TestCase):
             {"supported": False, "reason": "manual_import"},
         )
 
-    def test_lead_bound_reviewed_official_profile_reports_supported(self) -> None:
+    def test_historical_reviewed_official_profile_flags_missing_capture(self) -> None:
         import hashlib
 
-        jd_text = "负责电商业务系统核心开发"
+        jd_text = "负责合成示例交易系统的开发与维护"
         jd_sha = hashlib.sha256(jd_text.encode()).hexdigest()
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1555,11 +1557,11 @@ class NativePdfDeliveryStateTests(unittest.TestCase):
                 "\n".join(
                     [
                         'target_role: "Java技术专家"',
-                        'company: "得物App"',
+                        'company: "合成示例科技"',
                         'status: "active"',
                         'review_decision: "approved"',
-                        'reviewed_at: "2026-10-23T00:00:00Z"',
-                        'jd_summary: "负责电商核心系统"',
+                        'reviewed_at: "2026-01-01T00:00:00Z"',
+                        'jd_summary: "负责合成示例交易系统"',
                         f'source_jd: "{jd_text}"',
                         f'source_jd_sha256: "{jd_sha}"',
                         'job_lead_id: "jl-official"',
@@ -1595,6 +1597,16 @@ class NativePdfDeliveryStateTests(unittest.TestCase):
                 encoding="utf-8",
             )
             items = self._list_profiles(profiles, matching, leads, cards)
-
-        item = next(item for item in items if item["job_profile_id"] == "jp-official")
-        self.assertEqual(item["native_pdf_delivery"], {"supported": True, "reason": ""})
+            item = next(item for item in items if item["job_profile_id"] == "jp-official")
+            self.assertEqual(item["native_pdf_delivery"], {"supported": False, "reason": "quick_official_capture_required"})
+            # 同样真实已审核的猎头岗位只能走平台默认简历，不能进入每日 PDF 批次。
+            for path in (profiles / "jp-official.yaml", leads / "jl-official.yaml"):
+                path.write_text(path.read_text().replace("/job/123.shtml", "/a/123.shtml").replace('platform_job_type: "2"', 'platform_job_type: "1"'))
+            items = self._list_profiles(profiles, matching, leads, cards)
+            item = next(item for item in items if item["job_profile_id"] == "jp-official")
+            self.assertEqual(item["native_pdf_delivery"], {"supported": False, "reason": "platform_default_only"})
+            # 来源指纹失效优先报真实性问题，不能借渠道分流绕过审核。
+            lead_path = leads / "jl-official.yaml"
+            lead_path.write_text(lead_path.read_text().replace(jd_sha, "stale"))
+            item = self._list_profiles(profiles, matching, leads, cards)[0]
+            self.assertEqual(item["native_pdf_delivery"], {"supported": False, "reason": "job_review_required"})

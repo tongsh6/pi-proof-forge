@@ -15,6 +15,7 @@ from tools.engines.matching import fit_precheck as fit_precheck_engine
 from tools.infra.llm.client import LLMClient
 from tools.infra.liepin_readonly import liepin_readonly
 from tools.infra.persistence.job_lead_binding import same_official_source_url
+from tools.infra.persistence.atomic_io import atomic_write_text
 from tools.infra.persistence.yaml_io import ParsedDoc, parse_simple_yaml
 from tools.sidecar.handlers import settings as settings_handler
 
@@ -167,7 +168,7 @@ def _write_job_profile_file(path: Path, fields: dict[str, Any]) -> None:
         f"reviewed_at: {_quote(fields.get('reviewed_at', ''))}",
     ]
     for key in ("source", "platform", "platform_job_id", "platform_job_type", "source_jd_sha256", "jd_origin",
-                "import_mode", "source_recorded_at", *_COMPANY_FACT_KEYS):
+                "import_mode", "source_recorded_at", "preparation_json", *_COMPANY_FACT_KEYS):
         if key in fields:
             lines.append(f"{key}: {_quote(fields[key])}")
     _write_list(lines, "keywords", fields.get("keywords", []))
@@ -176,7 +177,7 @@ def _write_job_profile_file(path: Path, fields: dict[str, Any]) -> None:
     _write_list(lines, "seniority_signal", fields.get("seniority_signal", []))
     _write_list(lines, "missing_items", fields.get("missing_items", []))
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(lines) + "\n")
 
 
 def _write_job_lead_file(path: Path, fields: dict[str, Any]) -> None:
@@ -185,19 +186,13 @@ def _write_job_lead_file(path: Path, fields: dict[str, Any]) -> None:
                 "created_at": "", "updated_at": ""}
     values = {key: fields.get(key, default) for key, default in defaults.items()}
     for key in ("platform", "platform_job_id", "platform_job_type", "jd_status", "fetched_at",
-                "source_jd", "source_jd_sha256", "jd_origin", "salary", "location",
+                "source_jd", "source_jd_sha256", "jd_origin", "jd_capture_json", "salary", "location",
                 "import_mode", "source_recorded_at", *_COMPANY_FACT_KEYS):
         if key in fields:
             values[key] = fields[key]
     # JSON 字符串是合法 YAML 标量，保留换行同时避免外部职位文本注入 YAML 字段。
     lines = [f"{key}: {json.dumps(str(value), ensure_ascii=False)}" for key, value in values.items()]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".yaml.tmp")
-    try:
-        temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    atomic_write_text(path, "\n".join(lines) + "\n")
 
 
 def _profile_path(job_profile_id: str) -> Path:
@@ -340,28 +335,49 @@ def _safe_parse_iso_date(value: str) -> datetime | None:
     return parsed
 
 def _load_precheck_corpus() -> dict[str, Any]:
-    """加载已审核证据卡的规则预检语料；按文件指纹缓存，不读取未完成/不可入池卡。"""
-    global _PRECHECK_CORPUS_CACHE
-    paths = _glob_files(_EVIDENCE_CARD_DIR, "*.yaml")
-    fingerprint = tuple(
-        (str(path), path.stat().st_mtime_ns, path.stat().st_size) for path in paths
-    )
-    cached = _PRECHECK_CORPUS_CACHE
-    if cached is not None and cached[0] == fingerprint:
-        return cached[1]
+    """Rule-overlap inputs; revalidate sources on every read, never approve cards."""
+    from collections import Counter
+    from tools.engines.evidence.batch_extract import pool_approval_reason
+    from tools.infra.evidence_pool import pool_eligible_scalars
+    from tools.infra.evidence_sources import validated_source_inputs
+    from tools.infra.material_paths import materials_dir_for
+    from tools.sidecar.handlers._shared.profile_state import profile_path
+
+    material_dir = materials_dir_for(profile_path())
     cards: list[dict[str, Any]] = []
-    for path in paths:
-        doc = _try_read_yaml_doc(path)
-        if doc is None:
-            continue
-        scalars = doc["scalars"]
-        if scalars.get("status", "").strip() != "saved_eligible":
-            continue
-        if scalars.get("candidate_pool_eligible", "").strip().lower() == "false":
-            continue
-        cards.append({**scalars, **doc["lists"]})
+    excluded = Counter()
+    verified = unverified = 0
+    for path in _glob_files(_EVIDENCE_CARD_DIR, "*.yaml"):
+        try:
+            doc = _read_yaml_doc(path)
+            scalars = doc["scalars"]
+            fields = {**scalars, **doc["lists"]}
+            if (scalars.get("status", "").strip() != "saved_eligible"
+                    or scalars.get("candidate_pool_eligible", "").strip().lower() != "true"):
+                excluded["not_explicitly_eligible"] += 1
+                continue
+            if not pool_eligible_scalars(scalars, card_id=str(scalars.get("id") or path.stem)):
+                excluded["pool_ineligible"] += 1
+                continue
+            reason = pool_approval_reason(fields)
+            if reason:
+                excluded[reason] += 1
+                continue
+            try:
+                sources = validated_source_inputs(doc, material_dir)
+            except (ValueError, OSError, TypeError, KeyError, UnicodeError):
+                excluded["source_unverifiable"] += 1
+                continue
+            # Match formal semantic-matching compatibility: empty mapping is legacy,
+            # not evidence that sources were freshly verified.
+            verified += int(bool(sources))
+            unverified += int(not sources)
+            cards.append(fields)
+        except (ValueError, OSError, TypeError, KeyError, UnicodeError):
+            excluded["card_unreadable"] += 1
     corpus = fit_precheck_engine.build_evidence_corpus(cards)
-    _PRECHECK_CORPUS_CACHE = (fingerprint, corpus)
+    corpus.update(excluded_count=sum(excluded.values()), excluded_reasons=dict(excluded),
+                  verified_source_count=verified, source_freshness_unverified_count=unverified)
     return corpus
 
 def _parse_page_size(value: object) -> int:

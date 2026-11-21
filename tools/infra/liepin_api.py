@@ -32,6 +32,16 @@ class LiepinApiError(Exception):
         super().__init__(self.message)
 
 
+def normalize_search_address(address: object) -> str | None:
+    """Optional official address text, never silently widen an invalid explicit filter."""
+    if address is None:
+        return None
+    if (not isinstance(address, str) or not address.strip() or len(address) > 100
+            or any(ord(char) < 32 or ord(char) == 127 for char in address)):
+        raise LiepinApiError("INVALID_INPUT")
+    return address.strip()
+
+
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         # 同源跳转也拒绝，避免未核实端点收到凭据或发生请求语义变化。
@@ -46,13 +56,17 @@ class LiepinReadOnlyClient:
             raise LiepinApiError("INVALID_RESPONSE")
         return resume
 
-    def search_jobs(self, token: str, keyword: str, page: int = 0) -> list[dict]:
+    def search_jobs(self, token: str, keyword: str, page: int = 0, address: str | None = None) -> list[dict]:
         if not isinstance(keyword, str) or not keyword.strip() or type(page) is not int or page < 0:
             raise LiepinApiError("INVALID_INPUT")
-        # 官方固定源码 858a62b：关键词使用 jobName，首页 page=0。
+        # Official SearchJobInput / README: jobName, optional address text, page=0.
+        address = normalize_search_address(address)
+        payload = {"jobName": keyword.strip(), "page": page}
+        if address is not None:
+            payload["address"] = address
         data = self._request(
             token, "POST", "/mcp/search-job", "code",
-            {"jobName": keyword.strip(), "page": page},
+            payload,
         )
         jobs = data.get("list")
         if not isinstance(jobs, list) or any(not self._is_job(job) for job in jobs):
