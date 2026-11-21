@@ -367,6 +367,14 @@ K1/L1 最终全量为 `2696 passed、1 skipped、101 subtests passed`（42.28 �
 
 **切片 L6：正式质量判项的请求、缓存与有界修复（限定工程与合成应用验收完成）**。复用真实 Quick Run → evaluation_flow → quality_report/llm_judge、原质量缓存及共享 TaskRunner/LLMClient；判项任务已有设计和 API 消费者，不为旧 CLI-only Agent 新建入口。输入完整请求 24,000 字符/输出 6,000 tokens，实际 Request 同时承担预算、缓存身份和发送，修复仅补未完成组。缓存绑定 URL/body/当前输入版本并重新核验领域引用与完整性；合法稳定命中零请求，坏缓存不授信。修复超预算、构造失败或传输失败保留已核验完整组，其余 pending 且不缓存；来源失效仍沿 H 拒绝发布。无新 RPC、来源账本、业务脚本、型号/样例规则或旧 key 回退。共享执行器另拒绝协议明确截断的闭合 JSON，不新增业务特例。原 15 个独立质量对照全部通过，全量 3036 passed、1 skipped、101 subtests passed（56.90 秒）；实际合成 App 11 RPC/5 次本机 Splash，其中质量 1 次、5580 字符，五组完成而量化仍 0.5、auto_pass=false。细节见 [LLM 任务契约](../../../docs/reports/llm-task-contract-design-20261110.md) 与 Project Ledger。此预算针对实际准备请求；原 judge 卡片摘要的长度/前五条裁剪仍可能丢失已呈现事实或尾部限定，下一片沿实际 trace/现结果投影处理，不把正文当作其自身事实证明。
 
+**切片 L7：质量判项的完整输入与实际采用事实（限定工程与合成输入验收完成）**。查重确认 `_load_quality_cards` 已按同次 SHA 加载原数组与 `current_result_reviews`；`inspect_bullet_trace`/现 claims 和 `matches_fact_occurrence` 可承接实际行及原事实位置；`project_fact_scope` 是现证据详情 `fact_scope_review` 的无 IO 当前投影。FactIndex 面向生成选材，不能替代核验语境或重新解释资格。实际消费者为现 `quality_report → llm_judge`，首片仅补此输入职责，不建新服务、模型筛句器或另一个事实对象。
+
+- **唯一正文依据表**：在现 prompt 复用 `claims`，保实际 trace 的身份、原字段与 render_line；行动/结果以原 index 完整匹配并携带原 value，不能用同文另一个 occurrence 代替。bullets 仅补自己的实际 render_line，不再复制第二份 sources 表。结果核定复用 cards 内原 `result_reviews` 名称，仅收实际采用且完整匹配的 Fact→同一原 row；不发明别名或复制审核状态。非 bullet 的精确背景/档案 claim 保持；没有 claim 的项目角色/标题 presentation 不伪造 occurrence。H 已核的年/月降精度继续保原实际显示，不全字段强行与原文相等。
+- **独立完整语境**：cards 保完整业务字段、职责 provenance、行动与结果，撤除 `_clip` 及前 N 项裁剪；未选结果也可能是唯一环境、分工或时序限制。现 loader 以同一 doc、refs/bindings 与 `sources.documents` 调用原 `project_fact_scope`，在内存复用 `fact_scope_review`，不增加读取或直接信任旧 raw review。该投影保限制、剥除失配核定，unknown 不作反证；语境可核已有表达，但不能补正文未写内容或授予实测。不得原地缩短 cards 数组或核定映射，后续 strong 仍用同批完整值。
+- **预算与生命周期**：完整 bullets/lines/entry、语境和 claims 进入同一 L6 prepared Request；超 24,000 字符零发送/pending，仍为 6,000 输出与最多两次任务尝试，不为容纳新增裁剪、分批或另建缓存。更新现 prompt version，实际 body/trace 继续决定缓存，修复使用同一输入依据；来源变化仍由 H 拒绝发布。
+- **独立验收与限制**：先以实际默认生成可达的 results:5 和长句尾部限定建立 RED，再核真实评测 HTTP 的完整输入/精确身份、同文 action 不借未选 result、非量化正控及来源不变。原未选条目的必要限制须留在语境；直接 prompt 的第 61 条只算通道测试，不冒称默认 App 已触达。R1.4/R4 当前输出引用只到 card/bullet/line，不能机械证明理由用了哪个 Fact；真实 App→Splash 对照须观察合法主导与未选同事强结果，失败保留、不靠词表拦理由或删反证使其通过。R3.1/R3.2 确定性资格不改，不据输入修复宣布全语义或真实投递验收完成。
+- **本片实际结果**：四个独立业务 RED 全部转绿，相关两文件98 passed，全量3040 passed、1 skipped、101 subtests passed（56.96秒）。新鲜合成 App 22 RPC/6次本机 Splash，质量一次/13664字符；结果5与完整责任/环境末尾实际入请求，非量化为0、auto_pass=false，未借未选37%/平台生产，R4为空。R1.4仅支持行动bullet2而遗漏结果bullet3的本人主导，原消费者已报缺项，元数据仍五组完成并缓存；因此正控部分通过，下一片处理逐项覆盖/完成状态，不放宽本片oracle。来源/原row/trace/cache身份已独立核验，细节见 Project Ledger。
+
 **实施边界与剩余验收**：真实归属、发生性及 scope 冲突必须拒绝的规范保持不变。I 验收时仅覆盖同一明确对象/环境 scope，别名跨来源复核尚未完成；J 已通过当前集合绑定、别名责任纠正、时间推进及真实分工的限定合成应用验收。有限样本不证明全部来源语境或冲突已覆盖；L1 已完成外部协议夹具边界内的完整合成准备预览 RPC，原生页面、全页像素视觉、deep_verified 与真实验收仍待验证。离线工程继续推进，真实 JD/正式件按另行授权验收；不能用字符串相似归并、扩大词表、恢复 planned_results 权威或以提示词变更代替实际应用验证。
 
 **切片 K2：职业概述的当前任职与精确来源（限定工程验收完成）**。
