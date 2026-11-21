@@ -38,16 +38,16 @@ export function EvidenceDetailView({
             </p>
           ) : null}
         </div>
-        {(
-          [
-            ["context", form.context, "text-text-primary"],
-            ["actions", form.actions, "text-text-primary"],
-            ["results", form.results, "text-success"],
-          ] as const
-        ).map(([field, value, className]) => (
+        <div>
+          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{t("pages.evidence.fields.context")}</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-text-primary">{form.context || "--"}</p>
+        </div>
+        {(["actions", "results"] as const).map(field => (
           <div key={field}>
-            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{t(`pages.evidence.fields.${field}`)}</p>
-            <p className={`mt-1 whitespace-pre-wrap break-words text-sm ${className}`}>{value || "--"}</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{t("pages.evidence.fields." + field)}</p>
+            {form[field].length ? <ol className="mt-1 list-decimal space-y-2 pl-5">
+              {form[field].map((value, index) => <li key={index} className={"whitespace-pre-wrap break-words text-sm " + (field === "results" ? "text-success" : "text-text-primary")}>{value || "--"}</li>)}
+            </ol> : <p className="mt-1 text-sm text-text-muted">--</p>}
           </div>
         ))}
         {form.stackText || form.tagsText ? (
@@ -121,32 +121,54 @@ export function EvidenceDetailView({
         </label>
       </div>
 
-      {[
-        ["context", "min-h-20"],
-        ["actions", "min-h-24"],
-        ["results", "min-h-24 text-success"],
-      ].map(([field, className]) => (
-        <label
-          key={field}
-          className="block rounded-card border border-border bg-bg-hover/50 p-3"
-        >
-          <span className="text-xs uppercase tracking-[0.16em] text-text-muted">
-            {t(`pages.evidence.fields.${field}`)}
-          </span>
-          <textarea
-            className={`mt-2 w-full resize-y bg-transparent text-sm outline-none ${className}`}
+      <label className="block rounded-card border border-border bg-bg-hover/50 p-3">
+        <span className="text-xs uppercase tracking-[0.16em] text-text-muted">{t("pages.evidence.fields.context")}</span>
+        <textarea
+          className="mt-2 min-h-20 w-full resize-y bg-transparent text-sm outline-none"
+          disabled={busy}
+          onChange={event => setForm(current => ({...current, context: event.target.value}))}
+          value={form.context}
+        />
+      </label>
+      {(["actions", "results"] as const).map(field => (
+        <section key={field} className="space-y-3 rounded-card border border-border bg-bg-hover/50 p-3">
+          <p className="text-xs uppercase tracking-[0.16em] text-text-muted">{t("pages.evidence.fields." + field)}</p>
+          <p className="text-xs text-text-secondary">{t("pages.evidence.factEditor.hint")}</p>
+          {form[field].map((value, index) => (
+            <div key={index} className="space-y-1">
+              <label className="block space-y-1">
+                <span className="text-xs text-text-secondary">{t("pages.evidence.fields." + field)} {index + 1}</span>
+                <textarea
+                  data-field={field}
+                  aria-label={t("pages.evidence.fields." + field) + " " + (index + 1)}
+                  className={"min-h-24 w-full resize-y bg-transparent text-sm outline-none " + (field === "results" ? "text-success" : "")}
+                  disabled={busy}
+                  value={value}
+                  onChange={event => {
+                    const text = event.target.value;
+                    setForm(current => ({...current, [field]: current[field].map((item, itemIndex) => itemIndex === index ? text : item)}));
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                data-testid={"evidence-remove-" + field + "-" + index}
+                aria-label={t("pages.evidence.factEditor.remove") + " " + t("pages.evidence.fields." + field) + " " + (index + 1)}
+                className="text-xs text-text-secondary disabled:opacity-40"
+                disabled={busy}
+                onClick={() => setForm(current => ({...current, [field]: current[field].filter((_, itemIndex) => itemIndex !== index)}))}
+              >{t("pages.evidence.factEditor.remove")}</button>
+            </div>
+          ))}
+          <button
+            type="button"
+            data-testid={"evidence-add-" + field}
+            className="rounded-card border border-border px-3 py-2 text-xs text-accent disabled:opacity-40"
             disabled={busy}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                [field]: event.target.value,
-              }))
-            }
-            value={form[field as keyof EvidenceForm]}
-          />
-        </label>
+            onClick={() => setForm(current => ({...current, [field]: [...current[field], ""]}))}
+          >{t("pages.evidence.factEditor." + (field === "actions" ? "addAction" : "addResult"))}</button>
+        </section>
       ))}
-
       <label className="block rounded-card border border-border bg-bg-hover/50 p-3">
         <span className="text-xs uppercase tracking-[0.16em] text-text-muted">
           {t("pages.evidence.fields.stackTags")}

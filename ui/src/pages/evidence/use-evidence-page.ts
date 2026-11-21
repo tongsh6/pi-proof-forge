@@ -101,7 +101,7 @@ export function useEvidencePage() {
   const selectedMaterial = materialSources.find((source) => source.material_id === selectedMaterialId);
   const reviewMissingItems = generatedDraft ? [
     !form.title.trim() && "missing_title",
-    !form.results.trim() && "missing_results",
+    (!form.results.length || form.results.some(value => !value.trim())) && "missing_results",
     !generatedDraft.artifacts.length && "missing_artifacts",
     !generatedDraft.source_material_ids.length && "missing_source_material_ids",
   ].filter(Boolean) : [];
@@ -438,7 +438,7 @@ export function useEvidencePage() {
 
   const handleManualDraft = useCallback(() => {
     if (!selectedMaterial || ![".md", ".txt"].includes(selectedMaterial.extension)) return;
-    const draft: EvidenceDraftPayload = { title: "", context: "", actions: "", results: "",
+    const draft: EvidenceDraftPayload = { title: "", context: "", actions: [], results: [],
       stack: [], tags: [], source_material_ids: [selectedMaterial.material_id],
       artifacts: [{ type: selectedMaterial.extension === ".md" ? "markdown_document" : "text_document",
         ref: selectedMaterial.material_id, label: selectedMaterial.label || selectedMaterial.filename }],

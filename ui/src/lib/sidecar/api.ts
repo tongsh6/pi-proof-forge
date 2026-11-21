@@ -211,8 +211,8 @@ export async function createEvidence(payload: {
   time_range: string;
   context: string;
   role_scope: string;
-  actions: string;
-  results: string;
+  actions: string[];
+  results: string[];
   stack: string[];
   tags: string[];
 }): Promise<EvidenceCreateResult> {
@@ -226,8 +226,8 @@ export async function updateEvidence(
     time_range: string;
     context: string;
     role_scope: string;
-    actions: string;
-    results: string;
+    actions: string[];
+    results: string[];
     artifacts: string[];
     stack: string[];
     tags: string[];

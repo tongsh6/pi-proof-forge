@@ -44,7 +44,7 @@ def assert_source_snapshot(snapshots):
             raise ValueError("material_source_changed")
 
 
-def read_source_documents(records, references, whole_material_ids=()):
+def read_source_documents(records, references, whole_material_ids=(), *, results=()):
     if not isinstance(references, list) or len(references) > 8:
         raise ValueError('material_document_reference_invalid')
     by_id = {r['material_id']: r for r in records}
@@ -68,6 +68,10 @@ def read_source_documents(records, references, whole_material_ids=()):
         documents[key] = text; selected.add(key[0])
     # 兼容旧卡绑定整份材料；有精确引用的材料仅允许所选片段。
     texts = [*documents.values(), *(r['path'].read_text(encoding='utf-8') for r in records if r['material_id'] not in selected or r['material_id'] in whole_material_ids)]
+    # 完整结果须来自一个授权原文单元，不能跨拼接边界借证。
+    for result in results:
+        if not any(result.casefold() in text.casefold() for text in texts):
+            raise ValueError('no_fabrication_guard: result is not traceable to selected document')
     return documents, '\n\n'.join(texts)
 
 

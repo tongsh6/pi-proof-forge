@@ -341,8 +341,8 @@ class EvidenceGetTests(unittest.TestCase):
             "time_range": "2025-10 ~ 2026-01",
             "context": "Peak 5k QPS",
             "role_scope": "Owner",
-            "actions": "Refactored circuit breaker",
-            "results": "Failure rate dropped 43%",
+            "actions": ['Refactored circuit breaker'],
+            "results": ['Failure rate dropped 43%'],
             "stack": ["Java", "Redis"],
             "tags": ["stability"],
             "artifacts": [],
@@ -430,8 +430,8 @@ class EvidenceCreateTests(unittest.TestCase):
                         "time_range": "2024.01 - 2024.12",
                         "context": "",
                         "role_scope": "Backend Engineer",
-                        "actions": "Action 1",
-                        "results": "Result 1",
+                        "actions": ['Action 1'],
+                        "results": ['Result 1'],
                         "stack": ["Python"],
                         "tags": ["search"],
                     }
@@ -452,8 +452,8 @@ class EvidenceCreateTests(unittest.TestCase):
                         "time_range": "2024.01 - 2024.12",
                         "context": "Context",
                         "role_scope": "Engineer",
-                        "actions": "Action 1\nAction 2",
-                        "results": "Result 1",
+                        "actions": ['Action 1', 'Action 2'],
+                        "results": ['Result 1'],
                         "stack": ["Python", "Redis"],
                         "tags": ["stability"],
                     }
@@ -467,7 +467,7 @@ class EvidenceCreateTests(unittest.TestCase):
 
         evidence = detail["evidence"]
         self.assertEqual(evidence["title"], "Persisted evidence")
-        self.assertEqual(evidence["actions"], "Action 1\nAction 2")
+        self.assertEqual(evidence["actions"], ["Action 1", "Action 2"])
         self.assertEqual(evidence["stack"], ["Python", "Redis"])
         self.assertEqual(evidence["tags"], ["stability"])
 
@@ -478,8 +478,8 @@ class EvidenceCreateTests(unittest.TestCase):
             "time_range": "",
             "context": "",
             "role_scope": "",
-            "actions": "",
-            "results": "",
+            "actions": [],
+            "results": [],
             "stack": [],
             "tags": [],
         }
@@ -513,6 +513,42 @@ class EvidenceDraftReviewTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
+
+    def test_generated_fact_array_draft_preserves_complete_items(self) -> None:
+        from tools.sidecar.handlers.evidence_draft import _build_evidence_draft
+        actions = ["  First action\nwith its condition  ", "Sibling action"]
+        results = ["  First result\nwith its measurement condition  ", "Sibling result"]
+        parsed = {"title": "Synthetic draft", "context": "Synthetic context",
+                  "actions": actions, "results": results, "source_material_ids": ["mat_001"],
+                  "artifacts": [{"type": "markdown_document", "ref": "mat_001", "label": "Synthetic source"}],
+                  "stack": [], "tags": []}
+        draft = _build_evidence_draft(parsed, [{"material_id": "mat_001", "path": Path("synthetic.md"), "extension": ".md"}])
+        self.assertEqual(draft["actions"], actions)
+        self.assertEqual(draft["results"], results)
+
+    def test_fact_array_review_roundtrip_keeps_complete_result_and_sibling(self) -> None:
+        from tools.infra.persistence.yaml_io import parse_simple_yaml
+        action = "First action\nwith its complete condition"
+        result = 'First result\nstatus: approved\n  - "literal source text"'
+        results = [result, "Sibling result"]
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            self._write_material(root / "materials", text=action + "\n\n" + "\n\n".join(results))
+            draft = {"title": "Synthetic multiline review", "actions": [action], "results": results,
+                     "source_material_ids": ["mat_001"], "stack": [], "tags": [],
+                     "artifacts": [{"type": "markdown_document", "ref": "mat_001", "label": "Synthetic source"}]}
+            with patch("tools.sidecar.handlers.materials._MATERIALS_DIR", root / "materials"), patch(
+                "tools.sidecar.handlers.evidence._EVIDENCE_DIR", root / "cards"
+            ):
+                saved = handle_evidence_save_draft({"meta": {"correlation_id": "fact-array-review"},
+                                                    "draft": draft, "review": {"decision": "approved"}, "save_mode": "eligible"})
+                detail = handle_evidence_get({"meta": {"correlation_id": "fact-array-read"},
+                                              "evidence_id": saved["evidence_id"]})["evidence"]
+            parsed = parse_simple_yaml((root / "cards" / (saved["evidence_id"] + ".yaml")).read_text())
+        self.assertEqual(parsed["lists"]["actions"], [action])
+        self.assertEqual(parsed["lists"]["results"], results)
+        self.assertEqual(detail["actions"], [action])
+        self.assertEqual(detail["results"], results)
 
     def test_generate_draft_calls_llm_and_returns_review_only_draft(self) -> None:
         with TemporaryDirectory() as tmp_dir:
@@ -645,8 +681,8 @@ class EvidenceDraftReviewTests(unittest.TestCase):
                 "source_material_ids": ["mat_001"],
                 "title": "Checkout reliability",
                 "context": "Checkout incident follow-up",
-                "actions": "Improved payment retry handling",
-                "results": "",
+                "actions": ['Improved payment retry handling'],
+                "results": [],
                 "artifacts": [],
                 "stack": ["Python"],
                 "tags": ["reliability"],
@@ -687,8 +723,8 @@ class EvidenceDraftReviewTests(unittest.TestCase):
                 "source_material_ids": ["mat_001"],
                 "title": "Checkout reliability",
                 "context": "Checkout incident follow-up",
-                "actions": "Improved payment retry handling",
-                "results": "Reduced payment failure rate by 43%.",
+                "actions": ['Improved payment retry handling'],
+                "results": ['Reduced payment failure rate by 43%.'],
                 "artifacts": [
                     {
                         "type": "markdown_document",
@@ -741,8 +777,8 @@ class EvidenceDraftReviewTests(unittest.TestCase):
                 "source_material_ids": ["mat_001"],
                 "title": "Checkout reliability",
                 "context": "Checkout incident follow-up",
-                "actions": "Improved payment retry handling",
-                "results": "Reduced payment failure rate by 43%.",
+                "actions": ['Improved payment retry handling'],
+                "results": ['Reduced payment failure rate by 43%.'],
                 "artifacts": [
                     {
                         "type": "markdown_document",
@@ -778,8 +814,8 @@ class EvidenceDraftReviewTests(unittest.TestCase):
                 "source_material_ids": ["mat_001"],
                 "title": "Checkout reliability",
                 "context": "Checkout incident follow-up",
-                "actions": "Improved payment retry handling",
-                "results": "Increased revenue by 300%.",
+                "actions": ['Improved payment retry handling'],
+                "results": ['Increased revenue by 300%.'],
                 "artifacts": [
                     {
                         "type": "markdown_document",
@@ -820,7 +856,7 @@ class EvidenceUpdateTests(unittest.TestCase):
                         "evidence_id": "ec-2026-001",
                         "patch": {
                             "title": "Updated title",
-                            "actions": "Updated action",
+                            "actions": ['Updated action'],
                             "stack": ["Go"],
                         },
                     }
@@ -837,9 +873,9 @@ class EvidenceUpdateTests(unittest.TestCase):
         self.assertTrue(result["updated_at"].endswith("Z"))
         evidence = detail["evidence"]
         self.assertEqual(evidence["title"], "Updated title")
-        self.assertEqual(evidence["actions"], "Updated action")
+        self.assertEqual(evidence["actions"], ["Updated action"])
         self.assertEqual(evidence["stack"], ["Go"])
-        self.assertEqual(evidence["results"], "Failure rate dropped 43%")
+        self.assertEqual(evidence["results"], ["Failure rate dropped 43%"])
 
     def test_update_not_found_raises(self) -> None:
         with TemporaryDirectory() as tmp_dir:
@@ -1117,6 +1153,101 @@ class EvidenceImportTests(unittest.TestCase):
         artifacts = detail["evidence"]["artifacts"]
         self.assertEqual(len(artifacts), 1)
         self.assertEqual(artifacts[0]["filename"], "replacement.pdf")
+
+
+class EvidenceFactArrayTests(unittest.TestCase):
+    META = {"correlation_id": "fact-array-contract"}
+
+    def _seed_card(self, directory: Path, actions: list[str], results: list[str]) -> Path:
+        path = directory / "ec-2026-001.yaml"
+        text = SAMPLE_YAML.replace(
+            '  - "Refactored circuit breaker"',
+            "\n".join("  - " + json.dumps(item) for item in actions),
+        ).replace(
+            '  - "Failure rate dropped 43%"',
+            "\n".join("  - " + json.dumps(item) for item in results),
+        )
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_fact_array_detail_keeps_complete_items(self) -> None:
+        actions = ["  First action\n  with its condition  ", "Second action"]
+        results = ["First result\nwith its measurement condition", "Second result"]
+        with TemporaryDirectory() as tmp_dir:
+            directory = Path(tmp_dir)
+            self._seed_card(directory, actions, results)
+            with patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", directory):
+                detail = handle_evidence_get({"meta": self.META, "evidence_id": "ec-2026-001"})["evidence"]
+        self.assertEqual(detail["actions"], actions)
+        self.assertEqual(detail["results"], results)
+
+    def test_fact_array_title_edit_keeps_item_positions(self) -> None:
+        from tools.infra.persistence.yaml_io import parse_simple_yaml
+        actions = ["First action\nwith its condition", "Second action"]
+        results = ["First result\nwith its condition", "Second result"]
+        with TemporaryDirectory() as tmp_dir:
+            directory = Path(tmp_dir)
+            path = self._seed_card(directory, actions, results)
+            with patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", directory):
+                handle_evidence_update({"meta": self.META, "evidence_id": "ec-2026-001",
+                                        "patch": {"title": "More precise title"}})
+            saved = parse_simple_yaml(path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["lists"]["actions"], actions)
+        self.assertEqual(saved["lists"]["results"], results)
+
+    def test_fact_array_create_preserves_duplicates_whitespace_and_yaml_text(self) -> None:
+        from tools.infra.persistence.yaml_io import parse_simple_yaml
+        actions = ["  First action\nresults:\n  - \"literal list item\"  ", "Second action"]
+        results = [" Same result ", " Same result "]
+        with TemporaryDirectory() as tmp_dir:
+            directory = Path(tmp_dir)
+            with patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", directory):
+                created = handle_evidence_create({"meta": self.META, "title": "Synthetic array card",
+                                                  "actions": actions, "results": results})
+                detail = handle_evidence_get({"meta": self.META, "evidence_id": created["evidence_id"]})["evidence"]
+            saved = parse_simple_yaml((directory / (created["evidence_id"] + ".yaml")).read_text(encoding="utf-8"))
+        self.assertEqual(saved["lists"]["actions"], actions)
+        self.assertEqual(saved["lists"]["results"], results)
+        self.assertEqual(saved["scalars"]["status"], "draft")
+        self.assertEqual(detail["actions"], actions)
+        self.assertEqual(detail["results"], results)
+
+    def test_fact_array_writer_roundtrips_line_separators(self) -> None:
+        from tools.infra.persistence.yaml_io import parse_simple_yaml
+        from tools.sidecar.handlers.evidence import _write_evidence_file
+        parsed = parse_simple_yaml(SAMPLE_YAML)
+        fields = {**parsed["scalars"], **parsed["lists"], "status": "draft",
+                  "created_at": "2026-01-01", "updated_at": "2026-01-01"}
+        with TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "roundtrip.yaml"
+            for separator in ("\n", "\r\n", "\u0085", "\u2028", "\u2029"):
+                with self.subTest(separator=repr(separator)):
+                    value = '  Original' + separator + 'status: approved' + separator + '  - "literal"\\tail\t  '
+                    fields.update(actions=[value, "Sibling"], results=[value])
+                    _write_evidence_file(path, fields)
+                    saved = parse_simple_yaml(path.read_text(encoding="utf-8"))
+                    self.assertEqual(saved["lists"]["actions"], [value, "Sibling"])
+                    self.assertEqual(saved["lists"]["results"], [value])
+                    self.assertEqual(saved["scalars"]["status"], "draft")
+
+    def test_fact_array_invalid_create_and_update_leave_files_unchanged(self) -> None:
+        for field in ("actions", "results"):
+            for invalid in ("old string API", None, {}, [1], ["  \n\t"]):
+                for operation in ("create", "update"):
+                    with self.subTest(field=field, invalid=invalid, operation=operation):
+                        with TemporaryDirectory() as tmp_dir:
+                            directory = Path(tmp_dir)
+                            path = self._seed_card(directory, ["Action"], ["Result"])
+                            before = path.read_bytes()
+                            with patch("tools.sidecar.handlers.evidence._EVIDENCE_DIR", directory):
+                                with self.assertRaisesRegex(ValueError, field):
+                                    if operation == "create":
+                                        handle_evidence_create({"meta": self.META, "title": "Synthetic invalid card", field: invalid})
+                                    else:
+                                        handle_evidence_update({"meta": self.META, "evidence_id": "ec-2026-001",
+                                                                "patch": {field: invalid}})
+                            self.assertEqual(path.read_bytes(), before)
+                            self.assertEqual(list(directory.iterdir()), [path])
 
 
 class EvidenceDeleteTests(unittest.TestCase):

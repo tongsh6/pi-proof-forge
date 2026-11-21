@@ -13,8 +13,8 @@ def sample(tmp_path, monkeypatch, request):
     cards = tmp_path / 'evidence_cards'
     monkeypatch.setattr(materials, '_MATERIALS_DIR', root)
     monkeypatch.setattr(evidence, '_EVIDENCE_DIR', cards)
-    action, result = getattr(request, 'param', ('平台复用预约能力。', '模块验收通过。'))
-    texts = {'m1': f'# Source: 统一平台/设计.md\n{action}\n{result}',
+    actions, results = getattr(request, 'param', (['平台复用预约能力。'], ['模块验收通过。']))
+    texts = {'m1': '# Source: 统一平台/设计.md\n' + '\n'.join([*actions, *results]),
              'm2': '# Source: 职业底稿.md\n统一平台\n服务周期：2022 – 至今\n角色：Tech Lead，平台架构设计与核心开发\n个人建立 Feature 交付机制。'}
     refs = []
     for mid, text in texts.items():
@@ -23,7 +23,7 @@ def sample(tmp_path, monkeypatch, request):
         d = evidence.handle_list_material_documents({'material_id': mid})['items'][0]
         refs.append({'material_id': mid, **{k: d[k] for k in ('document_id', 'sha256', 'label')}})
     draft = {'source_material_ids': ['m1'], 'source_documents': refs[:1], 'title': '统一平台', 'time_range': '',
-             'context': '统一预约平台', 'role_scope': '', 'actions': action, 'results': result,
+             'context': '统一预约平台', 'role_scope': '', 'actions': actions, 'results': results,
              'stack': ['Java'], 'tags': [], 'artifacts': [{'type': 'text_document', 'ref': 'm1', 'label': '设计'}]}
     params = {'meta': META, 'review': {'decision': 'approved'}, 'save_mode': 'eligible'}
     eid = evidence.handle_evidence_save_draft({**params, 'draft': draft})['evidence_id']
@@ -214,7 +214,7 @@ def _scoped_review(sample):
     params['review'].pop('merge_sources')
     params['expected_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
     m1 = params['draft']['source_documents'][0]
-    val = params['draft']['actions']
+    val = params['draft']['actions'][0]
     source = {k:m1[k] for k in ('material_id','document_id','sha256')}
     params['draft']['field_sources'].append({'field':'actions','value':val,'quote':val,
                                           'material_id':m1['material_id'],'document_id':m1['document_id']})
@@ -227,11 +227,99 @@ def _live_scope(path):
     return evidence.handle_evidence_get({'meta': META,'evidence_id':path.stem})['evidence']['fact_scope_review']
 
 
+@pytest.mark.parametrize("sample", [(
+    ["合成行动\n其完整实施条件。"],
+    ["独立兄弟结果。", "合成测试条件：\n完整结果及其边界。"],
+)], indirect=True)
+def test_multiline_fact_array_keeps_scope_identity_through_title_review(sample):
+    _, path, params, action_scope = _scoped_review(sample)
+    value = params["draft"]["results"][1]
+    ref = params["draft"]["source_documents"][0]
+    params["draft"]["field_sources"].append({
+        "field": "results", "value": value, "quote": value,
+        "material_id": ref["material_id"], "document_id": ref["document_id"],
+    })
+    params["review"]["fact_scope"] = {
+        **action_scope, "field": "results", "index": 1, "value": value,
+        "source": {**action_scope["source"], "quote": value}, "attribution": "teammate",
+    }
+    evidence.handle_evidence_save_draft(params)
+    before = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+    scope, = before["fact_scope_review"]
+    assert scope["fact_id"] == f"{path.stem}:results:1"
+    assert scope["value"] == value and scope["attribution"] == "teammate"
+
+    evidence.handle_evidence_update({"meta": META, "evidence_id": path.stem,
+                                     "patch": {"title": "合成标题修正"}})
+    pending = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+    assert pending["fact_scope_review"] == []
+    assert pending["actions"] == before["actions"] and pending["results"] == before["results"]
+    assert pending["field_sources"] == before["field_sources"]
+    params["draft"]["title"] = pending["title"]
+    params["expected_sha256"] = pending["source_sha256"]
+    params["review"].pop("fact_scope")
+    evidence.handle_evidence_save_draft(params)
+    approved = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+    assert approved["fact_scope_review"] == [scope]
+    assert approved["actions"] == before["actions"] and approved["results"] == before["results"]
+    assert approved["field_sources"] == before["field_sources"]
+
+
+@pytest.mark.parametrize("field", ["actions", "results"])
+@pytest.mark.parametrize("invalid", ["old string API", None, {}, [1], ["  \n\t"]])
+def test_fact_array_save_rejects_invalid_items_without_write(sample, field, invalid):
+    _, path, params = sample
+    params["draft"][field] = invalid
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match=field):
+        evidence.handle_evidence_save_draft(params)
+    assert path.read_bytes() == before
+
+
+def test_fact_array_result_guard_requires_the_complete_item(sample):
+    _, path, params = sample
+    # 两段各自出现在原文，组合后的完整事实不存在，不能逐行借证。
+    params["draft"]["results"] = [params["draft"]["actions"][0] + "\n\n" + params["draft"]["results"][0]]
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="no_fabrication_guard"):
+        evidence.handle_evidence_save_draft(params)
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("operation", ["save", "update"])
+def test_fact_array_result_cannot_span_distinct_source_documents(sample, operation):
+    _, path, params = sample
+    if operation == "update":
+        evidence.handle_evidence_save_draft(params)
+    draft = {key: value for key, value in params["draft"].items() if key != "field_sources"}
+    documents = [
+        evidence.handle_read_material_document({
+            "material_id": ref["material_id"], "document_id": ref["document_id"],
+        })["text"]
+        for ref in draft["source_documents"]
+    ]
+    result = documents[0].splitlines()[-1] + "\n\n" + documents[1].splitlines()[0]
+    assert result in "\n\n".join(documents)
+    assert all(result not in document for document in documents)
+    draft["results"] = [result]
+    before = {card.name: card.read_bytes() for card in path.parent.glob("*.yaml")}
+    with pytest.raises(ValueError, match="no_fabrication_guard"):
+        if operation == "save":
+            evidence.handle_evidence_save_draft({
+                "meta": META, "draft": draft, "review": {"decision": "approved"}, "save_mode": "eligible",
+            })
+        else:
+            evidence.handle_evidence_update({
+                "meta": META, "evidence_id": path.stem, "patch": {"results": [result]},
+            })
+    assert {card.name: card.read_bytes() for card in path.parent.glob("*.yaml")} == before
+
+
 @pytest.fixture
 def repeated_scope(sample):
     root, path, params = sample
     value = "P95 从 200 ms 降至 120 ms。"
-    params["draft"]["actions"] = value
+    params["draft"]["actions"] = [value]
     ref = params["draft"]["source_documents"][0]
     params["draft"]["field_sources"].append({
         "field": "actions", "value": value, "quote": value,
@@ -241,7 +329,7 @@ def repeated_scope(sample):
 
 
 @pytest.mark.parametrize("sample", [
-    ("容量规划：预计 P95 从 200 ms 降至 120 ms。", "测试环境实测：P95 从 200 ms 降至 120 ms。"),
+    (["容量规划：预计 P95 从 200 ms 降至 120 ms。"], ["测试环境实测：P95 从 200 ms 降至 120 ms。"]),
 ], indirect=True)
 def test_scope_requires_unique_source_context_without_rejecting_ordinary_binding(repeated_scope):
     _, path, params, scope = repeated_scope
@@ -256,7 +344,7 @@ def test_scope_requires_unique_source_context_without_rejecting_ordinary_binding
     assert path.read_bytes() == before
 
     # 唯一的原文上下文只解决定位，不把既有 scope 解释成测量核定。
-    quote = params["draft"]["results"]
+    quote = params["draft"]["results"][0]
     for binding in params["draft"]["field_sources"]:
         if binding["field"] == "actions":
             binding["quote"] = quote
@@ -293,7 +381,7 @@ def test_scope_requires_unique_source_context_without_rejecting_ordinary_binding
 
 
 @pytest.mark.parametrize("sample", [
-    ("容量规划：预计 P95 从 200 ms 降至 120 ms。", "测试环境实测：P95 从 200 ms 降至 120 ms。"),
+    (["容量规划：预计 P95 从 200 ms 降至 120 ms。"], ["测试环境实测：P95 从 200 ms 降至 120 ms。"]),
 ], indirect=True)
 @pytest.mark.parametrize("resolution", ["revoke", "adopt"])
 def test_ambiguous_saved_scope_requires_explicit_recovery_without_losing_sibling(repeated_scope, resolution):
@@ -303,7 +391,7 @@ def test_ambiguous_saved_scope_requires_explicit_recovery_without_losing_sibling
     from tools.infra.persistence.yaml_io import dump_yaml
 
     root, path, params, scope = repeated_scope
-    quote = params["draft"]["results"]
+    quote = params["draft"]["results"][0]
     params["draft"]["field_sources"].append({
         "field": "results", "value": quote, "quote": quote,
         **{k: scope["source"][k] for k in ("material_id", "document_id")},
@@ -356,8 +444,8 @@ def test_ambiguous_saved_scope_requires_explicit_recovery_without_losing_sibling
 
 
 @pytest.mark.parametrize("sample", [(
-    "规划：预计 P95 从 200 ms 降至 120 ms。",
-    "测试环境固定 1000 个请求，采样窗口 5 分钟：\nP95 从 200 ms 降至 120 ms。",
+    ["规划：预计 P95 从 200 ms 降至 120 ms。"],
+    ["测试环境固定 1000 个请求，采样窗口 5 分钟：", "P95 从 200 ms 降至 120 ms。"],
 )], indirect=True)
 @pytest.mark.parametrize("case", ["reference_only", "adopt", "stale_card_revision", "source_changed", "scope_quote_mismatch"])
 def test_ui_expanded_quote_reaches_existing_review_atomically(sample, case):
@@ -392,7 +480,7 @@ def test_ui_expanded_quote_reaches_existing_review_atomically(sample, case):
         assert not detail.get("source_error")
     else:
         assert detail["source_error"] == "fact_scope_source_not_unique"
-    quote = params["draft"]["results"]
+    quote = "\n".join(params["draft"]["results"])
     read = evidence.handle_read_material_document({"material_id": ref["material_id"], "document_id": ref["document_id"]})
     assert read["sha256"] == ref["sha256"]
     original_draft = copy.deepcopy(params["draft"])
@@ -571,7 +659,7 @@ def test_invalid_fact_scope_review_changes_no_evidence(sample,fault):
     if fault=="missing_revision":del params['expected_sha256']
     if fault=="stale":params['expected_sha256']='invalid'
     if fault=="unbound":scope['source']['sha256']='1'*64
-    if fault=="duplicate":params['draft']['actions']+='\n'+scope['value']
+    if fault=="duplicate":params['draft']['actions'].append(scope['value'])
     if fault=="contradictory":scope.update(implementation='planned',release='released')
     if fault=="unknown_release_environment":scope["environment"]="unknown"
     if fault=="draft_injection":params['draft']['fact_scope']=params['review'].pop('fact_scope')
@@ -659,10 +747,10 @@ def test_changed_fact_pending_scope_cannot_resurface_or_disappear_on_ordinary_re
     params["review"]["fact_scope"] = scope
     evidence.handle_evidence_save_draft(params)
     assert _live_scope(path)
-    replacement = params["draft"]["results"]
-    evidence.handle_evidence_update({"meta": META, "evidence_id": path.stem, "patch": {"actions": replacement}})
+    replacement = params["draft"]["results"][0]
+    evidence.handle_evidence_update({"meta": META, "evidence_id": path.stem, "patch": {"actions": [replacement]}})
     assert _live_scope(path) == []
-    params["draft"]["actions"] = replacement
+    params["draft"]["actions"] = [replacement]
     params["draft"]["field_sources"][-1].update(value=replacement, quote=replacement)
     params["review"].pop("fact_scope")
     before = path.read_bytes()
@@ -673,8 +761,13 @@ def test_changed_fact_pending_scope_cannot_resurface_or_disappear_on_ordinary_re
     assert path.read_bytes() == before
 
 
-@pytest.mark.parametrize('sample', [('实现会员时间轴页面并接入平台已有接口。','完成预约能力的测试验收，覆盖改期流程。')], indirect=True)
+@pytest.mark.parametrize('sample', [
+    (['实现会员时间轴页面并接入平台已有接口。'], ['完成预约能力的测试验收，覆盖改期流程。']),
+    (['实现会员时间轴页面，\n并接入平台已有接口。'], ['完成预约能力的测试验收，\n覆盖改期流程；本次仅验证测试环境。']),
+], indirect=True)
 def test_reviewed_page_does_not_inherit_project_role_in_plan_or_preview(sample):
+    from tools.domain.quality_text import render_fact_text
+    from tools.engines.generation.plan_renderer import render_plan
     from tools.engines.generation.fact_index import build_fact_index
     from tools.engines.generation.fact_selector import select_facts
     from tools.engines.generation.resume_plan import build_resume_plan
@@ -691,6 +784,7 @@ def test_reviewed_page_does_not_inherit_project_role_in_plan_or_preview(sample):
     evidence.handle_evidence_save_draft(params)
     action_id = path.stem + ':actions:0'
     result_id = path.stem + ':results:0'
+    complete_result = render_fact_text(params['draft']['results'][0])
     for cards in (load_cards(path.parent, [path.stem], root), load_all_cards(path.parent, root)):
         index = build_fact_index(cards)
         selection = select_facts(index)
@@ -698,6 +792,11 @@ def test_reviewed_page_does_not_inherit_project_role_in_plan_or_preview(sample):
         assert index.get(action_id) is None, 'scoped quote inherited the project role'
         assert index.get(result_id) is not None
         assert action_id not in plan.fact_ids
+        claims = []
+        markdown = render_plan(plan, index, profile={}, job_context={}, claims=claims)
+        assert complete_result in markdown
+        result_claims = [claim for claim in claims if claim.get('fact_id') == result_id]
+        assert len(result_claims) == 1 and result_claims[0]['text'] == complete_result
 
     job = root.parent/'jp_test.yaml'
     job.write_text('company: TestCo\ntarget_role: Engineer\n')
@@ -715,6 +814,9 @@ def test_reviewed_page_does_not_inherit_project_role_in_plan_or_preview(sample):
     excerpt = preview.render_reviewed_excerpt('jp_test',inputs,raw)
     assert action_id not in [c["fact_id"] for c in excerpt["claims"]]
     assert result_id in [c["fact_id"] for c in excerpt["claims"]]
+    result_claims = [claim for claim in excerpt['claims'] if claim['fact_id'] == result_id]
+    assert len(result_claims) == 1 and result_claims[0]['quote'] == params['draft']['results'][0]
+    assert complete_result in excerpt['markdown']
     assert action_id in raw["facts"]
     original = path.read_text()
     path.write_text(original.replace(f'id: "{path.stem}"', 'id: "ec_other"', 1))
@@ -792,7 +894,7 @@ def test_unclassified_prior_scope_keeps_exact_veto_until_explicit_review(sample)
 
 
 @pytest.mark.parametrize("sample", [
-    ("实现预约接口的幂等重试。", "完成预约能力的测试验收，覆盖改期流程。"),
+    (["实现预约接口的幂等重试。"], ["完成预约能力的测试验收，覆盖改期流程。"]),
 ], indirect=True)
 @pytest.mark.parametrize("relation,other,mixed,advisory,negative,expected", [
     ("teammate", None, False, False, True, "insufficient"),

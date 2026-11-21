@@ -86,10 +86,6 @@ def _utcnow_iso() -> str:
     )
 
 
-def _split_multiline_text(value: str) -> list[str]:
-    return [line.strip() for line in value.splitlines() if line.strip()]
-
-
 def _parse_cursor(value: object) -> int:
     if isinstance(value, int):
         return max(0, value)
@@ -154,20 +150,22 @@ def _parse_date_range(value: object) -> tuple[datetime | None, datetime | None]:
     return start, end
 
 
-def _validate_string_list(name: str, value: Any) -> list[str]:
+def _validate_string_list(name: str, value: Any, *, reject_blank: bool = False) -> list[str]:
     if not isinstance(value, list):
         raise ValueError(f"{name} must be a list of strings")
     items: list[str] = []
     for item in value:
         if not isinstance(item, str):
             raise ValueError(f"{name} must be a list of strings")
+        if reject_blank and not item.strip():
+            raise ValueError(f"{name} must not contain blank items")
         items.append(item)
     return items
 
 
 def _quote(value: str) -> str:
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
+    # 所有字符串保持在单个 YAML 物理行，既有解析器还原完整文字与换行。
+    return json.dumps(value)
 
 
 def _write_list(lines: list[str], key: str, values: list[str]) -> None:
@@ -412,8 +410,8 @@ def _load_evidence_detail(evidence_id: str) -> dict[str, Any] | None:
         "time_range": s.get("time_range", ""),
         "context": s.get("context", ""),
         "role_scope": s.get("role_scope", ""),
-        "actions": "\n".join(actions),
-        "results": "\n".join(results),
+        "actions": actions,
+        "results": results,
         "stack": l.get("stack", []),
         "tags": l.get("tags", []),
         "artifacts": artifacts,

@@ -507,6 +507,12 @@
         "sourceMaterials": "来源材料",
         "sourceCount": "来源"
       },
+      "factEditor": {
+        "hint": "换行仍属于同一条事实；请用添加或删除按钮改变条目。",
+        "addAction": "添加行动",
+        "addResult": "添加成果",
+        "remove": "删除此项"
+      },
       "artifacts": {
         "title": "附件",
         "empty": "暂无附件。使用导入入口把源文件纳入本地后端管理目录。",

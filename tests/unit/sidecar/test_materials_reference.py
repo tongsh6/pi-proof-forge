@@ -357,7 +357,7 @@ def test_exact_card_edit_rereview_and_snapshot_across_unrelated_collection_drift
     with pytest.raises(ValueError, match="material_source_changed"):
         selected_text_materials([mid])
     evidence.handle_evidence_update({"meta":{"correlation_id":"t"},"evidence_id":"ec_exact",
-                                     "patch":{"results":"编辑后可核结果。"}})
+                                     "patch":{"results":['编辑后可核结果。']}})
     saved=parse_simple_yaml(card.read_text())
     assert saved["lists"]["results"]==["编辑后可核结果。"]
     assert saved["scalars"]["status"]=="needs_review"
@@ -365,7 +365,7 @@ def test_exact_card_edit_rereview_and_snapshot_across_unrelated_collection_drift
     assert saved["scalars"]["candidate_pool_eligible"]=="false"
     params={"meta":{"correlation_id":"t"},"evidence_id":"ec_exact","save_mode":"eligible",
             "expected_sha256":hashlib.sha256(card.read_bytes()).hexdigest(),"review":{"decision":"approved"},
-            "draft":{"title":"已有卡片","results":"编辑后可核结果。","artifacts":[{"ref":mid,"type":"text_document","label":"原始材料"}],
+            "draft":{"title":"已有卡片","results":['编辑后可核结果。'],"artifacts":[{"ref":mid,"type":"text_document","label":"原始材料"}],
                      "source_material_ids":[mid],"source_documents":refs,
                      "field_sources":[{"field":"results","value":"编辑后可核结果。","quote":"编辑后可核结果。",**refs[0]}]}}
     evidence.handle_evidence_save_draft(params)
@@ -409,7 +409,7 @@ def test_scoped_edit_fails_closed_and_preserves_card_on_integrity_failure(env,mo
     before=card.read_bytes()
     with pytest.raises(ValueError):
         evidence.handle_evidence_update({"meta":{"correlation_id":"t"},"evidence_id":"ec_exact",
-                                         "patch":{"results":proposal}})
+                                         "patch":{"results":[proposal]}})
     assert card.read_bytes()==before
 
 
@@ -425,7 +425,7 @@ def test_bound_file_race_does_not_commit_evidence_edit(env,monkeypatch):
     before=card.read_bytes()
     with pytest.raises(ValueError,match="material_source_changed"):
         evidence.handle_evidence_update({"meta":{"correlation_id":"t"},"evidence_id":"ec_exact",
-                                        "patch":{"results":"编辑后可核结果。"}})
+                                        "patch":{"results":['编辑后可核结果。']}})
     assert card.read_bytes()==before
 
 
@@ -455,7 +455,7 @@ def test_merge_scopes_only_unchanged_exact_materials(env, monkeypatch, case):
     params={"meta":{"correlation_id":"synthetic-qa"},"evidence_id":"ec_exact","save_mode":"eligible",
         "expected_sha256":hashlib.sha256(before).hexdigest() if case!="stale" else "stale",
         "review":{"decision":"approved","merge_sources":True},
-        "draft":{"title":"已有卡片","role_scope":role,"results":"原始可核结果。",
+        "draft":{"title":"已有卡片","role_scope":role,"results":['原始可核结果。'],
                  "source_material_ids":[mid,fresh],"source_documents":source_docs,
                  "artifacts":[{"ref":mid,"type":"text_document","label":"原始材料"}],
                  "field_sources":[{"field":"role_scope","value":role,"quote":role,**extra_ref}]}}

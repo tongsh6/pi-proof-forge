@@ -30,10 +30,12 @@ const field=label=>nodes(nodes(tree).find(n=>n.type==='label'&&text(n).includes(
 const select=nodes(tree).find(n=>n.type==='select'&&nodes(n).includes(option));select.props.onChange({target:{value:'work'}});await settle();
 assert.ok(button('pages.evidence.actions.generateDraft').props.disabled,'汇总 txt 不发送给模型');
 await button('pages.evidence.actions.manualDraft').props.onClick();await settle();
+assert.equal(nodes(tree).filter(n=>n.type==='textarea'&&n.props['data-field']==='results').length,0);
+button('pages.evidence.factEditor.addResult').props.onClick();await settle();
 assert.equal(field('pages.evidence.fields.results').props.value,'');
 field('pages.evidence.fields.title').props.onChange({target:{value:'租赁设计'}});field('pages.evidence.fields.results').props.onChange({target:{value:'支持用户租赁登记与归还。'}});await settle();
 await button('pages.evidence.actions.saveEligible').props.onClick();await settle();
-assert.equal(calls[0].draft.source_material_ids[0],'work');assert.equal(calls[0].draft.artifacts[0].ref,'work');assert.equal(calls[0].draft.artifacts[0].type,'text_document');assert.equal(calls[0].draft.results,'支持用户租赁登记与归还。');
+assert.equal(calls[0].draft.source_material_ids[0],'work');assert.equal(calls[0].draft.artifacts[0].ref,'work');assert.equal(calls[0].draft.artifacts[0].type,'text_document');assert.equal(JSON.stringify(calls[0].draft.results),JSON.stringify(['支持用户租赁登记与归还。']));
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
     result=subprocess.run(['node','-e',script],cwd=Path(__file__).resolve().parents[3],capture_output=True,text=True,timeout=30)

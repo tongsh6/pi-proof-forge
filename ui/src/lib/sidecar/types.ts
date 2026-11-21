@@ -74,8 +74,8 @@ export interface EvidenceDetail {
   time_range: string;
   context: string;
   role_scope: string;
-  actions: string;
-  results: string;
+  actions: string[];
+  results: string[];
   stack: string[];
   tags: string[];
   artifacts: ArtifactSummary[];
@@ -220,8 +220,8 @@ export interface EvidenceDraftPayload {
   time_range?: string;
   context: string;
   role_scope?: string;
-  actions: string;
-  results: string;
+  actions: string[];
+  results: string[];
   artifacts: EvidenceDraftArtifact[];
   stack: string[];
   tags: string[];

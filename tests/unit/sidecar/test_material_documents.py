@@ -58,7 +58,7 @@ def test_normal_edit_keeps_source_reference_and_explicitly_requires_review(tmp_p
     from tools.infra.persistence.yaml_io import parse_simple_yaml
     setup(tmp_path,monkeypatch);doc=evidence.handle_list_material_documents({'material_id':'m','query':'开发方案'})['items'][0]
     ref={k:doc[k] for k in ['document_id','sha256','label']};ref['material_id']='m'
-    draft={'source_material_ids':['m'],'source_documents':[ref],'title':'原题','context':'设计','actions':'明确归还流程','results':'接口回归验证通过。','stack':[],'tags':[],'artifacts':[{'type':'text_document','ref':'m','label':'原文'}]}
+    draft={'source_material_ids':['m'],'source_documents':[ref],'title':'原题','context':'设计','actions':['明确归还流程'],'results':['接口回归验证通过。'],'stack':[],'tags':[],'artifacts':[{'type':'text_document','ref':'m','label':'原文'}]}
     saved=evidence.handle_evidence_save_draft({'meta':{'correlation_id':'t'},'draft':draft,'review':{'decision':'approved'},'save_mode':'eligible'})
     evidence.handle_evidence_update({'meta':{'correlation_id':'t'},'evidence_id':saved['evidence_id'],'patch':{'title':'更准确的标题'}})
     d=parse_simple_yaml((evidence._EVIDENCE_DIR/(saved['evidence_id']+'.yaml')).read_text())
@@ -78,7 +78,7 @@ def test_evidence_list_exposes_actual_candidate_pool_eligibility(tmp_path,monkey
 
 def test_review_save_rejects_non_repository_evidence_id(tmp_path,monkeypatch):
     setup(tmp_path,monkeypatch)
-    draft={'source_material_ids':['m'],'title':'标题','context':'场景','actions':'动作','results':'接口回归验证通过。','stack':[],'tags':[],'artifacts':[{'type':'text_document','ref':'m','label':'材料'}]}
+    draft={'source_material_ids':['m'],'title':'标题','context':'场景','actions':['动作'],'results':['接口回归验证通过。'],'stack':[],'tags':[],'artifacts':[{'type':'text_document','ref':'m','label':'材料'}]}
     with pytest.raises(ValueError,match='invalid_evidence_id'):
         evidence.handle_evidence_save_draft({'meta':{'correlation_id':'t'},'draft':draft,'review':{'decision':'approved'},'save_mode':'eligible','evidence_id':'../outside'})
 
@@ -87,7 +87,7 @@ def test_rereview_cannot_replace_other_source_and_keeps_original_metadata(tmp_pa
     from tools.infra.persistence.yaml_io import parse_simple_yaml
     setup(tmp_path,monkeypatch);doc=evidence.handle_list_material_documents({'material_id':'m'})['items'][0]
     ref={k:doc[k] for k in ['document_id','sha256','label']};ref['material_id']='m'
-    base={'source_material_ids':['m'],'title':'原卡','context':'场景','actions':'动作','results':'接口回归验证通过。','stack':[],'tags':[],'artifacts':[{'type':'text_document','ref':'m','label':'材料'}]}
+    base={'source_material_ids':['m'],'title':'原卡','context':'场景','actions':['动作'],'results':['接口回归验证通过。'],'stack':[],'tags':[],'artifacts':[{'type':'text_document','ref':'m','label':'材料'}]}
     params={'meta':{'correlation_id':'t'},'review':{'decision':'approved'},'save_mode':'eligible'}
     a=evidence.handle_evidence_save_draft({**params,'draft':{**base,'source_documents':[ref]}})['evidence_id']
     b=evidence.handle_evidence_save_draft({**params,'draft':base})['evidence_id']

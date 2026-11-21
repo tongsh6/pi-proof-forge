@@ -16,7 +16,7 @@ type EvidenceReviewSectionProps = {
 function scopeOptions(draft:EvidenceDraftPayload|undefined): (EvidenceFactPosition & {source:EvidenceFactScopeSource})[]{
   if(!draft)return [];
   return (["actions","results"] as const).flatMap(field=>{
-    const values=draft[field].split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
+    const values=draft[field];
     return values.flatMap((value,index)=>{
       if(values.filter(item=>item===value).length!==1)return [];
       return (draft.field_sources??[]).flatMap(binding=>{

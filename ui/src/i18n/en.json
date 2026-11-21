@@ -507,6 +507,12 @@
         "sourceMaterials": "Source materials",
         "sourceCount": "Sources"
       },
+      "factEditor": {
+        "hint": "A line break stays within the same fact. Use the add or delete buttons to change the items.",
+        "addAction": "Add action",
+        "addResult": "Add result",
+        "remove": "Delete this item"
+      },
       "artifacts": {
         "title": "Artifacts",
         "empty": "No artifacts yet. Import source files into the sidecar-managed artifact directory.",

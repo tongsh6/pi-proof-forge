@@ -13,10 +13,10 @@ const path='ui/src/pages/evidence/components/evidence-review-section.tsx';
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,
  {exports,require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx,jsxs:jsx,Fragment:'fragment'}:n==='react-i18next'?{useTranslation:()=>({t:k=>k})}:{}});
 const source={material_id:'mat',document_id:'a'.repeat(64),sha256:'b'.repeat(64),label:'Exact source'};
-const draft={source_material_ids:['mat'],source_documents:[source],actions:'已做恢复处理',results:'',field_sources:[
+const draft={source_material_ids:['mat'],source_documents:[source],actions:['已做恢复处理'],results:[],field_sources:[
  {field:'actions',value:'已做恢复处理',quote:'已做恢复处理，未发布到生产。',material_id:'mat',document_id:source.document_id}
 ]};
-const base={generatedDraft:draft,reviewedScopes:[{fact_id:'ec:actions:0',field:'actions',index:0,value:draft.actions,attribution:'self',target:'后端处理',environment:'test',implementation:'implemented',release:'not_released'}],reviewMissingItems:[],busy:false,onSaveReviewedDraft:(...x)=>calls.push(x)};
+const base={generatedDraft:draft,reviewedScopes:[{fact_id:'ec:actions:0',field:'actions',index:0,value:draft.actions[0],attribution:'self',target:'后端处理',environment:'test',implementation:'implemented',release:'not_released'}],reviewMissingItems:[],busy:false,onSaveReviewedDraft:(...x)=>calls.push(x)};
 function render(p){index=0;tree=exports.EvidenceReviewSection({...base,...p});}
 const nodes=v=>Array.isArray(v)?v.flatMap(nodes):v&&typeof v==='object'?[v,...nodes(v.props.children)]:[];
 const text=v=>Array.isArray(v)?v.map(text).join(' '):v&&typeof v==='object'?text(v.props.children):String(v??'');
@@ -39,10 +39,10 @@ assert.ok(button('factScope.adopt').props.disabled);
 change('factScope.implementation','implemented');change('factScope.release','not_released');
 button('pages.evidence.actions.saveEligible').props.onClick();assert.deepEqual(calls[0],['eligible']);
 button('factScope.adopt').props.onClick();
-assert.equal(calls[1][1].kind,'adopt');assert.equal(calls[1][1].attribution,'team_lead');assert.equal('subject' in calls[1][1],false);assert.equal(calls[1][1].value,draft.actions);
+assert.equal(calls[1][1].kind,'adopt');assert.equal(calls[1][1].attribution,'team_lead');assert.equal('subject' in calls[1][1],false);assert.equal(calls[1][1].value,draft.actions[0]);
 assert.equal(calls[1][1].source.sha256,source.sha256);assert.equal(calls[1][1].environment,'test');
 button('factScope.revoke').props.onClick();
-assert.equal(JSON.stringify(calls[2]),JSON.stringify(['eligible',{kind:'revoke',field:'actions',index:0,value:draft.actions}]));
+assert.equal(JSON.stringify(calls[2]),JSON.stringify(['eligible',{kind:'revoke',field:'actions',index:0,value:draft.actions[0]}]));
 hooks=[];render({scopeDraft:draft});assert.ok(!button('factScope.adopt'),'reopen must clear unsubmitted inputs');
 '''
     result = subprocess.run(["node","-e",script], cwd=Path(__file__).resolve().parents[3],
@@ -65,7 +65,7 @@ function load(path,children={}){
 const review=load('ui/src/pages/evidence/components/evidence-review-section.tsx');
 const panel=load('ui/src/pages/evidence/components/evidence-detail-panel.tsx',{'./evidence-review-section':review});
 const source={material_id:'mat',document_id:'a'.repeat(64),sha256:'b'.repeat(64),label:'Exact source'};
-const draft={source_material_ids:['mat'],source_documents:[source],actions:'已做恢复处理',results:'',field_sources:[
+const draft={source_material_ids:['mat'],source_documents:[source],actions:['已做恢复处理'],results:[],field_sources:[
  {field:'actions',value:'已做恢复处理',quote:'已做恢复处理',material_id:'mat',document_id:source.document_id}
 ]};
 const error='fact_scope_source_not_unique';
@@ -91,7 +91,7 @@ choose();render();
 assert.ok(button('factScope.adopt').props.disabled,'ambiguity does not prefill an accepted scope');
 assert.equal(button('factScope.revoke').props.disabled,false);
 button('factScope.revoke').props.onClick();
-assert.equal(JSON.stringify(calls),JSON.stringify([['eligible',{kind:'revoke',field:'actions',index:0,value:draft.actions}]]));
+assert.equal(JSON.stringify(calls),JSON.stringify([['eligible',{kind:'revoke',field:'actions',index:0,value:draft.actions[0]}]]));
 render(error,{busy:true});assert.ok(button('factScope.revoke').props.disabled);
 button('factScope.revoke').props.onClick();assert.equal(calls.length,1,'busy recovery cannot submit');
 hooks=[];render('');choose();render('');

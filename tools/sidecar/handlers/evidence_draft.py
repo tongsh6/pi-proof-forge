@@ -38,7 +38,6 @@ from tools.sidecar.handlers.evidence import (
     _DRAFT_REQUIRED_FIELDS,
     _find_evidence_path,
     _preserved_blocks,
-    _split_multiline_text,
     _validate_string_list,
     _write_evidence_file,
 )
@@ -248,7 +247,7 @@ def _missing_items_for_draft(draft: dict[str, Any]) -> list[str]:
         missing.append("missing_source_material_ids")
     if not str(draft.get("title", "")).strip():
         missing.append("missing_title")
-    if not _split_multiline_text(str(draft.get("results", ""))):
+    if not draft.get("results"):
         missing.append("missing_results")
     if not draft.get("artifacts"):
         missing.append("missing_artifacts")
@@ -272,14 +271,14 @@ def _build_evidence_draft(parsed: dict[str, Any], selected_records: list[dict[st
     artifacts = _normalize_artifacts(parsed.get("artifacts"))
     _validate_markdown_artifacts(artifacts, selected_records)
 
-    results = _as_string_list(parsed.get("results"), "results")
+    results = _validate_string_list("results", parsed.get("results"), reject_blank=True)
     draft = {
         "title": str(parsed.get("title", "")).strip(),
         "time_range": str(parsed.get("time_range", "")).strip(),
         "context": str(parsed.get("context", "")).strip(),
         "role_scope": str(parsed.get("role_scope", "")).strip(),
-        "actions": "\n".join(_as_string_list(parsed.get("actions"), "actions")),
-        "results": "\n".join(results),
+        "actions": _validate_string_list("actions", parsed.get("actions"), reject_blank=True),
+        "results": results,
         "artifacts": artifacts,
         "stack": _as_string_list(parsed.get("stack"), "stack"),
         "tags": _as_string_list(parsed.get("tags"), "tags"),
@@ -469,13 +468,16 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         "time_range": str(draft.get("time_range", "")).strip(),
         "context": str(draft.get("context", "")).strip(),
         "role_scope": str(draft.get("role_scope", "")).strip(),
-        "actions": str(draft.get("actions", "")),
-        "results": str(draft.get("results", "")),
+        "actions": _validate_string_list("actions", draft.get("actions", []), reject_blank=True),
+        "results": _validate_string_list("results", draft.get("results", []), reject_blank=True),
         "artifacts": artifacts,
         "stack": _validate_string_list("stack", draft.get("stack", [])),
         "tags": _validate_string_list("tags", draft.get("tags", [])),
         "source_material_ids": source_material_ids,
     }
+    save_mode = str(params.get("save_mode") or "incomplete")
+    if save_mode not in {"incomplete", "eligible"}:
+        raise ValueError(f"unsupported save_mode: {save_mode}")
     evidence_id = str(params.get('evidence_id') or f'ec_{uuid4().hex[:8]}')
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',evidence_id):raise ValueError('invalid_evidence_id')
     existing_doc=None;preserved=[];whole_material_ids=[]
@@ -535,7 +537,10 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
     selected_ids = {str(record["material_id"]) for record in selected_records}
     _validate_source_material_ids(source_material_ids, selected_ids)
     _validate_markdown_artifacts(artifacts, selected_records)
-    documents,source_text=read_source_documents(selected_records,source_documents,whole_material_ids)
+    documents, source_text = read_source_documents(
+        selected_records, source_documents, whole_material_ids,
+        results=normalized_draft['results'] if save_mode == 'eligible' else (),
+    )
     field_sources=draft.get('field_sources',[])
     verified_fields=validate_field_sources(normalized_draft,field_sources,documents)
     saved_provenance: dict[str, dict[str, Any]] = {}
@@ -549,14 +554,8 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         _verify_saved_provenance(normalized_provenance, source_text)
         saved_provenance[field] = normalized_provenance
     missing_items = _missing_items_for_draft(normalized_draft)
-    save_mode = str(params.get("save_mode") or "incomplete")
-    if save_mode not in {"incomplete", "eligible"}:
-        raise ValueError(f"unsupported save_mode: {save_mode}")
     if save_mode == "eligible" and missing_items:
         raise ValueError("eligible evidence card requires results and artifacts")
-    if save_mode == "eligible":
-        for result in _split_multiline_text(normalized_draft["results"]):
-            if result.casefold() not in source_text.casefold():raise ValueError('no_fabrication_guard: result is not traceable to selected document')
 
     if existing_doc is not None:
         if review.get('merge_sources') is True or s.get('reviewed_facts_json') or s.get('source_material_fingerprints_json'):
@@ -588,8 +587,8 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         "status": "saved_eligible" if save_mode == "eligible" else "saved_incomplete",
         "created_at": existing_doc["scalars"].get("created_at",now) if existing_doc else now,
         "updated_at": now,
-        "actions": _split_multiline_text(normalized_draft["actions"]),
-        "results": _split_multiline_text(normalized_draft["results"]),
+        "actions": normalized_draft["actions"],
+        "results": normalized_draft["results"],
         "stack": normalized_draft["stack"],
         "artifacts": [artifact["ref"] for artifact in artifacts],
         "tags": normalized_draft["tags"],

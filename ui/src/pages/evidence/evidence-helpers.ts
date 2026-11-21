@@ -31,8 +31,8 @@ export type EvidenceForm = {
   time_range: string;
   context: string;
   role_scope: string;
-  actions: string;
-  results: string;
+  actions: string[];
+  results: string[];
   stackText: string;
   tagsText: string;
 };
@@ -60,8 +60,8 @@ export function toForm(detail: EvidenceDetail | null): EvidenceForm {
     time_range: detail?.time_range ?? "",
     context: detail?.context ?? "",
     role_scope: detail?.role_scope ?? "",
-    actions: detail?.actions ?? "",
-    results: detail?.results ?? "",
+    actions: detail?.actions ?? [],
+    results: detail?.results ?? [],
     stackText: detail?.stack.join(", ") ?? "",
     tagsText: detail?.tags.join(", ") ?? "",
   };

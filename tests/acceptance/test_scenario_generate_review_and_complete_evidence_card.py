@@ -124,7 +124,7 @@ def test_generate_review_and_complete_evidence_card_l1_acceptance_writes_report(
             )
 
         incomplete_draft = dict(generated["draft"])
-        incomplete_draft["results"] = ""
+        incomplete_draft["results"] = []
         incomplete_draft["artifacts"] = []
         no_review_rejected = False
         try:

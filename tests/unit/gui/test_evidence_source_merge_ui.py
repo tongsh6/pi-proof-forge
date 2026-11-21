@@ -14,7 +14,7 @@ def test_adopting_sources_keeps_prior_facts_and_replaces_only_explicit_single_fi
       const module = {exports:{}}; new Function('exports','module',code)(module.exports,module);
       const {adoptSource} = module.exports;
       let d = {source_material_ids:['m1'],source_documents:[],artifacts:[{ref:'m1',label:'旧材料',type:'text_document'}],
-               role_scope:'参与开发',time_range:'',context:'平台',actions:'保留原行动',results:'保留原成果',field_sources:[]};
+               role_scope:'参与开发',time_range:'',context:'平台',actions:['保留原行动'],results:['保留原成果'],field_sources:[]};
       const ref = {material_id:'m2',document_id:'doc2',sha256:'hash2',label:'底稿'};
       d = adoptSource(d,'time_range','2022 – 至今',ref);
       d = adoptSource(d,'role_scope','Tech Lead',ref);
@@ -28,8 +28,8 @@ def test_adopting_sources_keeps_prior_facts_and_replaces_only_explicit_single_fi
     assert draft['source_material_ids'] == ['m1','m2']
     assert len(draft['source_documents']) == 1 and len(draft['artifacts']) == 2
     assert draft['time_range'] == '2022 – 至今' and draft['role_scope'] == 'Tech Lead'
-    assert draft['actions'] == '保留原行动\n建立 Feature 机制'
-    assert draft['results'] == '保留原成果\n新增成果一\n新增成果二'
+    assert draft['actions'] == ['保留原行动', '建立 Feature 机制', '建立 Feature 机制']
+    assert draft['results'] == ['保留原成果', '新增成果一\n新增成果二']
     assert len(draft['field_sources']) == 5
     assert all(c['quote'] == c['value'] for c in draft['field_sources'])
 
@@ -59,7 +59,7 @@ const sourceText = '# 独立合成记录\n' + forecast + '\n\n' + measured + '\n
 function makeDraft() {
   return {
     title: '合成边界验证', context: '离线合成项目', role_scope: '参与验证',
-    actions: '复盘故障链路', results: value + '\n完善故障排查文档',
+    actions: ['复盘故障链路'], results: [value, '完善故障排查文档'],
     stack: [], tags: [], source_material_ids: [ref.material_id, otherRef.material_id],
     source_documents: [ref, otherRef],
     artifacts: [{type: 'text_document', ref: ref.material_id, label: ref.label}, {type: 'text_document', ref: otherRef.material_id, label: otherRef.label}],
@@ -83,6 +83,28 @@ def _run_source_ui(script: str) -> None:
         cwd=root / 'ui', capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_adopt_source_normalizes_scalar_value_but_keeps_complete_quote_and_fact_bytes():
+    _run_source_ui(r'''
+const draft = makeDraft(), before = JSON.stringify(draft);
+for (const field of ['actions', 'results']) {
+  const quote = ' \n  测试环境：保留完整条件。\n尚未验证生产环境。 \n';
+  const next = merge.adoptSource(draft, field, quote, ref);
+  equal(next[field], [...draft[field], quote]);
+  equal(next.field_sources.at(-1), {field, value: quote, quote, material_id: ref.material_id, document_id: ref.document_id});
+  equal(next.field_sources.slice(0, -1), draft.field_sources);
+}
+for (const [field, value] of [['time_range', '2024-01 ~ 2024-06'], ['role_scope', '参与验证'], ['context', '测试环境\n仅覆盖合成请求']]) {
+  const quote = ' \n  ' + value + ' \n';
+  const next = merge.adoptSource(draft, field, quote, ref);
+  assert.equal(next[field], value, 'scalar value must match the existing API normalization');
+  equal(next.field_sources.at(-1), {field, value, quote, material_id: ref.material_id, document_id: ref.document_id});
+  equal(next.actions, draft.actions);
+  equal(next.results, draft.results);
+}
+assert.equal(JSON.stringify(draft), before);
+''')
 
 
 def test_extend_quote_keeps_exact_fact_other_sources_siblings_and_multiline_context():
@@ -129,8 +151,8 @@ for (const pos of [
   {field: 'results', index: 0.5, value},
   {field: 'context', index: 0, value}
 ]) reject('fact_scope_invalid_position', args => args[1] = pos);
-reject('fact_scope_invalid_position', (_, d) => d.results = '完善故障排查文档\n' + value);
-reject('fact_scope_invalid_position', (_, d) => d.results += '\n' + value);
+reject('fact_scope_invalid_position', (_, d) => d.results = ['完善故障排查文档', value]);
+reject('fact_scope_invalid_position', (_, d) => d.results.push(value));
 reject('field_source_not_traceable', args => args[2] = {...args[2], quote: '不同旧引文'});
 reject('field_source_not_traceable', (_, d) => d.field_sources.push({...d.field_sources[0]}));
 reject('field_source_not_traceable', args => args[2] = {...args[2], field: 'actions'});
@@ -315,7 +337,7 @@ equal(p.changes[0], expected);
 def test_source_merge_component_draft_busy_and_card_changes_invalidate_old_confirmation():
     _run_source_ui(_COMPONENT + r'''
 for (const change of [
-  p => p.setProps({draft: {...makeDraft(), results: '完善故障排查文档\n' + value}}),
+  p => p.setProps({draft: {...makeDraft(), results: ['完善故障排查文档', value]}}),
   p => { p.setProps({disabled: true}); p.setProps({disabled: false}); },
   p => p.unmount()
 ]) {
@@ -467,7 +489,7 @@ def test_source_merge_keeps_read_document_when_ordinary_append_changes_field():
   assert.equal(p.button('sourceMerge.append').props.disabled, false, '选字段不应丢掉已经读取的文档');
   p.button('sourceMerge.append').props.onClick();
   assert.equal(p.changes.length, 1);
-  assert.equal(p.changes[0].results, makeDraft().results + '\n' + nonquant);
+  equal(p.changes[0].results, [...makeDraft().results, nonquant]);
   assert.equal(picker.requests.length, 1);
 
   const firstApply = p.button('sourceMerge.append').props.onClick;
@@ -482,7 +504,7 @@ def test_source_merge_keeps_read_document_when_ordinary_append_changes_field():
   assert.equal(p.button('sourceMerge.append').props.disabled, false, '同一文档应能连续补充第二个字段');
   p.button('sourceMerge.append').props.onClick();
   assert.equal(p.changes.length, 2);
-  assert.equal(p.changes[1].actions, makeDraft().actions + '\n复盘故障链路，并记录待验证项。');
+  equal(p.changes[1].actions, [...makeDraft().actions, '复盘故障链路，并记录待验证项。']);
   assert.equal(picker.requests.length, 1);
 })().catch(error => { console.error(error); process.exitCode = 1; });
 ''')
@@ -505,4 +527,30 @@ assert.equal(p.button('sourceMerge.append').props.disabled, false, '普通草稿
 p.button('sourceMerge.append').props.onClick();
 assert.equal(p.changes.length, 1);
 assert.equal(p.changes[0].title, '合成标题修订');
+''')
+
+
+def test_source_merge_keeps_multiline_fact_position_and_does_not_merge_separate_items():
+    _run_source_ui(r'''
+const d = makeDraft();
+const complete = '在隔离测试环境、固定数据集下，\nP95 从 200 ms 降至 120 ms；生产效果未知。';
+d.results = [complete, '完善故障排查文档'];
+d.field_sources = d.field_sources.map((binding, index) =>
+  index < 2 ? {...binding, value: complete, quote: index === 0 ? complete : '合成复核材料：\n' + complete} : binding);
+const original = JSON.stringify(d);
+const fullQuote = '本次测试摘录：\n' + complete + '\n测量窗口只覆盖本次隔离测试。';
+const next = merge.extendSourceQuote(d, {field: 'results', index: 0, value: complete},
+  d.field_sources[0], ref, fullQuote, fullQuote);
+equal(next.results, [complete, '完善故障排查文档']);
+assert.equal(next.results.length, 2);
+assert.equal(next.field_sources[0].value, complete);
+assert.equal(next.field_sources[0].quote, fullQuote);
+equal(next.field_sources.slice(1), d.field_sources.slice(1));
+assert.equal(JSON.stringify(d), original);
+const repeated = {...d, results: [...d.results, '完善故障排查文档']};
+const addition = '补充成果保持同一条：\n已交付合成操作说明。';
+const appended = merge.adoptSource(repeated, 'results', addition, ref);
+equal(appended.results, [...repeated.results, addition]);
+assert.equal(appended.field_sources.at(-1).value, addition);
+assert.equal(appended.field_sources.at(-1).quote, addition);
 ''')

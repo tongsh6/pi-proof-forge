@@ -67,14 +67,14 @@ export function EvidenceSourceMerge({draft, materials, disabled, onChange}: {
   };
   const valid = !!document && checked && (extension
     ? !extensionError
-    : !!quote.trim() && text.includes(quote.trim()));
+    : !!quote.trim() && text.includes(quote));
   const sourceLimit = !extension && (draft.source_documents?.length ?? 0) >= 8 &&
     !draft.source_documents?.some(ref => ref.material_id === document?.material_id && ref.document_id === document?.document_id);
   const apply = () => {
     if (!isCurrent() || !valid || !document || sourceLimit) return;
     const next = extension
       ? extendSourceQuote(draft, extension.position, extension.binding, document, text, quote)
-      : adoptSource(draft, field, quote.trim(), document);
+      : adoptSource(draft, field, quote, document);
     if (extension) reset();
     else {
       currentView.current = null;
@@ -118,7 +118,11 @@ export function EvidenceSourceMerge({draft, materials, disabled, onChange}: {
         {Object.entries(labels).map(([key, label]) => <option key={key} value={key}>{t('pages.evidence.fields.' + label)}</option>)}
       </select>
       <p className="text-xs text-text-secondary">{t('sourceMerge.current')}</p>
-      <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words text-xs">{extension?.position.value ?? (draft[field] || t('sourceMerge.empty'))}</pre>
+      {extension ? <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words text-xs">{extension.position.value}</pre>
+        : field === 'actions' || field === 'results'
+          ? <ol className="max-h-40 list-decimal space-y-1 overflow-auto pl-5 text-xs">{draft[field].map((value, index) =>
+            <li key={index}><pre className="whitespace-pre-wrap break-words">{value || t('sourceMerge.empty')}</pre></li>)}</ol>
+          : <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words text-xs">{draft[field] || t('sourceMerge.empty')}</pre>}
       {extension && <div className="space-y-1">
         <p className="text-xs text-text-secondary">{t('sourceMerge.previousQuote')}</p>
         <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs">{extension.binding.quote}</pre>
@@ -130,7 +134,7 @@ export function EvidenceSourceMerge({draft, materials, disabled, onChange}: {
         setReview(previous => ({...previous, quote: value, confirmation: null}));
       }} placeholder={t('sourceMerge.quote')}/>
       {extensionError && <p role="alert" className="text-xs text-warning">{t('sourceMerge.' + errorLabels[extensionError])}</p>}
-      {!extension && !!quote.trim() && !!document && !text.includes(quote.trim()) &&
+      {!extension && !!quote.trim() && !!document && !text.includes(quote) &&
         <p role="alert" className="text-xs text-warning">{t('sourceMerge.notFound')}</p>}
       <label className="flex items-start gap-2 text-xs text-text-secondary">
         <input type="checkbox" checked={checked} disabled={disabled} onChange={event => {
@@ -154,7 +158,7 @@ export function EvidenceSourceMerge({draft, materials, disabled, onChange}: {
         {draft.field_sources.map((binding, index) => {
           const bound = draft.source_documents?.find(ref => ref.material_id === binding.material_id && ref.document_id === binding.document_id);
           const field = binding.field;
-          const values = field === 'actions' || field === 'results' ? draft[field].split(/\r?\n/).map(value => value.trim()).filter(Boolean) : [];
+          const values = field === 'actions' || field === 'results' ? draft[field] : [];
           const position: EvidenceFactPosition | null = (field === 'actions' || field === 'results') &&
             values.filter(value => value === binding.value).length === 1
             ? {field, index: values.indexOf(binding.value), value: binding.value} : null;

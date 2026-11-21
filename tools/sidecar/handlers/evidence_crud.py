@@ -31,7 +31,6 @@ from tools.sidecar.handlers.evidence import (
     _parse_sort_order,
     _preserved_blocks,
     _safe_parse_iso_datetime,
-    _split_multiline_text,
     _validate_string_list,
     _write_evidence_file,
 )
@@ -182,8 +181,8 @@ def handle_evidence_create(params: dict[str, Any]) -> dict[str, Any]:
         "status": "draft",
         "created_at": created_at,
         "updated_at": created_at,
-        "actions": _split_multiline_text(str(params.get("actions", ""))),
-        "results": _split_multiline_text(str(params.get("results", ""))),
+        "actions": _validate_string_list("actions", params.get("actions", []), reject_blank=True),
+        "results": _validate_string_list("results", params.get("results", []), reject_blank=True),
         "stack": _validate_string_list("stack", params.get("stack", [])),
         "artifacts": [],
         "tags": _validate_string_list("tags", params.get("tags", [])),
@@ -235,12 +234,8 @@ def handle_evidence_update(params: dict[str, Any]) -> dict[str, Any]:
         "status": s.get("status", "draft"),
         "created_at": s.get("created_at", updated_at),
         "updated_at": updated_at,
-        "actions": _split_multiline_text(
-            str(patch.get("actions", "\n".join(l.get("actions", []))))
-        ),
-        "results": _split_multiline_text(
-            str(patch.get("results", "\n".join(l.get("results", []))))
-        ),
+        "actions": _validate_string_list("actions", patch.get("actions", l.get("actions", [])), reject_blank=True),
+        "results": _validate_string_list("results", patch.get("results", l.get("results", [])), reject_blank=True),
         "stack": _validate_string_list("stack", patch.get("stack", l.get("stack", []))),
         "artifacts": _validate_string_list(
             "artifacts", patch.get("artifacts", l.get("artifacts", []))
@@ -278,9 +273,7 @@ def handle_evidence_update(params: dict[str, Any]) -> dict[str, Any]:
         whole_ids=json.loads(s.get('source_whole_material_ids_json') or '[]')
         records,snapshots=evidence_bound_materials(l.get('source_material_ids',[]), references, whole_ids,
                                                    fingerprints=json.loads(s.get('source_material_fingerprints_json') or '{}'))
-        _,source=read_source_documents(records,references,whole_ids)
-        if any(result.casefold() not in source.casefold() for result in fields['results']):
-            raise ValueError('no_fabrication_guard: result is not traceable to selected document')
+        read_source_documents(records, references, whole_ids, results=fields['results'])
         assert_source_snapshot(snapshots)
         if path.read_text(encoding="utf-8") != text:
             raise ValueError("evidence_review_changed")
