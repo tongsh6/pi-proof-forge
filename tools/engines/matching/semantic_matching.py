@@ -17,7 +17,7 @@ from tools.infra.career_profile import load_career_profile, career_generation_is
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.prompts.context import context_fingerprint
 
-VERSION = 'evidence-semantic-v6'
+VERSION = 'evidence-semantic-v7'
 
 
 class _AdvisoryTaskFailure(ValueError):
@@ -333,8 +333,11 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
         source_id = path.stem
         card_input_keys[source_id] = {source_id, *source_inputs}
         card_facts = _facts(source_id, card_doc)
-        from tools.infra.evidence_fact_scope import nonpersonal_reviewed_fact_ids
+        from tools.infra.evidence_fact_scope import nonpersonal_reviewed_fact_ids, personal_claim_exclusions
         limited = nonpersonal_reviewed_fact_ids(card_doc, material_dir, card_id=source_id, validated_sources=paths)
+        excluded = personal_claim_exclusions(card_doc, material_dir, card_id=source_id, validated_sources=paths)
+        # Scoped results need current personal support; an unreviewed result is not contrary evidence.
+        limited |= {fid for fid in excluded if card_facts.get(fid, {}).get("field") == "results"}
         for fid in card_facts.keys() & limited:
             card_facts[fid]["candidate_support"] = False
             # The card role remains context, not the role of this occurrence.
@@ -371,6 +374,8 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                        '表述，不得仅凭任职关联升级责任强度。')
         else:
             system += ('candidate_support=false 的原事实仅可作范围限制或审计引用，不能证明本人实践。'
+                       '这个限制不表示已证实全属他人、不具备能力或与要求冲突；仅有这类引用时必须判证据不足。'
+                       '存在独立可用原文时才可依据其中真实反证判断conflict，不能把受限行升级为反证。'
                        '对每项要求返回且仅返回一条。supported=完整要求有直接支撑；partial=仅部分支撑或可迁移经验；'
                        'insufficient=未找到足够证据；conflict=原文存在明确相反事实。复合条件任一缺证据最多partial。'
                        '目标公司的平台专名、产品名、团队城市或业务域数量不是候选人必须在同公司/同名平台任职的前提；'

@@ -1,6 +1,7 @@
 """Explicit per-fact scope inside the existing evidence review snapshot."""
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import defaultdict
 
@@ -28,6 +29,50 @@ def checked_result_review(review, *, value, source_quote):
                 or value.count(quote) != 1 or source_quote.count(quote) != 1):
             raise ValueError("result_review_invalid_measurement_binding")
     return dict(review)
+
+
+def result_review_input(card_id, claim, rows, bindings, refs, documents):
+    """Project the existing current fact dependencies; never include prior verdicts."""
+    position = tuple(claim[key] for key in ("field", "index", "value"))
+    if claim["field"] != "results":
+        raise ValueError("result_review_invalid_position")
+    peers = [row for row in rows
+             if tuple(row[key] for key in ("field", "index", "value")) == position]
+    related = [{key: binding[key] for key in ("field", "value", "material_id", "document_id", "quote")}
+               for binding in bindings
+               if (binding["field"], binding["value"]) == (claim["field"], claim["value"])]
+    references = {(ref["material_id"], ref["document_id"]): ref for ref in refs}
+    source_documents = []
+    for key in sorted({(binding["material_id"], binding["document_id"]) for binding in related}):
+        ref, text = references.get(key), documents.get(key)
+        if (ref is None or not isinstance(text, str)
+                or hashlib.sha256(text.encode()).hexdigest() != ref["sha256"]):
+            raise ValueError("fact_scope_source_unverified")
+        source_documents.append({"material_id": key[0], "document_id": key[1],
+                                 "sha256": ref["sha256"], "text": text})
+    if not peers or not related:
+        raise ValueError("fact_scope_source_unverified")
+    return {"fact": {"card_id": card_id, **{key: claim[key] for key in ("field", "index", "value")}},
+            "bindings": related, "documents": source_documents,
+            "scopes": [{**{key: row[key] for key in sorted(_CLAIM)}, "review_index": index}
+                       for index, row in enumerate(peers)]}
+
+
+def result_review_basis(review_input):
+    """Bind one review to its current raw dependency set, independent of display order."""
+    def canonical(value):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    def members(values):
+        return sorted({canonical(value) for value in values})
+
+    basis = {"protocol": "result-review-current-fact-v1", "fact": review_input["fact"],
+             "bindings": members(review_input["bindings"]),
+             "documents": members({key: doc[key] for key in ("material_id", "document_id", "sha256")}
+                                  for doc in review_input["documents"]),
+             "scopes": members({key: value for key, value in scope.items() if key != "review_index"}
+                               for scope in review_input["scopes"])}
+    return hashlib.sha256(canonical(basis).encode()).hexdigest()
 
 
 def _position(item, fields):
@@ -96,7 +141,17 @@ def _checked_stored(item, fields, bindings, refs):
     _checked({key: value for key, value in item.items() if key != "result_review"}, fields, bindings, refs)
     if item["field"] != "results":
         raise ValueError("result_review_invalid")
-    checked_result_review(item["result_review"], value=item["value"], source_quote=item["source"]["quote"])
+    review = item["result_review"]
+    if not isinstance(review, dict):
+        raise ValueError("result_review_invalid")
+    checked_result_review({key: val for key, val in review.items() if key != "basis_sha256"},
+                          value=item["value"], source_quote=item["source"]["quote"])
+    if "basis_sha256" in review:
+        basis = review["basis_sha256"]
+        if (not isinstance(basis, str) or len(basis) != 64
+                or any(char not in "0123456789abcdef" for char in basis)):
+            raise ValueError("result_review_invalid_basis")
+    # A historical three-field review preserves its scope, but supplies no current authority.
     return item
 
 
@@ -177,42 +232,83 @@ def _checked_rows(doc, rows, refs, bindings, documents):
     return _retained(bound, fields, bindings, refs, validate=_checked_stored)
 
 
+def _scope_sources(rows):
+    return [{**row["source"], "attribution": row["attribution"],
+             "implementation": row["implementation"], "release": row["release"],
+             **({"result_review": row["result_review"]} if "result_review" in row else {})} for row in rows]
+
+
 def _project_scopes(card_id, rows):
     grouped = defaultdict(lambda: defaultdict(list))
     for row in rows:
-        key = tuple(row[k] for k in ("field","index","value","target","environment"))
+        key = tuple(row[k] for k in ("field", "index", "value", "target", "environment"))
+        # Result scopes describe separate original occurrences; differing states are not a verdict.
+        key += (tuple(row[k] for k in ("attribution", "implementation", "release"))
+                if row["field"] == "results" else (None, None, None))
         grouped[key][row["attribution"]].append(row)
     out = []
-    for (field,index,value,target,env), by_relation in grouped.items():
+    for (field, index, value, target, env, _, _, _), by_relation in grouped.items():
+        if field == "results":
+            for relation, scoped in by_relation.items():
+                first = scoped[0]
+                out.append({"fact_id": f"{card_id}:{field}:{index}", "field": field, "index": index,
+                            "value": value, "attribution": relation, "target": target, "environment": env,
+                            "implementation": first["implementation"], "release": first["release"],
+                            "sources": _scope_sources(scoped)})
+            continue
         if {"self", "teammate"}.issubset(by_relation):
-            # Direct responsibility disagrees for this exact occurrence/target/environment.
-            # Lead/contributor assertions are distinct and do not resolve that disagreement.
+            # Action constraints retain their existing closed responsibility boundary.
             by_relation["conflict"] = by_relation.pop("self") + by_relation.pop("teammate")
-        for relation, rows in by_relation.items():
-            implementations = {r["implementation"] for r in rows} - {"unknown"}
-            releases = {r["release"] for r in rows} - {"unknown"}
-            cross = "released" in releases and bool(implementations & {"planned","not_implemented"})
+        for relation, scoped in by_relation.items():
+            implementations = {r["implementation"] for r in scoped} - {"unknown"}
+            releases = {r["release"] for r in scoped} - {"unknown"}
+            cross = "released" in releases and bool(implementations & {"planned", "not_implemented"})
             imp_conflict = cross or ("implemented" in implementations and len(implementations) > 1)
             implementation = ("conflict" if imp_conflict else next((state for state in
-                ("implemented","planned","not_implemented") if state in implementations), "unknown"))
+                ("implemented", "planned", "not_implemented") if state in implementations), "unknown"))
             release = "conflict" if cross or len(releases) > 1 else next(iter(releases), "unknown")
             if relation == "conflict":
                 implementation = release = "unknown"
-            out.append({"fact_id":f"{card_id}:{field}:{index}", "field":field, "index":index, "value":value,
-                        "attribution":relation, "target":target, "environment":env,
-                        "implementation":implementation, "release":release,
-                        "sources":[{**r["source"], "attribution":r["attribution"],
-                                    "implementation":r["implementation"], "release":r["release"],
-                                    **({"result_review": r["result_review"]} if "result_review" in r else {})} for r in rows]})
+            out.append({"fact_id": f"{card_id}:{field}:{index}", "field": field, "index": index, "value": value,
+                        "attribution": relation, "target": target, "environment": env,
+                        "implementation": implementation, "release": release,
+                        "sources": _scope_sources(scoped)})
     return out
 
 
+def _review_bases(card_id, bound, checked, bindings, refs, documents):
+    bases = {}
+    for row in checked:
+        if row["field"] != "results":
+            continue
+        position = tuple(row[key] for key in ("field", "index", "value"))
+        if position in bases:
+            continue
+        peers = [peer for peer in bound
+                 if tuple(peer[key] for key in ("field", "index", "value")) == position]
+        if any(peer not in checked for peer in peers):
+            continue
+        bases[position] = result_review_basis(result_review_input(
+            card_id, row, bound, bindings, refs, documents))
+    return bases
+
+
+def _current_review(row, bases):
+    basis = bases.get(tuple(row[key] for key in ("field", "index", "value")))
+    return basis is not None and row.get("result_review", {}).get("basis_sha256") == basis
+
+
 def project_fact_scope(doc, refs, bindings, *, documents):
-    """Return only read-time source-revalidated, reviewed assertions to Evidence detail."""
+    """Show original scopes; expose a verdict only when its actual dependency set is current."""
     scalars = doc["scalars"]
     if scalars.get("candidate_pool_eligible") != "true" or not scalars.get("id"):
         return []
-    return _project_scopes(scalars["id"], _checked_rows(doc, _saved(scalars), refs, bindings, documents))
+    bound = _saved(scalars)
+    checked = _checked_rows(doc, bound, refs, bindings, documents)
+    bases = _review_bases(scalars["id"], bound, checked, bindings, refs, documents)
+    visible = [row if _current_review(row, bases)
+               else {key: val for key, val in row.items() if key != "result_review"} for row in checked]
+    return _project_scopes(scalars["id"], visible)
 
 
 def _current_scope_rows(doc, material_dir, *, card_id, validated_sources=None):
@@ -220,7 +316,7 @@ def _current_scope_rows(doc, material_dir, *, card_id, validated_sources=None):
     scalars = doc["scalars"]
     rows = _saved(scalars)
     if not rows:
-        return [], []
+        return [], [], {}
     if scalars.get("id") != card_id:
         raise ValueError("fact_scope_card_identity_mismatch")
     from tools.infra.evidence_sources import assert_source_snapshot, validated_source_inputs
@@ -235,37 +331,20 @@ def _current_scope_rows(doc, material_dir, *, card_id, validated_sources=None):
     if not isinstance(rows, list) or any(row not in bound for row in rows):
         raise ValueError("fact_scope_unverifiable")
     _require_unique_sources(bound, sources.documents)
-    return bound, _retained(bound, {**scalars, **doc["lists"]}, bindings, refs, validate=_checked_stored)
+    checked = _retained(bound, {**scalars, **doc["lists"]}, bindings, refs, validate=_checked_stored)
+    return bound, checked, _review_bases(card_id, bound, checked, bindings, refs, sources.documents)
 
 
-def _result_reviews(card_id, bound, checked):
-    """Select a complete supporting row; never combine verdicts or count source votes."""
+def _result_reviews(card_id, checked, bases):
+    """Select one independently supported original row from the current reviewed context."""
     out = {}
     for row in checked:
         if (row["field"] != "results" or row["attribution"] not in {"self", "team_lead", "contributor"}
-                or row.get("result_review", {}).get("outcome") != "established"):
-            continue
-        occurrence = (row["field"], row["index"], row["value"])
-        peers = [peer for peer in bound
-                 if tuple(peer[key] for key in ("field", "index", "value")) == occurrence]
-        # Unclassified stored constraints cannot be silently discarded to obtain a positive.
-        if any(peer not in checked for peer in peers):
-            continue
-        related = [peer for peer in peers
-                   if (peer["target"], peer["environment"]) == (row["target"], row["environment"])]
-        projected = _project_scopes(card_id, related)
-        implementations = {peer["implementation"] for peer in related} - {"unknown"}
-        releases = {peer["release"] for peer in related} - {"unknown"}
-        conflict = (any(peer["attribution"] == "conflict" for peer in projected)
-                    or ("implemented" in implementations and len(implementations) > 1)
-                    or len(releases) > 1
-                    or ("released" in releases and bool(implementations & {"planned", "not_implemented"}))
-                    or any(peer.get("result_review", {}).get("outcome") == "not_established" for peer in related))
-        if conflict:
+                or row.get("result_review", {}).get("outcome") != "established"
+                or not _current_review(row, bases)):
             continue
         fid = f'{card_id}:results:{row["index"]}'
-        # A missing or different measured proposition is not contrary evidence. Prefer
-        # an entire supporting measured row without taking any field from another row.
+        # No source vote or cross-row assembly: keep the chosen row's own verdict and quote.
         if fid not in out or (out[fid]["result_review"]["measurement_quote"] is None
                               and row["result_review"]["measurement_quote"] is not None):
             out[fid] = row
@@ -276,29 +355,31 @@ def current_result_reviews(doc, material_dir, *, card_id, validated_sources=None
     """Current, source-bound complete results shared by both renderers and quality."""
     if doc["scalars"].get("candidate_pool_eligible") != "true":
         return {}
-    bound, checked = _current_scope_rows(doc, material_dir, card_id=card_id,
-                                        validated_sources=validated_sources)
-    return _result_reviews(card_id, bound, checked)
+    bound, checked, bases = _current_scope_rows(doc, material_dir, card_id=card_id,
+                                               validated_sources=validated_sources)
+    return _result_reviews(card_id, checked, bases)
 
 
 def personal_claim_exclusions(doc, material_dir, *, card_id, validated_sources=None):
     """Keep action scope closed; only independently established complete results open."""
-    bound, checked = _current_scope_rows(doc, material_dir, card_id=card_id,
-                                        validated_sources=validated_sources)
-    allowed = (_result_reviews(card_id, bound, checked)
+    bound, checked, bases = _current_scope_rows(doc, material_dir, card_id=card_id,
+                                               validated_sources=validated_sources)
+    allowed = (_result_reviews(card_id, checked, bases)
                if doc["scalars"].get("candidate_pool_eligible") == "true" else {})
     return frozenset(f'{card_id}:{row["field"]}:{row["index"]}' for row in bound).difference(allowed)
 
 
 def nonpersonal_reviewed_fact_ids(doc, material_dir, *, card_id, validated_sources):
-    """Current, source-bound negative attribution only; ambiguous scopes do not prove it."""
+    """Preserve explicit action attribution constraints; result availability is separate."""
     if doc["scalars"].get("candidate_pool_eligible") != "true":
         return frozenset()
-    bound, checked = _current_scope_rows(doc, material_dir, card_id=card_id,
-                                        validated_sources=validated_sources)
-    unknown = {f'{card_id}:{row["field"]}:{row["index"]}' for row in bound if row not in checked}
+    bound, checked, _ = _current_scope_rows(doc, material_dir, card_id=card_id,
+                                           validated_sources=validated_sources)
+    unknown = {f'{card_id}:{row["field"]}:{row["index"]}' for row in bound
+               if row["field"] == "actions" and row not in checked}
     grouped = defaultdict(set)
-    for row in _project_scopes(card_id, checked):
+    actions = [row for row in checked if row["field"] == "actions"]
+    for row in _project_scopes(card_id, actions):
         grouped[row["fact_id"]].add(row["attribution"])
     return frozenset(fid for fid, relations in grouped.items()
                      if fid not in unknown and relations <= {"teammate", "conflict"})

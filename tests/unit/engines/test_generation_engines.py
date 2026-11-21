@@ -25,6 +25,7 @@ def write_reviewed_result_sources(card_path, measurement_quotes, *, material_dir
     from tools.infra.material_documents import split_material_documents
     from tools.infra.persistence.yaml_io import parse_simple_yaml
     from tools.infra.evidence_sources import validated_source_inputs
+    from tools.infra.evidence_fact_scope import current_result_reviews, result_review_basis, result_review_input
 
     doc = parse_simple_yaml(card_path.read_text())
     card_id = card_path.stem
@@ -52,12 +53,20 @@ def write_reviewed_result_sources(card_path, measurement_quotes, *, material_dir
         "reviewed_facts_json": json.dumps({"fact_scope_v1": rows}),
     })
     doc["lists"]["source_material_ids"] = [material_id]
+    sources = validated_source_inputs(doc, material_dir)
+    bindings = json.loads(doc["scalars"]["field_sources_json"])
+    for row in rows:
+        review_input = result_review_input(card_id, row, rows, bindings, [reference], sources.documents)
+        row["result_review"]["basis_sha256"] = result_review_basis(review_input)
+    doc["scalars"]["reviewed_facts_json"] = json.dumps({"fact_scope_v1": rows})
+    assert set(current_result_reviews(doc, material_dir, card_id=card_id, validated_sources=sources)) == {
+        f"{card_id}:results:{index}" for index in measurement_quotes}
     lines = [key + ": " + json.dumps(value, ensure_ascii=False) for key, value in doc["scalars"].items()]
     for key, values in doc["lists"].items():
         lines.append(key + ":")
         lines.extend("  - " + json.dumps(value, ensure_ascii=False) for value in values)
     card_path.write_text("\n".join(lines) + "\n")
-    return validated_source_inputs(doc, material_dir)
+    return sources
 
 
 @pytest.fixture

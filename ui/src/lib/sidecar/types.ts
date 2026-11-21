@@ -64,7 +64,7 @@ export type EvidenceFactScopeProjection=EvidenceFactPosition & {fact_id:string;a
   environment:EvidenceFactEnvironment;implementation:EvidenceFactImplementation|"conflict";
   release:EvidenceFactRelease|"conflict";sources:(EvidenceFactScopeSource & {
     attribution:EvidenceFactAttribution;implementation:EvidenceFactImplementation;release:EvidenceFactRelease;
-    result_review?:{outcome:"established"|"not_established"|"unknown";measurement_quote:string|null;rationale:string};
+    result_review?:{outcome:"established"|"not_established"|"unknown";measurement_quote:string|null;rationale:string;basis_sha256:string};
   })[]};
 export interface EvidenceDetail {
   fact_scope_review?: EvidenceFactScopeProjection[];

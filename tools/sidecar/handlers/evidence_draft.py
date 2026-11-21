@@ -14,7 +14,9 @@ from typing import Any
 from uuid import uuid4
 
 from tools.infra import evidence_provenance as provenance
-from tools.infra.evidence_fact_scope import KEY as FACT_SCOPE_KEY, apply_fact_scope
+from tools.infra.evidence_fact_scope import (
+    KEY as FACT_SCOPE_KEY, apply_fact_scope, result_review_basis, result_review_input,
+)
 from tools.infra.evidence_sources import (
     SOURCE_FIELDS,
     assert_source_snapshot,
@@ -443,7 +445,7 @@ def handle_evidence_generate_draft(params: dict[str, Any]) -> dict[str, Any]:
 
 
 
-def _review_result_scope(scope, source_text):
+def _review_result_scopes(review_input):
     """Use the configured client for a separate source review, never generator self-review."""
     from tools.engines.evidence.validator import parse_result_review, result_review_messages
     from tools.infra.llm.client import llm_request_available
@@ -460,13 +462,13 @@ def _review_result_scope(scope, source_text):
         client = _origin.LLMClient(base_url=base_url, api_key=api_key, timeout=int(config["timeout"]),
                                    provider=provider, thinking_enabled=False,
                                    reasoning_effort=str(config.get("thinking_effort", "high")))
-        payload = {"model": model, "messages": result_review_messages(scope, source_text),
+        payload = {"model": model, "messages": result_review_messages(review_input),
                    "temperature": float(config["temperature"]), "response_format": {"type": "json_object"}}
         response = client.post_json(client.chat_completions_url, payload)
         content = client.extract_content(response)
     except Exception:
         raise ValueError("result_review_unavailable") from None
-    return parse_result_review(content, scope)
+    return parse_result_review(content, review_input["scopes"])
 
 
 def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
@@ -478,11 +480,12 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(review, dict) or str(review.get("decision", "")) != "approved":
         raise ValueError("review_required_before_save")
 
-    if any("result_review" in item for item in (params, draft, review)):
+    server_fields = {"result_review", "basis_sha256"}
+    if any(server_fields.intersection(item) for item in (params, draft, review)):
         raise ValueError("result_review_server_owned")
     for field in ("field_sources", "source_documents"):
         items = draft.get(field)
-        if isinstance(items, list) and any(isinstance(item, dict) and "result_review" in item for item in items):
+        if isinstance(items, list) and any(isinstance(item, dict) and server_fields.intersection(item) for item in items):
             raise ValueError("result_review_server_owned")
 
     scope_provided = "fact_scope" in review
@@ -614,9 +617,13 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         if existing_path.read_bytes() != original_bytes:
             raise ValueError("evidence_review_changed")
         claim = scopes[-1]
-        source = claim["source"]
-        result_review = _review_result_scope(claim, documents[(source["material_id"], source["document_id"])])
-        scopes[-1] = {**claim, "result_review": result_review}
+        review_input = result_review_input(evidence_id, claim, scopes, field_sources, source_documents, documents)
+        basis = result_review_basis(review_input)
+        result_reviews = _review_result_scopes(review_input)
+        peers = [index for index, row in enumerate(scopes)
+                 if all(row[key] == claim[key] for key in ("field", "index", "value"))]
+        for index, result_review in zip(peers, result_reviews, strict=True):
+            scopes[index] = {**scopes[index], "result_review": {**result_review, "basis_sha256": basis}}
     if scopes:
         reviewed_facts[FACT_SCOPE_KEY] = scopes
     now = _origin._utcnow_iso()

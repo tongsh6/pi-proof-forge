@@ -21,9 +21,16 @@ def result_review_model(monkeypatch):
         state["calls"].append((url, payload))
         if state["during_call"]:
             state["during_call"]()
-        if isinstance(state["reply"], Exception):
-            raise state["reply"]
-        content = state["reply"] if isinstance(state["reply"], str) else json.dumps(state["reply"], ensure_ascii=False)
+        reply = state["reply"]
+        if callable(reply):
+            reply = reply(payload)
+        elif isinstance(reply, dict):
+            request = json.loads(payload["messages"][-1]["content"])
+            reply = {"reviews": [{"review_index": scope["review_index"], **reply}
+                                 for scope in request["scopes"]]}
+        if isinstance(reply, Exception):
+            raise reply
+        content = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
         return {"choices": [{"message": {"content": content}}]}
 
     client = SimpleNamespace(chat_completions_url="http://127.0.0.1:8000/v1/chat/completions",
@@ -346,37 +353,59 @@ def test_result_review_save_uses_independent_source_and_persists_verdict(
     assert len(result_review_model["calls"]) == 1
     _, payload = result_review_model["calls"][0]
     request = json.loads(payload["messages"][-1]["content"])
-    assert request["value"] == scope["value"]
-    assert request["source"] == scope["source"]
-    assert scope["value"] in request["source_text"]
-    assert params["draft"]["actions"][0] in request["source_text"]
+    assert request["fact"] == {"card_id": path.stem, "field": "results", "index": 0, "value": scope["value"]}
+    reviewed_scope, = request["scopes"]
+    assert reviewed_scope["source"] == scope["source"] and reviewed_scope["review_index"] == 0
+    source_document, = request["documents"]
+    assert scope["value"] in source_document["text"]
+    assert params["draft"]["actions"][0] in source_document["text"]
+    expected_review = {**reply, "basis_sha256": evidence_fact_scope.result_review_basis(request)}
     doc = parse_simple_yaml(path.read_text())
     row, = json.loads(doc["scalars"]["reviewed_facts_json"])["fact_scope_v1"]
-    assert row["result_review"] == reply
+    assert row["result_review"] == expected_review
     assert row["value"] == scope["value"]
     assert row["source"] == scope["source"]
-    assert _live_scope(path)[0]["sources"][0]["result_review"] == reply
+    assert _live_scope(path)[0]["sources"][0]["result_review"] == expected_review
     current = evidence_fact_scope.current_result_reviews(doc, root, card_id=path.stem)
     assert bool(current) is (outcome == "established")
     if current:
         assert current[f"{path.stem}:results:0"] == row
 
 
-@pytest.mark.parametrize("location", ["draft", "review", "scope", "binding", "document"])
+@pytest.mark.parametrize("location", ["params", "draft", "review", "scope", "source", "binding", "document"])
+@pytest.mark.parametrize("server_field", ["result_review", "basis_sha256"])
 def test_result_review_save_rejects_caller_supplied_verdict_without_write(
-        sample, result_review_model, location):
+        sample, result_review_model, location, server_field):
     _, path, params, scope = _scoped_review(sample, field="results")
     params["review"]["fact_scope"] = scope
-    target = {"draft": params["draft"], "review": params["review"], "scope": scope,
-              "binding": params["draft"]["field_sources"][-1],
+    target = {"params": params, "draft": params["draft"], "review": params["review"], "scope": scope,
+              "source": scope["source"], "binding": params["draft"]["field_sources"][-1],
               "document": params["draft"]["source_documents"][0]}[location]
-    target["result_review"] = {"outcome": "established",
-                              "measurement_quote": scope["value"], "rationale": "调用者自报"}
+    target[server_field] = ("0" * 64 if server_field == "basis_sha256" else
+                            {"outcome": "established", "measurement_quote": scope["value"],
+                             "rationale": "调用者自报"})
     before = path.read_bytes()
     with pytest.raises(ValueError, match="result_review|fact_scope"):
         evidence.handle_evidence_save_draft(params)
     assert path.read_bytes() == before
     assert result_review_model["calls"] == []
+
+
+@pytest.mark.parametrize("sample", [(
+    ["整理字段说明。"],
+    ["已交付字段 basis_sha256 与 result_review 的说明手册。"],
+)], indirect=True)
+def test_result_review_server_field_names_in_source_text_are_ordinary_data(sample, result_review_model):
+    _, path, params, scope = _scoped_review(sample, field="results")
+    result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                    "rationale": "完整原文记录了说明手册交付。"}
+    params["review"]["fact_scope"] = scope
+    evidence.handle_evidence_save_draft(params)
+    assert len(result_review_model["calls"]) == 1
+    source, = _live_scope(path)[0]["sources"]
+    assert source["quote"] == scope["value"]
+    assert source["result_review"]["outcome"] == "established"
+    assert len(source["result_review"]["basis_sha256"]) == 64
 
 
 @pytest.mark.parametrize("failure", [
@@ -393,7 +422,7 @@ def test_result_review_save_failure_cannot_partially_write(sample, result_review
     elif failure == "invalid_json":
         result_review_model["reply"] = "not JSON"
     elif failure == "duplicate_key":
-        result_review_model["reply"] = '{"outcome":"not_established","outcome":"established","measurement_quote":null,"rationale":"相反重复键"}'
+        result_review_model["reply"] = '{"reviews":[{"review_index":0,"outcome":"not_established","outcome":"established","measurement_quote":null,"rationale":"相反重复键"}]}'
     elif failure == "extra_field":
         result_review_model["reply"]["measured"] = True
     elif failure == "foreign_quote":
@@ -458,14 +487,128 @@ def test_result_review_lifecycle_preserves_only_current_server_authority(sample,
     assert current() == {} and len(result_review_model["calls"]) == 1
 
 
+@pytest.mark.parametrize("basis_state", ["missing", "stale"])
+def test_result_review_old_basis_survives_as_scope_without_credit_until_current_batch(
+        sample, result_review_model, basis_state):
+    from tools.engines.generation.fact_index import build_fact_index
+    from tools.engines.generation.resume_renderer import load_cards
+    from tools.infra.evidence_fact_scope import current_result_reviews, result_review_basis
+    from tools.infra.persistence.yaml_io import dump_yaml
+
+    root, path, params, first = _scoped_review(sample, field="results")
+    result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                    "rationale": "主来源完整记录已完成验收。"}
+    params["review"]["fact_scope"] = first
+    evidence.handle_evidence_save_draft(params)
+    fid = f"{path.stem}:results:0"
+    doc = parse_simple_yaml(path.read_text())
+    snapshot = json.loads(doc["scalars"]["reviewed_facts_json"])
+    original_row, = snapshot["fact_scope_v1"]
+    if basis_state == "missing":
+        original_row["result_review"].pop("basis_sha256")
+    else:
+        original_row["result_review"]["basis_sha256"] = "0" * 64
+    doc["scalars"]["reviewed_facts_json"] = json.dumps(snapshot, ensure_ascii=False)
+    path.write_text(dump_yaml(doc["scalars"], doc["lists"]))
+
+    def assert_no_current_credit():
+        current = parse_simple_yaml(path.read_text())
+        assert current_result_reviews(current, root, card_id=path.stem) == {}
+        visible, = _live_scope(path)
+        source, = visible["sources"]
+        assert visible["value"] == first["value"] and source["quote"] == first["source"]["quote"]
+        assert "result_review" not in source
+        index = build_fact_index(load_cards(path.parent, [path.stem], root))
+        assert index.get(fid) is None
+        assert index.get(f"{path.stem}:actions:0") is not None
+
+    assert_no_current_credit()
+    evidence.handle_evidence_update({"meta": META, "evidence_id": path.stem,
+                                     "patch": {"title": "保留原事实的新标题"}})
+    params["draft"]["title"] = "保留原事实的新标题"
+    params["review"] = {"decision": "approved"}
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    assert_no_current_credit()
+    assert len(result_review_model["calls"]) == 1
+
+    source_text = evidence.handle_read_material_document({
+        "material_id": first["source"]["material_id"],
+        "document_id": first["source"]["document_id"],
+    })["text"]
+    second = {**first, "source": {**first["source"], "quote": source_text}}
+    params["draft"]["field_sources"].append({
+        "field": "results", "value": first["value"], "quote": source_text,
+        "material_id": first["source"]["material_id"], "document_id": first["source"]["document_id"],
+    })
+    params["review"] = {"decision": "approved", "fact_scope": second}
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    assert len(result_review_model["calls"]) == 2
+    request = json.loads(result_review_model["calls"][-1][1]["messages"][-1]["content"])
+    assert len(request["scopes"]) == 2
+    assert {row["source"]["quote"] for row in request["scopes"]} == {first["source"]["quote"], source_text}
+    assert all("result_review" not in row for row in request["scopes"])
+    current_doc = parse_simple_yaml(path.read_text())
+    rows = json.loads(current_doc["scalars"]["reviewed_facts_json"])["fact_scope_v1"]
+    assert len(rows) == 2 and all(row["result_review"]["basis_sha256"] == result_review_basis(request) for row in rows)
+    current = current_result_reviews(current_doc, root, card_id=path.stem)
+    assert current[fid]["source"] == first["source"]
+    assert current[fid]["result_review"]["outcome"] == "established"
+
+
+@pytest.mark.parametrize("failure", ["missing_second", "invalid_second"])
+def test_result_review_batch_failure_keeps_first_row_and_entire_card_unchanged(
+        sample, result_review_model, failure):
+    from tools.infra.evidence_fact_scope import current_result_reviews
+
+    root, path, params, first = _scoped_review(sample, field="results")
+    result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                    "rationale": "主来源独立支持完整已完成交付。"}
+    params["review"]["fact_scope"] = first
+    evidence.handle_evidence_save_draft(params)
+    before = path.read_bytes()
+    previous = current_result_reviews(parse_simple_yaml(path.read_text()), root, card_id=path.stem)
+    source_text = evidence.handle_read_material_document({
+        "material_id": first["source"]["material_id"],
+        "document_id": first["source"]["document_id"],
+    })["text"]
+    second = {**first, "source": {**first["source"], "quote": source_text}}
+    params["draft"]["field_sources"].append({
+        "field": "results", "value": first["value"], "quote": source_text,
+        "material_id": first["source"]["material_id"], "document_id": first["source"]["document_id"],
+    })
+    params["review"] = {"decision": "approved", "fact_scope": second}
+    params["expected_sha256"] = hashlib.sha256(before).hexdigest()
+
+    def incomplete_batch(payload):
+        request = json.loads(payload["messages"][-1]["content"])
+        assert len(request["scopes"]) == 2
+        first_row, second_row = request["scopes"]
+        answers = [{"review_index": first_row["review_index"], "outcome": "unknown",
+                    "measurement_quote": None, "rationale": "本次第一行拟更新为缺证。"}]
+        if failure == "invalid_second":
+            answers.append({"review_index": second_row["review_index"], "outcome": "established",
+                            "measurement_quote": "其他来源的实测指标。", "rationale": "第二行非法借用测量。"})
+        return {"reviews": answers}
+
+    result_review_model["reply"] = incomplete_batch
+    with pytest.raises(ValueError, match="result_review"):
+        evidence.handle_evidence_save_draft(params)
+    assert len(result_review_model["calls"]) == 2
+    assert path.read_bytes() == before
+    assert current_result_reviews(parse_simple_yaml(path.read_text()), root, card_id=path.stem) == previous
+    assert len(_live_scope(path)[0]["sources"]) == 1
+
+
 @pytest.mark.parametrize("sample", [(
-    ["保存完整测试记录。"],
+    ["本人完成预约能力的固定输入验收，并保存完整测试记录。"],
     ["测试环境固定输入下，响应时间减半；测试环境固定输入下，错误率降至千分之三。"],
 )], indirect=True)
 @pytest.mark.parametrize("case", ["different_measurements", "one_nonquant", "unrelated_unknown",
                                    "opposite_attribution", "opposite_outcome"])
 def test_result_review_projects_one_complete_supporting_row(sample, result_review_model, case):
-    from tools.infra.evidence_fact_scope import current_result_reviews
+    from tools.infra.evidence_fact_scope import current_result_reviews, result_review_basis
 
     root, path, params, first = _scoped_review(sample, field="results")
     first_reply = {"outcome": "established", "measurement_quote": "测试环境固定输入下，响应时间减半",
@@ -477,21 +620,63 @@ def test_result_review_projects_one_complete_supporting_row(sample, result_revie
     full_source = evidence.handle_read_material_document({
         "material_id": first["source"]["material_id"], "document_id": first["source"]["document_id"]})["text"]
     second = {**first, "source": {**first["source"], "quote": full_source}}
-    params["draft"]["field_sources"].append({"field": "results", "value": first["value"], "quote": full_source,
-        "material_id": first["source"]["material_id"], "document_id": first["source"]["document_id"]})
     second_reply = {"outcome": "established", "measurement_quote": "测试环境固定输入下，错误率降至千分之三。",
                     "rationale": "第二条也独立支持完整结果。"}
-    if case == "one_nonquant":
+    correction_text = None
+    if case.startswith("opposite"):
+        correction = ("此处记录的验收与测量实际均由同事完成，本人只整理报告，原本人验收归属有误。"
+                      if case == "opposite_attribution" else
+                      "此处两项数字实际都是预设验收目标，测试尚未执行，原实测记录有误。")
+        correction_text = "针对同一预约能力验收的正式更正：\n" + first["value"] + "\n" + correction
+        (root / "m3.txt").write_text(correction_text)
+        (root / "m3.meta.yaml").write_text(
+            'material_id: "m3"\nfilename: "m3.txt"\nextension: ".txt"\nlabel: "更正"\n')
+        document, = evidence.handle_list_material_documents({"material_id": "m3"})["items"]
+        reference = {"material_id": "m3", **{key: document[key] for key in ("document_id", "sha256", "label")}}
+        correction_text = evidence.handle_read_material_document({
+            "material_id": "m3", "document_id": reference["document_id"]})["text"]
+        second["source"] = {**{key: reference[key] for key in ("material_id", "document_id", "sha256")},
+                            "quote": correction_text}
+        params["draft"]["source_material_ids"].append("m3")
+        params["draft"]["source_documents"].append(reference)
+        params["draft"]["artifacts"].append({"type": "text_document", "ref": "m3", "label": "更正"})
+        if case == "opposite_attribution":
+            second["attribution"] = "teammate"
+            second_reply.update(measurement_quote=None, rationale="更正原文保留了同事的真实验收。")
+        else:
+            second["implementation"] = "planned"
+            second_reply.update(outcome="not_established", measurement_quote=None,
+                                rationale="当前更正原文明确说明原实测记录尚未发生。")
+    elif case == "one_nonquant":
         second_reply["measurement_quote"] = None
     elif case == "unrelated_unknown":
         second["target"] = "另一个独立适用对象"
         second_reply.update(outcome="unknown", measurement_quote=None)
-    elif case == "opposite_attribution":
-        second["attribution"] = "teammate"
-    elif case == "opposite_outcome":
-        second_reply.update(outcome="not_established", measurement_quote=None)
-    result_review_model["reply"] = second_reply
-    params["review"]["fact_scope"] = second
+    params["draft"]["field_sources"].append({
+        "field": "results", "value": first["value"], "quote": second["source"]["quote"],
+        "material_id": second["source"]["material_id"], "document_id": second["source"]["document_id"],
+    })
+    if correction_text is not None:
+        params["review"] = {"decision": "approved", "merge_sources": True}
+        params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        evidence.handle_evidence_save_draft(params)
+
+    def batch_review(payload):
+        request = json.loads(payload["messages"][-1]["content"])
+        received = [document["text"] for document in request["documents"]]
+        has_correction = correction_text is not None and correction_text in received and full_source in received
+        replies = []
+        for scope in request["scopes"]:
+            if has_correction and scope["source"] == first["source"]:
+                verdict = {"outcome": "not_established", "measurement_quote": None,
+                           "rationale": "实际收到的同次验收更正否定了原记录在本人范围下的断言。"}
+            else:
+                verdict = first_reply if scope["source"] == first["source"] else second_reply
+            replies.append({"review_index": scope["review_index"], **verdict})
+        return {"reviews": replies}
+
+    result_review_model["reply"] = batch_review
+    params["review"] = {"decision": "approved", "fact_scope": second}
     params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
     evidence.handle_evidence_save_draft(params)
     doc = parse_simple_yaml(path.read_text())
@@ -502,9 +687,245 @@ def test_result_review_projects_one_complete_supporting_row(sample, result_revie
     else:
         selected = current[f"{path.stem}:results:0"]
         assert selected in stored
-        assert selected["result_review"] == first_reply
+        request = json.loads(result_review_model["calls"][-1][1]["messages"][-1]["content"])
+        assert selected["result_review"] == {**first_reply, "basis_sha256": result_review_basis(request)}
         assert selected["source"] == first["source"]
     assert len(result_review_model["calls"]) == 2
+
+
+def _review_request_values(payload):
+    request = json.loads(payload["messages"][-1]["content"])
+
+    def walk(value):
+        yield value
+        if isinstance(value, dict):
+            for child in value.values():
+                yield from walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from walk(child)
+
+    return request, list(walk(request))
+
+
+def _save_result_with_peer_source(sample, result_review_model, case, *, adopt_peer=True, peer_field="results"):
+    """Exercise source merge and both real adopts; the stub sees only request data."""
+    from tools.infra.evidence_fact_scope import current_result_reviews
+
+    root, path, params, first = _scoped_review(sample, field="results")
+    value = first["value"]
+    first["target"] = "平台联合交付" if case == "split_responsibility" else "统一平台缓存"
+    first_text = evidence.handle_read_material_document({
+        "material_id": first["source"]["material_id"],
+        "document_id": first["source"]["document_id"],
+    })["text"]
+    peer_text, peer_scope, peer_review = {
+        "alias_correction": (
+            "2024 年 6 月 20 日归属更正。\n"
+            "接入中枢就是初版所称的统一平台缓存；以下更正针对同一次 6 月 18 日改造和验收。\n"
+            f"初版写道：『{value}』\n"
+            "上述本人主导记载有误；实际缓存改造及测量由同事完成，本人只负责日志对接。",
+            {"target": "接入中枢", "attribution": "teammate"},
+            {"outcome": "not_established", "measurement_quote": None,
+             "rationale": "此更正记录明确否认初版的本人主导归属。"},
+        ),
+        "earlier_prediction": (
+            "2024 年 5 月 2 日计划稿，当日尚未实施，也未采样。\n"
+            f"约定未来完成后才可使用的验收陈述是：『{value}』\n"
+            "这份记录只描述 5 月 2 日的计划，不否定以后发生的验收。",
+            {"implementation": "planned"},
+            {"outcome": "not_established", "measurement_quote": None,
+             "rationale": "该早期计划本身尚不能证明后来已经发生的测量。"},
+        ),
+        "split_responsibility": (
+            "2024 年 6 月 18 日平台联合交付的职责确认。\n"
+            f"{value}\n"
+            "本来源的同事归属仅指乙模块的缓存改造及测量；本人完成甲模块日志对接的记录无误。",
+            {"attribution": "teammate"},
+            {"outcome": "established", "measurement_quote": None,
+             "rationale": "完整句分别保留本人和同事的职责，没有把同事的测量归给本人。"},
+        ),
+        "unrelated_unknown": (
+            "另一项校园预约平台的资料缺口记录，与统一平台缓存改造不是同一对象或验收事件。\n"
+            f"仅用于说明待补资料格式的引文：『{value}』\n"
+            "本资料没有统一平台验收的证据，也没有否认该事件。",
+            {"target": "校园预约平台", "attribution": "unknown", "implementation": "planned"},
+            {"outcome": "unknown", "measurement_quote": None,
+             "rationale": "独立校园项目的资料不足，不能判断另一个项目的验收。"},
+        ),
+    }[case]
+    peer_value = params["draft"][peer_field][0]
+    if peer_field == "actions":
+        peer_text = "独立校园项目资料整理记录：\n" + peer_value + "\n本记录仅涉及这项资料整理。"
+    (root / "m3.txt").write_text(peer_text)
+    (root / "m3.meta.yaml").write_text(
+        'material_id: "m3"\nfilename: "m3.txt"\nextension: ".txt"\nlabel: "peer"\n')
+    document, = evidence.handle_list_material_documents({"material_id": "m3"})["items"]
+    reference = {"material_id": "m3", **{key: document[key] for key in ("document_id", "sha256", "label")}}
+    peer_text = evidence.handle_read_material_document({
+        "material_id": "m3", "document_id": reference["document_id"],
+    })["text"]
+    peer = {**first, **peer_scope, "field": peer_field, "value": peer_value, "source": {
+        **{key: reference[key] for key in ("material_id", "document_id", "sha256")},
+        "quote": peer_text,
+    }}
+    first_review = {
+        "outcome": "established",
+        "measurement_quote": None if case == "split_responsibility" else value,
+        "rationale": "完整验收原文支持本人已完成的贡献；归属和测试条件均保留。",
+    }
+
+    def review_from_received_sources(payload):
+        request, values = _review_request_values(payload)
+        strings = [item for item in values if isinstance(item, str)]
+        sees_first = any(first_text in item for item in strings)
+        sees_peer = any(peer_text in item for item in strings)
+        replies = []
+        for scope in request["scopes"]:
+            own_source = scope["source"]["material_id"]
+            if case == "alias_correction" and sees_first and sees_peer:
+                verdict = peer_review
+            elif own_source == first["source"]["material_id"] and sees_first:
+                verdict = first_review
+            elif own_source == "m3" and sees_peer:
+                verdict = peer_review
+            else:
+                verdict = {"outcome": "unknown", "measurement_quote": None,
+                           "rationale": "请求未提供本次核验所需的原文，不能推知其他来源结论。"}
+            replies.append({"review_index": scope["review_index"], **verdict})
+        return {"reviews": replies}
+
+    result_review_model["reply"] = review_from_received_sources
+    params["review"]["fact_scope"] = first
+    evidence.handle_evidence_save_draft(params)
+    fid = f"{path.stem}:results:0"
+    baseline = current_result_reviews(parse_simple_yaml(path.read_text()), root, card_id=path.stem)
+    from tools.infra.evidence_fact_scope import result_review_basis
+    first_request = json.loads(result_review_model["calls"][-1][1]["messages"][-1]["content"])
+    assert baseline[fid]["result_review"] == {**first_review, "basis_sha256": result_review_basis(first_request)}
+    peer_call_start = len(result_review_model["calls"])
+
+    params["draft"]["source_material_ids"].append("m3")
+    params["draft"]["source_documents"].append(reference)
+    params["draft"]["artifacts"].append({"type": "text_document", "ref": "m3", "label": "peer"})
+    params["draft"]["field_sources"].append({
+        "field": peer_field, "value": peer_value, "quote": peer_text,
+        "material_id": "m3", "document_id": reference["document_id"],
+    })
+    params["review"] = {"decision": "approved", "merge_sources": True}
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    if adopt_peer:
+        params["review"] = {"decision": "approved", "fact_scope": peer}
+        params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        evidence.handle_evidence_save_draft(params)
+
+    detail = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+    assert detail["results"] == [value]
+    assert detail["actions"] == params["draft"]["actions"]
+    visible_sources = [source for row in detail["fact_scope_review"] if row["fact_id"] == fid
+                       for source in row["sources"]]
+    expected_sources = {"m1", "m3"} if adopt_peer and peer_field == "results" else {"m1"}
+    assert {source["material_id"] for source in visible_sources} == expected_sources
+    return (root, path, first, peer, first_text, peer_text,
+            result_review_model["calls"][peer_call_start:])
+
+
+@pytest.mark.parametrize("sample,case,expected", [
+    ((["2024 年 6 月 18 日初版验收记录：统一平台缓存改造由本人主导。"],
+      ["本人主导统一平台缓存改造，2024 年 6 月 18 日在隔离测试环境、固定一千请求下响应时间减半。"]),
+     "alias_correction", False),
+    ((["2024 年 6 月 18 日完成实施和固定负载验收，以下为当日实测记录。"],
+      ["本人主导统一平台缓存改造，2024 年 6 月 18 日在隔离测试环境、固定一千请求下响应时间减半。"]),
+     "earlier_prediction", True),
+    ((["2024 年 6 月 18 日联合交付记录分别确认本人和同事的职责。"],
+      ["本人完成甲模块的日志对接；同事完成乙模块的缓存改造，测试环境下固定负载的响应时间减半。"]),
+     "split_responsibility", True),
+    ((["2024 年 6 月 18 日完成实施和固定负载验收，以下为当日实测记录。"],
+      ["本人主导统一平台缓存改造，2024 年 6 月 18 日在隔离测试环境、固定一千请求下响应时间减半。"]),
+     "unrelated_unknown", True),
+], indirect=["sample"], ids=["alias-correction", "later-measurement", "split-responsibility", "unrelated-unknown"])
+def test_result_review_cross_source_whole_fact_uses_actual_context(sample, result_review_model, case, expected):
+    from tools.infra.evidence_fact_scope import current_result_reviews
+
+    root, path, first, _peer, _first_text, _peer_text, _calls = _save_result_with_peer_source(
+        sample, result_review_model, case)
+    doc = parse_simple_yaml(path.read_text())
+    current = current_result_reviews(doc, root, card_id=path.stem)
+    assert bool(current) is expected
+    if expected:
+        chosen = current[f"{path.stem}:results:0"]
+        stored = json.loads(doc["scalars"]["reviewed_facts_json"])["fact_scope_v1"]
+        assert chosen in stored and chosen["source"] == first["source"]
+        assert chosen["value"] == first["value"]
+        assert chosen["result_review"]["measurement_quote"] == (
+            None if case == "split_responsibility" else first["value"])
+
+
+@pytest.mark.parametrize("sample", [(
+    ["2024 年 6 月 18 日初版验收记录：统一平台缓存改造由本人主导。"],
+    ["本人主导统一平台缓存改造，2024 年 6 月 18 日在隔离测试环境、固定一千请求下响应时间减半。"],
+)], indirect=True)
+def test_result_review_save_supplies_same_occurrence_sources_to_independent_reviewer(sample, result_review_model):
+    _root, _path, first, peer, first_text, peer_text, calls = _save_result_with_peer_source(
+        sample, result_review_model, "alias_correction")
+    assert calls
+    requests = [_review_request_values(payload)[1] for _url, payload in calls]
+    complete = []
+    for values in requests:
+        strings = [item for item in values if isinstance(item, str)]
+        objects = [item for item in values if isinstance(item, dict)]
+        texts_bound = all(any(text in item for item in strings) for text in (first_text, peer_text))
+        identities_bound = all(any(all(item.get(key) == source[key]
+                                       for key in ("material_id", "document_id", "sha256"))
+                                   for item in objects)
+                               for source in (first["source"], peer["source"]))
+        complete.append(texts_bound and identities_bound)
+    assert any(complete), "independent review never received both current sources for this exact Fact"
+
+
+@pytest.mark.parametrize("sample", [(
+    ["2024 年 6 月 18 日完成实施和固定负载验收，以下为当日实测记录。"],
+    ["本人主导统一平台缓存改造，2024 年 6 月 18 日在隔离测试环境、固定一千请求下响应时间减半。"],
+)], indirect=True)
+@pytest.mark.parametrize("case", ["alias_correction", "unrelated_unknown"])
+def test_result_review_new_same_fact_binding_pauses_old_authority_before_adopt(
+        sample, result_review_model, case):
+    from tools.infra.evidence_fact_scope import current_result_reviews
+
+    root, path, first, _peer, _first_text, _peer_text, calls = _save_result_with_peer_source(
+        sample, result_review_model, case, adopt_peer=False)
+    doc = parse_simple_yaml(path.read_text())
+    bindings = json.loads(doc["scalars"]["field_sources_json"])
+    assert {row["material_id"] for row in bindings
+            if row["field"] == "results" and row["value"] == first["value"]} == {"m1", "m3"}
+    stored = json.loads(doc["scalars"]["reviewed_facts_json"])["fact_scope_v1"]
+    assert len(stored) == 1 and stored[0]["source"] == first["source"]
+    assert calls == [], "a source binding alone has not performed the explicit result review"
+    assert current_result_reviews(doc, root, card_id=path.stem) == {}
+
+
+@pytest.mark.parametrize("sample", [(
+    ["为独立校园项目整理非功能测试资料。"],
+    ["本人主导统一平台缓存改造，2024 年 6 月 18 日在隔离测试环境、固定一千请求下响应时间减半。"],
+)], indirect=True)
+def test_result_review_other_fact_binding_does_not_change_current_result_basis(sample, result_review_model):
+    from tools.infra.evidence_fact_scope import current_result_reviews
+
+    root, path, first, peer, _first_text, peer_text, calls = _save_result_with_peer_source(
+        sample, result_review_model, "unrelated_unknown", adopt_peer=False, peer_field="actions")
+    doc = parse_simple_yaml(path.read_text())
+    bindings = json.loads(doc["scalars"]["field_sources_json"])
+    assert {row["material_id"] for row in bindings
+            if row["field"] == "results" and row["value"] == first["value"]} == {"m1"}
+    assert any(row["field"] == "actions" and row["value"] == peer["value"]
+               and row["material_id"] == "m3" for row in bindings)
+    assert first["value"] not in peer_text
+    assert calls == [], "an unrelated Fact binding does not require reviewing this result again"
+    current = current_result_reviews(doc, root, card_id=path.stem)
+    chosen = current[f"{path.stem}:results:0"]
+    assert chosen["source"] == first["source"] and chosen["value"] == first["value"]
+    assert chosen["result_review"]["measurement_quote"] == first["value"]
 
 
 def test_result_review_source_aba_is_rejected_by_selected_document_sha(sample, result_review_model, monkeypatch):
@@ -1023,29 +1444,34 @@ def test_scope_conflict_keeps_both_sources_and_revoke_keeps_sibling(sample):
     # Independent overall leadership and the teammate's other result are not conflicting.
     save_scope({**adopt, 'source':yes, 'attribution':'self'})
     save_scope({**adopt, 'source':no, 'attribution':'teammate'})
-    from tools.infra.evidence_fact_scope import nonpersonal_reviewed_fact_ids
+    from tools.infra.evidence_fact_scope import nonpersonal_reviewed_fact_ids, personal_claim_exclusions
     from tools.infra.evidence_sources import validated_source_inputs
 
     def match_limits():
         doc = parse_simple_yaml(path.read_text())
+        sources = validated_source_inputs(doc, root)
+        # The sibling result remains unavailable as personal support, without being
+        # labelled wholly nonpersonal by the action-attribution helper.
+        assert f"{path.stem}:results:0" in personal_claim_exclusions(
+            doc, root, card_id=path.stem, validated_sources=sources)
         return nonpersonal_reviewed_fact_ids(doc, root, card_id=path.stem,
-            validated_sources=validated_source_inputs(doc, root))
+            validated_sources=sources)
 
-    assert match_limits() == {f"{path.stem}:actions:0", f"{path.stem}:results:0"}
+    assert match_limits() == {f"{path.stem}:actions:0"}
     save_scope({**adopt, 'attribution':'team_lead', 'implementation':'unknown','release':'unknown'})
     rows = _live_scope(path)
     opposed, = [row for row in rows if row['attribution']=='conflict']
     assert {r['attribution'] for r in opposed['sources']} == {'self','teammate'}
     # A valid separately reviewed lead scope keeps the action from receiving
     # a global negative label; the exact teammate-only sibling stays restricted.
-    assert match_limits() == {f"{path.stem}:results:0"}
+    assert match_limits() == set()
     assert opposed['implementation'] == opposed['release'] == 'unknown'
     assert any(row['attribution']=='team_lead' and row['field']=='actions' for row in rows)
     assert any(row==peer for row in rows)
     save_scope({'kind':'revoke','field':'actions','index':0,'value':v})
     kept, = _live_scope(path)
     assert kept == peer
-    assert match_limits() == {f"{path.stem}:results:0"}
+    assert match_limits() == set()
     (root/'m1.txt').write_text('source-mutation')
     assert _live_scope(path) == []
 
@@ -1209,6 +1635,98 @@ def test_unclassified_prior_scope_keeps_exact_veto_until_explicit_review(sample)
     corrected, = _live_scope(path)
     assert corrected['attribution'] == 'contributor'
     assert projection() is None
+
+
+@pytest.mark.parametrize("sample,review_state,positive", [
+    ((["核对项目分工记录。"], ["本人完成甲模块的日志对接；同事完成乙模块的缓存改造。"]), "missing", False),
+    ((["核对项目分工记录。"], ["本人完成甲模块的日志对接；同事完成乙模块的缓存改造。"]), "old_basis", False),
+    ((["核对项目分工记录。"], ["本人完成甲模块的日志对接；同事完成乙模块的缓存改造。"]), "stale_basis", False),
+    ((["核对项目分工记录。"], ["本人完成甲模块的日志对接；同事完成乙模块的缓存改造。"]), "unknown", False),
+    ((["核对项目分工记录。"], ["同事完成乙模块的缓存改造。"]), "pure_teammate", False),
+    ((["核对项目分工记录。"], ["本人完成甲模块的日志对接；同事完成乙模块的缓存改造。"]), "mixed_teammate", False),
+    ((["核对项目分工记录。"], ["本人完成甲模块的日志对接；同事完成乙模块的缓存改造。"]), "mixed_personal", True),
+    ((["核对项目分工记录。"], ["本人完成甲模块的日志对接；同事完成乙模块的缓存改造。"]), "unscoped", True),
+], indirect=["sample"])
+def test_matching_scoped_result_requires_current_personal_review_without_inventing_conflict(
+        sample, result_review_model, review_state, positive):
+    import io
+    from tools.domain.assessment_support import positive_citations
+    from tools.engines.matching import semantic_matching
+    from tools.infra.evidence_fact_scope import nonpersonal_reviewed_fact_ids
+    from tools.infra.evidence_sources import validated_source_inputs
+    from tools.infra.llm.bounded_local import BoundedLocalClient
+    from tools.infra.persistence.yaml_io import dump_yaml
+
+    if review_state == "mixed_personal":
+        root, path, *_ = _save_result_with_peer_source(sample, result_review_model, "split_responsibility")
+    else:
+        root, path, params, scope = _scoped_review(sample, field="results")
+        if review_state != "unscoped":
+            params["review"]["fact_scope"] = {**scope, "attribution": "teammate"}
+            result_review_model["reply"] = {
+                "outcome": "unknown" if review_state == "unknown" else "established",
+                "measurement_quote": None,
+                "rationale": "此处完整分工可忠实呈现；该条范围不能把整句断言成纯同事成果。",
+            }
+            evidence.handle_evidence_save_draft(params)
+            if review_state in {"missing", "old_basis", "stale_basis"}:
+                doc = parse_simple_yaml(path.read_text())
+                snapshot = json.loads(doc["scalars"]["reviewed_facts_json"])
+                row, = snapshot["fact_scope_v1"]
+                if review_state == "missing":
+                    row.pop("result_review")
+                elif review_state == "old_basis":
+                    row["result_review"].pop("basis_sha256")
+                else:
+                    row["result_review"]["basis_sha256"] = "0" * 64
+                doc["scalars"]["reviewed_facts_json"] = json.dumps(snapshot, ensure_ascii=False)
+                path.write_text(dump_yaml(doc["scalars"], doc["lists"]))
+    doc = parse_simple_yaml(path.read_text())
+    fid = f"{path.stem}:results:0"
+    value = doc["lists"]["results"][0]
+    assert fid not in nonpersonal_reviewed_fact_ids(
+        doc, root, card_id=path.stem, validated_sources=validated_source_inputs(doc, root))
+    job = root.parent / "matching-result.yaml"
+    job.write_text('target_role: "平台工程师"\nmust_have:\n  - "平台功能交付"\n')
+    requests = []
+    client = BoundedLocalClient(model="synthetic", api_key="")
+
+    class FixedTransport:
+        def open(self, request, **kwargs):
+            data = json.loads(json.loads(request.data)["messages"][1]["content"])
+            requests.append(data)
+            if data["stage"] == "recall":
+                answer = {"cards": [{"id": path.stem, "score": 70, "reason": "完整分工相关",
+                                     "requirement_ids": ["r1"], "citations": [{"fact_id": fid}]}]}
+            else:
+                answer = {"assessments": [{
+                    "requirement_id": requirement["id"],
+                    "status": "supported" if positive else "conflict",
+                    "reason": "模型对当前引用的提名仍需应用校准。",
+                    "citations": [{"fact_id": fid, "candidate_support": True}],
+                } for requirement in data["requirements"]]}
+            return io.BytesIO(json.dumps({"choices": [{
+                "message": {"content": json.dumps(answer)}, "finish_reason": "stop",
+            }]}).encode())
+
+    client._opener = FixedTransport()
+    report = semantic_matching.run_semantic_matching(
+        job_path=job, evidence_files=[path], personal_profile=None, client=client,
+        model="synthetic", cache_dir=root.parent / "matching-cache", advisory=True)
+    assert [request["stage"] for request in requests] == ["recall", "assess"]
+    for request in requests:
+        fact = request["facts"][fid]
+        assert fact["text"] == value
+        if not positive:
+            assert "source_role" not in fact
+        if request["stage"] == "assess":
+            assert fact.get("candidate_support") is (None if positive else False)
+    assessment, = report["assessments"]
+    assert assessment["status"] == ("supported" if positive else "insufficient")
+    citation, = assessment["checks"][0]["citations"]
+    assert citation["fact_id"] == fid
+    assert citation.get("candidate_support") is (None if positive else False)
+    assert [item["fact_id"] for item, _ in positive_citations(assessment)] == ([fid] if positive else [])
 
 
 @pytest.mark.parametrize("sample", [

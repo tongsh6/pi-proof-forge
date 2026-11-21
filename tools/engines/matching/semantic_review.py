@@ -152,9 +152,11 @@ def validate_assessments(response, facts, requirements):
         if row['status'] != 'insufficient' and not row['citations']:
             missing_citations.append(row['requirement_id'])
         usable = list(candidate_citations(row['citations']))
-        if row['status'] in {'supported', 'partial'} and len(usable) < len(row['citations']):
+        if row['status'] == 'conflict' and row['citations'] and not usable:
+            row.update(status='insufficient', reason='当前引用缺少可用于判定冲突的依据，按证据不足处理。')
+        elif row['status'] in {'supported', 'partial'} and len(usable) < len(row['citations']):
             row.update(status='partial' if usable else 'insufficient',
-                       reason='复审限定的参与归属不能证明本人实践。')
+                       reason='受限引用当前不能证明本人实践。')
         cited=[facts[c['fact_id']] for c in usable]
         quoted='；'.join([*(c['quote'] for c in usable),*(q for f in cited for q in f.get('source_qualifiers',[]))])
         qualified=r'参与或负责|主导或深度参与|主导或参与'

@@ -37,6 +37,63 @@ def test_semantic_card_can_match_without_literal_keyword():
     assert rows[0]['score'] == 90
 
 
+@pytest.mark.parametrize("status", ["supported", "partial", "conflict"])
+def test_restricted_citation_alone_cannot_prove_support_or_conflict(status):
+    _, facts, requirements = fixtures()
+    fid = "e1:results:0"
+    facts[fid]["candidate_support"] = False
+    response = {"assessments": [{"requirement_id": "r1", "status": status,
+                                 "reason": "模型尝试从当前未核定的个人依据作出结论",
+                                 "citations": [{"fact_id": fid, "candidate_support": True}]}]}
+    row = engine().validate_assessments(response, facts, requirements)[0]
+    assert row["status"] == "insufficient"
+    assert row["citations"] == [{"fact_id": fid, "quote": facts[fid]["text"], "candidate_support": False}]
+    assert "非本人" not in row["reason"] and "不具备" not in row["reason"]
+
+
+def test_independent_usable_counterevidence_can_preserve_conflict():
+    _, facts, requirements = fixtures()
+    restricted, independent = "e1:results:0", "e2:actions:0"
+    facts[restricted]["candidate_support"] = False
+    facts[independent]["text"] = "当前方案明确只运行单实例，故障恢复不在已实现范围。"
+    response = {"assessments": [{"requirement_id": "r1", "status": "conflict",
+                                 "reason": "独立原文明确限定当前方案，不以未核定的记录作反证",
+                                 "citations": [{"fact_id": restricted}, {"fact_id": independent}]}]}
+    row = engine().validate_assessments(response, facts, requirements)[0]
+    assert row["status"] == "conflict"
+    assert [citation["fact_id"] for citation in row["citations"]] == [restricted, independent]
+    assert row["citations"][0]["candidate_support"] is False
+    assert "candidate_support" not in row["citations"][1]
+
+
+def test_current_complete_personal_fact_keeps_its_positive_citation():
+    _, facts, requirements = fixtures()
+    fid = "e1:results:0"
+    facts[fid]["text"] = "本人完成故障恢复设计，同事完成监控页面，整体通过测试验收。"
+    response = {"assessments": [{"requirement_id": "r1", "status": "supported",
+                                 "reason": "已核完整事实明确本人承担所需的故障恢复设计",
+                                 "citations": [{"fact_id": fid, "candidate_support": False}]}]}
+    row = engine().validate_assessments(response, facts, requirements)[0]
+    assert row["status"] == "supported"
+    assert row["citations"] == [{"fact_id": fid, "quote": facts[fid]["text"]}]
+
+
+def test_formal_report_from_before_current_scope_contract_is_not_reused(tmp_path):
+    infra = importlib.import_module("tools.engines.matching.semantic_matching")
+    _, facts, requirements = fixtures()
+    path = tmp_path / "matching.md"
+    path.write_text('matching_mode: "semantic"\n', encoding="utf-8")
+    report = {"method": "evidence-semantic-v6", "advisory_scope": False, "inputs": {},
+              "facts": facts, "requirements": requirements,
+              "assessments": [{"requirement_id": "r1", "status": "supported",
+                               "reason": "旧报告未核对当前结果范围", "citations": [citation()]}],
+              "matching_sha256": infra._sha(path.read_bytes())}
+    report["content_sha256"] = infra._sha(infra._json(report).encode())
+    path.with_suffix(".semantic.json").write_text(json.dumps(report), encoding="utf-8")
+    with pytest.raises(ValueError, match="semantic_report_changed"):
+        infra.load_semantic_report(path)
+
+
 def test_map_keyed_cards_are_normalized_before_validation():
     # 本地模型偶发把每卡一行输出为 {id: row} 对象；等价结构归一后仍逐项校验。
     cards, facts, requirements = fixtures()

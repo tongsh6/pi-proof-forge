@@ -44,6 +44,16 @@
 - outcome 为 `established|not_established|unknown`，针对完整 value；非 established 的 measurement_quote 必须 null。非空 quote 须是 value/source.quote 同次出现的连续完整量化实测命题，不限定数字写法，不是裸数字或另一段同文。客户端在 draft/review/source 中附 result_review 明确拒绝，不接收生成自评作为授权。
 - 核验不可用、格式无效、调用期间卡/源版本改变均失败且不部分保存，不静默改用其他 provider；有效 unknown/not_established 可按既有 advisory 保存待补证，不能获正文/量化信用。复审撤销、待审、来源失效沿原机制；仅标题变化且来源/事实/scope 未变可保留核定再审。此契约不增加 RPC、投递权限或第二套记录。
 
+2026-11-21 跨来源核验增量（切片 J，限定工程范围已完成）：请求仍使用原 results scope 采纳，不增加调用接口或客户端核定参数；当前服务端核定形状扩为 `result_review:{outcome,measurement_quote,rationale,basis_sha256}`。basis_sha256 为服务端生成的 SHA-256 摘要，绑定协议域、原 Fact 身份、当前同 Fact 全部精确来源绑定的身份/版本/quote（含未 adopt）及 scope 原声明，不含派生核定、标题或时间戳；客户端提供 result_review 或其依据明确拒绝，不接收模型自报依据。
+
+- 仅原 results adopt 触发批核：一次 HTTP 请求包含同一精确 Fact、全部相关 bindings/documents 及 scopes，每个 scope 附仅当次请求的整数 review_index。严格响应为 `{reviews:[{review_index,outcome,measurement_quote,rationale}]}`，索引集合与输入完整一一对应；model 仅提供三项语义结论和请求索引，不供 basis。各 quote 按该索引的原 row 主 source/value 校验，各主来源独立支持完整句；其他来源仅提供语境与真实反证，不移用实测信用。review_index 不持久化为业务身份。
+- 布尔索引、重复、遗漏、越界、多余行、任何额外键或单行协议/绑定无效，核验不可用及调用期间卡/源变化，整次保存失败，原卡不变；全部结果通过后，服务端将同次冻结原始集合的 basis_sha256 附原行，重验现有 CAS/来源快照，一次原子写入。删除旧单行传输路径，不保留兼容分支，不新增公有 RPC。普通来源合并/绑定变化不自动创建 scope 或重授信用。
+- outcome 与 measurement_quote 分别核验完整叙述及当前 scope 主体的量化责任关系；本人非量化交付与同事量化可在完整句中共存，当前主体无可归属量化时仍为 established/null。有原文依据的主导团队或参与共同成果按其实际范围保留，不要求独自实施或亲手测量；隐含主语由原文上下文核实，不补词或用词形授信。
+- 仅新增同 Fact 来源绑定而未重新核验时，旧依据不再匹配；普通重审不能给旧结论补算依据。旧 I 三字段记录可保留，但没有当前 J 依据时不返回可授权的核定，详情显示未核；unknown 仅表示已执行核验但证据不足。标题往返只在已有 J 依据及原事实/来源/scope 未变时保留恢复。
+- results 的详情保留原 scope/来源条件，不以 target 字面或枚举差异裁定语义冲突；真实时间推进与明确本人 A/同事 B 分工可保留，真实反证仍拒绝。matching 不反驳当前有效完整个人句，不把未知伪成非本人；actions 既有约束不改。J 已完成限定工程及纯合成应用链验收；不代表 rationale 清晰度、原生 UI、完整预览 RPC 或真实简历验收，不扩大投递授权。
+- matching 沿现有 candidate_support/审计引用处理使用限制，不新增字段：仅既有 scoped results 按当前完整个人核定可用性限制正证，未 scope 的匹配行为不改。candidate_support=false 不表示整句纯他人、不具备或 conflict；仅 false 引用的 conflict 必须降 insufficient 并保留原引用。若有独立可用引用，可按其自身明确反证保留 conflict，false 行不得借此升级反证。actions 原归属和使用约束保持，有当前有效个人 row 的诚实混合句保正用；不用 source_qualifiers 的词形规则补判语义。
+- 复用既有 semantic matching VERSION，将合同更新为 evidence-semantic-v7；内容 hash 与 inputs 均自洽的旧 v6 正式报告仍失效，不得经加载恢复旧候选使用权。无新增字段或旧版本兼容路径；请求缓存随现有 prompt/内容键变化，不能替代正式报告的合同版本校验。
+
 > 状态：active
 > 用途：冻结 Tauri host / React frontend / Python sidecar 之间的字段级 JSON-RPC contract，避免 UI 与 sidecar 并行开发时发生漂移。
 > 裁决关系：若本文件与 `ui/design/DESIGN.md` 的 JSON-RPC 摘要冲突，以本文件为准；若与更高层产品约束冲突，以 `ui/design/DESIGN.md` 与 `AIEF/context/tech/GUI_ARCHITECTURE.md` 回收修正。
@@ -408,7 +418,9 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
 }
 ```
 
-I 详情增量（限定工程范围已完成）：现有 `fact_scope_review[].sources[]` 可选返回服务端的 `result_review:{outcome,measurement_quote,rationale}`；与该 source 的 material_id/document_id/sha256/quote 一并展示。不存在表示未核定，不能默认补成 unknown 或从 implemented/released 推得实测。原复审 panel 只读显示各来源 outcome、完整实测命题或“无已核定量化”、说明与出处，不在聚合 scope 标整句实测，不增加“实测”勾选。当前批准及来源校验不成立时沿原投影撤权，UI 显示记录不授正文/评分信用。实际合成应用生产/消费链与组件行为已验证；不代表 rationale 文案、原生 UI 或完整预览 RPC 验收。自由文本 scope 别名的跨来源真实冲突仍按 R5 的实现缺口推进，不降低真实冲突必须拒绝的规范。
+I 详情增量（限定工程范围已完成）：现有 `fact_scope_review[].sources[]` 可选返回服务端的 `result_review:{outcome,measurement_quote,rationale}`；与该 source 的 material_id/document_id/sha256/quote 一并展示。不存在表示未核定，不能默认补成 unknown 或从 implemented/released 推得实测。原复审 panel 只读显示各来源 outcome、完整实测命题或“无已核定量化”、说明与出处，不在聚合 scope 标整句实测，不增加“实测”勾选。当前批准及来源校验不成立时沿原投影撤权，UI 显示记录不授正文/评分信用。实际合成应用生产/消费链与组件行为已验证；不代表 rationale 文案、原生 UI 或完整预览 RPC 验收。I 验收时尚未完成别名跨来源核验；后续 J 的当前集合及有限合成覆盖见 R5，不降低真实冲突必须拒绝的规范，不声称全部语境已覆盖。
+
+J 详情契约（限定工程范围已完成）：sources[].result_review 仅在当前核验集合的 basis_sha256 有效时返回四字段核定。旧 I 缺依据或当前依据失配时保留原 scope/来源条件，不返回可授权 result_review，UI 显示未核，不能伪成 unknown 或自动补依据；结果 scope 不以状态枚举差异合成已证语义 conflict。此增量不增加页面、实测勾选或客户端核定写入。
 
 ### 6.6 evidence.import
 
