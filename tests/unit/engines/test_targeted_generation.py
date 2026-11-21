@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from tests.unit.engines.test_fact_index import reviewed_card_results
-from tests.unit.engines.test_generation_engines import write_reviewed_result_sources
+from tests.unit.engines.test_generation_engines import generation, write_reviewed_result_sources
 
 from tools.cli.commands import generate as generate_cli
 from tools.engines.generation.resume_renderer import build_template_resume, load_generation_context
@@ -772,3 +772,208 @@ def test_semantic_action_budget_keeps_new_parent_before_more_same_parent_quotes(
     assert [check["resume_status"] for check in assessment["requirements"][0]["checks"]] == [
         "supported", "supported", "not_present",
     ]
+
+
+@pytest.fixture
+def summary_profile(generation, monkeypatch):
+    """Confirm synthetic career through the existing App API before either consumer reads it."""
+    import hashlib
+    from tests.unit.engines.test_complete_resume import complete_profile
+    from tools.sidecar.handlers import profile as profile_api
+    from tools.engines.generation.resume_renderer import load_cards
+    from tools.engines.matching.semantic_matching import _facts, _profile_facts
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+
+    _, identity, _, paths = generation
+    monkeypatch.setattr(profile_api, "_PROFILE_PATH", paths["profile"])
+    monkeypatch.setattr("tools.infra.llm.client.LLMClient.post_json",
+                        lambda *args, **kwargs: pytest.fail("summary rendering must not call a model"))
+
+    def prepare(work, summary=""):
+        basic = complete_profile()
+        career = basic.pop("career")
+        career.update(summary=summary, work=work)
+        career["skills"][0]["evidence_ids"] = [identity.id]
+        meta = {"correlation_id": "synthetic-summary-contract"}
+        before = profile_api.handle_profile_get({"meta": meta})["profile"]
+        profile_api.handle_profile_update({
+            "meta": meta, "expected_revision": before["revision"],
+            "patch": {**basic, "career": career},
+        })
+        current = profile_api.handle_profile_get({"meta": meta})["profile"]
+        reviewed = profile_api.handle_profile_review({
+            "meta": meta, "expected_revision": current["revision"], "confirmed": True,
+        })["profile"]
+        assert reviewed["career_status"]["reviewed"] is True
+        raw = paths["profile"].read_bytes()
+        profile, target = load_generation_context(paths["profile"], paths["job"])
+        cards = load_cards(paths["card"].parent, [identity.id], require_saved_eligible=True)
+        facts = _profile_facts(paths["profile"])
+        facts.update(_facts(identity.id, parse_simple_yaml(paths["card"].read_text())))
+        base = {
+            "facts": facts, "advisory_scope": False,
+            "inputs": {
+                "personal_profile": {"path": str(paths["profile"]), "sha256": hashlib.sha256(raw).hexdigest()},
+                identity.id: {"path": str(paths["card"]), "sha256": cards[0]["source_sha256"]},
+            },
+        }
+        return generation, profile, target, cards, base, raw
+
+    return prepare
+
+
+def _summary_work(work_id, *, start="2020-01", end="", current=True,
+                  company="合成平台公司", title="技术负责人", scope="负责平台接口对接与交付核验",
+                  contributions=None):
+    return {
+        "id": work_id, "company": company, "department": "合成研发部", "title": title,
+        "start": start, "end": end, "current": current, "scope": scope,
+        "contributions": contributions or ["负责合成平台接口设计与稳定性验证"],
+        "evidence_ids": ["ec-engine"],
+    }
+
+
+def _summary_rows(markdown, claims):
+    lines = markdown.splitlines()
+    begin = lines.index("## 职业概述") + 2
+    end = next((number for number, line in enumerate(lines, 1)
+                if number >= begin and line.startswith("## ")), len(lines) + 1)
+    rows = [row for row in claims if begin <= row.get("render_line", 0) < end
+            and (row.get("field") == "career.summary"
+                 or row.get("field", "").endswith((".scope", ".contributions")))]
+    for row in rows:
+        assert row["source_kind"] == "personal_profile"
+        assert row["text"] in lines[row["render_line"] - 1]
+    assert len({row["render_line"] for row in rows}) == len(rows), "Each original summary Fact needs its own actual line"
+    return rows
+
+
+def _summary_render(prepared, citations):
+    from tools.engines.matching.semantic_review import resume_assessment
+
+    _, profile, target, cards, base, _ = prepared
+    report = _selection_report(base, [{
+        "requirement_id": "d1", "status": "supported",
+        "citations": [{"fact_id": fact_id} for fact_id in citations],
+    }], preferred=["ec-engine"])
+    report["requirements"][0]["kind"] = "responsibility"
+    claims = []
+    markdown = build_template_resume(
+        "A", cards, personal_profile=profile, job_context=target,
+        semantic_report=report, claims=claims,
+    )
+    return markdown, claims, report, resume_assessment(report, claims, occurrence_coverage_known=True)
+
+
+@pytest.mark.parametrize("explicit", ["", "以接口交付与服务稳定性为中心的跨任职工程实践。"])
+def test_summary_keeps_current_anchors_when_jd_prioritizes_the_third_contribution(summary_profile, explicit):
+    scope = (
+        "只负责合成预约平台与外部系统的接口对接、契约评审和验收协调，不承担外部系统的生产运维。"
+        "对接范围限于已签订接口契约内的数据字段与异常回执，不包含合作方的调度策略、数据库容量规划或线上值班。"
+    )
+    first = (
+        "在本机隔离测试环境和固定合成请求集下，主导接口重试协议设计与联调验证；"
+        "结论仅适用于该请求集与当时的配置，不代表真实生产流量、合作方交付结果或生产容量。"
+    )
+    second = "完成合成预约流程的接口边界说明与验收记录。"
+    third = "负责合成回执异常的逐项排查与可重放验证。"
+    current = _summary_work("current", scope=scope, contributions=[first, second, third])
+    ended = _summary_work("ended", start="2024-01", end="2025-12", current=False,
+                          company="后来已结束的合成公司", scope="负责历史系统的批次归档",
+                          contributions=["完成历史系统归档接口与调用方的联合验收。"])
+    prepared = summary_profile([current, ended], explicit)
+    first_id = "personal_profile:career.work.current.contributions:0"
+    third_id = "personal_profile:career.work.current.contributions:2"
+    markdown, claims, report, assessment = _summary_render(prepared, [third_id])
+    rows = _summary_rows(markdown, claims)
+    expected = ([("personal_profile:career.summary:0", explicit)] if explicit else []) + [
+        ("personal_profile:career.work.current.scope:0", scope), (first_id, first),
+    ]
+    assert [(row["fact_id"], row["text"]) for row in rows] == expected
+    scope_line = markdown.splitlines()[rows[-2]["render_line"] - 1]
+    assert all(value in scope_line for value in (current["company"], current["title"], "2020-01", "至今"))
+    assert not any("career.work.ended." in row["fact_id"] for row in rows)
+    assert assessment["requirements"][0]["resume_status"] == "supported"
+    work_start = markdown.splitlines().index("## 工作经历") + 1
+    third_claim, = [row for row in claims if row.get("fact_id") == third_id]
+    second_claim, = [row for row in claims
+                    if row.get("fact_id") == "personal_profile:career.work.current.contributions:1"]
+    assert work_start < third_claim["render_line"] < second_claim["render_line"]
+    assert [row for row in claims if row.get("fact_id") == first_id] == [rows[-1]]
+    assert markdown.count(first) == 1
+    # The judge receives full, individually locatable sentences; this is not a physical-line gate.
+    from tools.engines.evaluation.llm_judge import resume_lines
+    judged = {row["id"]: row for row in resume_lines(markdown)}
+    for row in rows:
+        assert row["text"] in judged[f"line#{row['render_line']}"]["text"]
+    assembler, identity, matching, paths = prepared[0]
+    guided = assembler.generate(matching, [identity], "summary-v1")
+    from tools.infra.persistence.review_snapshot import validate_generation_trace
+    assert validate_generation_trace(guided.content, guided.generation_trace)
+    assert [(row["fact_id"], row["text"]) for row in
+            _summary_rows(guided.content, guided.generation_trace["claims"])] == expected
+    assert guided.generation_trace["inputs"]["personal_profile"]["sha256"] == prepared[4]["inputs"]["personal_profile"]["sha256"]
+    assert paths["profile"].read_bytes() == prepared[5]
+
+
+def test_summary_keeps_parallel_current_roles_and_equal_text_as_distinct_occurrences(summary_profile):
+    same = "在各自约定接口范围内完成合成回执联调与独立验收。"
+    north = _summary_work("north", title="接口负责人", scope="负责北区系统的接口对接",
+                          contributions=[same, "完成北区调用方异常回执的核对。"])
+    south = _summary_work("south", title="联调工程师", scope="负责南区系统的接口对接",
+                          contributions=[same, "完成南区调用方异常回执的核对。"])
+    ended = _summary_work("ended", start="2018-01", end="2019-12", current=False,
+                          title="历史联调工程师", scope="负责历史系统的独立接口联调", contributions=[same])
+    prepared = summary_profile([north, south, ended], "保留跨任职的接口交付实践。")
+    required = [f"personal_profile:career.work.{work_id}.contributions:0"
+                for work_id in ("north", "south")]
+    markdown, claims, report, assessment = _summary_render(prepared, required)
+    rows = _summary_rows(markdown, claims)
+    expected_ids = ["personal_profile:career.summary:0"] + [
+        f"personal_profile:career.work.{work_id}.{field}:0"
+        for work_id in ("north", "south") for field in ("scope", "contributions")
+    ]
+    assert [row["fact_id"] for row in rows] == expected_ids
+    for row, work in ((rows[1], north), (rows[3], south)):
+        actual = markdown.splitlines()[row["render_line"] - 1]
+        assert all(value in actual for value in (work["company"], work["title"], "2020-01", "至今"))
+    assert rows[2]["text"] == rows[4]["text"] == same
+    assert rows[2]["render_line"] != rows[4]["render_line"]
+    assert markdown.count(same) == 3
+    assert all(len([row for row in claims if row.get("fact_id") == fact_id]) == 1 for fact_id in required)
+    historical, = [row for row in claims
+                   if row.get("fact_id") == "personal_profile:career.work.ended.contributions:0"]
+    assert historical["render_line"] > markdown.splitlines().index("## 工作经历") + 1
+    assert assessment["requirements"][0]["resume_status"] == "supported"
+    from tools.engines.matching.semantic_review import resume_assessment
+    missing_south = [row for row in claims if row.get("fact_id") != required[1]]
+    assert resume_assessment(report, missing_south, occurrence_coverage_known=True)["requirements"][0]["resume_status"] == "not_present"
+
+
+@pytest.mark.parametrize("explicit", ["", "已有确认的跨系统交付经历与接口设计实践。"])
+def test_summary_without_current_preserves_explicit_or_identified_historical_facts(summary_profile, explicit):
+    recent = _summary_work("recent", start="2024-01", end="2025-12", current=False,
+                           company="合成历史公司", scope="只负责历史批处理接口对接",
+                           contributions=["完成历史批处理回执接口与调用方的联合验收。"])
+    older = _summary_work("older", start="2020-01", end="2023-12", current=False,
+                          company="更早的合成公司", scope="负责早期工具接口设计",
+                          contributions=["完成早期工具接口的设计与合成数据验收。"])
+    prepared = summary_profile([older, recent], explicit)
+    first_id = "personal_profile:career.work.recent.contributions:0"
+    markdown, claims, _, assessment = _summary_render(prepared, [first_id])
+    rows = _summary_rows(markdown, claims)
+    expected = ([("personal_profile:career.summary:0", explicit)] if explicit else [
+        ("personal_profile:career.work.recent.scope:0", recent["scope"]),
+        (first_id, recent["contributions"][0]),
+    ])
+    assert [(row["fact_id"], row["text"]) for row in rows] == expected
+    assert assessment["requirements"][0]["resume_status"] == "supported"
+    first_claim, = [row for row in claims if row.get("fact_id") == first_id]
+    if explicit:
+        assert first_claim["render_line"] > markdown.splitlines().index("## 工作经历") + 1
+    else:
+        assert first_claim == rows[-1]
+        line = markdown.splitlines()[rows[0]["render_line"] - 1]
+        assert all(value in line for value in (recent["company"], recent["title"], "2024-01", "2025-12"))
+        assert "至今" not in line and "当前" not in line
+    assert any(row.get("fact_id") == "personal_profile:career.work.older.contributions:0" for row in claims)

@@ -76,20 +76,35 @@ def test_plan_contains_all_sections():
     plan = plan_for()
 
     assert isinstance(plan, ResumePlan)
-    assert plan.summary
+    assert plan.summary_fact_ids == (
+        "personal_profile:career.summary:0",
+        "personal_profile:career.work.w1.scope:0",
+        "personal_profile:career.work.w1.contributions:0",
+    )
     assert plan.work and isinstance(plan.work[0], WorkBlock)
     assert plan.projects and isinstance(plan.projects[0], ProjectBlock)
     assert plan.education
     assert plan.extras
 
 
-def test_work_block_has_scope_and_duties():
+def test_work_scope_and_representative_contribution_keep_distinct_sections():
     plan = plan_for()
 
     block = plan.work[0]
     assert block.company == "公司A" and block.period == "2021-03 ~ 至今"
     assert block.scope == "门店数字化平台建设"
-    assert block.duties, "工作经历必须有具体职责"
+    first_id = "personal_profile:career.work.w1.contributions:0"
+    assert first_id in plan.summary_fact_ids
+    assert all(fact.fact_id != first_id for fact in block.duties)
+    from tools.engines.generation.plan_renderer import render_plan
+    claims = []
+    markdown = render_plan(plan, build_fact_index([card()], career()),
+                           profile={}, job_context={}, claims=claims)
+    representative, = [row for row in claims if row.get("fact_id") == first_id]
+    assert representative["text"] == career()["work"][0]["contributions"][0]
+    assert representative["text"] in markdown.splitlines()[representative["render_line"] - 1]
+    assert markdown.splitlines().index("## 职业概述") + 1 < representative["render_line"]
+    assert representative["render_line"] < markdown.splitlines().index("## 工作经历") + 1
     # 同一事实不在工作经历与项目经历重复呈现：本夹具唯一成果已进入项目块。
     assert block.achievements == ()
 
@@ -295,8 +310,10 @@ def test_exact_supported_facts_are_selected_before_plan_and_keep_their_order():
     plan = build_resume_plan(idx, selected, data)
     assert [f.fact_id for f in plan.projects[0].key_work] == ["ec_a:actions:1", "ec_a:actions:0"]
 
-    data = dict(data, work=[dict(data["work"][0], contributions=["维护普通文档", "主持岗位所需质量评审"])])
-    exact = "personal_profile:career.work.w1.contributions:1"
+    data = dict(data, work=[dict(data["work"][0], contributions=[
+        "负责合成平台交付与接口设计", "维护普通文档", "主持岗位所需质量评审",
+    ])])
+    exact = "personal_profile:career.work.w1.contributions:2"
     fact = {"source_id": "personal_profile", "field": "career.work.w1.contributions", "text": "主持岗位所需质量评审"}
     report = {"advisory_scope": False, "inputs": {"personal_profile": {"sha256": "b"*64}}, "facts": {exact: fact},
               "requirements": [{"id": "d1", "kind": "responsibility", "text": "主持评审"}],
@@ -304,4 +321,5 @@ def test_exact_supported_facts_are_selected_before_plan_and_keep_their_order():
                               "citations": [{"fact_id": exact, "quote": fact["text"]}]}]}
     idx = build_fact_index([card()], data, report)
     plan = build_resume_plan(idx, select_facts(idx, semantic_report=report), data)
-    assert [f.fact_id for f in plan.work[0].duties][:2] == [exact, exact[:-1] + "0"]
+    assert [f.fact_id for f in plan.work[0].duties][:2] == [exact, exact[:-1] + "1"]
+    assert "personal_profile:career.work.w1.contributions:0" in plan.summary_fact_ids

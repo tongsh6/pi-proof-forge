@@ -10,7 +10,7 @@ import re
 from tools.domain.quality_text import render_fact_text
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.generation.fact_index import Fact, FactIndex
-from tools.engines.generation.resume_plan import ResumePlan
+from tools.engines.generation.resume_plan import ResumePlan, WorkBlock
 
 _INTERNAL_RE = re.compile(
     r"Evidence trace|Source report|(?:/Users/|/private/|/tmp/)|\bec[-_][\w-]+", re.I
@@ -56,6 +56,23 @@ def render_plan(
         item = index.get("personal_profile:" + field + ":0")
         return from_fact(item) if item else fact(text, "personal_profile", field)
 
+    def work_context(block: WorkBlock) -> str:
+        heading = " · ".join(
+            value
+            for value in (
+                profile_field(f"career.work.{block.work_id}.company", block.company),
+                profile_field(f"career.work.{block.work_id}.title", block.title),
+            )
+            if value
+        )
+        # The period is composed from the bound career row; only displayed dates
+        # have text occurrences. "至今" remains that row's existing current flag.
+        for field in ("start", "end"):
+            date_fact = index.get(f"personal_profile:career.work.{block.work_id}.{field}:0")
+            if date_fact is not None and date_fact.text in block.period:
+                from_fact(date_fact)
+        return f"{heading}（{block.period}）" if block.period else heading
+
     def by_suffix(fact_ids: tuple[str, ...]) -> dict[str, Fact]:
         return {item.field.rsplit(".", 1)[-1]: item for fid in fact_ids
                 if (item := index.get(fid)) is not None}
@@ -85,9 +102,23 @@ def render_plan(
         )
         lines.append("求职意向：" + intent)
 
-    if plan.summary:
+    if plan.summary_fact_ids:
         lines.extend(["", "## 职业概述"])
-        lines.append(from_fact_id(plan.summary_fact_ids[0]) if plan.summary_fact_ids else fact(plan.summary, "personal_profile", "career.summary"))
+        work_by_id = {block.work_id: block for block in plan.work}
+        contextualized_work: set[str] = set()
+        for fact_id in plan.summary_fact_ids:
+            item = index.get(fact_id)
+            if item is None:
+                raise ValueError("unbound_resume_fact")
+            context = ""
+            if item.work_id and item.work_id not in contextualized_work:
+                block = work_by_id.get(item.work_id)
+                if block is None:
+                    raise ValueError("unbound_summary_work")
+                context = work_context(block)
+                contextualized_work.add(item.work_id)
+            text = from_fact(item)
+            lines.append(f"{context}：{text}" if context else text)
 
     if plan.capabilities:
         lines.extend(["", "## 核心能力"])
@@ -100,15 +131,7 @@ def render_plan(
     if plan.work:
         lines.extend(["", "## 工作经历"])
         for block in plan.work:
-            heading = " · ".join(
-                value
-                for value in (
-                    profile_field(f"career.work.{block.work_id}.company", block.company),
-                    profile_field(f"career.work.{block.work_id}.title", block.title),
-                )
-                if value
-            )
-            lines.append(f"### {heading}（{block.period}）" if block.period else f"### {heading}")
+            lines.append("### " + work_context(block))
             if block.scope:
                 lines.append("场景：" + profile_field(f"career.work.{block.work_id}.scope", block.scope))
             for duty in block.duties:

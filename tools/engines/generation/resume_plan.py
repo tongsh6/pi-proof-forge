@@ -78,7 +78,6 @@ class ExtraBlock:
 
 @dataclass(frozen=True)
 class ResumePlan:
-    summary: str = ""
     summary_fact_ids: tuple[str, ...] = ()
     capabilities: tuple[CapabilityBlock, ...] = ()
     work: tuple[WorkBlock, ...] = ()
@@ -158,6 +157,20 @@ def build_resume_plan(
     )
     work_by_id = {str(item["id"]): item for item in work_rows}
 
+    summary_facts: list[Fact] = []
+    if summary_fact := index.get("personal_profile:career.summary:0"):
+        summary_facts.append(summary_fact)
+    summary_rows = [item for item in work_rows if item.get("current") is True]
+    if not summary_rows and not summary_facts:
+        summary_rows = work_rows[:1]
+    for item in summary_rows:
+        for field_name in ("scope", "contributions"):
+            if fact := index.get(f"personal_profile:career.work.{item['id']}.{field_name}:0"):
+                summary_facts.append(fact)
+    summary_fact_ids = tuple(fact.fact_id for fact in summary_facts)
+    summary_work_ids = {fact.work_id for fact in summary_facts if fact.work_id}
+    push(summary_fact_ids)
+
     projects: list[ProjectBlock] = []
     untimed: list[str] = []
     for group_key, fact_ids in selected.projects.items():
@@ -226,7 +239,7 @@ def build_resume_plan(
         contribution_facts = [
             fact
             for fact in index.facts
-            if fact.field == f"career.work.{work_id}.contributions"
+            if fact.field == f"career.work.{work_id}.contributions" and fact.fact_id not in summary_fact_ids
         ]
         assigned = selected.work.get(work_id, ())
         action_fact_ids = tuple(fid for fid in assigned if (f := index.get(fid)) and f.field == "actions")
@@ -262,7 +275,7 @@ def build_resume_plan(
             )
         )
         push(fact_ids)
-        if not (duties or achievements or scope):
+        if not (duties or achievements or scope or work_id in summary_work_ids):
             continue
         work_blocks.append(
             WorkBlock(
@@ -363,20 +376,7 @@ def build_resume_plan(
             )
         )
 
-    summary_fact = index.get("personal_profile:career.summary:0")
-    summary = summary_fact.text if summary_fact else ""
-    summary_fact_ids: tuple[str, ...] = ()
-    if not summary and work_blocks:
-        summary = work_blocks[0].scope or f"{work_blocks[0].company} {work_blocks[0].title}".strip()
-        summary_fact_ids = tuple(
-            fact_id for fact_id in work_blocks[0].fact_ids if (f := index.get(fact_id)) and f.field.endswith(".scope")
-        )
-    elif summary_fact:
-        summary_fact_ids = (summary_fact.fact_id,)
-    push(summary_fact_ids)
-
     return ResumePlan(
-        summary=summary,
         summary_fact_ids=summary_fact_ids,
         capabilities=tuple(capabilities),
         work=tuple(work_blocks),

@@ -76,12 +76,17 @@ def test_sections_and_order():
     assert FIRST_SCREEN_MARKER in text
 
 
-def test_work_block_renders_scope_duties_and_achievements():
-    text, _claims = render()
+def test_work_scope_and_summary_contribution_render_with_unique_source_claims():
+    text, claims = render()
 
     assert "### 公司A · Tech Lead（2021-03 ~ 至今）" in text
     assert "场景：门店数字化平台建设" in text
-    assert "职责：负责预约平台架构与交付" in text
+    first, = [row for row in claims
+              if row.get("fact_id") == "personal_profile:career.work.w1.contributions:0"]
+    assert first["text"] == "负责预约平台架构与交付"
+    lines = text.splitlines()
+    assert first["text"] == lines[first["render_line"] - 1]
+    assert lines.index("## 职业概述") + 1 < first["render_line"] < lines.index("## 工作经历") + 1
     assert "- 核心查询从 2–3 秒降至 300–400 毫秒" in text
 
 
