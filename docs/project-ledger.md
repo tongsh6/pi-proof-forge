@@ -147,6 +147,18 @@ Last updated: 2026-11-22
 - 实际请求为 3086 个逻辑 JSON 字符、10656 个 wire 字节，明确关闭沿 shared client 发为 reasoning_effort=none，无 thinking/chat_template_kwargs，finish_reason=stop。实际请求 SHA 为 5a3298daeebfe76df2757baed47ab365523cfa5184e185aeafc48414812c01f5，运行记录 SHA 为 d1d0408e5fe3726284f066e5fc0fde84803ec9897223452a98bedb5c12e8dd8f，均已独立重算。此直接调用计量不冒称 TaskRunner 预算。
 - 原卡前后字节完全一致，时间/职责仍空、candidate_pool_eligible=false，没有确认候选。真实招聘站、正式生成与投递均为零；原生 UI、quality judge 真实模型链及 confirmInference 的末端来源复核未由本片验收。下一片核定候选接受的原始依据与连续确认版本接续，P0-026 继续进行。
 
+## 2026-11-22 实际正文的有界背景语义去重（切片 K4b2，限定工程与有限合成应用验收完成）
+
+- 查重沿现 Quick Run 配置、generation_flow、共同 builder/ResumePlan/renderer、TaskContract/TaskRunner 与 readiness.reasons 的真实消费者补齐。模型在实际选材完成后只看同项目最终标题/期间/角色/所属工作、完整背景与实际行动/成果，返回 keep/omit/unknown；不引入预算外、范围排除或别的项目事实。精确岗位正引背景保护，合法 omit 只移除背景及 block/plan 原 context IDs，完整结果与自己的 claims/实际行保持。guided 不注入该能力、零模型调用，无新 RPC、持久账本、缓存或业务脚本。
+- 完整已准备请求限 24,000 逻辑 JSON 字符、输出 2,048 tokens；每版至多两次任务尝试，不把共享 transport 重试计为同一物理 HTTP 上限。准备失败或初始超预算零请求；索引缺漏、重复、布尔冒充整数、越界或额外字段均整批不采纳；未知/不可用保全文并沿原 API 说明，不抬缺证或 quality gate。来源/卡/档案/报告中途变化仍拒绝生成。renderer 原显式来源绑定及内部信息校验先于省略，不能靠删背景洗掉错误。
+- 独立真实 flow 首组 2 failed / 1 passed，其余十二项 12 failed：前者是实际量化/非量化背景省略行为 RED；后者证明任务、预算与降级诊断尚未执行，不能说旧版已经接受非法响应或绕过来源门禁。builder 首轮 6 项缺回调 TypeError 不计业务 RED，后续两处 fixture 缺要求 text 修正后全部断言执行，独立 20 passed。原断言保持，guided 正控禁止 HTTP。
+- 额外反例证明 JSON 同对象相反重复键被“最后一个值”吞掉：实际背景 flow 两项 RED、共享 runner 两项 RED。复用原结果核验唯一键 parser，移到现 TaskRunner 响应解析职责供两处真实消费者共用；不写任务专属解析器。最终 flow 加原真实 HTTP 组 18 passed；runner/结果核验 30 passed、10 subtests passed，原合法结果核验正控保留。
+- 第一次完整回归为 1 failed、2972 passed、1 skipped、101 subtests passed（57.75 秒）：唯一失败是旧 CLI FakeClient 构造只收 kwargs、不支持真实已有位置参数及 prepare/send 合同。仅修测试替身，在最终 send_request 边界控制响应，保持空 key/无 Authorization/原在线缺 key 阻断断言；该文件 2 passed。最终全量 2973 passed、1 skipped、101 subtests passed（55.62 秒），架构 v2、路线图、AIEF 与差异检查通过。
+- 首轮全合成 App→本机 Splash 经真实上传、逐事实复审、档案确认、岗位保存及 run.quick.start/get，完成 39 个 Router RPC、8 次本机 HTTP，A/B 各一次背景任务。非量化重复背景省略、独有环境条件保留；原“提问背景必须保留”预期两版却为 omit，原始预期仍记 2/3。两份独立反审确认，剩余标题/期间/职责/核验过程和完整实测结论已覆盖该问句实质信息；不能把“问题不能证明结果”的方向反用于保结果后的背景去重。未为此修改生产 prompt、添加问句或否定词规则，也未改写原记录为当时全通过。
+- 随后先冻结更强的正反对照：相同背景包含输出一致/错误率、脱敏回放及生产适用性未验证；这些条件仅在背景出现时须保留，完整结果已经表达时可省。两次单项目实际 App 流分别完成 21/22 个 Router RPC、各 6 次本机 HTTP，A/B 均分别 keep/omit。父进程与实际 pipeline 子进程都加载 loopback 限制，实际连接记录均在本机、拒绝数为零；首轮 guard 只在子进程生效的验证程序问题保留说明，不冒称首轮父进程也受该 guard 约束。
+- 两次对照的完整结果、精确 claims/实际行、标准 trace、卡字节及生产 Python 源前后均一致；正文/API 可回读决定理由，两个报告的量化比例均 0.5，quality_passed/auto_pass 均 false。原三例报告也非自动通过；PDF 只确认单页导出、裁切仍未验证，未借呈现省略补绿整体质量。正反运行记录 SHA 分别为 5608e3d8bcb0f81a33eb50f5601fd7a082ce883393a88c9e0030ad000fd0d05c、8c2a1d1af17b7b4bd57deb16a01f05d6e69ee11392c3bec4ab0c127e378e38b5；每份请求/响应 wire SHA 已独立重算一致。
+- 三次合成链合计 82 个 Router RPC、20 次本机 HTTP，其中 6 次背景判断。有限语义对照不替代全部来源语境、原生页面或真实 JD/正式件/投递验收。下一片复用现 Scorecard.quality_report、共同四层输入和固定审核快照接通 guided Agent 的质量解释，保持零模型、零外部投递；P0-026 继续进行。
+
 ## 2026-11-22 背景自身的精确事实来源（切片 K4b1，限定工程范围已完成）
 
 - 查重确认现 ProjectBlock.fact_ids/ResumePlan.fact_ids、FactIndex 和 renderer.from_fact 已有真实职责。生产仅改 plan 与 renderer：在结构装配时保留真实 context Fact，同次取得背景全文和身份，登记原 block/plan IDs；合并项目不借首张代表卡或同文。renderer 按实际索引核显式绑定的唯一性、类型、完整展示值和两处一致性，并在真正背景行记录来源、字段和 Fact ID。无新增字段、接口、来源副本或业务脚本。
