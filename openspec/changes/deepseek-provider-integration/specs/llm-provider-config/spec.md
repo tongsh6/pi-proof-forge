@@ -88,13 +88,13 @@ API Key 必须按 provider 分别保存到本机受限权限文件，目录 0700
 
 ### R4.1 思考模式
 
-DeepSeek 默认关闭思考；页面提供开关，持久化到 `policy.local.yaml` 的 `llm_thinking_enabled`。仅 `provider=deepseek` 时生效。
+DeepSeek 沿现有 `llm_thinking_enabled` 保存默认/明确关闭/明确开启（null/false/true）；provider 默认仍为关闭。公共字段与部署切换、环境优先级见 core 的 L3b 配置合同，不新增 DeepSeek 专用开关。
 
 - 关闭：请求包含 `{"thinking": {"type": "disabled"}}`
-- 开启：请求包含 `{"thinking": {"type": "enabled"}}` 与 `reasoning_effort=low|high|max`
+- 明确开启：普通与结构化 JSON 请求均包含 `{"thinking": {"type": "enabled"}}` 与 `reasoning_effort=low|high|max`，不得被 JSON 默认覆盖
 - 思考强度由页面选择，持久化到 `llm_thinking_effort`，默认 `high`
 - 调用方显式传入 `thinking` 或 `reasoning_effort` 时不得覆盖
-- 其他 provider 不得收到 `thinking`
+- 本配置适配不为其他 provider 生成 `thinking`；调用方显式 payload 继续沿统一优先级保留
 
 #### Scenario: 默认非思考
 
@@ -106,12 +106,12 @@ DeepSeek 默认关闭思考；页面提供开关，持久化到 `policy.local.ya
 #### Scenario: 开启思考
 
 - Given 用户开启思考模式、选择 `max` 并保存
-- When 管线子进程请求 DeepSeek
+- When 直接 App 调用或管线子进程向 DeepSeek 发起普通或结构化 JSON 请求
 - Then 请求体包含 `thinking.type=enabled` 与 `reasoning_effort=max`
 
 ### R4.2 运行时传播
 
-sidecar 必须把 provider、model、base_url、api_key、timeout、thinking_enabled 传给管线子进程；in-process handler 直接构造 `LLMClient` 时也必须传入 `provider` 与 `thinking_enabled`。
+sidecar 必须把 provider、model、base_url、api_key、timeout 与完整三态 thinking 配置传给真实消费者。App 缺省/null 不继承父进程思考环境；Quick Run 使用原 LLM_THINKING 的 on/off/default 覆盖父环境。直接构造传递 null/false/true，不用 bool 转换；CLI 未提供构造参数才读环境。
 
 ## 5. 安全与错误
 
@@ -125,7 +125,7 @@ sidecar 必须把 provider、model、base_url、api_key、timeout、thinking_ena
 
 ### R5.3 兼容
 
-- 既有 `lm_studio` 的 JSON schema 与 reasoning 适配保持不变。
+- 既有 `lm_studio` 的 JSON schema 适配保留；思考控制沿 core L3b 的统一配置，不保留按模型名称设置默认值的分支。
 - 既有 `LLM_API_KEY` 环境变量仍可用。
 - 旧 policy 的 `llm_api_key_configured` / `llm_api_key_placeholder` 不得导致在线 provider 在没有真实密钥时被误判为可用。
 

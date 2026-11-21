@@ -4,7 +4,7 @@
 > `http://127.0.0.1:47831/v1`，端点固定、模型由 App 管理；Strata 成为默认 provider。
 > 其他 provider 规范不变。
 
-本 delta 扩展既有 `llm-provider-config` 能力：新增 `strata` 本地推理 provider，定义其可选密钥、连接检查与 `reasoning_effort` 请求适配。既有 LM Studio / OpenAI / DeepSeek / OpenAI Compatible 规范保持不变。
+本 delta 扩展既有 `llm-provider-config` 能力：新增 `strata` 本地推理 provider，定义其可选密钥、连接检查与 `reasoning_effort` 请求适配。当前各 provider 的思考控制、PATCH 与环境优先级以 core L3b 统一合同为准；其余集成职责保留。
 
 ## 1. Provider 目录
 
@@ -100,13 +100,13 @@ Strata 本地回环服务默认无鉴权，密钥必须是可选项：
 
 ### R4.3 reasoning_effort
 
-`provider=strata` 时必须使用请求顶层 `reasoning_effort` 控制思考，不得发送 `thinking` 对象：
+`provider=strata` 的配置适配使用请求顶层 `reasoning_effort` 控制思考，不生成 `thinking` 对象；调用方显式 payload 沿统一优先级保留：
 
-- 结构化 JSON 请求（`response_format.type=json_object`）：默认 `reasoning_effort=none`；
+- provider 默认（thinking_enabled=null）：普通与结构化 JSON 请求均为 `reasoning_effort=none`；
 - 思考关闭：`reasoning_effort=none`；
-- 思考开启：`low` 或 `high`；页面 `max` 映射为 `high`（Qwen3.8 不发送非法值）；
+- 明确开启：普通与结构化 JSON 请求均使用 `low` 或 `high`；`max` 按现 Strata 协议映射为 `high`，不按具体模型名称判断；
 - 调用方显式传入 `reasoning_effort` 时不覆盖；
-- 其他 provider 不注入该字段，LM Studio / DeepSeek 既有适配不变。
+- 其他 provider 按统一三态配置及各自协议适配；不把 Strata 默认传播给其他部署。部署切换、PATCH 与环境优先级见 core 的 L3b 配置合同。
 
 #### Scenario: 默认非思考
 
@@ -122,11 +122,12 @@ Strata 本地回环服务默认无鉴权，密钥必须是可选项：
 - Then 请求体包含 `reasoning_effort=low`
 - And 不包含 `thinking`
 
-#### Scenario: 结构化输出不思考
+#### Scenario: 结构化输出保留明确配置
 
-- Given 用户开启了思考模式
+- Given 用户明确开启思考模式并选择 low
 - When App 发起 `response_format.type=json_object` 请求
-- Then 请求体 `reasoning_effort=none`
+- Then 请求体 `reasoning_effort=low`
+- And 未明确开启或采用默认时为 none，显式 payload 参数优先
 
 ## 5. 安全与错误
 
@@ -140,13 +141,13 @@ Strata 本地回环服务默认无鉴权，密钥必须是可选项：
 
 ### R5.3 兼容
 
-- 既有 `lm_studio` / `openai` / `deepseek` / `openai_compatible` 配置、凭据与请求适配保持不变。
+- 既有各 provider 的凭据、端点与结构协议职责保留；思考控制统一采用 core L3b 合同，不保端点或模型名称特例。
 - 当前已保存的其他 provider 与 `policy.local.yaml` 不被本变更自动改写；仅新建/未配置时默认 Strata。
 - 无 `llm_provider` 键的历史配置按新默认解释为 `strata`（端点归一 47831）；如需保留旧端点，由用户在设置页显式切换 provider 并填写地址。
 
 ## 6. 验收
 
-- 单元测试覆盖 keyless 头、strata `reasoning_effort` 六类载荷、其他 provider 不变、settings keyless 连接检查与可选密钥隔离。
+- 单元测试覆盖 keyless 头、Strata 的三态与显式载荷、各 provider 独立协议、settings keyless 连接检查与可选密钥隔离。
 - 单元测试覆盖统一后台语义：默认 provider=strata、固定 base_url 归一（读取/保存/检查）、空模型提示、切换 provider 清旧 model、`LLMClient` 缺省地址回退统一入口。
 - GUI 契约测试覆盖 Strata 选项/统一端点/只读字段/思考开关与 effort 选项、i18n 键完整。
 - 本机 Strata App 运行时完成真实 `/models` 与一次结构化请求验证（不计入自动化）；

@@ -77,9 +77,20 @@
 ## JD 结构化请求预算与失败语义（2026-11-18）
 
 - JD 草稿请求复用 `JOB_PROFILE_DRAFT.capability.max_output_tokens` 的 2048 token 预算，不因通用兼容 provider 而无上限。
-- 已核验 Splash 本机契约（`openai_compatible`、`http://127.0.0.1:8000/v1`，不依赖具体模型别名）的 `json_object` 请求，由唯一适配边界 `LLMClient` 默认补 `reasoning_effort=none`，覆盖方向评估与 JD；尊重调用方显式 `reasoning_effort`。非结构化或未核验端点不改变，不改变保存的思考偏好，handler 不重复注入。
+- 方向评估与 JD 沿下述统一请求控制配置；Splash 的明确关闭由现有设置传播为 `reasoning_effort=none`，不再按固定部署地址自动注入。handler 不重复设置协议字段，结构化输出预算与严格校验保持独立。
 - `finish_reason=length` 必须返回 `parse_output_truncated` / `output_truncated`，正文即使能解析也不可成为可审核草稿；给出缩短 JD 或检查结构化输出设置的提示，不错报连接失败。
 - 不新增模型重试、自动审核或投递；成功草稿继续保持非 active target。真实服务成功与单测通过分别记录。
+
+## LLM 请求控制配置（切片 L3b）
+
+- 复用现有 `thinking_enabled`（`boolean | null`）与 `thinking_effort`（`low | high | max`，默认 `high`）。`null`/字段缺省表示 provider 默认，`false` 为明确关闭，`true` 为明确开启；强度字段本身不能开启思考。已保存布尔值按当前明确配置读取，不猜其历史来源，不增加能力表、配置账本、部署绑定字段或兼容分支。
+- 优先级为调用方显式 payload 参数 > 当前调用的明确配置 > provider 默认。结构化 JSON 只约束输出形状，不覆盖明确的思考配置；不通过 URL、模型别名、量化名称或样例内容推断请求能力。客户端不修改响应以掩盖不支持的参数。
+- 泛兼容路径（含 OpenAI、OpenAI Compatible、LM Studio）默认不附加可选 thinking/reasoning 参数；明确关闭请求 `reasoning_effort=none`，明确开启请求配置的强度。显式控制是调用方对协议参数的选择，不证明服务已支持；服务拒绝时保留原错误，不探测、不删字段重发、不改模式。LM Studio 既有原生 schema 适配继续承担结构协议。
+- 已有 provider 协议默认保留：DeepSeek 默认/关闭使用 `thinking.type=disabled`，明确开启使用 enabled 与强度；Strata 默认/关闭使用顶层 none，明确开启使用 low/high，max 映射 high。两者均尊重显式 payload，JSON 请求同样尊重明确配置；其他 provider 不由客户端生成 DeepSeek thinking 对象。
+- `settings.update` 在相同部署内省略字段为保持、显式 null 为重置。部署由实际 provider 和归一化后有效 base_url 确定；两者任一改变时，未在本次明确提供的控制恢复默认，明确字段仍按本次请求保存。单独提供强度不确认旧开启状态；仅改变模型别名不修改控制。复用原配置存储，不建立按模型或部署的历史映射。
+- App 配置读取时缺省/null 都采用 provider 默认，不继承父进程 thinking 环境；直接构造必须保留 null，不能 bool 转换或任务内硬写 false。客户端构造省略模式参数时才沿 CLI 入口读既有环境，明确传 None 不读模式环境；可用私有未提供哨兵区分，不能引入另一个公开配置字段。Quick Run 沿原 `LLM_THINKING` 传 on/off/default，使 default 覆盖父进程 on/off；不新增环境变量或第二传播路径。
+- 设置页面沿同一字段提供默认/关闭/开启，并对实际部署改变复位；普通同部署保存与模型切换保持该配置。完整表单保存明确提交地址；空白地址沿 API 现有非空校验拒绝并展示错误，不能省略后静默保留旧地址或宣称切换成功。直接调用、结果复审、方向/JD、preparation 有界客户端与 Quick Run 子进程必须消费同一已解析配置；模型列表请求不把思考参数当作能力探测。
+- 验收先以实际 Request 复现旧端点/型号默认、null 复活父环境、部署切换残留、明确开启被 JSON 覆盖与传播丢失，再保住显式 payload、provider 协议、schema、预算、原 HTTP 限额/localhost/重定向边界。应用端使用全合成资料与明确配置的本机 Splash；不把协议夹具或参数对照当作真实模型验收。
 
 ## 概述
 

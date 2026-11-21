@@ -61,15 +61,15 @@ POST {base_url}/chat/completions
 
 | 场景 | 发送 |
 | --- | --- |
-| `response_format={"type":"json_object"}` | `reasoning_effort="none"`（结构化输出不把预算耗在推理上） |
+| `thinking_enabled=None`（provider 默认） | `reasoning_effort="none"`；普通与 JSON 请求相同 |
 | `thinking_enabled=False` | `reasoning_effort="none"` |
 | `thinking_enabled=True` + `low` | `reasoning_effort="low"` |
 | `thinking_enabled=True` + `high` | `reasoning_effort="high"` |
-| `thinking_enabled=True` + `max` | `reasoning_effort="high"`（Qwen3.8 支持到 high，避免改口径发送非法值） |
+| `thinking_enabled=True` + `max` | `reasoning_effort="high"`（既有 Strata 协议映射，不按模型名称判断） |
 
-- 永远不向 Strata 发送 `thinking` 对象。
-- 调用方显式传入 `reasoning_effort`（如现有 localhost 判项代码传 `none`）时不覆盖。
-- 其他 provider 分支不变；LM Studio 的 `json_schema` 与型号特定 `none`、DeepSeek 的 `thinking` 适配保持原顺序与原行为。
+- 本配置适配不为 Strata 生成 `thinking` 对象；调用方显式 payload 继续沿统一优先级保留。
+- 调用方显式传入 reasoning_effort 时不覆盖；明确开启时 JSON 请求与普通请求使用相同配置。
+- 其他 provider 沿 core L3b 三态合同；LM Studio 原生 schema 与 DeepSeek thinking 协议保留，不保型号/端点特例。App null 屏蔽父环境，直接调用与 Quick Run 使用同一配置。
 
 ### 3.3 keyless 子进程 gate
 
@@ -103,7 +103,7 @@ sidecar 只在 `api_key_for_request` 非空时向管线子进程注入 `LLM_API_
   - 已保存：沿用“密钥已保存到本机凭据文件”；来自环境变量沿用现有提示；
   - 未保存：显示“本地服务，无需密钥（可选）”，provider 卡片与状态点按可用处理；
   - 清除入口仍只在本机确有凭据文件时显示。
-- 思考开关：Strata 与 DeepSeek 一样显示；Strata 强度只显示 `low/high`（`max` 在切换到 Strata 时归一到 `high`），提示说明使用顶层 `reasoning_effort` 且默认关闭。
+- 思考配置沿同一三态字段展示默认/关闭/开启，所有 provider 都使用该合同。Strata 采用 provider 默认时关闭，明确开启时显示 low/high，max 映射 high；部署切换时复位，模型别名变化保留。
 - 切换 provider 继续清空连接检查与模型列表，并套用预设；保存后重新读取设置、清空 Key 输入。
 - 跨页面 keyless 一致性：`ui/src/lib/llmConfig.ts`（`isKeylessProvider` / `isLlmConfigured` / `isLlmSecretConfigured`）供 System Settings、Overview 安装清单、Quick Run、Agent Run 共用；keyless Strata 有 model 即视为已配置，密钥状态显示“本地服务，无需密钥（可选）”而非“未配置”。仅当确有本机凭据文件时提供清除入口。
 
@@ -124,9 +124,9 @@ sidecar 只在 `api_key_for_request` 非空时向管线子进程注入 `LLM_API_
 ## 8. 测试策略
 
 - 先失败后实现：
-  - `LLMClient`：strata 默认 `none`、开启 `low/high`、`max→high`、`json_object` 强制 `none`、显式值不覆盖、不发 `thinking`、无 Key 不发 Authorization、其他 provider 不受影响。
+  - `LLMClient`：strata 默认 none、明确开启 low/high、max→high；JSON 保留明确配置，显式 payload 不覆盖、不生成 thinking、无 Key 不发 Authorization。其他 provider 按 core 三态合同分别验证，不能借 Strata 默认。
   - settings：无 Key 连接检查可用且消息为 Strata、失败码 `BLOCKED_LOCAL_PROVIDER`、可选 Key 保存/读取/隔离、`_provider_label`。
-  - GUI 契约：Strata 预设、选项、思考开关条件、low/high、keyless 文案、i18n 键完整。
+  - GUI 契约：Strata 预设、三态选项、部署复位与模型保留、low/high、keyless 文案、i18n 键完整。
 - 回归：`python3 -m pytest tests/unit -q`、受影响模块、全量 `python3 -m pytest tests -q`、`cd ui && npx tsc --noEmit`、项目门禁。
 - 真实本机验收（不计入自动化）：本机 Strata 运行中时，`GET /models` 与一次 `reasoning_effort=none` 的 JSON 结构化请求；App 页面点击验收由用户执行。
 

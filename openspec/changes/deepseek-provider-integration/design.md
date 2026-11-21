@@ -61,15 +61,16 @@ _load_llm_config() → LLMClient(provider, thinking_enabled)
 ## 4. 请求适配
 
 ```python
-LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
+LLMClient(base_url, api_key, provider="deepseek")  # CLI 省略模式时读取环境
+LLMClient(base_url, api_key, provider="deepseek", thinking_enabled=None)  # App provider 默认
 ```
 
-- `provider` 为空时读取 `LLM_PROVIDER`；`thinking_enabled=None` 时读取 `LLM_THINKING`（默认 off）。
+- provider 为空时读取 LLM_PROVIDER；省略 thinking_enabled 才读取 CLI 的 LLM_THINKING，明确 None 采用 provider 默认且不读模式环境。App 传入已解析的 null/false/true；私有未提供哨兵仅区分现有参数状态，不新增公开字段。
 - 仅 `provider=deepseek`：
   - 未显式传 `thinking` 时，关闭：`{"thinking": {"type": "disabled"}}`
-  - 开启：`{"thinking": {"type": "enabled"}, "reasoning_effort": "low|high|max"}`
+  - 明确开启：普通/JSON 请求均为 `{"thinking": {"type": "enabled"}, "reasoning_effort": "low|high|max"}`，JSON 不覆盖明确配置。
   - `reasoning_effort` 由 `llm_thinking_effort` 决定，默认 `high`；调用方显式传 `thinking` 或 `reasoning_effort` 时不覆盖。
-- 其他 provider 的 payload 不变；LM Studio 的 `json_schema` / reasoning 兼容分支保持原顺序。
+- 其他 provider 沿 core L3b 三态合同；LM Studio 原生 schema 保留，退役按模型名称关闭思考的分支。泛兼容默认省略可选字段，明确配置请求对应 reasoning_effort，不自动探测或删参重试。
 - 思考模式下 DeepSeek 忽略 `temperature`；页面提示，不删除该字段，避免影响非思考模式。
 
 ## 5. 页面
@@ -82,7 +83,7 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
   - LM Studio：显示占位密钥
   - 未配置：显示“未配置”
 - “清除密钥”按钮：仅当 `configured_providers` 包含当前 provider 且不是 LM Studio 占位时显示；带确认。
-- 思考模式：仅 DeepSeek 显示；默认关闭；开启时说明使用 high effort 且温度不生效。
+- 思考模式沿同一字段展示默认/关闭/开启，默认值为 null；仅明确开启时选择强度。部署改变时按 API 合同复位，模型别名变化保留配置。
 - 切换 provider：清空连接检查结果与模型列表，避免上一 provider 的模型串入。
 - 保存：沿用现有流程；重新读取设置后清空密钥输入框。
 
@@ -90,7 +91,7 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
 
 `settings.get.llm_config` 新增 `thinking_enabled`、`api_key.source`、`configured_providers`。
 
-`settings.update` 的 `llm_config` 新增 `thinking_enabled`；`api_key` 写入 provider 凭据文件。
+`settings.update` 的既有 thinking_enabled 接受 boolean | null；同部署 PATCH 省略保持、null 重置，部署变化清除未明确提供的控制。api_key 仍写入 provider 凭据文件。
 
 新增 `settings.clearLlmApiKey`：
 
@@ -118,6 +119,6 @@ LLMClient(base_url, api_key, timeout=120, *, provider="", thinking_enabled=None)
 
 ## 9. 边界
 
-- 不实现思考强度选择（固定 high）、不实现模型能力探测、不做通用重试。
+- 复用已有思考强度选择，不实现模型能力探测、型号配置表或额外通用重试。
 - 不改变 P0-026 唯一 `next`，不新增平台写入。
 - `.pen` 同步在工具不可用时明确记录待补。
