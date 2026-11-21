@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from tools.infra.evidence_fact_scope import checked_result_review
+from tools.infra.llm.task_runner import parse_json_response
 
 
 def result_review_messages(review_input):
@@ -55,14 +56,8 @@ rationale 的内容须使用自然语言说明原文依据、实际主体、限�
 def parse_result_review(content, scopes):
     """Bind a complete batch by server indices; validate each own primary occurrence."""
 
-    def unique_object(pairs):
-        value = dict(pairs)
-        if len(value) != len(pairs):
-            raise ValueError("result_review_duplicate_key")
-        return value
-
     try:
-        value = json.loads(content, object_pairs_hook=unique_object)
+        value = parse_json_response(content)
     except (ValueError, TypeError) as exc:
         raise ValueError("result_review_invalid") from exc
     if (not isinstance(value, dict) or value.keys() != {"reviews"}

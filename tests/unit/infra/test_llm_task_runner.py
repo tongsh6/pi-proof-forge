@@ -77,6 +77,34 @@ def test_repeated_invalid_json_ends_unavailable_not_partial():
     assert run.attempts == 2
 
 
+@pytest.mark.parametrize("content", (
+    '{"decision":"keep","decision":"omit"}',
+    '{"reviews":[{"project_index":0,"decision":"keep","decision":"omit","rationale":"合成说明"}]}',
+), ids=("top-level", "nested-object"))
+def test_ambiguous_json_never_becomes_a_completed_decision(content):
+    calls, validated = [], []
+
+    def call(prepared):
+        calls.append(prepared)
+        return {"choices": [{"message": {"content": content}}]}
+
+    def validate(parsed):
+        validated.append(parsed)
+        return parsed
+
+    run = execute(
+        SEMANTIC_MATCHING, model="synthetic",
+        prepare=lambda: _request({"messages": [{"role": "user", "content": "合成判断"}]}),
+        call=call, extract=lambda response: response["choices"][0]["message"]["content"],
+        validate=validate,
+    )
+    assert run.status == "unavailable"
+    assert run.reason_code == "invalid_json"
+    assert run.attempts == len(calls) == 2
+    assert run.outcome.result is None
+    assert validated == []
+
+
 def test_service_failure_is_unavailable_without_retry():
     calls = {"n": 0}
 

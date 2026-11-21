@@ -34,6 +34,17 @@ from tools.infra.llm.task_contract import (
 MAX_ATTEMPTS = 2
 
 
+def parse_json_response(content: str) -> Any:
+    """Decode model content without choosing between contradictory object keys."""
+    def unique_object(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError("duplicate_json_key")
+        return value
+
+    return json.loads(content, object_pairs_hook=unique_object)
+
+
 @dataclass(frozen=True)
 class TaskRun:
     """一次任务执行的完整记录。"""
@@ -140,7 +151,7 @@ def execute(
             continue
 
         try:
-            parsed = json.loads(content)
+            parsed = parse_json_response(content)
         except (TypeError, ValueError):
             last_reason, last_detail = REASON_INVALID_JSON, "模型输出不是合法 JSON"
             continue
