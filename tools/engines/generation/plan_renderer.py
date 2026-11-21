@@ -17,6 +17,41 @@ _INTERNAL_RE = re.compile(
 )
 
 
+def _checked_fact_text(text: str) -> str:
+    value = render_fact_text(text)
+    if _INTERNAL_RE.search(value):
+        raise ValueError("internal_metadata_in_resume_fact")
+    return value
+
+
+def _project_contexts(plan: ResumePlan, index: FactIndex) -> tuple[Fact | None, ...]:
+    """Resolve explicit background bindings before either review or rendering."""
+    contexts: list[Fact | None] = []
+    for block in plan.projects:
+        value = _checked_fact_text(block.background)
+        registered = [index.get(fact_id) for fact_id in block.fact_ids]
+        if any(item is None for item in registered):
+            raise ValueError("unbound_resume_fact")
+        bound = [item for item in registered if item is not None and item.field == "context"]
+        if len(bound) > 1:
+            raise ValueError("unbound_resume_fact")
+        context = bound[0] if bound else None
+        if context is not None and (
+            context.kind != "evidence"
+            or not value
+            or render_fact_text(context.text) != value
+        ):
+            raise ValueError("unbound_resume_fact")
+        contexts.append(context)
+    registered = [index.get(fact_id) for fact_id in plan.fact_ids]
+    if any(item is None for item in registered):
+        raise ValueError("unbound_resume_fact")
+    plan_context_ids = {item.fact_id for item in registered if item is not None and item.field == "context"}
+    if plan_context_ids != {item.fact_id for item in contexts if item is not None}:
+        raise ValueError("unbound_resume_fact")
+    return tuple(contexts)
+
+
 def render_plan(
     plan: ResumePlan,
     index: FactIndex,
@@ -32,9 +67,7 @@ def render_plan(
     claims = claims if claims is not None else []
 
     def fact(text: str, kind: str, field: str, evidence_id: str = "", *, occurrence: Fact | None = None) -> str:
-        value = render_fact_text(text)
-        if _INTERNAL_RE.search(value):
-            raise ValueError("internal_metadata_in_resume_fact")
+        value = _checked_fact_text(text)
         if value:
             claims.append(
                 {"text": value, "source_kind": kind, "field": field, "evidence_id": evidence_id,
@@ -140,28 +173,7 @@ def render_plan(
                 lines.append("- " + from_fact(achievement))
 
     if plan.projects:
-        project_contexts: list[Fact | None] = []
-        for block in plan.projects:
-            registered = [index.get(fact_id) for fact_id in block.fact_ids]
-            if any(item is None for item in registered):
-                raise ValueError("unbound_resume_fact")
-            contexts = [item for item in registered if item is not None and item.field == "context"]
-            if len(contexts) > 1:
-                raise ValueError("unbound_resume_fact")
-            context_fact = contexts[0] if contexts else None
-            if context_fact is not None and (
-                context_fact.kind != "evidence"
-                or not render_fact_text(block.background)
-                or render_fact_text(context_fact.text) != render_fact_text(block.background)
-            ):
-                raise ValueError("unbound_resume_fact")
-            project_contexts.append(context_fact)
-        registered = [index.get(fact_id) for fact_id in plan.fact_ids]
-        if any(item is None for item in registered):
-            raise ValueError("unbound_resume_fact")
-        plan_context_ids = {item.fact_id for item in registered if item is not None and item.field == "context"}
-        if plan_context_ids != {item.fact_id for item in project_contexts if item is not None}:
-            raise ValueError("unbound_resume_fact")
+        project_contexts = _project_contexts(plan, index)
 
         lines.extend(["", "## 项目经历"])
         for position, (block, context_fact) in enumerate(zip(plan.projects, project_contexts)):

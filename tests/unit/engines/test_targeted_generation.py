@@ -112,12 +112,28 @@ def test_job_description_file_is_resolved_relative_to_profile(monkeypatch, gener
 
 
 def test_required_llm_selection_uses_real_http_protocol(monkeypatch, generation_inputs):
-    requests = []
+    requests, selection_requests, background_requests = [], [], []
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
-            requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
-            data = json.dumps({"choices": [{"message": {"content": '{"evidence_ids":["ec-1"]}'}}]}).encode()
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            requests.append(payload)
+            prompt = next(message["content"] for message in payload["messages"] if message["role"] == "user")
+            try:
+                body = json.loads(prompt)
+            except json.JSONDecodeError:
+                body = None
+            if isinstance(body, dict) and set(body) == {"projects"}:
+                background_requests.append(payload)
+                response = {"decisions": [
+                    {"project_index": project["project_index"], "decision": "keep",
+                     "rationale": "保留合成场景的完整背景"}
+                    for project in body["projects"]
+                ]}
+            else:
+                selection_requests.append(payload)
+                response = {"evidence_ids": ["ec-1"]}
+            data = json.dumps({"choices": [{"message": {"content": json.dumps(response)}}]}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
@@ -131,6 +147,8 @@ def test_required_llm_selection_uses_real_http_protocol(monkeypatch, generation_
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("LLM_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("LLM_THINKING", "default")
     try:
         assert run_generation_cli(
             monkeypatch, generation_inputs, "--use-llm", "--require-llm",
@@ -141,18 +159,33 @@ def test_required_llm_selection_uses_real_http_protocol(monkeypatch, generation_
         server.shutdown()
         server.server_close()
         thread.join()
-    assert len(requests) == 2
+    assert len(requests) == 4
+    assert len(selection_requests) == 2
+    assert len(background_requests) == 2
     for request in requests:
         assert request["messages"][0]["role"] == "system"
         assert "PiProofForge" in request["messages"][0]["content"]
+        assert request["model"] == "test-model"
+        prompt = next(message["content"] for message in request["messages"] if message["role"] == "user")
+        assert "candidate@example.com" not in prompt
+    for request in selection_requests:
         prompt = next(message["content"] for message in request["messages"] if message["role"] == "user")
         assert "目标公司" in prompt
         assert "负责交易服务开发与数据库优化" in prompt
         assert "后端工程师" in prompt
-        assert "candidate@example.com" not in prompt
+    for request in background_requests:
+        assert request["response_format"] == {"type": "json_object"}
+        assert request["max_tokens"] == 2048
+        assert "decisions" in request["messages"][0]["content"]
+        prompt = next(message["content"] for message in request["messages"] if message["role"] == "user")
+        project, = json.loads(prompt)["projects"]
+        assert project["background"] == {"fact_id": "ec-1:context:0", "text": "峰值请求延迟较高"}
+        assert {"fact_id": "ec-1:actions:0", "text": "使用 Java 重构交易服务"} in project["body"]["actions"]
+        assert {"fact_id": "ec-1:results:0", "text": "请求延迟降低 20%"} in project["body"]["results"]
+        assert "目标公司" not in prompt and "负责交易服务开发与数据库优化" not in prompt
     trace = json.loads((generation_inputs[-1] / "resume_mr-target_A.trace.json").read_text())
     assert trace["generation_strategy"] == "llm_selection_locked_evidence_fields"
-
+    assert any(claim.get("fact_id") == "ec-1:context:0" for claim in trace["claims"])
 
 def test_gui_multiline_jd_round_trips_into_generation(generation_inputs):
     from tools.sidecar.handlers.jobs import _write_job_profile_file

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from tools.cli.commands import generate as generate_cli
 from tools.infra.career_profile import inspect_career
+from tools.infra.llm.client import LLMClient
 
 _RUN_ID = "qr_gate"
 _CARD = (
@@ -130,20 +131,30 @@ def test_keyless_strata_allows_llm_selection_without_api_key(
 ) -> None:
     paths = _write_generation_fixture(tmp_path)
     captured: list[dict] = []
+    calls: list[tuple] = []
 
-    class FakeClient:
-        chat_completions_url = "http://127.0.0.1:8081/v1/chat/completions"
+    class FakeClient(LLMClient):
+        def __init__(self, base_url: str, api_key: str, **kwargs) -> None:
+            captured.append({"base_url": base_url, "api_key": api_key, **kwargs})
+            super().__init__(base_url, api_key, **kwargs)
 
-        def __init__(self, **kwargs) -> None:
-            captured.append(kwargs)
-
-        def post_json(self, url: str, payload: dict) -> dict:
-            content = json.dumps({"evidence_ids": ["ec1"]})
-            return {"choices": [{"message": {"content": content}}]}
-
-        @staticmethod
-        def extract_content(response: dict) -> str:
-            return response["choices"][0]["message"]["content"]
+        def send_request(self, request) -> dict:
+            payload = json.loads(request.data)
+            prompt = next(message["content"] for message in payload["messages"] if message["role"] == "user")
+            try:
+                data = json.loads(prompt)
+            except json.JSONDecodeError:
+                data = None
+            calls.append((request, data))
+            if isinstance(data, dict) and set(data) == {"projects"}:
+                response = {"decisions": [
+                    {"project_index": project["project_index"], "decision": "keep",
+                     "rationale": "保留合成场景的完整背景"}
+                    for project in data["projects"]
+                ]}
+            else:
+                response = {"evidence_ids": ["ec1"]}
+            return {"choices": [{"message": {"content": json.dumps(response)}}]}
 
     monkeypatch.setenv("LLM_PROVIDER", "strata")
     monkeypatch.setenv("LLM_MODEL", "qwen3.8-flash-next-q2_0")
@@ -156,12 +167,20 @@ def test_keyless_strata_allows_llm_selection_without_api_key(
 
     assert captured[0]["api_key"] == ""
     assert captured[0]["base_url"] == "http://127.0.0.1:8081/v1"
+    assert all(row["api_key"] == "" and row["base_url"] == "http://127.0.0.1:8081/v1" for row in captured)
+    assert len(calls) == 4
+    assert all(request.get_header("Authorization") is None for request, _ in calls)
+    background_calls = [data for _, data in calls if isinstance(data, dict) and set(data) == {"projects"}]
+    assert len(background_calls) == 2
+    assert all([project["background"]["fact_id"] for project in data["projects"]] == ["ec1:context:0"]
+               for data in background_calls)
     trace = json.loads(
         (paths["output"] / f"resume_mr-{_RUN_ID}_A.trace.json").read_text(
             encoding="utf-8"
         )
     )
     assert trace["generation_strategy"] == "llm_selection_locked_evidence_fields"
+    assert any(claim.get("fact_id") == "ec1:context:0" for claim in trace["claims"])
 
 
 def test_online_provider_without_api_key_blocks_required_llm(

@@ -63,6 +63,7 @@ def test_registry_contains_all_registered_tasks():
     registry = default_registry()
     assert set(registry.contracts) == {
         "semantic_matching",
+        "background_redundancy",
         "direction_review",
         "job_profile_draft",
         "evidence_extraction",

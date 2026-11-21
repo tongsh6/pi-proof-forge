@@ -132,6 +132,18 @@ SEMANTIC_MATCHING = TaskContract(
     degrade_note="语义评审不可用时回退规则模式，简历仍可生成但与 JD 对位精度下降",
 )
 
+BACKGROUND_REDUNDANCY = TaskContract(
+    name="background_redundancy",
+    capability=Capability(
+        needs_json=True,
+        needs_exact_transcript=False,
+        max_output_tokens=2048,
+        max_input_chars=24_000,
+    ),
+    on_unavailable="degrade",
+    degrade_note="背景冗余核验不可用时保留完整背景，不改动已选行动和成果",
+)
+
 DIRECTION_REVIEW = TaskContract(
     name="direction_review",
     capability=Capability(needs_json=True, needs_exact_transcript=False, max_output_tokens=1024),
@@ -176,6 +188,7 @@ def default_registry() -> ContractRegistry:
     registry = ContractRegistry()
     for contract in (
         SEMANTIC_MATCHING,
+        BACKGROUND_REDUNDANCY,
         DIRECTION_REVIEW,
         JOB_PROFILE_DRAFT,
         EVIDENCE_EXTRACTION,

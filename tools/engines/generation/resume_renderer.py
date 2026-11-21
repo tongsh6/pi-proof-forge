@@ -5,13 +5,17 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from tools.infra import evidence_provenance as provenance
 from tools.infra.evidence_fact_scope import current_result_reviews, personal_claim_exclusions
 from tools.infra.evidence_pool import pool_eligible_scalars
 from tools.infra.evidence_sources import ValidatedSourcePaths, assert_captured_source, validated_source_inputs
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+
+if TYPE_CHECKING:
+    from tools.engines.generation.fact_index import FactIndex
+    from tools.engines.generation.resume_plan import ResumePlan
 
 CardView = dict[str, Any]
 
@@ -117,13 +121,14 @@ def build_template_resume(version: str, cards: list[CardView], *,
                           job_context: dict[str, Any] | None = None,
                           positioning: str = "technical_depth", custom_positioning: str = "",
                           claims: list[dict[str, Any]] | None = None,
-                          semantic_report: dict[str, Any] | None = None) -> str:
+                          semantic_report: dict[str, Any] | None = None,
+                          review_backgrounds: Callable[[ResumePlan, FactIndex], set[str]] | None = None) -> str:
     """唯一选材/计划/排版组合；不改写字段，也不把卡级引用伪装为事实引用。"""
     from dataclasses import replace
     from tools.engines.generation.fact_index import build_fact_index
     from tools.engines.generation.fact_selector import SelectionBudget, select_facts
     from tools.engines.generation.resume_plan import build_resume_plan
-    from tools.engines.generation.plan_renderer import render_plan
+    from tools.engines.generation.plan_renderer import _project_contexts, render_plan
 
     profile, target = personal_profile or {}, job_context or {}
     career = dict(profile.get("career") or {})
@@ -157,6 +162,22 @@ def build_template_resume(version: str, cards: list[CardView], *,
                              variant=version, project_groups=groups)
     if not plan.projects and not plan.work:
         raise ValueError("no_presentable_resume_facts")
+    if review_backgrounds is not None:
+        contexts = _project_contexts(plan, index)
+        eligible_ids = {item.fact_id for item in contexts if item is not None and not item.requirement_ids}
+        if eligible_ids:
+            omitted_ids = eligible_ids.intersection(review_backgrounds(plan, index))
+            if omitted_ids:
+                plan = replace(
+                    plan,
+                    projects=tuple(
+                        replace(block, background="",
+                                fact_ids=tuple(fid for fid in block.fact_ids if fid not in omitted_ids))
+                        if context is not None and context.fact_id in omitted_ids else block
+                        for block, context in zip(plan.projects, contexts)
+                    ),
+                    fact_ids=tuple(fid for fid in plan.fact_ids if fid not in omitted_ids),
+                )
     return render_plan(plan, index, profile=profile, job_context=target, claims=claims,
                        version=version, positioning=positioning, custom_positioning=custom_positioning)
 

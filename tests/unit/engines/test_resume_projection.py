@@ -194,10 +194,15 @@ def test_merged_project_keeps_later_cards_background_without_result_borrowing():
     assert not any(row.get("fact_id") == first["id"] + ":context:0" for row in claims)
 
 
-def test_guided_generation_keeps_full_context_through_trace_and_actual_evaluation(generation):
+def test_guided_generation_keeps_full_context_through_trace_and_actual_evaluation(generation, monkeypatch):
+    from tools.infra.llm import client as llm
     from tools.infra.persistence.review_snapshot import read_generation_trace
     from tools.orchestration.evaluation_flow import EvaluationFlowConfig, run_evaluation_flow
 
+    def unexpected_http(*args, **kwargs):
+        pytest.fail("guided generation without a background reviewer must not request a model")
+
+    monkeypatch.setattr(llm.request, "urlopen", unexpected_http)
     assembler, identity, report, paths = generation
     raw = paths["card"].read_text()
     previous = 'context: "合成队列处理验收"'
@@ -322,3 +327,174 @@ def test_trace_rejects_changed_background_even_when_original_text_remains_in_res
     _, valid = read_generation_trace(output)
     assert paths["card"].read_bytes() == before
     assert valid is False
+
+
+@pytest.mark.parametrize("decision", ("keep", "omit"))
+def test_background_review_only_changes_the_adopted_context(decision, monkeypatch):
+    from tools.engines.evaluation.tiers.common import load_quality_config
+    from tools.engines.evaluation.tiers.strong import evaluate_strong
+    from tools.engines.generation import plan_renderer
+    from tools.engines.matching.semantic_review import resume_assessment
+
+    _, card = inputs()
+    measured = card["results"][0]
+    nonquant = "完成接口验收手册交付，仅覆盖已联调接口。"
+    budgeted_out = "完成独立的恢复演练记录并交付维护团队。"
+    card.update(context=measured, results=[measured, nonquant, budgeted_out])
+    card.pop("result_reviews")
+    card = reviewed_card_results(card, measurement_quotes={0: measured, 1: None, 2: None})
+    before = deepcopy(card)
+    context_id = card["id"] + ":context:0"
+    reviewed_plans, rendered_plans = [], []
+    original_render = plan_renderer.render_plan
+
+    def review_backgrounds(plan, index):
+        reviewed_plans.append(plan)
+        block, = plan.projects
+        assert [fact.text for fact in block.key_work] == card["actions"]
+        assert [fact.text for fact in block.outcomes] == [measured, nonquant]
+        assert index.get(card["id"] + ":results:2").text == budgeted_out
+        assert block.background == measured
+        return {context_id} if decision == "omit" else set()
+
+    def capture_render(plan, index, **kwargs):
+        rendered_plans.append(plan)
+        return original_render(plan, index, **kwargs)
+
+    monkeypatch.setattr(plan_renderer, "render_plan", capture_render)
+    claims = []
+    markdown = build_template_resume("A", [card], claims=claims, review_backgrounds=review_backgrounds)
+    assert len(reviewed_plans) == 1
+    original_plan = reviewed_plans[0]
+    adopted_plan = rendered_plans[-1]
+    original_block, = original_plan.projects
+    adopted_block, = adopted_plan.projects
+    removed = {context_id} if decision == "omit" else set()
+    assert adopted_plan.fact_ids == tuple(fid for fid in original_plan.fact_ids if fid not in removed)
+    assert adopted_block.fact_ids == tuple(fid for fid in original_block.fact_ids if fid not in removed)
+    assert adopted_block.background == ("" if removed else measured)
+    assert adopted_block.key_work == original_block.key_work
+    assert adopted_block.outcomes == original_block.outcomes
+    assert ("背景：" + measured in markdown.splitlines()) is (decision == "keep")
+    assert bool([row for row in claims if row.get("fact_id") == context_id]) is (decision == "keep")
+    for index, value in enumerate((measured, nonquant)):
+        result, = [row for row in claims if row.get("fact_id") == f"{card['id']}:results:{index}"]
+        assert result["text"] == value
+        assert markdown.splitlines()[result["render_line"] - 1] == "- " + value
+    assert budgeted_out not in markdown
+    assert not any(row.get("fact_id") == card["id"] + ":results:2" for row in claims)
+    assert card == before
+    report = {
+        "facts": {fid: {"source_id": card["id"], "field": field, "text": value}
+                  for fid, field, value in (
+                      (context_id, "context", measured),
+                      (card["id"] + ":results:0", "results", measured),
+                      (card["id"] + ":results:1", "results", nonquant))},
+        "requirements": [{"id": "r-context", "text": "具备相应接口验证场景经验"},
+                         {"id": "r-measured", "text": "有条件明确的测试测量成果"},
+                         {"id": "r-nonquant", "text": "有接口验收文档交付成果"}],
+        "assessments": [{"requirement_id": requirement, "status": "supported",
+                         "citations": [{"fact_id": fid, "quote": value}]}
+                        for requirement, fid, value in (
+                            ("r-context", context_id, measured),
+                            ("r-measured", card["id"] + ":results:0", measured),
+                            ("r-nonquant", card["id"] + ":results:1", nonquant))],
+    }
+    coverage = resume_assessment(report, claims, occurrence_coverage_known=True)
+    assert {row["requirement_id"]: row["resume_status"] for row in coverage["requirements"]} == {
+        "r-context": "supported" if decision == "keep" else "not_present",
+        "r-measured": "supported", "r-nonquant": "supported",
+    }
+    quality = evaluate_strong(
+        resume=markdown, cards={card["id"]: card},
+        trace={"occurrence_lineage_version": 1, "claims": claims}, config=load_quality_config(),
+    )
+    assert quality.metrics["quant_total"] == pytest.approx(0.25, abs=0.0001)
+
+
+@pytest.mark.parametrize("context_support", ("supported", "partial"))
+def test_background_review_cannot_remove_a_positive_jd_context(context_support):
+    from tools.engines.matching.semantic_review import resume_assessment
+
+    _, first = inputs()
+    second = {
+        **deepcopy(first), "id": "ec-optional-context", "title": "接口验收手册",
+        "actions": ["完成维护人员的接口验收培训与交接"],
+        "results": ["已交付接口验收手册，仅适用于合成测试接口。"],
+    }
+    second["context"] = second["results"][0]
+    second.pop("result_reviews")
+    second = reviewed_card_results(second, measurement_quotes={0: None})
+    protected_id = first["id"] + ":context:0"
+    optional_id = second["id"] + ":context:0"
+    entries = [
+        ("r-context", protected_id, first, "context", first["context"], context_support),
+        ("r-first", first["id"] + ":results:0", first, "results", first["results"][0], "supported"),
+        ("r-second", second["id"] + ":results:0", second, "results", second["results"][0], "supported"),
+    ]
+    report = {
+        "facts": {fid: {"source_id": card["id"], "field": field, "text": value}
+                  for _, fid, card, field, value, _ in entries},
+        "requirements": [{"id": requirement, "text": value}
+                         for requirement, _fid, _card, _field, value, _status in entries],
+        "assessments": [{"requirement_id": requirement, "status": status,
+                         "citations": [{"fact_id": fid, "quote": value}]}
+                        for requirement, fid, _card, _field, value, status in entries],
+    }
+    calls = []
+
+    def review_backgrounds(plan, index):
+        calls.append(plan)
+        assert index.get(protected_id).requirement_ids == ("r-context",)
+        return {protected_id, optional_id}
+
+    claims = []
+    markdown = build_template_resume(
+        "A", [first, second], claims=claims, semantic_report=report,
+        review_backgrounds=review_backgrounds,
+    )
+    assert len(calls) == 1
+    background, = [row for row in claims if row.get("field") == "context"]
+    assert background["fact_id"] == protected_id
+    assert markdown.splitlines()[background["render_line"] - 1] == "背景：" + first["context"]
+    assert "背景：" + second["context"] not in markdown.splitlines()
+    assert not any(row.get("fact_id") == optional_id for row in claims)
+    for card in (first, second):
+        result, = [row for row in claims if row.get("fact_id") == card["id"] + ":results:0"]
+        assert markdown.splitlines()[result["render_line"] - 1] == "- " + card["results"][0]
+    coverage = resume_assessment(report, claims, occurrence_coverage_known=True)
+    requirements = {row["requirement_id"]: row for row in coverage["requirements"]}
+    assert requirements["r-context"]["resume_status"] == context_support
+    assert requirements["r-context"]["citations"][0]["in_resume"] is True
+    assert requirements["r-first"]["resume_status"] == "supported"
+    assert requirements["r-second"]["resume_status"] == "supported"
+
+
+@pytest.mark.parametrize("with_review", (False, True), ids=("existing-entry", "optional-review"))
+@pytest.mark.parametrize("invalid", ("wrong_bound_value", "internal_metadata"))
+def test_background_omission_cannot_launder_invalid_context(invalid, with_review, monkeypatch):
+    from dataclasses import replace
+    from tools.engines.generation import resume_plan
+
+    _, card = inputs()
+    if invalid == "internal_metadata":
+        card["context"] = "合成验证记录位于 /tmp/synthetic-validation/report.txt，仅供内部追溯。"
+    else:
+        original_build = resume_plan.build_resume_plan
+
+        def wrong_background(*args, **kwargs):
+            plan = original_build(*args, **kwargs)
+            block, = plan.projects
+            return replace(plan, projects=(replace(block, background="已接入生产流量。"),))
+
+        monkeypatch.setattr(resume_plan, "build_resume_plan", wrong_background)
+    calls = []
+
+    def review_backgrounds(plan, index):
+        calls.append(plan)
+        return {card["id"] + ":context:0"}
+
+    kwargs = {"review_backgrounds": review_backgrounds} if with_review else {}
+    with pytest.raises(ValueError):
+        build_template_resume("A", [card], **kwargs)
+    assert calls == []
