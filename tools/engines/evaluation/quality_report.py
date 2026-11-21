@@ -22,53 +22,55 @@ from tools.infra.llm.client import (
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 from . import llm_judge, tiered_evaluator
-from .rule_evaluator import read_text
 
 
-_QUALITY_INPUT_KEYS = {
-    "personal_profile",
-    "matching_report",
-    "semantic_matching",
-    "job_profile",
-    "job_description",
-}
+def _read_quality_input(meta: dict) -> bytes:
+    """校验实际解析的字节，不能用前后重新读到的版本为中途内容背书。"""
+    path = Path(meta["path"])
+    if not path.is_file() or path.is_symlink():
+        raise ValueError("quality_input_changed")
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != meta.get("sha256"):
+        raise ValueError("quality_input_changed")
+    return raw
 
 
 def _load_quality_cards(trace: dict) -> dict[str, dict]:
-    """从生成 trace 的输入指纹中读取本次使用的证据卡（只读）。"""
+    """只解析生成 trace 所绑定的本次来源版本。"""
     cards: dict[str, dict] = {}
     inputs = trace.get("inputs") if isinstance(trace, dict) else None
-    if not isinstance(inputs, dict):
+    ids = trace.get("evidence_card_ids") if isinstance(trace, dict) else None
+    if not isinstance(inputs, dict) or not isinstance(ids, list):
         return cards
-    for key, meta in inputs.items():
-        if key in _QUALITY_INPUT_KEYS or not isinstance(meta, dict):
+    # 职业档案依赖另由 inspect_career 核验，不能覆盖正文的同 ID 直接来源。
+    for card_id in ids:
+        if not isinstance(card_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", card_id):
             continue
-        path = meta.get("path")
-        if not isinstance(path, str) or not path.endswith(".yaml"):
-            continue
-        card_id = str(key).split("career_evidence:")[-1]
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", card_id):
-            continue
-        try:
-            doc = parse_simple_yaml(read_text(path))
-        except (OSError, ValueError):
-            continue
+        doc = parse_simple_yaml(_read_quality_input(inputs[card_id]).decode("utf-8"))
         cards[card_id] = {**doc["scalars"], **doc["lists"]}
     return cards
 
 
 def _load_quality_career(trace: dict) -> dict:
-    from tools.infra.career_profile import load_career_profile
+    from tools.infra.career_profile import inspect_career
 
     inputs = trace.get("inputs") if isinstance(trace, dict) else None
     meta = inputs.get("personal_profile") if isinstance(inputs, dict) else None
-    path = meta.get("path") if isinstance(meta, dict) else None
-    if isinstance(path, str) and Path(path).is_file():
-        try:
-            return load_career_profile(Path(path))
-        except (OSError, ValueError):
-            return {}
-    return {}
+    if not isinstance(meta, dict):
+        return {}
+    profile_path = Path(meta["path"])
+    fields = dict(parse_simple_yaml(_read_quality_input(meta).decode("utf-8"))["scalars"])
+    evidence_dir = profile_path.parent / "evidence_cards"
+    if not evidence_dir.is_dir():
+        evidence_dir = Path("evidence_cards")
+    captured = {}
+    profile = {**fields, **inspect_career(fields, evidence_dir, captured_sources=captured)}
+    for key, (path, digest) in captured.items():
+        expected = inputs.get(key, {})
+        if (not expected.get("path") or Path(expected["path"]).resolve() != path.resolve()
+                or expected.get("sha256") != digest):
+            raise ValueError("quality_input_changed")
+    return profile
 
 
 def _judge_jd_items(semantic_review: dict | None) -> list[dict[str, str]]:
@@ -94,6 +96,7 @@ def _run_quality_judge(
     *,
     resume_text: str,
     trace: dict,
+    cards: dict[str, dict],
     semantic_review: dict | None,
     job_profile_path: str | None,
     use_llm: bool,
@@ -105,7 +108,6 @@ def _run_quality_judge(
     """复用完整缓存；内容缺项最多纠错一次，不缓存未完成判项。"""
     resume_sha256 = hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
     decisions = quality_judge_cache.load_decisions(Path.cwd(), resume_sha256)
-    cards = _load_quality_cards(trace)
     if isinstance(trace.get("claims"), list):
         rendered_ids = {str(claim.get("evidence_id", "")) for claim in trace["claims"] if isinstance(claim, dict)}
         cards = {key: card for key, card in cards.items() if key in rendered_ids}
@@ -205,10 +207,19 @@ def _run_quality_judge(
     return parsed, meta, decisions
 
 
-def _load_job_context(job_profile_path: str | None) -> dict:
+def _load_job_context(job_profile_path: str | None, *, trace: dict) -> dict:
     if not job_profile_path:
         return {}
-    doc = parse_simple_yaml(read_text(job_profile_path))
+    path = Path(job_profile_path)
+    if trace:
+        meta = trace.get("inputs", {}).get("job_profile", {})
+        if not meta.get("path") or Path(meta["path"]).resolve() != path.resolve():
+            raise ValueError("quality_target_changed")
+        raw = _read_quality_input(meta)
+    else:
+        # 无有效 trace 的非语义评测仍可给出不获追溯信用的规则建议。
+        raw = path.read_bytes()
+    doc = parse_simple_yaml(raw.decode("utf-8"))
     context: dict = dict(doc["scalars"])
     context.update(doc["lists"])
     return context

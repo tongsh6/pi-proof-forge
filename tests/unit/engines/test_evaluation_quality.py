@@ -297,7 +297,6 @@ class _FakeJudgeClient:
 
 def _judge_fixture(tmp_path, monkeypatch):
     monkeypatch.setenv("PPF_QUALITY_JUDGE_CACHE_DIR", str(tmp_path / "judge-cache"))
-    monkeypatch.setattr(quality_report, "_load_quality_cards", lambda trace: {"ec_1": {"title": "统一平台"}})
     resume = (
         "# 张三\n13800000000 | a@b.com | 上海\n当前定位：平台负责人\n\n"
         "## 职业概述\n负责平台架构与交付。\n\n<!-- first-screen-end -->\n\n"
@@ -320,21 +319,21 @@ def _judge_fixture(tmp_path, monkeypatch):
         "r4_1": [{"bullet": 1, "jd_item_id": "d1", "exceeds": ["scale"], "level": "L1",
                   "citations": ["ec_1"], "reason": "规模"}],
     }
-    return resume, semantic, json.dumps(payload, ensure_ascii=False)
+    return resume, semantic, json.dumps(payload, ensure_ascii=False), {"ec_1": {"title": "统一平台"}}
 
 
 def test_quality_judge_cache_hit_avoids_second_model_call(tmp_path, monkeypatch):
-    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient(content)
     first, meta_first, _decisions = quality_report._run_quality_judge(
-        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
     )
     assert first is not None and meta_first["cache"] == "miss" and client.calls == 1
     assert "遵守" not in meta_first.get("error", "")
     second, meta_second, _ = quality_report._run_quality_judge(
-        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
     )
@@ -344,17 +343,17 @@ def test_quality_judge_cache_hit_avoids_second_model_call(tmp_path, monkeypatch)
 
 
 def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path, monkeypatch):
-    resume, semantic, _content = _judge_fixture(tmp_path, monkeypatch)
+    resume, semantic, _content, cards = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient("not-json")
     judgments, meta, _ = quality_report._run_quality_judge(
-        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
     )
     assert judgments is None
     assert meta["cache"] == "miss" and meta.get("error") == "invalid_judge_response"
     _judgments2, meta2, _ = quality_report._run_quality_judge(
-        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
     )
@@ -382,13 +381,13 @@ class _SequencedJudgeClient:
 
 
 def test_quality_judge_retries_only_missing_sections_in_second_call(tmp_path, monkeypatch):
-    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     payload = json.loads(content)
     first = json.dumps({"r1_4": payload["r1_4"]}, ensure_ascii=False)
     second = json.dumps({key: payload[key] for key in ("r2_1", "r3_1", "r3_5", "r4_1")}, ensure_ascii=False)
     client = _SequencedJudgeClient([first, second])
     judgments, meta, _ = quality_report._run_quality_judge(
-        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
     )
@@ -400,16 +399,16 @@ def test_quality_judge_retries_only_missing_sections_in_second_call(tmp_path, mo
 
 
 def test_quality_judge_disabled_without_llm_or_semantic_review(tmp_path, monkeypatch):
-    resume, semantic, _content = _judge_fixture(tmp_path, monkeypatch)
+    resume, semantic, _content, cards = _judge_fixture(tmp_path, monkeypatch)
     judgments, meta, decisions = quality_report._run_quality_judge(
-        resume_text=resume, trace={}, semantic_review=None, job_profile_path="job.yaml",
+        resume_text=resume, trace={}, cards=cards, semantic_review=None, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient("{}"),
     )
     assert judgments is None and meta["cache"] == "disabled"
     assert decisions == {"rejected": [], "selected": []}
     judgments, meta, _ = quality_report._run_quality_judge(
-        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=False, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient("{}"),
     )
@@ -418,12 +417,12 @@ def test_quality_judge_disabled_without_llm_or_semantic_review(tmp_path, monkeyp
 
 def test_quality_judge_loads_user_highlight_decisions(tmp_path, monkeypatch):
     from tools.infra import quality_judge_cache
-    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     resume_sha = hashlib.sha256(resume.encode("utf-8")).hexdigest()
     quality_judge_cache.save_highlight_decision(Path.cwd(), resume_sha, "hl_b1_d1", "reject")
     _judgments, _meta, decisions = quality_report._run_quality_judge(
-        resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+        resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient(content),
     )
@@ -431,9 +430,9 @@ def test_quality_judge_loads_user_highlight_decisions(tmp_path, monkeypatch):
 
 
 def test_quality_cache_invalidates_when_same_job_content_changes(tmp_path, monkeypatch):
-    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient(content)
-    args = dict(resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+    args = dict(resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
                 use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
                 client_factory=lambda: client)
     quality_report._run_quality_judge(**args)
@@ -443,11 +442,11 @@ def test_quality_cache_invalidates_when_same_job_content_changes(tmp_path, monke
 
 
 def test_quality_missing_jd_coverage_repairs_once_and_does_not_cache_pending(tmp_path, monkeypatch):
-    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     payload = json.loads(content)
     payload["r2_1"] = []
     client = _FakeJudgeClient(json.dumps(payload))
-    args = dict(resume_text=resume, trace={}, semantic_review=semantic, job_profile_path="job.yaml",
+    args = dict(resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
                 use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
                 client_factory=lambda: client)
     judgments, meta, _ = quality_report._run_quality_judge(**args)
@@ -457,24 +456,312 @@ def test_quality_missing_jd_coverage_repairs_once_and_does_not_cache_pending(tmp
 
 
 def test_quality_judge_uses_configured_provider_adapter(tmp_path, monkeypatch):
-    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient(content)
     created = []
     monkeypatch.setenv("LLM_PROVIDER", "lm_studio")
     monkeypatch.setattr(quality_report, "LLMClient", lambda **kwargs: created.append(kwargs) or client)
-    quality_report._run_quality_judge(resume_text=resume, trace={}, semantic_review=semantic,
+    quality_report._run_quality_judge(resume_text=resume, trace={}, cards=cards, semantic_review=semantic,
         job_profile_path="job.yaml", use_llm=True, model="m", api_key="k", base_url="http://localhost/v1")
     assert created[0]["provider"] == "lm_studio"
 
 
 def test_quality_judge_only_receives_evidence_used_in_actual_resume(tmp_path, monkeypatch):
-    resume, semantic, content = _judge_fixture(tmp_path, monkeypatch)
-    monkeypatch.setattr(quality_report, "_load_quality_cards",
-                        lambda _: {"ec_1": {"title": "统一平台"}, "unused": {"results": ["未呈现的百万级成果"]}})
+    resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
+    cards = {**cards, "unused": {"results": ["未呈现的百万级成果"]}}
     client = _FakeJudgeClient(content)
-    quality_report._run_quality_judge(resume_text=resume,
+    quality_report._run_quality_judge(resume_text=resume, cards=cards,
         trace={"claims": [{"evidence_id": "ec_1", "text": "负责完成平台抽象"}]},
         semantic_review=semantic, job_profile_path="job.yaml", use_llm=True, model="m", api_key="k",
         base_url="http://fake/v1", client_factory=lambda: client)
     data = json.loads(client.last_prompt.split("INPUT JSON:\n", 1)[1])
     assert [card["id"] for card in data["cards"]] == ["ec_1"]
+
+
+def _bound_quality_fixture(tmp_path):
+    """真实文件与精确 trace；各测试只操纵评测期间发生的版本变化。"""
+    from tools.infra.persistence.review_snapshot import read_generation_trace
+    from tools.orchestration.evaluation_flow import EvaluationFlowConfig
+
+    resume, job, output = _quality_fixture(tmp_path)
+    jd = tmp_path / "job.txt"
+    jd.write_text("负责平台交付与接口性能验证。")
+    job.write_text(job.read_text() + 'source_jd: "job.txt"\n')
+    trace_path = resume.with_suffix(".trace.json")
+    trace = json.loads(trace_path.read_text())
+    trace["occurrence_lineage_version"] = 1
+    trace["inputs"]["job_description"] = {"path": str(jd), "exists": True}
+    for meta in trace["inputs"].values():
+        meta["sha256"] = hashlib.sha256(Path(meta["path"]).read_bytes()).hexdigest()
+    for claim in trace["claims"]:
+        if claim["source_kind"] == "evidence":
+            claim["fact_id"] = f'{claim["evidence_id"]}:{claim["field"]}:0'
+            claim["render_line"] = next(
+                number for number, line in enumerate(resume.read_text().splitlines(), 1)
+                if claim["text"] in line)
+    trace_path.write_text(json.dumps(trace))
+    assert read_generation_trace(resume)[1]
+    return EvaluationFlowConfig(input_path=resume, output_path=output, job_profile_path=job), trace
+
+
+@pytest.mark.parametrize("input_key", ["ec-1", "personal_profile", "job_profile"])
+def test_evaluation_rejects_different_bytes_consumed_then_restored(tmp_path, monkeypatch, input_key):
+    from tools.orchestration import evaluation_flow
+
+    config, trace = _bound_quality_fixture(tmp_path)
+    target = Path(trace["inputs"][input_key]["path"])
+    before_md, before_json = b"existing report\n", b'{"existing": true}\n'
+    config.output_path.write_bytes(before_md)
+    config.output_path.with_suffix(".json").write_bytes(before_json)
+    read_bytes, read_text = Path.read_bytes, Path.read_text
+    original = read_bytes(target)
+    replacements = {
+        "ec-1": ("模块负责人", "总体生产负责人"),
+        "personal_profile": ("测试候选人", "另一候选人"),
+        "job_profile": ("本科", "博士"),
+    }
+    old, new = replacements[input_key]
+    changed = original.decode().replace(old, new).encode()
+    assert changed != original
+    state = {"armed": False, "consumed": False}
+    read_trace = evaluation_flow.read_generation_trace
+
+    def verified_then_arm(path):
+        result = read_trace(path)
+        assert result[1]
+        state["armed"] = True
+        return result
+
+    def consume(method):
+        def read(path, *args, **kwargs):
+            if state["armed"] and not state["consumed"] and path == target:
+                state["consumed"] = True
+                path.write_bytes(changed)
+                try:
+                    return method(path, *args, **kwargs)
+                finally:
+                    path.write_bytes(original)
+            return method(path, *args, **kwargs)
+        return read
+
+    monkeypatch.setattr(evaluation_flow, "read_generation_trace", verified_then_arm)
+    monkeypatch.setattr(Path, "read_bytes", consume(read_bytes))
+    monkeypatch.setattr(Path, "read_text", consume(read_text))
+    assert evaluation_flow.run_evaluation_flow(config) == 1
+    assert state["consumed"] and read_bytes(target) == original
+    assert config.output_path.read_bytes() == before_md
+    assert config.output_path.with_suffix(".json").read_bytes() == before_json
+
+
+@pytest.mark.parametrize("input_key", ["ec-1", "personal_profile", "job_profile", "job_description"])
+def test_evaluation_source_change_during_judge_keeps_existing_report(tmp_path, monkeypatch, input_key):
+    from tools.orchestration import evaluation_flow
+
+    config, trace = _bound_quality_fixture(tmp_path)
+    target = Path(trace["inputs"][input_key]["path"])
+    before_md, before_json = b"existing report\n", b'{"existing": true}\n'
+    config.output_path.write_bytes(before_md)
+    config.output_path.with_suffix(".json").write_bytes(before_json)
+    run_judge = quality_report._run_quality_judge
+
+    def judge_then_change(**kwargs):
+        result = run_judge(**kwargs)
+        target.write_bytes(target.read_bytes() + b"\n# changed during judgment\n")
+        return result
+
+    monkeypatch.setattr(quality_report, "_run_quality_judge", judge_then_change)
+    assert evaluation_flow.run_evaluation_flow(config) == 1
+    assert config.output_path.read_bytes() == before_md
+    assert config.output_path.with_suffix(".json").read_bytes() == before_json
+
+
+def test_evaluation_stable_bound_inputs_preserve_quality_and_trace_credit(tmp_path):
+    from tools.orchestration.evaluation_flow import run_evaluation_flow
+
+    config, _trace = _bound_quality_fixture(tmp_path)
+    assert run_evaluation_flow(config) == 0
+    result = json.loads(config.output_path.with_suffix(".json").read_text())
+    assert result["traceability"]["verified_bullets"] == 1
+    assert result["quality_report"]["tiers"]["strong"]["metrics"]["quant_total"] == 1.0
+    assert result["quality_report"]["auto_pass"] is False
+
+
+def test_evaluation_rejects_different_job_path_with_same_bytes(tmp_path):
+    from dataclasses import replace
+    from tools.orchestration.evaluation_flow import run_evaluation_flow
+
+    config, _trace = _bound_quality_fixture(tmp_path)
+    duplicate = tmp_path / "another-job.yaml"
+    duplicate.write_bytes(config.job_profile_path.read_bytes())
+    assert run_evaluation_flow(replace(config, job_profile_path=duplicate)) == 1
+    assert not config.output_path.exists()
+    assert not config.output_path.with_suffix(".json").exists()
+
+
+def _bind_quality_career_card(config, trace, card_id, raw):
+    from tools.infra.persistence.review_snapshot import read_generation_trace
+
+    profile = Path(trace["inputs"]["personal_profile"]["path"])
+    evidence_dir = profile.parent / "evidence_cards"
+    evidence_dir.mkdir(exist_ok=True)
+    card = evidence_dir / (card_id + ".yaml")
+    card.write_bytes(raw)
+    career = {"schema_version": 1, "education_visibility": "omit",
+              "skills": [{"id": "linked", "category": "接口开发", "description": "已关联事实",
+                          "evidence_ids": [card_id]}]}
+    profile.write_text(profile.read_text() + "career_json: " +
+                       json.dumps(json.dumps(career, ensure_ascii=False), ensure_ascii=False) + "\n")
+    trace["inputs"]["personal_profile"]["sha256"] = hashlib.sha256(profile.read_bytes()).hexdigest()
+    trace["inputs"]["career_evidence:" + card_id] = {
+        "path": str(card), "exists": True, "sha256": hashlib.sha256(raw).hexdigest()}
+    config.input_path.with_suffix(".trace.json").write_text(json.dumps(trace))
+    assert read_generation_trace(config.input_path)[1]
+    return card
+
+
+@pytest.mark.parametrize("same_bytes", [False, True])
+def test_evaluation_uses_direct_card_version_instead_of_same_id_career_card(tmp_path, same_bytes):
+    from tools.orchestration.evaluation_flow import run_evaluation_flow
+
+    config, trace = _bound_quality_fixture(tmp_path)
+    direct = Path(trace["inputs"]["ec-1"]["path"]).read_bytes()
+    career = direct if same_bytes else direct.replace("请求延迟降低 20%".encode(), "完成接口验收".encode())
+    _bind_quality_career_card(config, trace, "ec-1", career)
+    assert run_evaluation_flow(config) == 0
+    result = json.loads(config.output_path.with_suffix(".json").read_text())
+    assert result["traceability"]["verified_bullets"] == 1
+    assert result["quality_report"]["tiers"]["strong"]["metrics"]["quant_total"] == 1.0
+
+
+def test_evaluation_checks_bytes_read_inside_career_inspection(tmp_path, monkeypatch):
+    from tools.infra import career_profile
+    from tools.orchestration.evaluation_flow import run_evaluation_flow
+
+    config, trace = _bound_quality_fixture(tmp_path)
+    card = _bind_quality_career_card(config, trace, "ec-indirect",
+        b'id: "ec-indirect"\nstatus: "saved_eligible"\ncandidate_pool_eligible: "true"\n'
+        b'results:\n  - "completed delivery"\nartifacts:\n  - "report"\n')
+    original = card.read_bytes()
+    changed = original.replace(b"completed delivery", b"planned delivery")
+    read_bytes = Path.read_bytes
+    inspect = career_profile.inspect_career
+    state = {"inspecting": False, "consumed": False}
+
+    def inspect_then_restore(*args, **kwargs):
+        state["inspecting"] = True
+        try:
+            return inspect(*args, **kwargs)
+        finally:
+            state["inspecting"] = False
+
+    def consume_changed_bytes(path):
+        if state["inspecting"] and path == card and not state["consumed"]:
+            state["consumed"] = True
+            path.write_bytes(changed)
+            try:
+                return read_bytes(path)
+            finally:
+                path.write_bytes(original)
+        return read_bytes(path)
+
+    monkeypatch.setattr(career_profile, "inspect_career", inspect_then_restore)
+    monkeypatch.setattr(Path, "read_bytes", consume_changed_bytes)
+    assert run_evaluation_flow(config) == 1
+    assert state["consumed"] and card.read_bytes() == original
+    assert not config.output_path.exists()
+    assert not config.output_path.with_suffix(".json").exists()
+
+
+def _semantic_quality_fixture(tmp_path):
+    from tools.engines.matching.semantic_matching import run_semantic_matching, write_semantic_report
+    from tools.infra.persistence.review_snapshot import read_generation_trace
+
+    config, trace = _bound_quality_fixture(tmp_path)
+
+    class Client:
+        chat_completions_url = "http://localhost/v1/chat/completions"
+
+        def post_json(self, url, payload, **kwargs):
+            data = json.loads(payload["messages"][1]["content"])
+            cite = {"fact_id": "ec-1:results:0", "quote": "请求延迟降低 20%"}
+            if data["stage"] == "recall":
+                response = {"cards": [{"id": "ec-1", "score": 90, "reason": "接口性能验证",
+                                      "requirement_ids": ["r1"], "citations": [cite]}]}
+            else:
+                response = {"assessments": [
+                    {"requirement_id": row["id"],
+                     "status": "supported" if row["text"] == "Java" else "insufficient",
+                     "reason": "基于本次固定原文判读",
+                     "citations": [cite] if row["text"] == "Java" else []}
+                    for row in data["requirements"]]}
+            return {"choices": [{"message": {"content": json.dumps(response)}}]}
+
+        @staticmethod
+        def extract_content(response):
+            return response["choices"][0]["message"]["content"]
+
+    report = tmp_path / "matching.yaml"
+    semantic = run_semantic_matching(
+        job_path=config.job_profile_path,
+        evidence_files=[Path(trace["inputs"]["ec-1"]["path"])],
+        personal_profile=Path(trace["inputs"]["personal_profile"]["path"]),
+        client=Client(), model="test", cache_dir=tmp_path / "cache")
+    write_semantic_report(report, semantic)
+    trace["generation_strategy"] = "semantic_selection_locked_evidence_fields"
+    for key, path in (("matching_report", report), ("semantic_matching", report.with_suffix(".semantic.json"))):
+        trace["inputs"][key] = {"path": str(path), "exists": True,
+                                "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    config.input_path.with_suffix(".trace.json").write_text(json.dumps(trace))
+    assert read_generation_trace(config.input_path)[1]
+    return config, report, semantic
+
+
+@pytest.mark.parametrize("change_during_load", [False, True])
+def test_evaluation_binds_semantic_object_to_consumed_trace_version(tmp_path, monkeypatch, change_during_load):
+    from tools.engines.matching.semantic_matching import write_semantic_report
+    from tools.engines.matching.semantic_review import aggregate_assessments
+    from tools.orchestration import evaluation_flow as flow
+
+    config, report, semantic = _semantic_quality_fixture(tmp_path)
+    paths = (report, report.with_suffix(".semantic.json"))
+    original = {path: path.read_bytes() for path in paths}
+    changed = json.loads(json.dumps(semantic))
+    for assessment in changed["criterion_assessments"]:
+        assessment["reason"] = "另一版本的判读理由"
+    changed["assessments"] = aggregate_assessments(
+        changed["requirements"], changed["requirement_checks"], changed["criterion_assessments"])
+    write_semantic_report(report, changed)
+    replacement = {path: path.read_bytes() for path in paths}
+    for path, raw in original.items():
+        path.write_bytes(raw)
+    load = flow.load_semantic_report
+    state = {"consumed": False}
+
+    def load_then_restore(path):
+        if not change_during_load:
+            return load(path)
+        for source, raw in replacement.items():
+            source.write_bytes(raw)
+        try:
+            result = load(path)
+            assert all(row["reason"] == "另一版本的判读理由" for row in result["criterion_assessments"])
+            state["consumed"] = True
+            return result
+        finally:
+            for source, raw in original.items():
+                source.write_bytes(raw)
+
+    monkeypatch.setattr(flow, "load_semantic_report", load_then_restore)
+    config.output_path.write_text("existing markdown")
+    config.output_path.with_suffix(".json").write_text("existing json")
+    assert flow.run_evaluation_flow(config) == (1 if change_during_load else 0)
+    assert state["consumed"] is change_during_load
+    assert all(path.read_bytes() == raw for path, raw in original.items())
+    if change_during_load:
+        assert config.output_path.read_text() == "existing markdown"
+        assert config.output_path.with_suffix(".json").read_text() == "existing json"
+    else:
+        result = json.loads(config.output_path.with_suffix(".json").read_text())
+        assert result["semantic_review"]["mode"] == "semantic"
+        assert all("基于本次固定原文判读" in row["reason"] for row in result["semantic_review"]["requirements"])
+        assert result["traceability"]["verified_bullets"] == 1

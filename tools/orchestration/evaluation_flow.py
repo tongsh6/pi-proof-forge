@@ -138,12 +138,20 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
     output_path = config.output_path
     job_profile_path = config.job_profile_path
     resume_text = rule_evaluator.read_text(input_path)
-    must_have, keywords = rule_evaluator.collect_terms(
-        str(job_profile_path) if job_profile_path else None
-    )
     trace, trace_valid = read_generation_trace(input_path)
     # trace 校验可能晚于正文读取；只给本次实际消费的正文版本授予追溯信用。
     trace_valid = trace_valid and trace.get("resume_sha256") == hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
+    quality_trace = trace if trace_valid else {}
+    try:
+        cards = quality_report._load_quality_cards(quality_trace)
+        career = quality_report._load_quality_career(quality_trace)
+        job_context = quality_report._load_job_context(
+            str(job_profile_path) if job_profile_path else None, trace=quality_trace)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"[evaluation] 评测输入版本已变化或不可用：{exc}")
+        return 1
+    must_have = job_context.get("must_have", [])
+    keywords = job_context.get("keywords", [])
     rule_result = rule_evaluator.evaluate_rule(
         resume_text=resume_text,
         must_have=must_have,
@@ -170,6 +178,12 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
             if semantic_expected and semantic is None:
                 raise ValueError("semantic_report_missing")
             if semantic:
+                source = trace["inputs"]["semantic_matching"]
+                if Path(source["path"]).resolve() != Path(matching_source["path"]).with_suffix(".semantic.json").resolve():
+                    raise ValueError("semantic_report_changed")
+                semantic_raw = quality_report._read_quality_input(source)
+                if json.loads(semantic_raw) != semantic:
+                    raise ValueError("semantic_report_changed")
                 semantic_review = _merge_semantic_review(
                     semantic=semantic,
                     trace=trace,
@@ -227,11 +241,11 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
         print("LLM mode required but model/api_key is missing")
         return 1
 
-    # 四层报告与规则评测共用快照核验；失效来源不能因原句仍相同而恢复权威。
-    quality_trace = trace if trace_valid else {}
+    # Judge 与四层报告共用本次已核字节解析出的同一批事实。
     quality_judgments, judge_meta, judge_decisions = quality_report._run_quality_judge(
         resume_text=resume_text,
         trace=quality_trace,
+        cards=cards,
         semantic_review=semantic_review,
         job_profile_path=str(job_profile_path) if job_profile_path else None,
         use_llm=config.use_llm,
@@ -244,12 +258,10 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
         quality = tiered_evaluator.build_quality_report(
             resume=resume_text,
             trace=quality_trace,
-            career_profile=quality_report._load_quality_career(quality_trace),
-            cards=quality_report._load_quality_cards(quality_trace),
+            career_profile=career,
+            cards=cards,
             semantic_review=semantic_review,
-            job_context=quality_report._load_job_context(
-                str(job_profile_path) if job_profile_path else None
-            ),
+            job_context=job_context,
             pdf_check=None,
             judgments=quality_judgments,
             decisions=judge_decisions,
@@ -265,6 +277,12 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
     except (OSError, ValueError, TypeError) as exc:
         judge_meta = {**judge_meta, "report_error": str(exc)[:300]}
         print(f"[evaluation] 四层质量报告生成失败：{exc}")
+
+    if trace_valid:
+        current_trace, current_valid = read_generation_trace(input_path)
+        if not current_valid or current_trace != trace:
+            print("[evaluation] 评测期间正文或来源已变化，未发布报告。")
+            return 1
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     _ = output_path.write_text(final_markdown, encoding="utf-8")

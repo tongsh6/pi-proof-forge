@@ -24,6 +24,7 @@ def _gate_kwargs() -> dict:
     return {
         "resume_text": "# 张三\n## 项目经历\n- 负责平台交付\n",
         "trace": {},
+        "cards": {},
         "semantic_review": {
             "mode": "semantic",
             "requirements": [
@@ -40,7 +41,6 @@ def _gate_kwargs() -> dict:
 
 def _patch_judge_deps(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("PPF_QUALITY_JUDGE_CACHE_DIR", str(tmp_path / "judge-cache"))
-    monkeypatch.setattr(quality_report, "_load_quality_cards", lambda trace: {})
     monkeypatch.setattr(
         quality_report.quality_judge_cache,
         "load_decisions",
