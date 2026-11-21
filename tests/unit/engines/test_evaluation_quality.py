@@ -70,12 +70,12 @@ def test_activity_dates_and_software_versions_are_not_quantified_outcomes():
 
 def test_trace_requires_full_bullet_not_a_supported_substring():
     claims = [
-        {"text": "接口开发", "source_kind": "evidence", "evidence_id": "e1", "field": "actions"},
-        {"text": "架构", "source_kind": "personal_profile", "field": "career.skills.s.category"},
-        {"text": "服务拆分", "source_kind": "personal_profile", "field": "career.skills.s.description"},
+        {"text": "接口开发", "source_kind": "evidence", "evidence_id": "e1", "field": "actions", "fact_id": "e1:actions:0", "render_line": 1},
+        {"text": "架构", "source_kind": "personal_profile", "field": "career.skills.s.category", "fact_id": "personal_profile:career.skills.s.category:0", "render_line": 3},
+        {"text": "服务拆分", "source_kind": "personal_profile", "field": "career.skills.s.description", "fact_id": "personal_profile:career.skills.s.description:0", "render_line": 3},
         {"text": "Java负责人", "source_kind": "job_profile", "field": "target_role"},
     ]
-    result = evaluate("- 接口开发\n- 接口开发，业绩提升 90%\n- 架构：服务拆分\n- Java负责人", verified_claims=claims)
+    result = evaluate("- 接口开发\n- 接口开发，业绩提升 90%\n- 架构：服务拆分\n- Java负责人", verified_trace={"occurrence_lineage_version": 1, "claims": claims})
     assert result["traceability"]["verified_bullets"] == 2
     assert [row["verified"] for row in result["traceability"]["bullets"]] == [True, False, True, False]
 
@@ -84,6 +84,43 @@ def test_agent_keyword_coverage_uses_same_boundaries():
     profile = JobProfile("p", "后端", ("Java", "java", "Go", ""), "senior")
     resume = ResumeOutput("a", "p", "- 使用 JavaScript 和 Django", "markdown")
     assert RuleEvaluationEngine().evaluate(resume, profile).dimension_scores["coverage"] == 0.0
+
+
+def test_agent_trace_credit_stays_on_the_actual_rendered_line(tmp_path):
+    from tests.unit.infra.test_review_snapshot import _generated_content
+
+    content, trace, _ = _generated_content(tmp_path)
+    statement = trace["claims"][0]["text"]
+    content += "- " + statement + "\n"
+    trace["resume_sha256"] = hashlib.sha256(content.encode()).hexdigest()
+    resume = ResumeOutput("a", "p", content, "markdown", generation_trace=trace)
+    profile = JobProfile("p", "后端", (), "senior")
+    result = RuleEvaluationEngine().evaluate(resume, profile)
+    assert result.dimension_scores["citation"] == 0.5
+
+
+@pytest.mark.parametrize("mutation", ["missing_occurrence", "wrong_index", "wrong_value", "changed_source"])
+def test_agent_evaluation_rejects_unbound_result_trace(tmp_path, mutation):
+    from tests.unit.infra.test_review_snapshot import _generated_content
+
+    content, trace, source = _generated_content(tmp_path)
+    claim = trace["claims"][0]
+    if mutation == "missing_occurrence":
+        claim.pop("fact_id")
+        claim.pop("render_line")
+    elif mutation == "wrong_index":
+        claim["fact_id"] = "card-a:results:999"
+    elif mutation == "wrong_value":
+        replacement = "已完成生产环境验收。"
+        content = content.replace(claim["text"], replacement)
+        claim["text"] = replacement
+        trace["resume_sha256"] = hashlib.sha256(content.encode()).hexdigest()
+    else:
+        source.write_text("来源结论已被撤回", encoding="utf-8")
+    resume = ResumeOutput("a", "p", content, "markdown", generation_trace=trace)
+    with pytest.raises(ValueError, match="generation_trace_invalid"):
+        RuleEvaluationEngine().evaluate(resume, JobProfile("p", "后端", (), "senior"))
+
 
 
 def test_plus_separates_stack_names_without_confusing_c_languages():
@@ -97,7 +134,7 @@ def test_agent_empty_keywords_keep_neutral_score():
     assert RuleEvaluationEngine().evaluate(resume, profile).dimension_scores["coverage"] == 0.5
 
 
-@pytest.mark.parametrize("changed_input", ["card", "material", "resume"])
+@pytest.mark.parametrize("changed_input", ["card", "material", "resume", "during_trace_read"])
 def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypatch, changed_input):
     source = tmp_path / "e1.yaml"
     source.write_text('results:\n  - "接口延迟降低 30%"\n')
@@ -134,8 +171,18 @@ def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypa
     assert report["auto_pass"] is False
 
     # 保持结果原句、Fact ID 和呈现行不变，仅改变已绑定输入/正文版本。
-    changed = {"card": source, "material": material, "resume": resume}[changed_input]
-    changed.write_text(changed.read_text() + "\n# 来源或正文版本已更新\n")
+    if changed_input == "during_trace_read":
+        from tools.orchestration import evaluation_flow
+        original_read = evaluation_flow.read_generation_trace
+        def replace_body_and_trace(path):
+            path.write_text(path.read_text() + "\n# 正文新版本\n")
+            trace["resume_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+            path.with_suffix(".trace.json").write_text(json.dumps(trace))
+            return original_read(path)
+        monkeypatch.setattr(evaluation_flow, "read_generation_trace", replace_body_and_trace)
+    else:
+        changed = {"card": source, "material": material, "resume": resume}[changed_input]
+        changed.write_text(changed.read_text() + "\n# 来源或正文版本已更新\n")
     assert evaluate_cli.main() == 0
     result = json.loads(output.with_suffix(".json").read_text())
     assert result["traceability"]["status"] == "unverified"

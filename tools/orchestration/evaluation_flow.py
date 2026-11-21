@@ -142,6 +142,8 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
         str(job_profile_path) if job_profile_path else None
     )
     trace, trace_valid = read_generation_trace(input_path)
+    # trace 校验可能晚于正文读取；只给本次实际消费的正文版本授予追溯信用。
+    trace_valid = trace_valid and trace.get("resume_sha256") == hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
     rule_result = rule_evaluator.evaluate_rule(
         resume_text=resume_text,
         must_have=must_have,
@@ -149,7 +151,7 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
         now=now,
         input_name=input_path.name,
         job_profile_name=job_profile_path.name if job_profile_path else None,
-        verified_claims=trace["claims"] if trace_valid else None,
+        verified_trace=trace if trace_valid else None,
     )
 
     final_markdown = rule_result["markdown"]

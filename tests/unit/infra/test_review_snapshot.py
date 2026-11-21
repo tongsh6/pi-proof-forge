@@ -83,3 +83,78 @@ def test_platform_default_snapshot_is_text_not_a_sent_pdf(snapshots, monkeypatch
     assert loaded['resume_markdown'] == text
     with pytest.raises(ValueError, match='review_snapshot'):
         snapshots.load('run-1', {**c,'delivery_kind':'generated_pdf','snapshot':ref})
+
+
+def _generated_content(tmp_path):
+    import hashlib
+
+    statement = '在隔离测试环境完成验证；生产环境尚未验证。'
+    source = tmp_path / 'source.md'
+    source.write_text(statement, encoding='utf-8')
+    card = tmp_path / 'card.yaml'
+    card.write_text('results:\n  - ' + json.dumps(statement, ensure_ascii=False) + '\n', encoding='utf-8')
+    content = '# 合成候选人\n\n- ' + statement + '\n'
+    trace = {
+        'schema_version': 1,
+        'occurrence_lineage_version': 1,
+        'resume_sha256': hashlib.sha256(content.encode()).hexdigest(),
+        'evidence_card_ids': ['card-a'],
+        'inputs': {
+            key: {'path': str(path), 'exists': True, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+            for key, path in [('card-a', card), ('material:source', source)]
+        },
+        'claims': [{'text': statement, 'source_kind': 'evidence', 'evidence_id': 'card-a',
+                    'field': 'results', 'fact_id': 'card-a:results:0', 'render_line': 3}],
+    }
+    return content, trace, source
+
+
+def test_generated_snapshot_carries_same_trace_and_revokes_when_source_changes(snapshots, tmp_path):
+    from tools.infra.persistence.review_snapshot import read_generation_trace
+
+    content, trace, source = _generated_content(tmp_path)
+    c = candidate()
+    c['snapshot'] = snapshots.create('run-1', c, content, dry_run=True, generation_trace=trace)
+    loaded = snapshots.load('run-1', c)
+    restored_trace, valid = read_generation_trace(Path(loaded['resume_markdown_path']))
+    assert valid
+    assert restored_trace == trace
+    assert loaded['generation_trace_sha256']
+    source.write_text('来源版本已经撤回原结论', encoding='utf-8')
+    with pytest.raises(ValueError, match='review_snapshot_invalid'):
+        snapshots.load('run-1', c)
+
+
+def test_generated_snapshot_rejects_trace_changed_after_sealing(snapshots, tmp_path):
+    content, trace, _ = _generated_content(tmp_path)
+    c = candidate()
+    c['snapshot'] = snapshots.create('run-1', c, content, dry_run=True, generation_trace=trace)
+    loaded = snapshots.load('run-1', c)
+    path = Path(loaded['resume_markdown_path']).with_suffix('.trace.json')
+    path.chmod(0o600)
+    path.write_text(json.dumps({**trace, 'claims': []}), encoding='utf-8')
+    with pytest.raises(ValueError, match='review_snapshot_invalid'):
+        snapshots.load('run-1', c)
+
+
+@pytest.mark.parametrize('mutation', ['source', 'body', 'trace'])
+def test_source_change_during_pdf_export_cannot_publish_generated_snapshot(snapshots, tmp_path, monkeypatch, mutation):
+    from tools.infra.persistence import review_snapshot
+
+    content, trace, source = _generated_content(tmp_path)
+    def export_and_change_source(md, pdf):
+        pdf.write_bytes(b'%PDF-test-only')
+        changed = {'source': source, 'body': md, 'trace': md.with_suffix('.trace.json')}[mutation]
+        changed.write_text('导出期间输入或产物已变更', encoding='utf-8')
+    monkeypatch.setattr(review_snapshot, '_render_pdf', export_and_change_source)
+    with pytest.raises(ValueError, match='review_snapshot'):
+        snapshots.create('run-1', candidate(), content, dry_run=True, generation_trace=trace)
+    assert not list(snapshots.root.rglob('manifest.json'))
+
+
+def test_supplied_invalid_generation_trace_never_falls_back_to_bare_content(snapshots, tmp_path):
+    content, trace, _ = _generated_content(tmp_path)
+    trace['resume_sha256'] = '0' * 64
+    with pytest.raises(ValueError, match='review_snapshot'):
+        snapshots.create('run-1', candidate(), content, dry_run=True, generation_trace=trace)
+    assert not list(snapshots.root.rglob('manifest.json'))

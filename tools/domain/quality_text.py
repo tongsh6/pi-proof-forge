@@ -46,3 +46,15 @@ def render_fact_text(text: str) -> str:
     value = re.sub(r"\*\*|__|`", "", str(text or ""))
     value = _EMOJI_RE.sub("", value)
     return _normalize_tech_terms(" ".join(value.split()))
+
+
+def matches_fact_occurrence(source_id: str, field: str, values: object, claim: dict) -> bool:
+    """核对原字段位置及完整展示值；不判断命题或实测语义。"""
+    if not isinstance(values, (list, tuple)):
+        return False
+    return any(
+        isinstance(value, str)
+        and claim.get("fact_id") == f"{source_id}:{field}:{index}"
+        and render_fact_text(value) == claim.get("text")
+        for index, value in enumerate(values)
+    )

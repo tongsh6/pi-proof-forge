@@ -16,6 +16,7 @@ from tools.domain.models import JobProfile, ResumeOutput, Scorecard
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 from .keyword_coverage import contains_term, keyword_coverage, unique_terms
+from .tiers.common import inspect_bullet_trace
 
 
 class RuleResult(TypedDict):
@@ -52,26 +53,6 @@ def normalize_line(text: str) -> str:
     return value
 
 
-def inspect_bullet_trace(bullets: list[str], verified_claims: list[dict] | None) -> dict:
-    """仅接收已通过正文/输入指纹验证的 claims，完整覆盖 bullet 才计分。"""
-    facts = sorted((claim for claim in (verified_claims or [])
-                    if claim.get("source_kind") in {"evidence", "personal_profile"} and claim.get("text")),
-                   key=lambda claim: len(claim["text"]), reverse=True)
-    rows = []
-    for number, bullet in enumerate(bullets, 1):
-        body = re.sub(r"^\s*(?:[-*]|\d+\.)\s+", "", bullet)
-        remaining = body
-        sources = []
-        for claim in facts:
-            if claim["text"] in remaining:
-                remaining = remaining.replace(claim["text"], "")
-                sources.append({key: claim.get(key, "") for key in ("source_kind", "field", "evidence_id")})
-        covered = bool(sources) and not re.sub(r"[\s:：·、|*]", "", remaining)
-        rows.append({"bullet": number, "verified": covered, "sources": sources})
-    return {"status": "verified" if verified_claims is not None else "unverified",
-            "verified_bullets": sum(row["verified"] for row in rows), "total_bullets": len(rows), "bullets": rows}
-
-
 def evaluate_rule(
     resume_text: str,
     must_have: list[str],
@@ -79,7 +60,7 @@ def evaluate_rule(
     now: str,
     input_name: str,
     job_profile_name: str | None,
-    *, verified_claims: list[dict] | None = None,
+    *, verified_trace: dict | None = None,
 ) -> RuleResult:
     lines: list[str] = [line for line in resume_text.splitlines() if line.strip()]
     bullet_lines: list[str] = [
@@ -143,7 +124,11 @@ def evaluate_rule(
         length_penalty += min(40, (line_count - 120))
     length_score = max(0, 100 - length_penalty)
 
-    traceability = inspect_bullet_trace(bullet_lines, verified_claims)
+    traceability = inspect_bullet_trace(resume_text, verified_trace)
+    traceability["bullets"] = [
+        {"bullet": row["number"], "verified": row["verified"], "sources": row["sources"]}
+        for row in traceability["bullets"]
+    ]
     evidence_cited = traceability["verified_bullets"]
     citation_ratio = (evidence_cited / total_bullets) if total_bullets else 0.0
     citation_score = int(round(citation_ratio * 100))
@@ -204,7 +189,7 @@ def evaluate_rule(
         f"- 空话率/重复度: {int(round(fluff_ratio * 100))}% / {int(round(duplicate_ratio * 100))}% (score={clarity_score})",
         f"- 篇幅控制: lines={line_count}, chars={char_count} (score={length_score})",
         f"- 证据引用检查: {int(round(citation_ratio * 100))}% ({evidence_cited}/{total_bullets})",
-        "- 独立追溯: " + ("正文与输入指纹有效" if verified_claims is not None else "未验证（缺失、无效或版本已变化）"),
+        "- 独立追溯: " + ("正文与输入指纹有效" if verified_trace is not None else "未验证（缺失、无效或版本已变化）"),
         "",
         "## 硬性条件待核对",
     ]
@@ -246,6 +231,13 @@ class RuleEvaluationEngine:
     """domain 模型适配：使用真实规则评测（覆盖/量化/空话/篇幅/追溯）。"""
 
     def evaluate(self, resume: ResumeOutput, profile: JobProfile) -> Scorecard:
+        from tools.infra.persistence.review_snapshot import validate_generation_trace
+
+        verified_trace = None
+        if resume.generation_trace is not None:
+            if not validate_generation_trace(resume.content, resume.generation_trace):
+                raise ValueError('generation_trace_invalid')
+            verified_trace = resume.generation_trace
         result = evaluate_rule(
             resume_text=resume.content,
             must_have=list(profile.must_have),
@@ -253,7 +245,7 @@ class RuleEvaluationEngine:
             now=datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),
             input_name=f"{resume.version}.md",
             job_profile_name=profile.id,
-            verified_claims=None,
+            verified_trace=verified_trace,
         )
         return Scorecard(
             resume_version=resume.version,

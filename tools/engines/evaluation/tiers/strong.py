@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tools.domain.models import QualityFailure, TierResult
-from tools.domain.quality_text import render_fact_text
+from tools.domain.quality_text import matches_fact_occurrence
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.evaluation.llm_judge import resume_lines
 from tools.infra.persistence.yaml_io import parse_simple_yaml
@@ -57,11 +57,7 @@ def evaluate_strong(
                         continue
                     evidence_id = source.get("evidence_id", "")
                     stored_results = cards.get(evidence_id, {}).get("results", []) or []
-                    if any(
-                        render_fact_text(str(value)) == source.get("text")
-                        and source.get("fact_id") == f"{evidence_id}:results:{index}"
-                        for index, value in enumerate(stored_results)
-                    ):
+                    if matches_fact_occurrence(evidence_id, "results", stored_results, source):
                         pool.append(str(source["text"]))
             verified_results_by_bullet[number] = pool
             quant_flags.append(_has_verifiable_quant(str(bullet["body"]), pool))

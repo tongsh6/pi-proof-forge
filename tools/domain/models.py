@@ -52,6 +52,7 @@ class ResumeOutput:
     job_profile_id: str
     content: str
     format: str
+    generation_trace: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
