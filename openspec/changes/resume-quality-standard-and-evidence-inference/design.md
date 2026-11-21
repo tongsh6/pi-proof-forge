@@ -193,7 +193,17 @@ employment_window: 2022-06 ~ 2024-03   # 来自已确认档案，按材料所属
 
 本轮已在实际正文消费者完成上述正反例：L2 日精度封顶到月、L3 日/月来源仅显示年、L1/L4 日精度保留；带空白的中文日期也按同一显示规则收敛。原 Fact.text 不变，真实降精度后的正文及 provenance 仍通过共同 trace 核验。无时间/L5 时间准入、L5 角色省略、已采纳 L3 主导及完整限定均验证；不恢复旧自由改写路径，不全局改写 FactIndex 或 Jobs 内部 excerpt。F 按此限定工程范围完成。
 
-现有同文 action/result 的精确 R3.2 正反例继续回归，但 Agent 的 RuleEvaluationEngine 尚未接入四层评分。F 的直接来源验收与下述 G 的职业档案关联来源验收分别记录，不将其扩为全部选材或语义质量完成。F 验收时 R5 完整结果命题、测量条件和发生性核定尚未实现；当时真实 Splash、正式简历及投递验收未完成。后续 I 的合成应用验证单独记录，guided batch 的 dry run、零外部投递边界保持。
+现有同文 action/result 的精确 R3.2 正反例继续回归，F 验收时 Agent 的 RuleEvaluationEngine 尚未接入四层评分；后续接入由下述 M1 承担。F 的直接来源验收与下述 G 的职业档案关联来源验收分别记录，不将其扩为全部选材或语义质量完成。F 验收时 R5 完整结果命题、测量条件和发生性核定尚未实现；当时真实 Splash、正式简历及投递验收未完成。后续 I 的合成应用验证单独记录，guided batch 的 dry run、零外部投递边界保持。
+
+**切片 M1：guided Agent 四层质量与固定审核消费（限定工程与合成应用验收完成）**。查重确认 Scorecard.quality_report、quality_report 的同次字节读取、tiered_evaluator、ReviewSnapshotStore、候选 quality_snapshot/quality_sha256、getPendingReview/submitReview 与 QualityReportPanel 已有实际职责；缺的是现 RuleEvaluationEngine → AgentLoop → 固定候选 → API/页面接通。ScorecardBuilder 无实际消费者，不扩为另一编排层。首片保持 guided 零模型、dry_run 与 max_deliveries=0；显式 LLM Agent 的正式逐项语义接入另片推进。
+
+1. **唯一评测事实**。现 RuleEvaluationEngine 直接复用 _load_quality_cards/_load_quality_career/_load_job_context 的实际读取及 SHA 校验，同批输入供旧参考指标与共同四层计算。已有目标绑定须与 ResumeOutput/JobProfile 身份一致，不使用 domain 简化卡片重造评分事实池。报告 resume_version 是正文 UTF-8 SHA，job_profile_id 是本次目标；Scorecard 自身的 resume_version 仍是入口版本标签，两者不可混用。调用前后与 Agent 返回后核原 trace；中途实际读取 B 后恢复 A 仍由原字节读取校验拒绝，不能只看末尾路径 hash。没有有效来源的独立诊断输入不授信用；真实 guided 不因缺源退回旧评分。
+2. **未知与建议**。首片不调用 judge 或找其他运行的 semantic 报告，四层 semantic_review/judgments/pdf_check 明确未提供，沿现 pending 与缺口表示。没有有效当前正文映射时，空矩阵不能证明全部项目无关，不出 R2.4 删除建议；有效已评映射中未被任何条目覆盖的非时间线必要项目仍沿原规则。旧数字分只作参考，不能盖过四层 auto_pass，PDF 导出不等于裁切检查。LLMEvaluationEngine 保持已有报告传递，不拿旧覆盖度改写四层或冒称正式语义已接通。分析未通过/待判不新增人工批准硬阻断。
+3. **现快照的完整绑定**。候选没有单独声明岗位关联时，审核候选使用本轮显式目标（实际 ResumeOutput.job_profile_id）；已有非空关联不得覆盖，矛盾仍拒绝，不因此补造完整 JD、来源指纹或审核批准。AgentLoop 将本次已有 Scorecard 显式传给原 ReviewSnapshotStore.create；仅给现构造方法增加此可选内部参数，不新建 RPC、实体或文件账本，也不伪造 Quick Run saved 对象。Store 先捕获报告副本，核 Scorecard 版本/目标、report 正文 SHA/目标；在原唯一 PDF 导出后使用实际 Markdown/PDF 字节完成现 quality_snapshot 和 canonical quality_sha256，并纳入原 manifest。使用局部候选完成写入，成功前不得污染调用方；已提供的原生 bound 快照必须核原摘要及产物，不覆盖矛盾绑定；其现有 report=null 表示未记录判项，仍核 payload/正文/PDF，不从旧分数补出通过。有 dict 报告时额外核其正文 SHA 和目标，其他非空非法类型拒绝。新 guided 必须有实际报告；确实不带质量能力的其他平台快照保持原职责，不能由旧分数补造报告。
+4. **共同校验与真实消费者**。quality_digest 及 payload/正文/PDF/目标绑定校验归原 ReviewSnapshotStore，由 create/load 和原 native PDF adapter 共用；native adapter 仅保留其读取实际 Scorecard 文件的责任。只改质量正文、只换目标或搬到另一正文/PDF均失效，即使原 PDF/manifest 未变。Agent 当前队列与跨队列 pending 聚合、批准和恢复消费同一校验，非法报告不作为有效质量返回或展示；聚合未被当前页面消费也不能携带未经核验的 bound 报告。沿原候选/API 与 QualityReportPanel 显示四层、未判和缺口；旧总分与人工决定分责，不能因 auto_pass=false 隐藏待审或剥夺授权入口。
+5. **先独立反例再实现**。复用真实共享正文/trace/来源，核未采用同文结果量化为零、已采用实测正控、同批岗位/档案/卡读取与 ABA、缺语义非无关、来源变化、完整报告的目标/正文/PDF/摘要错配、guided RPC 零 HTTP及页面高旧分+pending仍可审核。结构缺参或夹具前置失败不计业务 RED。工程通过不冒称原生页面深验、全部 Agent 语义或真实投递验收。
+
+M1 独立反例与追加控制均已通过；目标缺关联传递和跨队列原始质量泄露由真实集成反例补齐，没有放松 Store。最终全量 3016 passed、1 skipped、101 subtests passed（58.93 秒），TypeScript/架构门禁通过。最终纯合成实际 App 流 9 RPC、真实 PDF、零模型/应用网络请求：报告篡改被拒，恢复原快照后质量待判仍可人工批准为 checked_not_submitted；实际投递为零。完整失败分类、计数、来源与产物摘要见 Project Ledger。本片不把 Node 组件行为或 API 验证称作原生 deep_verified。
 
 **切片 G：职业档案关联材料依赖捕获（限定工程范围已完成）**。职业档案来源读取必须把实际消费的关联卡及材料路径、当时 SHA 交给现有共同 trace；不能按 ID 从另一目录重找同 SHA 副本，也不能在生成后补取当前指纹冒充消费版本。来源捕获只补依赖，不改变既有内容选择：卡 B 支撑的档案贡献仍可作为 personal_profile 事实呈现，直接项目卡仍仅 A；不把 B 改成项目 Fact，也不为遵守选择范围删除其已有档案贡献。
 
