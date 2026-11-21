@@ -1884,7 +1884,7 @@
                           "id": "8zC5j",
                           "name": "ovAct1Text",
                           "fill": "$text-primary",
-                          "content": "08:12  Resume v5 generated for Arcteryx Platform role",
+                          "content": "08:12  Resume v5 generated for Demo Co A Platform role",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -5460,7 +5460,7 @@
                               "id": "UVnYa",
                               "name": "evDetailTitle",
                               "fill": "$text-primary",
-                              "content": "证据卡详情",
+                              "content": "证据卡详情 · 编辑",
                               "fontFamily": "Inter",
                               "fontSize": 14,
                               "fontWeight": "600"
@@ -5532,7 +5532,7 @@
                               "type": "text",
                               "id": "Zf7NR",
                               "name": "evEdit",
-                              "fill": "$accent",
+                              "fill": "$text-muted",
                               "content": "编辑",
                               "fontFamily": "Inter",
                               "fontSize": 12,
@@ -5542,17 +5542,17 @@
                               "type": "text",
                               "id": "U7beO",
                               "name": "evSave",
-                              "fill": "$text-muted",
+                              "fill": "$accent",
                               "content": "保存",
                               "fontFamily": "Inter",
                               "fontSize": 12,
-                              "fontWeight": "normal"
+                              "fontWeight": "600"
                             },
                             {
                               "type": "text",
                               "id": "OOnC4",
                               "name": "evCancel",
-                              "fill": "$text-muted",
+                              "fill": "$text-secondary",
                               "content": "取消",
                               "fontFamily": "Inter",
                               "fontSize": 12,
@@ -5838,12 +5838,13 @@
                         {
                           "type": "text",
                           "id": "jemsd",
-                          "name": "evActionsLabel",
+                          "name": "evActionsFieldLabel",
                           "fill": "$text-muted",
                           "content": "行动",
                           "fontFamily": "Inter",
                           "fontSize": 10,
-                          "fontWeight": "normal"
+                          "fontWeight": "normal",
+                          "width": 24
                         },
                         {
                           "type": "frame",
@@ -5851,7 +5852,7 @@
                           "name": "evActionList",
                           "width": "fill_container",
                           "layout": "vertical",
-                          "gap": 2,
+                          "gap": 4,
                           "children": [
                             {
                               "type": "frame",
@@ -5859,25 +5860,59 @@
                               "name": "evAction1",
                               "width": "fill_container",
                               "gap": 5,
+                              "alignItems": "center",
                               "children": [
                                 {
-                                  "type": "frame",
+                                  "type": "text",
                                   "id": "Vk73r",
-                                  "name": "evAction1Dot",
-                                  "width": 4,
-                                  "height": 4,
-                                  "fill": "$accent",
-                                  "cornerRadius": 2
+                                  "name": "evAction1Label",
+                                  "fill": "$text-muted",
+                                  "content": "行动 1",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal",
+                                  "width": 38
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "FaA1Input",
+                                  "name": "evAction1Textarea",
+                                  "width": "fill_container",
+                                  "height": 40,
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "padding": [
+                                    4,
+                                    6
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "Y5EQUt",
+                                      "name": "evAction1Text",
+                                      "fill": "$text-secondary",
+                                      "content": "合成示例：在测试环境校验。\n保留中断条件与处理记录。",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal",
+                                      "textGrowth": "fixed-width",
+                                      "width": "fill_container"
+                                    }
+                                  ]
                                 },
                                 {
                                   "type": "text",
-                                  "id": "Y5EQUt",
-                                  "name": "evAction1Text",
-                                  "fill": "$text-secondary",
-                                  "content": "参与会员活动报名聚合改造，统一活动入口与报名状态。",
+                                  "id": "FaA1Delete",
+                                  "name": "evAction1Delete",
+                                  "fill": "$accent",
+                                  "content": "删除此项",
                                   "fontFamily": "Inter",
-                                  "fontSize": 11,
-                                  "fontWeight": "normal"
+                                  "fontSize": 10,
+                                  "fontWeight": "normal",
+                                  "width": 44
                                 }
                               ]
                             },
@@ -5887,24 +5922,82 @@
                               "name": "evAction2",
                               "width": "fill_container",
                               "gap": 5,
+                              "alignItems": "center",
                               "children": [
                                 {
-                                  "type": "frame",
+                                  "type": "text",
                                   "id": "x02pl5",
-                                  "name": "evAction2Dot",
-                                  "width": 4,
-                                  "height": 4,
-                                  "fill": "$accent",
-                                  "cornerRadius": 2
+                                  "name": "evAction2Label",
+                                  "fill": "$text-muted",
+                                  "content": "行动 2",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal",
+                                  "width": 38
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "FaA2Input",
+                                  "name": "evAction2Textarea",
+                                  "width": "fill_container",
+                                  "height": 40,
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "padding": [
+                                    4,
+                                    6
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "S9LKmk",
+                                      "name": "evAction2Text",
+                                      "fill": "$text-secondary",
+                                      "content": "整理并交付演示操作说明。",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal",
+                                      "textGrowth": "fixed-width",
+                                      "width": "fill_container"
+                                    }
+                                  ]
                                 },
                                 {
                                   "type": "text",
-                                  "id": "S9LKmk",
-                                  "name": "evAction2Text",
-                                  "fill": "$text-secondary",
-                                  "content": "推动活动数据看板落地，支持按活动、渠道查看转化。",
+                                  "id": "FaA2Delete",
+                                  "name": "evAction2Delete",
+                                  "fill": "$accent",
+                                  "content": "删除此项",
                                   "fontFamily": "Inter",
-                                  "fontSize": 11,
+                                  "fontSize": 10,
+                                  "fontWeight": "normal",
+                                  "width": 44
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "FaAAdd",
+                              "name": "evActionsFieldAdd",
+                              "height": 22,
+                              "fill": "$bg-inset",
+                              "cornerRadius": 4,
+                              "padding": [
+                                3,
+                                8
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "FaAAddText",
+                                  "name": "evActionsFieldAddLabel",
+                                  "fill": "$accent",
+                                  "content": "添加行动",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
                                   "fontWeight": "normal"
                                 }
                               ]
@@ -5923,12 +6016,13 @@
                         {
                           "type": "text",
                           "id": "jzZDB",
-                          "name": "evResultsLabel",
+                          "name": "evResultsFieldLabel",
                           "fill": "$text-muted",
                           "content": "成果",
                           "fontFamily": "Inter",
                           "fontSize": 10,
-                          "fontWeight": "normal"
+                          "fontWeight": "normal",
+                          "width": 24
                         },
                         {
                           "type": "frame",
@@ -5936,7 +6030,7 @@
                           "name": "evResultList",
                           "width": "fill_container",
                           "layout": "vertical",
-                          "gap": 2,
+                          "gap": 4,
                           "children": [
                             {
                               "type": "frame",
@@ -5944,25 +6038,59 @@
                               "name": "evResult1",
                               "width": "fill_container",
                               "gap": 5,
+                              "alignItems": "center",
                               "children": [
                                 {
-                                  "type": "frame",
+                                  "type": "text",
                                   "id": "vmGRN",
-                                  "name": "evResult1Dot",
-                                  "width": 4,
-                                  "height": 4,
-                                  "fill": "$success",
-                                  "cornerRadius": 2
+                                  "name": "evResult1Label",
+                                  "fill": "$text-muted",
+                                  "content": "成果 1",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal",
+                                  "width": 38
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "FaR1Input",
+                                  "name": "evResult1Textarea",
+                                  "width": "fill_container",
+                                  "height": 40,
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "padding": [
+                                    4,
+                                    6
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "brn9c",
+                                      "name": "evResult1Text",
+                                      "fill": "$text-secondary",
+                                      "content": "合成示例：测试环境验证通过。\n生产环境效果仍未核实。",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal",
+                                      "textGrowth": "fixed-width",
+                                      "width": "fill_container"
+                                    }
+                                  ]
                                 },
                                 {
                                   "type": "text",
-                                  "id": "brn9c",
-                                  "name": "evResult1Text",
-                                  "fill": "$text-secondary",
-                                  "content": "报名转化率提升 18%，活动归因覆盖 6 个渠道。",
+                                  "id": "FaR1Delete",
+                                  "name": "evResult1Delete",
+                                  "fill": "$accent",
+                                  "content": "删除此项",
                                   "fontFamily": "Inter",
-                                  "fontSize": 11,
-                                  "fontWeight": "normal"
+                                  "fontSize": 10,
+                                  "fontWeight": "normal",
+                                  "width": 44
                                 }
                               ]
                             },
@@ -5972,27 +6100,97 @@
                               "name": "evResult2",
                               "width": "fill_container",
                               "gap": 5,
+                              "alignItems": "center",
                               "children": [
                                 {
-                                  "type": "frame",
+                                  "type": "text",
                                   "id": "I0Ndx",
-                                  "name": "evResult2Dot",
-                                  "width": 4,
-                                  "height": 4,
-                                  "fill": "$success",
-                                  "cornerRadius": 2
+                                  "name": "evResult2Label",
+                                  "fill": "$text-muted",
+                                  "content": "成果 2",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal",
+                                  "width": 38
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "FaR2Input",
+                                  "name": "evResult2Textarea",
+                                  "width": "fill_container",
+                                  "height": 40,
+                                  "fill": "$bg-inset",
+                                  "cornerRadius": 4,
+                                  "stroke": "$border-light",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "padding": [
+                                    4,
+                                    6
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "ZO44c",
+                                      "name": "evResult2Text",
+                                      "fill": "$text-secondary",
+                                      "content": "已交付演示操作说明及核对清单。",
+                                      "fontFamily": "Inter",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal",
+                                      "textGrowth": "fixed-width",
+                                      "width": "fill_container"
+                                    }
+                                  ]
                                 },
                                 {
                                   "type": "text",
-                                  "id": "ZO44c",
-                                  "name": "evResult2Text",
-                                  "fill": "$text-secondary",
-                                  "content": "活动配置耗时从 2 天缩短到 4 小时。",
+                                  "id": "FaR2Delete",
+                                  "name": "evResult2Delete",
+                                  "fill": "$accent",
+                                  "content": "删除此项",
                                   "fontFamily": "Inter",
-                                  "fontSize": 11,
+                                  "fontSize": 10,
+                                  "fontWeight": "normal",
+                                  "width": 44
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "FaRAdd",
+                              "name": "evResultsFieldAdd",
+                              "height": 22,
+                              "fill": "$bg-inset",
+                              "cornerRadius": 4,
+                              "padding": [
+                                3,
+                                8
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "FaRAddText",
+                                  "name": "evResultsFieldAddLabel",
+                                  "fill": "$accent",
+                                  "content": "添加成果",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 10,
                                   "fontWeight": "normal"
                                 }
                               ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "FaFactHint",
+                              "name": "evFactBoundaryHint",
+                              "fill": "$text-muted",
+                              "content": "换行仍属于同一条事实；请用添加或删除按钮改变条目。",
+                              "fontFamily": "Inter",
+                              "fontSize": 9,
+                              "fontWeight": "normal",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container"
                             }
                           ]
                         }

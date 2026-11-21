@@ -21,6 +21,12 @@
 2026-10-18 质量判项与突出点决策（Phase B）：Scorecard JSON 增加 `quality_judge:{cache:hit|miss|disabled,model,prompt_version,key?,judged_sections?,rejected_items?,error?}`；判项覆盖后 `quality_report.llm_pending` 清空，未覆盖/无效响应继续保留 pending（fail-closed，不伪造通过）。`tiers.distinct.highlights[]` 为 `{highlight_id,bullet_ref,jd_item_id,exceeds,level,reason,citations,first_screen,selected_by_user}`，`tiers.distinct.metrics.candidates[]` 为候选清单（含 `rejected` 标记）。新增 RPC `quality.decideHighlight`：params `{meta,run_id,resume_sha256,highlight_id,action:reject|select}`，写 `app-data/quality_decisions.json`（按 resume sha，同一候选 reject/select 互斥），返回 `run_id/resume_sha256/highlight_id/action/decisions:{rejected[],selected[]}`；错误码 `quality_run_id_invalid`/`quality_resume_sha256_invalid`/`quality_highlight_invalid`/`quality_decision_invalid`/`quality_run_not_found`。用户决策不写卡、不改生成事实，重新评测后生效。
 2026-10-13 评估v3：Quick Run 的 `semantic_review` 增加 `assessment_scope:{qualification_count,responsibility_count,check_count}`，逐项 requirements 增加 `kind` 和 `checks:[{requirement_id,criterion,status,resume_status,reason,cautions?}]`。匹配产物保留子项判断并在复用时校验汇总一致性。`NativePdfPreparation.quality` 为 `unrecorded` 或绑定版本的 `{status:bound,matching_mode,matching_score,resume_score,expression_score,content_ready,quality_passed,gap_tasks,evaluation_version,...hashes}`；新候选质量摘要进入批准manifest，篡改摘要/内容或换PDF均拒绝。旧记录不回填虚构分数。原上传批准另记录 quality_sha256 与 accepted_quality_gaps，不增加新的平台权限。
 
+2026-11-21 证据单项边界（本切片契约）：`evidence.get` 返回值、`evidence.create` / `evidence.update` 输入、`evidence.generateDraft` 草稿及 `evidence.saveDraft` 输入中的 `actions` / `results` 统一为 `string[]`。数组项是事实边界，项内换行属于同一事实；保留完整文字、换行和数组顺序，不隐式拆分、拼接、排序或去重。来源采用一次追加一条完整引文，既有事实和兄弟事实保持原位置。
+
+- 空数组表示缺少该类事实，可按现有规则保存不完整草稿；空白项、非字符串项及旧字符串形状拒绝，不通过丢项或类型转换修正请求。
+- 普通局部更新未提供 `actions` / `results` 时保留原数组。逐事实范围继续绑定原 `field/index/value` 与来源修订；删除、移动或修改事实后不得自动重绑旧范围，沿现有显式采纳/撤销修复，失败不部分写入。
+- 本片只保留完整事实的结构边界，不核定测量发生性，不改变 R3.2 或投递授权；工程和原生页面验收结果另行记录。
+
 2026-10-13 `evidence.saveDraft` 增量：同项目补证沿重审保存，增加 `expected_sha256` 和 `review.merge_sources`。开启补证时 source_material_ids/source_documents 只能追加、不能移除原来源，精确文档最多8个；`draft.field_sources` 为 `{field,value,quote,material_id,document_id}[]`，支持 time_range/role_scope/context/actions/results，逐项核对正文、原文及指纹。新事实必须绑定引用；普通编辑后的重审与最后批准的事实快照比较，不能把待审核编辑当成旧事实。陈旧卡版本报 `evidence_review_changed`，错误引用报 `field_source_*`，来源不允许的替换报 `evidence_review_source_mismatch`。`evidence.get` 返回 field_sources/source_sha256/source_error；来源失效时 candidate_pool_eligible=false。补证卡的材料指纹进入职业档案修订、语义输入与生成 trace，旧卡无此元数据时保持兼容。
 
 > 状态：active
@@ -370,8 +376,8 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
     "time_range": "2024.01 - 2024.12",
     "context": "Context",
     "role_scope": "Backend Engineer",
-    "actions": "Actions",
-    "results": "Results",
+    "actions": ["合成示例：在测试环境校验。\n保留边界条件。", "整理演示操作说明。"],
+    "results": ["合成示例：测试环境验证通过。\n生产环境效果未核实。", "已交付演示操作说明。"],
     "stack": ["Python", "PostgreSQL"],
     "tags": ["search", "ranking"],
     "artifacts": [
@@ -1132,8 +1138,8 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
   "time_range": "2024.01 - 2024.12",
   "context": "",
   "role_scope": "Backend Engineer",
-  "actions": "",
-  "results": "",
+  "actions": [],
+  "results": [],
   "stack": [],
   "tags": []
 }
@@ -1141,7 +1147,8 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 
 规则：
 
-- `title` 必填，最长 200 字符；其余文本字段可为空字符串
+- `title` 必填，最长 200 字符；其余单值文本字段可为空字符串
+- `actions` 与 `results` 为字符串数组，项内换行不拆项；空数组表示缺事实，空白项、非字符串项和旧字符串输入拒绝
 - `stack` 与 `tags` 为字符串数组，允许空数组
 - 创建成功后自动分配 `evidence_id`，`status` 初始为 `"draft"`
 
@@ -1171,8 +1178,8 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
     "time_range": "2024.01 - 2025.06",
     "context": "Updated context",
     "role_scope": "Senior Backend Engineer",
-    "actions": "Updated actions",
-    "results": "Updated results",
+    "actions": ["合成示例：更新后的完整行动。"],
+    "results": ["合成示例：测试环境完成核对。\n生产环境效果未核实。"],
     "stack": ["Python", "PostgreSQL", "Redis"],
     "tags": ["search", "ranking", "performance"]
   }
@@ -1181,7 +1188,8 @@ Markdown 简历通过共享 HTML/CSS 模板导出，返回 `html_path` 指向同
 
 规则：
 
-- `patch` 为部分更新；仅传入需要修改的字段，未传字段保持原值
+- `patch` 为部分更新；仅传入需要修改的字段，未传字段保持原值；仅改标题、附件等字段也不得重新拆分或合并既有行动/成果
+- `actions` / `results` 若提供则为完整字符串数组，按数组项保留事实文字与位置；不支持旧字符串形状，不自动去重或删除空白项
 - `evidence_id` 不存在时返回 `NOT_FOUND`
 - `title` 若传入则不得为空字符串
 - `artifacts` 不通过本方法更新，使用 `evidence.import` 管理附件
@@ -1796,9 +1804,9 @@ Internal API for run_agent to populate review queue.
 岗位手工审核增量：Jobs 的“手动整理画像”仅创建前端待审核表单，复用原 `jobs.saveProfileDraft`。来源绑定仍由后端校验，摘要、必备要求和关键词必须完整；没有调用模型，不伪造模型成功。
 
 
-### 6.42 十岗测试批次额度与旧回执引用
+### 6.42 投递批次额度与旧回执引用
 
-- `run.agent.get` 增加 `delivery_batch: {batch_id, authorized_max, consumed, confirmed, remaining, unresolved} | null`。该信息跨运行，不等于当前运行的 App 验收数。当前用户授权批次 `validation_10_20260928` 最大 10，历史两笔一并纳入；已占用 10 后停止新增真实发送。
+- `run.agent.get` 增加 `delivery_batch: {batch_id, authorized_max, consumed, confirmed, remaining, unresolved} | null`。该信息跨运行，不等于当前运行的 App 验收数。批次上限来自对应的明确授权，历史实际尝试计入占用；到达上限后停止新增真实发送。具体批次标识、额度及执行记录保留在本地业务数据中。
 - SQLite 授权配置不可因重复调用改变上限或重置占用；所有 `deliver_once` 渠道共用原子预占。未知暂停当前批次，明确未发送释放该次占位；已发成功/失败仍保留防重。到达上限返回 `delivery_batch_limit_reached`，不得变为新批次续投。
 - 准备阶段先返回 `BATCH_LIMIT_REACHED` / `BATCH_UNRESOLVED`，不读取凭据；发送时仍独立检查，防止并发准备突破名额。
 - `run.agent.recheckReceipt` 可为旧 API 日志寻找 App 已接收的、完整响应 SHA256 完全相同且文件校验通过的业务响应。必须校验旧快照/尝试绑定；借用文件以 `api_receipt_reference` 留痕并保留 `prior_receipt_source`，不创建伪造的旧响应。找不到精确证据保持原结果，自身文件损坏不得借引用绕过。
