@@ -1,6 +1,6 @@
 # Project Ledger
 
-Last updated: 2026-11-21
+Last updated: 2026-11-22
 
 本台账记录应用实现、工程验证和未完成边界。个人履历、原始职业材料、真实岗位候选、投递记录及其运行产物留在本地数据区，不作为应用仓库资产。应用示例和设计稿中的候选人、公司、材料及成果均使用明确的合成数据。
 
@@ -89,7 +89,7 @@ Last updated: 2026-11-21
 - 首次真实合成流程执行 13 个 RPC、2 次本机 Splash 请求后，在偏好生成处阻塞：调用方已传 schema，共享客户端仅在原生 LM Studio 路径消费，JSON-object 请求缺完整字段合同；模型返回错误字段，既有严格校验正确拒绝。修复由共享 client 传递同一完整 schema，保留原生协议、显式格式、无 schema 行为与请求不可变性，不增加字段别名或补写响应。
 - 7 个实际 Request.data wire RED→GREEN；客户端及四类现消费者定向验证合计 `251 passed、55 subtests passed`。同一隔离合成流程随后完成 28 个真实 Router RPC、6 次本机 Splash 请求，覆盖上传、证据核定、偏好生成/确认、档案审核、线索转换、assessPreparation、matchPreparation 与 previewPreparation。搜索和详情使用明确的外部协议 fixture；真实招聘站访问与投递均为 0，资料、凭据及缓存均隔离。
 - 准备评估为 prepared，来源要求 grounded；匹配一轮完成 5 个 check、4 个父要求均 supported，无 degraded、deferred、unassessed、预算缺口或 continuation。预览返回 preview_partial_ready，`partial=true` 表示本次有限评审范围（可见事实 10/18）；3 个正文事实保留完整非量化结果，`input_fresh=true`，`send_ready=false`、`deliverable=false`、`active_target_eligible=false`，预览自身没有模型请求。
-- 实际请求逐条核对捕获字节摘要，本组合成规模未观察到预算越界或截断。共同语境/schema 注入前统计输入预算仍是独立既存缺口，本片未修复；未清理有效缓存或修改语义合同版本。此链路不代表正式 K1 选材、rationale 文案、原生 UI、全页像素视觉、deep_verified、真实 JD 或正式件/投递验收。
+- 实际请求逐条核对捕获字节摘要，本组合成规模未观察到预算越界或截断。共同语境/schema 注入前统计输入预算在 L1 时仍是独立既存缺口，本片未修复，后续见 L2；未清理有效缓存或修改语义合同版本。此链路不代表正式 K1 选材、rationale 文案、原生 UI、全页像素视觉、deep_verified、真实 JD 或正式件/投递验收。
 - K1/L1 最终全量 `2696 passed、1 skipped、101 subtests passed`（42.28 秒），架构 v2 与 TypeScript 检查通过。P0-026 仍为唯一 next/in_progress，当时其余三项选材与 Agent 四层接入继续推进；摘要后续见 K2。
 
 ## 2026-11-21 职业概述与任职来源（切片 K2，限定工程范围已完成）
@@ -105,7 +105,17 @@ Last updated: 2026-11-21
 - 原 profile_highlights 已由 selector 产出真正选中字段并由 plan 唯一消费，删除 raw extras[:2]、plan 二裁/补字段及无生产消费者的 excluded 诊断。最多两项归 selector；必要履历、摘要、教育与工作软 minimum 保持职责，不把可选预算冒充全文 claims/PDF 行数限制。
 - 独立首轮 `16 failed / 7 passed`，原 16 个业务 RED 修复后连同原正控及后补 3 项控制得到 `26 passed`；新增控制不计作原 RED。相关七文件 `150 passed`，最终全量 `2720 passed、1 skipped、101 subtests passed`（45.54 秒），架构 v2 通过；未改两页合成 PDF 夹具，原页面、首屏/尾页内容、边界与 trace 断言继续通过。实际档案确认/加载、共同正文、逐字段 claims、resume_assessment、guided trace、档案 SHA 和底稿字节均已核验；没有调用模型，不替代真实 JD、正式件、原生或全页像素验收。
 - 三个正向条目稳定选两项，第三项保留 not_present；同父同 check 的项目+extras 互补引用在预算允许时共同保留，缺一个就保真实缺口。合法结构 URL 与行动句过滤各守职责，旧噪声镜像测试迁为真实选集和正文负控。
-- 场景完整陈述语境去重、Agent 四层接入及注入后请求预算继续推进；本片不修改 skills/stack、K2 摘要、评分或投递权限。
+- K3 验收时场景完整陈述语境去重、Agent 四层接入及注入后请求预算继续推进，预算后续见 L2；本片不修改 skills/stack、K2 摘要、评分或投递权限。
+
+## 2026-11-22 完整请求预算与缓存身份（切片 L2，限定工程范围已完成）
+
+- 请求准备归原 LLMClient，使用标准库 Request 承载实际 URL 和已序列化 body；matching 最终批次、执行器预算、缓存身份和首次发送共用同一对象，post_json 仍为准备与原 transport 的组合。没有新 DTO、持久字段、平行计账、旧签名或缓存迁移双轨。契约执行器的真实生产消费者仍只有 matching，不把其他直接客户端调用记为已有契约预算。
+- 原 24,000 上限按 Request.data 解码后的逻辑 JSON 字符计量，包含共同语境、schema、provider 参数和内层转义，不等于 token 或 wire 字节。初次/修复超限均不进入对应 HTTP；不可序列化、循环或本地准备失败为 invalid_request，不按 0 放行或重发原输入。不可容纳的独立 check 保持完整原文及自身原因，不饿死其余合法 checks 的完整 Fact 准入；不增加逐 check 平行事实窗口。
+- 独立首轮共 10 个业务 RED，原组修复后为 11 passed（含原修复正控）；审查另补 1 个局部准备失败 RED 并转绿，不冒计为原反例。覆盖同 Request 身份、原输入/客户端配置变化后发送不变、缓存实际 body/URL 身份、缓存校验与 0 HTTP、超长 check 隔离、修复计数和失败原因。相关 100 passed、55 subtests；既有调度与应用回归 118 passed。
+- 首次全量的 7 个失败来自尚未迁移的旧 post_json mock/裸客户端夹具；三处迁为实际客户端到最终 HTTP 的合成响应边界，原业务断言保留，196 passed。该轮耗时 117.89 秒的原因未单独证明，未据此修改生产算法；最终全量为 2734 passed、1 skipped、101 subtests passed（42.95 秒），架构 v2 通过，包含 TypeScript 和未改的物理两页 PDF/内容边界/trace 用例。
+- 复用同一隔离合成应用流程，一次完成 28 个真实 Router RPC、6 次本机 Splash HTTP 200，贯穿材料上传、证据核定、偏好确认、档案审核、来源线索转换、准备评估、匹配和内部预览。来源搜索/详情仅为外部协议 fixture，真实招聘站、正式件与投递均为 0；审核与 freshness 来自真实应用处理器。未修改请求、响应或业务断言来使验收通过。
+- 6 份已捕获请求的完整逻辑 JSON 字符依次为 5013、1969、2420、2746、4718、5814；后两份为 matching recall/assess，均不超过 24,000。按当前客户端序列化重建的字节 SHA 与实际 wire 捕获一致；相应 wire 大小为 20198、7739、9110、8906、14478、18699 字节。单轮匹配完成 5 checks、4 父要求 supported，无 degraded/deferred/unassessed、预算耗尽或 continuation；有限视野为 10/18 facts，不以此证明全部事实评审完成。
+- 内部预览为 preview_partial_ready，input_fresh=true、partial=true，3 个正文事实保留非量化结果；send_ready=false、deliverable=false、active_target_eligible=false，预览自身 0 模型调用。该结果不代表原生 UI、全页像素、deep_verified、真实 JD、正式简历或投递验收。业务层重复协议注入、部署能力配置特例、场景语境去重和 Agent 四层接入继续推进。
 
 ## 2026-11-21 简历结果证据边界
 
@@ -135,7 +145,7 @@ Last updated: 2026-11-21
 
 ## 当前未完成项
 
-1. P0-026 仍为唯一 next 且在进行：F/G/H/I/J 已按各自范围完成共同生成、来源等级、来源依赖、评测版本、结果核定及当前集合共同消费；K1 完成精确引用增量与正文预算，L1 完成共享 schema 传递和合成准备 RPC 验证。K2 完成当前任职摘要与精确来源。K3 完成完整补充成果精确选材。下一步推进场景完整陈述语境去重与 Agent 四层接入；注入前预算统计的既存缺口单独推进。有限合成覆盖不代表全部语义完成，不新增业务脚本、平行账本或关键词分类，自动批量调度仍未产品化。
+1. P0-026 仍为唯一 next 且在进行：F/G/H/I/J 已按各自范围完成共同生成、来源等级、来源依赖、评测版本、结果核定及当前集合共同消费；K1 完成精确引用增量与正文预算，L1 完成共享 schema 传递和合成准备 RPC 验证。K2 完成当前任职摘要与精确来源。K3 完成完整补充成果精确选材。L2 完成注入后的完整请求预算、缓存身份和合成应用复验。下一步收回业务层重复协议参数注入，并沿现有配置职责治理部署特例；场景完整陈述语境去重与 Agent 四层接入继续推进。有限合成覆盖不代表全部语义完成，不新增业务脚本、平行账本或关键词分类，自动批量调度仍未产品化。
 2. 继续原生页面验收，核对已接通的引文扩充、显式采纳/撤销、兄弟事实保留与错误恢复；不以组件测试替代实际窗口结果。
 3. 在另行授权范围内完成真实 JD + Splash 的内部预览、正式简历与实际投递验收；当前工程验证不能代替这些结果。
 4. 保持自动匹配的语义判断职责，不把每日岗位判断转交为逐岗位人工代审，也不以投递数量替代合适性与可追问的事实质量。

@@ -319,7 +319,9 @@ K1/L1 最终全量为 `2696 passed、1 skipped、101 subtests passed`（42.28 �
 
 **切片 L1：共享结构合同与完整准备预览 RPC（限定工程与合成应用验收已完成）**。原 `LLMClient.post_json` 的 response_schema 只在 LM Studio 原生分支传递，现四类应用消费者已依赖该合同。沿既有共享客户端职责，为 JSON-object 请求完整传递同一 schema；原生 schema、显式其他格式和无 schema 请求保持各自协议，输入不原地修改、重复调用不累加。客户端不补字段或转换错误输出；业务 JSON、字段、来源与语义校验保持严格。实际 Request.data 的 7 个独立 RED 转绿，规范归属为 `AIEF/context/tech/architecture.md`。
 
-完整合成应用首轮在第 13 个 RPC、累计 2 次本机 Splash 请求后因偏好输出 type 而非 kind 被原校验拒绝；通用修复后，同一隔离程序完成 28 个真实 Router RPC、6 次真实本机 Splash 请求，贯穿材料、证据核定、偏好、职业档案、来源线索、准备评估、匹配与内部预览。4 个父要求 supported、5 个子检查完成，无 deferred/unassessed 或预算耗尽，不需要 continuation；预览 partial 表示有限评审范围（可见 10/18 事实），保留 3 个正文事实，input_fresh=true、send_ready=false、deliverable=false，预览自身不再调用模型。搜索/详情仅使用明确的外部协议夹具，真实招聘站访问与投递均为 0。实际请求未截断，包含 schema 的 5 个请求各仅一份完整合同；调用方在客户端注入共同语境/schema 前统计预算的既存缺口仍独立待处理。
+完整合成应用首轮在第 13 个 RPC、累计 2 次本机 Splash 请求后因偏好输出 type 而非 kind 被原校验拒绝；通用修复后，同一隔离程序完成 28 个真实 Router RPC、6 次真实本机 Splash 请求，贯穿材料、证据核定、偏好、职业档案、来源线索、准备评估、匹配与内部预览。4 个父要求 supported、5 个子检查完成，无 deferred/unassessed 或预算耗尽，不需要 continuation；预览 partial 表示有限评审范围（可见 10/18 事实），保留 3 个正文事实，input_fresh=true、send_ready=false、deliverable=false，预览自身不再调用模型。搜索/详情仅使用明确的外部协议夹具，真实招聘站访问与投递均为 0。实际请求未截断，包含 schema 的 5 个请求各仅一份完整合同；L1 当时调用方仍在客户端注入共同语境/schema 前统计预算，该独立缺口后续见 L2。
+
+**切片 L2：完整请求预算与缓存身份（限定工程与合成应用验收已完成）**。沿现 LLMClient 与任务执行器，复用标准库 Request，让 matching 分批、预算、缓存身份与首次发送消费同一完整 URL/body；初次与每次修复均计入共同语境/schema/provider，原 24,000 上限不变。准备失败保持 invalid_request 与完整未评审范围，不发 HTTP、不重发原输入，也不阻断其余可容纳 checks 的事实选取；不另设逐 check 事实窗口、字段或预算账本。规范归属为 [LLM 任务契约](../../../docs/reports/llm-task-contract-design-20261110.md)，验收详情见 [Project Ledger](../../../docs/project-ledger.md)。同一合成应用流程复验完成 28 RPC、6 次本机 Splash，实际 matching 完整请求分别 4718/5814 字符，内部预览仍为 partial 且不可投递；其他直接客户端调用、原生 UI 与真实验收不据此宣布完成。
 
 **实施边界与剩余验收**：真实归属、发生性及 scope 冲突必须拒绝的规范保持不变。I 验收时仅覆盖同一明确对象/环境 scope，别名跨来源复核尚未完成；J 已通过当前集合绑定、别名责任纠正、时间推进及真实分工的限定合成应用验收。有限样本不证明全部来源语境或冲突已覆盖；L1 已完成外部协议夹具边界内的完整合成准备预览 RPC，原生页面、全页像素视觉、deep_verified 与真实验收仍待验证。离线工程继续推进，真实 JD/正式件按另行授权验收；不能用字符串相似归并、扩大词表、恢复 planned_results 权威或以提示词变更代替实际应用验证。
 
