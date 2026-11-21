@@ -292,7 +292,7 @@ J 的纯合成应用链沿原 Router 材料上传、saveDraft/详情、本机 Sp
 
 上述为 J 的限定工程与有限合成应用验收，不证明全部来源语境或自然语言冲突都已覆盖。J 验收时，rationale 清晰度、原生 UI、完整 jobs.previewPreparation RPC、deep_verified、真实 JD、真人正式件及投递尚未验收；四项共享选材与 Agent 四层接入当时保持独立 pending，P0-026 不随 J 完成。后续 K1/L1 的限定进展见下文。
 
-**共享选材契约缺口（K1/K2 限定工程已完成，其余两项 `pending`）**。K1 已补齐 core“目标版本内容取舍”的父要求新增事实覆盖、重复子项不抬权和相应正文预算；K2 已补齐当前任职摘要与原首贡献的精确呈现。按本次引用选择个人补充成果、同项目场景核完整陈述语境后去重并保留独立 claims，继续独立 pending。旧辅助选材没有相应生产消费者，删除旧路径不代表有效契约已迁移；F/G/I/J 的通过不代替本片验收。
+**共享选材契约缺口（K1/K2/K3 限定工程已完成，场景语境去重 `pending`）**。K1 补齐精确引用增量、重复子项不抬权和相应正文预算；K2 补齐当前任职摘要与原首贡献的精确呈现；K3 补齐完整补充成果的引用选择与共同预算。剩余同项目场景须核完整陈述语境后去重并保留独立 claims，不能只凭完整字符串包含删除结果陈述。旧辅助选材退役不等于规范已迁移，全部工程切片也不代表真实验收完成。
 
 **切片 K1：精确引用增量与正文预算（限定工程验收已完成）**。
 
@@ -332,6 +332,17 @@ K1/L1 最终全量为 `2696 passed、1 skipped、101 subtests passed`（42.28 �
 - 独立对照核实际职业概述、claims/行号、resume_assessment 与已有生成 trace：较早开始的 current 不被更新但已结束任职替代；JD 引用第三贡献不能替换原首贡献；显式摘要、并行 current、无 current、同文不同身份和长限定保持来源；同 Fact 移动不重复，其他引用细节仍在工作经历。生产改动前先记录 RED，不能以计划含 ID 当作正文已呈现。
 
 独立 5 个合成变体先得到 4 failed / 1 passed，原四个业务 RED 修复后同组 5 passed；实际 profile.update→review→加载→共同 builder、正文行/claims、resume_assessment、guided trace 和档案 SHA/原字节均已验证。定向 107 passed；最终全量 `2701 passed、1 skipped、101 subtests passed`（42.41 秒），架构 v2 通过。未改合成 PDF 夹具，原两页 A4、首屏/末页完整文字、边界与 trace 验收继续通过；未宣称全页像素、原生窗口或真实简历验收。 生产查重确认 summary 文本只作旧 renderer 真值门禁，无 API/内部预览消费者，已删除并以原 summary_fact_ids 唯一驱动；任职上下文由摘要与工作经历共用一个私有 formatter。三个旧章节/真值断言按原首贡献移动迁移，仍核正文与排序，不保留兼容属性。
+
+**切片 K3：精确引用的完整补充成果（限定工程验收完成）**。
+
+- 复用已确认 career.extras 的稳定身份与 title/description/url Fact，以及原 positive_citations/_requirement_map。名称与说明必需，非空链接也随完整条目采用；最大两项为本切片明确的展示上限，不将旧代码常量反当独立规范。条目中的个人项目、本机测试和其他限定原文完整保留，不能因只引用名称或链接而省略说明。
+- 项目候选与完整 extras 候选沿同一个选择循环比较实际新增精确引用，正向候选先于无引用补充。每候选每父项取 max(2/1) 后合计，重复子项/字段不抬权，父子任一 partial 仍为 partial，false/审计引用不授正向信用；不用全局 seen_parent/check，也不增加收益/成本比、URL/项目名/个人项目类别加减分。相同支持沿既有 Fact 输入稳定顺序。
+- 完整条目成本为实际采用且尚未计入 used 的全部 Fact ID 数，三非空字段计三份，即使只引用一个字段。候选须整体放入剩余可选预算，否则不选；plan 不能事后补选外字段、裁说明或链接。正向项目/extras之后沿原顺序分配工作软 minimum，再补未引用内容；必要任职、摘要和教育不因可选预算耗尽消失。该预算不是全篇 claims 或 PDF 行数限制。
+- 已确认 HTTPS url 是现职业档案的结构字段，沿原校验与渲染职责使用；行动/成果句的 fact_quality URL 过滤不承担它的准入，不新增域名、名称或词表例外。无细粒度报告沿相同完整条目预算和显式输入顺序；有细粒度报告却无 extras 正引用时不加入凑数。
+- 查重已确认 SelectedFacts.profile_highlights 仅定义和写入、原 work-highlight 填充没有真实消费者。本片改由它承载实际选中的可选档案 Fact IDs，并由 plan 唯一消费构造 ExtraBlock；删除 raw extras[:2] 与 plan 的第二次选材/补字段，最多两项归 selector。SelectedFacts.excluded 同样仅自建并被一条镜像测试读取，无生产/API消费者，直接退役而非为它扩张诊断或兼容；不同领域的 DiscoveryResult.excluded 不受影响。不新增实体、持久字段、接口、业务脚本或模型任务。
+- 独立 RED 核第三条精确引用、只引用名称/说明/链接的全条保留、预算2/3原子边界、跨项目竞争、同父重复与 partial、false/审计、同文不同身份、无报告稳定顺序及结构履历保留。验收以真实共同 builder/selector-plan-render、逐字段实际 claims 与 resume_assessment 为准；未呈现的精确引用保持缺口，不以 profile_highlights 或 Plan IDs 自证覆盖。K2 摘要、场景去重、skills/stack、Agent 四层和真实验收不并入本片。
+
+独立首轮 `16 failed / 7 passed`，原 16 个业务 RED 修复后连同原正控及后补 3 项控制得到 `26 passed`；新增控制不计作原 RED。相关七文件 `150 passed`，最终全量 `2720 passed、1 skipped、101 subtests passed`（45.54 秒），架构 v2 通过；未改两页合成 PDF 夹具，原页面、首屏/尾页内容、边界与 trace 断言继续通过。实际档案确认/加载、共同正文、逐字段 claims、resume_assessment、guided trace、档案 SHA 和底稿字节均已核验；没有调用模型，不替代真实 JD、正式件、原生或全页像素验收。 三条均正向时稳定限两项并保第三条缺口；同父同 check 跨项目/补充成果互补、预算2/3原子性、只引名称/链接仍保完整说明、false/审计与同文不同身份均已核实际呈现。
 
 ## 5. 实施顺序
 
