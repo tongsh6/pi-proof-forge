@@ -2024,8 +2024,8 @@
     }
   },
   "sourceMerge": {
-    "title": "Add evidence from another document",
-    "help": "Select a source for the same project. Adopt exact text: replace period, role or context; append individual actions or results. Review and save the draft afterwards.",
+    "title": "Review field sources",
+    "help": "Select material for the same project to supplement a field, or expand the context of an already bound action or result below. Adopted changes still require review and saving.",
     "material": "Select supporting material",
     "field": "Field to supplement",
     "current": "Current content",
@@ -2036,7 +2036,19 @@
     "append": "Adopt quote and append",
     "replace": "Adopt quote and replace field",
     "bound": "Field sources",
-    "changed": "A source or field citation has changed. This card cannot be used for generation until its sources are reviewed."
+    "changed": "A source or field citation has changed. This card cannot be used for generation until its sources are reviewed.",
+    "extend": "Expand quote context",
+    "applyExtension": "Use expanded quote in draft",
+    "cancelExtension": "Cancel quote expansion",
+    "boundDocument": "Read the bound document",
+    "previousQuote": "Existing quote",
+    "extensionHelp": "Read the same version of the bound document and include the existing quote in a longer continuous passage. Preserve its conditions and qualifiers. This only updates the review draft.",
+    "extensionConfirm": "I checked this continuous context against the cited fact, preserving its conditions and qualifiers.",
+    "reviewExtension": "If this fact already has a reviewed scope, use “Review one fact’s scope” to confirm and save it again after expanding the quote. A draft quote alone establishes neither a new scope nor a measured outcome.",
+    "extensionTargetChanged": "The fact position or draft has changed. Select the source to expand again.",
+    "extensionInvalid": "Paste a longer continuous passage from the same source version that includes the entire existing quote. Do not replace or shorten it.",
+    "extensionSourceChanged": "The document or version you read differs from the bound source. Check the original binding; sources are not refreshed automatically.",
+    "extensionAmbiguous": "The expanded quote must identify one location in the document and contain the existing quote only once. Check the chosen location and context."
   },
   "quality": {
     "title": "Resume quality",

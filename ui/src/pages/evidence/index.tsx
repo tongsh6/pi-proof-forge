@@ -211,7 +211,7 @@ export function EvidencePage() {
               setEditMode={setEditMode}
               draftFromForm={draftFromForm}
               onSave={() => void handleSave()}
-              onSaveReviewedDraft={(saveMode) => void handleSaveReviewedDraft(saveMode)}
+              onSaveReviewedDraft={(saveMode, factScope) => void handleSaveReviewedDraft(saveMode, factScope)}
               onDelete={() => void handleDelete()}
               onStartRereview={startRereview}
               onMergeChange={handleMergeChange}

@@ -355,6 +355,122 @@ def test_ambiguous_saved_scope_requires_explicit_recovery_without_losing_sibling
     assert len(rows) == (1 if resolution == "revoke" else 2)
 
 
+@pytest.mark.parametrize("sample", [(
+    "规划：预计 P95 从 200 ms 降至 120 ms。",
+    "测试环境固定 1000 个请求，采样窗口 5 分钟：\nP95 从 200 ms 降至 120 ms。",
+)], indirect=True)
+@pytest.mark.parametrize("case", ["reference_only", "adopt", "stale_card_revision", "source_changed", "scope_quote_mismatch"])
+def test_ui_expanded_quote_reaches_existing_review_atomically(sample, case):
+    import copy
+    import subprocess
+    from pathlib import Path
+    from tools.infra.persistence.yaml_io import dump_yaml
+
+    root, path, params, sibling = _scoped_review(sample)
+    value = "P95 从 200 ms 降至 120 ms。"
+    ref = params["draft"]["source_documents"][0]
+    binding = {"field": "results", "value": value, "quote": value,
+               "material_id": ref["material_id"], "document_id": ref["document_id"]}
+    params["draft"]["field_sources"].append(binding)
+    evidence.handle_evidence_save_draft(params)
+    position = {"field": "results", "index": 1, "value": value}
+    old = {**position, "source": {**{key: ref[key] for key in ("material_id", "document_id", "sha256")}, "quote": value},
+           "attribution": "self", "target": "测试延迟", "environment": "test",
+           "implementation": "implemented", "release": "not_released"}
+    sibling = {key: item for key, item in sibling.items() if key != "kind"}
+    sibling.update(attribution="teammate", implementation="planned", release="unknown")
+
+    # 复现旧卡留下的含糊指标范围，并保留独立的合法兄弟范围。
+    doc = parse_simple_yaml(path.read_text())
+    snapshot = json.loads(doc["scalars"]["reviewed_facts_json"])
+    snapshot["fact_scope_v1"] = [sibling] if case == "reference_only" else [sibling, old]
+    doc["scalars"]["reviewed_facts_json"] = json.dumps(snapshot, ensure_ascii=False)
+    path.write_text(dump_yaml(doc["scalars"], doc["lists"]))
+    before = path.read_bytes()
+    detail = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+    if case == "reference_only":
+        assert not detail.get("source_error")
+    else:
+        assert detail["source_error"] == "fact_scope_source_not_unique"
+    quote = params["draft"]["results"]
+    read = evidence.handle_read_material_document({"material_id": ref["material_id"], "document_id": ref["document_id"]})
+    assert read["sha256"] == ref["sha256"]
+    original_draft = copy.deepcopy(params["draft"])
+
+    # 使用应用真正的 TypeScript 草稿操作；将其输出交给真实保存处理器。
+    script = r"""
+const fs = require('node:fs'), ts = require('typescript');
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const code = ts.transpileModule(source, {compilerOptions: {
+  module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2021
+}}).outputText;
+const module = {exports: {}};
+new Function('exports', 'module', code)(module.exports, module);
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const result = module.exports.extendSourceQuote(input.draft, input.position, input.binding,
+  input.document, input.sourceText, input.quote);
+process.stdout.write(JSON.stringify(result));
+"""
+    repo = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        ["node", "-e", script, str(repo / "ui/src/pages/evidence/source-merge.ts")],
+        cwd=repo / "ui", input=json.dumps({
+            "draft": original_draft, "position": position, "binding": binding,
+            "document": ref, "sourceText": read["text"], "quote": quote,
+        }, ensure_ascii=False), capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    params["draft"] = json.loads(result.stdout)
+    expected_draft = copy.deepcopy(original_draft)
+    expected_draft["field_sources"][-1]["quote"] = quote
+    assert params["draft"] == expected_draft
+
+    params["expected_sha256"] = hashlib.sha256(before).hexdigest()
+    if case == "reference_only":
+        # 引用补全不要求凭空建立状态范围，已有兄弟范围照常保留。
+        evidence.handle_evidence_save_draft(params)
+        detail = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+        assert detail["field_sources"] == expected_draft["field_sources"]
+        row, = detail["fact_scope_review"]
+        assert row["field"] == "actions" and row["attribution"] == "teammate"
+        assert "fact_scope" not in params["review"]
+        return
+
+    # 更长引文不能通过普通保存清除旧范围，必须显式采纳精确目标。
+    with pytest.raises(ValueError, match="fact_scope_unverifiable"):
+        evidence.handle_evidence_save_draft(params)
+    assert path.read_bytes() == before
+    params["review"]["fact_scope"] = {**old, "kind": "adopt", "source": {**old["source"], "quote": quote}}
+    errors = {"stale_card_revision": "evidence_review_changed",
+              "source_changed": "material_.*changed",
+              "scope_quote_mismatch": "fact_scope_unbound"}
+    if case == "stale_card_revision":
+        params["expected_sha256"] = "stale-card-revision"
+    elif case == "source_changed":
+        (root / "m1.txt").write_text((root / "m1.txt").read_text() + "\n来源已修订。")
+    elif case == "scope_quote_mismatch":
+        params["review"]["fact_scope"]["source"]["quote"] = value
+    if case != "adopt":
+        with pytest.raises(ValueError, match=errors[case]):
+            evidence.handle_evidence_save_draft(params)
+        assert path.read_bytes() == before
+        return
+
+    evidence.handle_evidence_save_draft(params)
+    saved = parse_simple_yaml(path.read_text())
+    assert saved["lists"]["actions"] == doc["lists"]["actions"]
+    assert saved["lists"]["results"] == doc["lists"]["results"]
+    scopes = json.loads(saved["scalars"]["reviewed_facts_json"])["fact_scope_v1"]
+    assert sibling in scopes and len(scopes) == 2
+    detail = evidence.handle_evidence_get({"meta": META, "evidence_id": path.stem})["evidence"]
+    assert detail["field_sources"] == expected_draft["field_sources"]
+    target, = [row for row in detail["fact_scope_review"] if row["field"] == "results"]
+    assert target["fact_id"] == f"{path.stem}:results:1"
+    assert target["value"] == value
+    assert target["sources"][0]["quote"] == quote
+    assert target["environment"] == "test" and target["release"] == "not_released"
+
+
 def test_incomplete_save_preserves_scope_without_granting_authority(sample):
     _, path, params, scope = _scoped_review(sample)
     scope["attribution"] = "teammate"

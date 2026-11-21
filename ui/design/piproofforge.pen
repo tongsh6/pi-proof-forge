@@ -6568,7 +6568,7 @@
                               "id": "BQb82",
                               "name": "evFoldSupplementText",
                               "fill": "$text-secondary",
-                              "content": "从其他文档补充依据",
+                              "content": "补充字段依据",
                               "fontFamily": "Inter",
                               "fontSize": 10,
                               "fontWeight": "normal"
@@ -12842,7 +12842,7 @@
                           "id": "k2UDP",
                           "name": "evControlsMeta",
                           "fill": "$text-secondary",
-                          "content": "Expose query, status, role, tags, date range, sorting, and cursor paging in UI.",
+                          "content": "Existing list controls and field-source review; quote expansion changes the review draft only.",
                           "fontFamily": "Inter",
                           "fontSize": 13,
                           "fontWeight": "normal"
@@ -13134,7 +13134,7 @@
                       "type": "frame",
                       "id": "VBKqj",
                       "name": "evControlsTable",
-                      "width": 752,
+                      "width": "fill_container",
                       "height": "fill_container",
                       "fill": "$bg-panel",
                       "cornerRadius": 16,
@@ -13152,7 +13152,277 @@
                       "cornerRadius": 16,
                       "stroke": "$border-light",
                       "strokeWidth": 1,
-                      "strokeAlignment": "inner"
+                      "strokeAlignment": "inner",
+                      "layout": "vertical",
+                      "gap": 10,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "QxTitle",
+                          "name": "quoteExtensionTitle",
+                          "fill": "$text-primary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "补充字段依据",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "QxState",
+                          "name": "quoteExtensionState",
+                          "fill": "$text-muted",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "既有事实含已核范围 · 合成示例",
+                          "fontFamily": "Inter",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QxFact",
+                          "name": "quoteExtensionFact",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 6,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "QxValue",
+                              "name": "quoteExtensionValue",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "成果 1 · 处理耗时由 12 ms 降至 8 ms。",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "QxOpen",
+                              "name": "quoteExtensionOpen",
+                              "width": 148,
+                              "height": 32,
+                              "fill": "$bg-inset",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "QxOpenT",
+                                  "name": "quoteExtensionOpenText",
+                                  "fill": "$accent",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "扩大引文上下文",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "QxDocLabel",
+                          "name": "quoteExtensionDocumentLabel",
+                          "fill": "$text-muted",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "已绑定文档（只读）",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QxDoc",
+                          "name": "quoteExtensionDocument",
+                          "width": "fill_container",
+                          "height": 32,
+                          "fill": "$bg-inset",
+                          "cornerRadius": 6,
+                          "padding": [
+                            6,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "QxDocText",
+                              "name": "quoteExtensionDocumentText",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "合成示例服务复盘 · 保持原文版本",
+                              "fontFamily": "Inter",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "QxOld",
+                          "name": "quoteExtensionOriginal",
+                          "fill": "$text-muted",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "原引用：处理耗时由 12 ms 降至 8 ms。",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "QxLabel",
+                          "name": "quoteExtensionInputLabel",
+                          "fill": "$text-primary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "连续原文（可含换行）",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QxInput",
+                          "name": "quoteExtensionInput",
+                          "width": "fill_container",
+                          "height": 96,
+                          "fill": "$bg-primary",
+                          "cornerRadius": 6,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "padding": 10,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "QxInputT",
+                              "name": "quoteExtensionInputText",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "合成样例：测试环境复盘\n处理耗时由 12 ms 降至 8 ms。",
+                              "fontFamily": "Inter",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "QxConfirm",
+                          "name": "quoteExtensionConfirmation",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "□ 已核对此条事实所引用的连续上下文，保留其中的条件与限定。",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "QxActions",
+                          "name": "quoteExtensionActions",
+                          "width": "fill_container",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "QxApply",
+                              "name": "quoteExtensionApply",
+                              "width": 190,
+                              "height": 32,
+                              "fill": "$bg-inset",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "QxApplyT",
+                                  "name": "quoteExtensionApplyText",
+                                  "fill": "$text-muted",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "采用扩充引文（草稿）",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "QxCancel",
+                              "name": "quoteExtensionCancel",
+                              "width": 130,
+                              "height": 32,
+                              "fill": "$bg-panel",
+                              "cornerRadius": 6,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "padding": [
+                                6,
+                                10
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "QxCancelT",
+                                  "name": "quoteExtensionCancelText",
+                                  "fill": "$text-secondary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "取消扩大引文",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "QxNext",
+                          "name": "quoteExtensionNextStep",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "若此事实已有核定范围，扩充引文后在“核对单项事实范围”重新确认并保存；更新草稿引文本身不赋予新范围或实测结论。",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
                     }
                   ]
                 }
