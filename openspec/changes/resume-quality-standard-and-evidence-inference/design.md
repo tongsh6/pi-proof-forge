@@ -365,6 +365,8 @@ K1/L1 最终全量为 `2696 passed、1 skipped、101 subtests passed`（42.28 �
 
 **切片 L2：完整请求预算与缓存身份（限定工程与合成应用验收已完成）**。沿现 LLMClient 与任务执行器，复用标准库 Request，让 matching 分批、预算、缓存身份与首次发送消费同一完整 URL/body；初次与每次修复均计入共同语境/schema/provider，原 24,000 上限不变。准备失败保持 invalid_request 与完整未评审范围，不发 HTTP、不重发原输入，也不阻断其余可容纳 checks 的事实选取；不另设逐 check 事实窗口、字段或预算账本。规范归属为 [LLM 任务契约](../../../docs/reports/llm-task-contract-design-20261110.md)，验收详情见 [Project Ledger](../../../docs/project-ledger.md)。同一合成应用流程复验完成 28 RPC、6 次本机 Splash，实际 matching 完整请求分别 4718/5814 字符，内部预览仍为 partial 且不可投递；其他直接客户端调用、原生 UI 与真实验收不据此宣布完成。
 
+**切片 L6：正式质量判项的请求、缓存与有界修复（限定工程与合成应用验收完成）**。复用真实 Quick Run → evaluation_flow → quality_report/llm_judge、原质量缓存及共享 TaskRunner/LLMClient；判项任务已有设计和 API 消费者，不为旧 CLI-only Agent 新建入口。输入完整请求 24,000 字符/输出 6,000 tokens，实际 Request 同时承担预算、缓存身份和发送，修复仅补未完成组。缓存绑定 URL/body/当前输入版本并重新核验领域引用与完整性；合法稳定命中零请求，坏缓存不授信。修复超预算、构造失败或传输失败保留已核验完整组，其余 pending 且不缓存；来源失效仍沿 H 拒绝发布。无新 RPC、来源账本、业务脚本、型号/样例规则或旧 key 回退。共享执行器另拒绝协议明确截断的闭合 JSON，不新增业务特例。原 15 个独立质量对照全部通过，全量 3036 passed、1 skipped、101 subtests passed（56.90 秒）；实际合成 App 11 RPC/5 次本机 Splash，其中质量 1 次、5580 字符，五组完成而量化仍 0.5、auto_pass=false。细节见 [LLM 任务契约](../../../docs/reports/llm-task-contract-design-20261110.md) 与 Project Ledger。此预算针对实际准备请求；原 judge 卡片摘要的长度/前五条裁剪仍可能丢失已呈现事实或尾部限定，下一片沿实际 trace/现结果投影处理，不把正文当作其自身事实证明。
+
 **实施边界与剩余验收**：真实归属、发生性及 scope 冲突必须拒绝的规范保持不变。I 验收时仅覆盖同一明确对象/环境 scope，别名跨来源复核尚未完成；J 已通过当前集合绑定、别名责任纠正、时间推进及真实分工的限定合成应用验收。有限样本不证明全部来源语境或冲突已覆盖；L1 已完成外部协议夹具边界内的完整合成准备预览 RPC，原生页面、全页像素视觉、deep_verified 与真实验收仍待验证。离线工程继续推进，真实 JD/正式件按另行授权验收；不能用字符串相似归并、扩大词表、恢复 planned_results 权威或以提示词变更代替实际应用验证。
 
 **切片 K2：职业概述的当前任职与精确来源（限定工程验收完成）**。

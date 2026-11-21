@@ -61,13 +61,26 @@ class TaskContract:
 `Capability.max_input_chars` 约束每次实际准备发送的完整请求，单位为逻辑 JSON 字符：从已序列化的 UTF-8 `Request.data` 解码 JSON 后，以 `json.dumps(..., ensure_ascii=False)` 计长。该值包括任务消息、共同语境、输出 schema、provider 参数及消息中内层 JSON 的转义；不是 tokenizer token 数、UTF-8 字节或 wire 中 Unicode 转义后的字节数。保留现有 24,000 上限，不通过调大上限掩盖遗漏。
 
 - 请求准备只由 `LLMClient` 完成，复用标准库 `urllib.request.Request` 承载实际 URL、headers 与已序列化 body，不引入 Prepared DTO、`prepared=True`、持久字段或第二预算台账。准备不发 HTTP、不修改调用方数据；发送沿既有 `_open_with_retry`，不重新注入或重建内容。本次预算通过的同一请求对象必须是送入 transport 的对象，准备后的 URL/body 不得由预算、缓存或发送消费者改写。
-- 查重确认 `semantic_matching` 是 `task_runner.execute` 的唯一生产消费者；其余直接 `post_json` 消费者继续使用“准备→发送”的单一组合入口，不声明已全部接入契约执行器。客户端的准备和发送方法分别由分批/执行器与直接入口消费，不保留 raw/prepared 双轨或旧预算签名。
+- L2 实施时查重确认 `semantic_matching` 是 `task_runner.execute` 的唯一生产消费者；其余直接 `post_json` 消费者继续使用“准备→发送”的单一组合入口，不声明已全部接入契约执行器。客户端的准备和发送方法分别由分批/执行器与直接入口消费，不保留 raw/prepared 双轨或旧预算签名。
 - 初次与每次修复请求均先准备、再查预算，之后才允许进入发送回调和 `before_model_call`。初次超限为 `input_budget_exceeded`，尝试数 0；首请求已发但修复超限，只保留首请求的尝试，不能把构造反馈计作修复模型调用。不可序列化、循环输入或本地请求准备失败为现有原因集合中的 `invalid_request`，不能按大小 0 放行，也不按模型不可用、输出 JSON 错误或普通 transport 失败解释；构造失败不回发原输入。
 - 分批与执行器使用同一完整请求口径。recall 的粗体积提示不作最终准入依据；assessment 沿现有选取顺序尝试完整 Fact/既有来源组合，以完整准备请求是否容纳作准入判断，不用独立差额估算代替检查。某独立 check 与必需档案语境无法构造合法请求或已超限时，它保持完整原文及自身的 invalid_request/input_budget 未评审原因，不参与其他可容纳 checks 的可选事实准入约束；不删除该要求，也不扩成另一套逐 check 事实窗口。候选试算不读写缓存，不增加命中、修复或调度计数。最终接受的批次保留对应 Request，直到首次发送；必要语境或单条完整事实过大时显式保留输入预算/未评审缺口，不裁掉原文或限定，不据“准备过”授予完成或覆盖。
 - 原缓存继续承担结果复用并运行原业务 validator；命中结果不调用 HTTP。缓存身份由实际接受的请求 URL、body 与既有输入版本共同确定，不能使用随后重读的 context 或注入前 payload 表示另一份请求；不保留旧 key 的迁移双轨，不新增缓存账本或因本片清缓存。请求预算约束待发请求，不把有效缓存复用算作新发送；本地输入失败不设置 transport 的 budget_exhausted，也不因此授予续审资格。
 - 本片保留任务受控修复次数、输出预算与 BoundedLocal 的实际 HTTP 额度、超时、localhost/重定向约束。TaskRun.attempts 表达逻辑调用尝试，BoundedLocal.model_calls 表达实际 HTTP 尝试，两者不能混称。provider/部署能力配置中的既有模型名或端点特例另片治理，本片仅完整计入其当前注入参数。
 
 独立验收先复现 10 个业务反例，修复后保留原生 schema、无 schema、显式格式、中文/转义、完整 Fact、稳定分批、缓存校验和本地 transport 约束正控；审查补出的局部准备失败反例也已转绿。全量与纯合成真实 Router→Splash→内部预览通过，实际 matching 请求按完整逻辑 JSON 字符计量均未超过原上限。详细结果与未完成边界见 [Project Ledger](../project-ledger.md)；不以辅助脚本或孤立模型样本替代应用验收，也不据有限合成规模宣称所有直接调用已有契约预算。
+
+### 正式质量判项接入（切片 L6，限定工程与合成应用验收完成）
+
+查重已确认 `run.quick.start` 经正式 matching/generation/evaluation 消费质量判项，`quality_report` 是现有编排责任，`llm_judge` 是领域判项校验责任，`quality_judge_cache` 是唯一结果缓存，`TaskRunner` 与共享 `LLMClient` 已能承担完整请求准入和发送。guided 的零模型合同保持；仅由 CLI 注入的旧 Agent 引擎不在本片另建语义流程。
+
+- 将现质量判项登记为实际由 `TaskRunner.execute` 消费的任务，保留输出 6,000 tokens、完整准备请求 24,000 逻辑 JSON 字符及一次受控修复。初次与修复均交由共享客户端准备，同一 `Request` 用于预算、身份及发送。修复只请求未完成判项组，不能重发构造失败的原输入，也不能覆盖首轮已核验的完整组。任务次数按实际进入发送回调计，修复预算/构造失败不增加模型次数；共享 transport 重试的物理 HTTP 次数单独观测。
+- 缓存键在请求准备后生成，绑定实际 URL/body、当前正文/目标、原输入版本和判项协议版本；共同语境/provider/thinking 通过实际 body 参与，不随后重读 context 拼另一份身份，不包含认证 headers。沿现缓存字段与原子写入保存，仅接受当前版本，不留旧 key 或双格式回退，不清理用户缓存。
+- 每次缓存命中都通过当前正文、JD 项、卡与引用的同一领域校验，并复核完整性；持久化的 `judged_sections`、默认空数组或合法 JSON 结构本身不能授予已评权威。无效/不完整缓存按未命中处理。相同实际请求与同版输入的有效缓存为零 HTTP；预算约束待发送请求，不把有效复用算作新发送。严格 JSON 对象解析复用现共同 parser，重复键不能按最后值消解。
+- 共享任务执行器按实际响应协议处理 `finish_reason=length`：即使内容恰好闭合为合法 JSON，也属于 `output_truncated`，不得进入领域校验授予完成或写缓存；沿原最多两次尝试受控重试，后续正常完整响应可采纳，耗尽保持未完成。不按模型名称或输出措辞判断截断，不调大输出上限；该边界归共同执行器，质量业务不维护第二份协议判断。
+- 判项编排仅合并当轮请求且通过校验的完整组；剩余组继续 pending。修复正常缺项、超预算、构造失败或传输失败，均保留首轮合法组但不缓存整份结果；首轮没有合法组时保持 unavailable。原 `TaskRun` 的实际尝试/耗时和稳定原因沿现 stdout/判项诊断表达，不调用会虚构尝试数的聚合捷径，不新增持久状态或公开 API 字段。
+- 上述降级只处理模型分析可用性。实际卡、材料、职业档案、岗位及正式语义报告仍沿 H 的实际读取与发布前校验；缓存或 partial 不解除来源失效阻断，不回写旧报告。已核实量化和非量化结果仍由同一 trace/结果核定承责，judge 不补授 R3.2 信用。质量待判不提升为新的人工批准门禁。
+
+独立质量判项首组 12 failed / 1 passed、追加两反例 2 failed，最终原 15 例全绿；共享截断另两例 RED 转绿。实际 evaluation_flow 的来源变更仍拒绝发布，原报告字节保持；有效缓存、真实结果与 partial 正控均执行。最终全量 3036 passed、1 skipped、101 subtests passed（56.90 秒），工程门禁通过。复用已由 API 核定的纯合成来源，实际 App→Splash 经 11 RPC、5 次本机 HTTP 完成正式 pipeline；质量仅 1 次请求、完整 5580 字符、五组完成，量化 0.5、auto_pass=false。详见 Project Ledger；此请求预算不证明 judge 已读取全部原卡，既有按长度/前五条摘要的输入损失继续另片处理，也不替代原生或真实 JD/正式件验收。
 
 ### 第二层：任务分解（让模型只做它擅长的）
 
