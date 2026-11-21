@@ -272,14 +272,9 @@ def require_current_official_run(run: dict, root: Path, *, command: list[str] | 
 
 
 def _is_saved_eligible_evidence(doc: dict[str, dict[str, Any]]) -> bool:
-    scalars = doc["scalars"]
-    lists = doc["lists"]
-    return (
-        scalars.get("status", "") == "saved_eligible"
-        and scalars.get("candidate_pool_eligible", "") == "true"
-        and bool(lists.get("results", []))
-        and bool(lists.get("artifacts", []))
-    )
+    from tools.infra.evidence_pool import is_saved_eligible_evidence
+
+    return is_saved_eligible_evidence(doc)
 
 
 def _load_eligible_evidence_card(path: Path) -> dict[str, Any]:

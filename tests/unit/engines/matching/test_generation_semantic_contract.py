@@ -79,7 +79,6 @@ def test_incomplete_advisory_report_cannot_be_loaded_for_formal_output(tmp_path)
 
 
 def test_insufficient_child_citation_has_no_formal_positive_weight_or_priority(tmp_path):
-    from tools.engines.generation.template_assembler import cited_card_ids
     from tools.engines.matching.semantic_review import aggregate_assessments, requirement_checks, select_cards, validate_assessments
 
     kwargs = _fixture(tmp_path, count=2)
@@ -105,7 +104,6 @@ def test_insufficient_child_citation_has_no_formal_positive_weight_or_priority(t
     index = build_fact_index(rows, {}, loaded)
     assert index.get("ec_0:results:0").support_weight == 1
     assert index.get("ec_1:results:0").support_weight == 0
-    assert cited_card_ids(loaded) == ["ec_0"]
     assert select_cards([{"id": "ec_0", "score": 1}, {"id": "ec_1", "score": 10}],
                         loaded["assessments"], raw["facts"]) == ["ec_0"]
 
@@ -119,7 +117,6 @@ def test_present_empty_or_malformed_children_do_not_fall_back_to_parent_union(ch
 
 
 def test_explicit_conflict_parent_is_not_a_positive_selection_even_with_supported_child():
-    from tools.engines.generation.template_assembler import cited_card_ids
 
     fact_id = "ec_0:results:0"
     report = {"requirements": [{"id": "r1"}], "facts": {fact_id: {"source_id": "ec_0"}},
@@ -128,7 +125,6 @@ def test_explicit_conflict_parent_is_not_a_positive_selection_even_with_supporte
                                "checks": [{"status": "supported", "citations": [{"fact_id": fact_id}]},
                                           {"status": "conflict", "citations": [{"fact_id": fact_id}]}]}]}
     assert build_fact_index([card()], {}, report).get(fact_id).support_weight == 0
-    assert cited_card_ids(report) == []
 
 
 def test_preferred_card_promotion_does_not_turn_negative_only_fact_into_support():

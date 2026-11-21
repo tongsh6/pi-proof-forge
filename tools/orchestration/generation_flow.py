@@ -13,17 +13,11 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from tools.engines.generation import resume_renderer
-from tools.engines.generation.fact_index import build_fact_index
-from tools.engines.generation.fact_selector import VARIANTS, SelectionBudget, select_facts
-from tools.engines.generation.plan_renderer import render_plan
-from tools.engines.generation.resume_plan import build_resume_plan
 from tools.engines.matching.semantic_matching import load_semantic_report
-from tools.infra.evidence_sources import assert_captured_source
 from tools.infra.llm import client as llm
 
 DEFAULT_PROMPT_PATH = "tools/prompts/generation.md"
@@ -44,10 +38,6 @@ class GenerationFlowConfig:
     model: str = ""
     base_url: str = ""
     api_key: str = ""
-
-
-def _read_text(path: str | Path) -> str:
-    return Path(path).read_text(encoding="utf-8")
 
 
 def _llm_select_cards(
@@ -136,145 +126,25 @@ def _llm_select_cards(
     return [by_id[item] for item in ids]
 
 
-def _check_semantic_binding(
-    *,
-    semantic: dict[str, Any],
-    job_path: Path | None,
-    cards: list[resume_renderer.CardView],
-    profile_path: Path,
-) -> None:
-    if job_path and (
-        hashlib.sha256(job_path.read_bytes()).hexdigest()
-        != semantic["inputs"]["job_profile"]["sha256"]
-    ):
+def _check_semantic_binding(*, semantic: dict[str, Any],
+                            cards: list[resume_renderer.CardView],
+                            captured_inputs: dict[str, str]) -> None:
+    """匹配支持必须绑定生成实际消费的版本，不能只在第二次读取前检查路径。"""
+    inputs = semantic["inputs"]
+    if captured_inputs.get("job_profile") != inputs["job_profile"]["sha256"]:
         raise ValueError("semantic_target_changed")
-    if not job_path:
-        raise ValueError("semantic_target_changed")
-    if any(
-        card["source_sha256"] != semantic["inputs"][card["id"]]["sha256"]
-        for card in cards
-    ):
-        raise ValueError("semantic_evidence_changed")
-    expected_profile = semantic["inputs"].get("personal_profile")
-    if expected_profile and (
-        not profile_path.is_file()
-        or hashlib.sha256(profile_path.read_bytes()).hexdigest()
-        != expected_profile["sha256"]
-    ):
-        raise ValueError("semantic_personal_profile_changed")
-
-
-def _build_trace(
-    *,
-    version: str,
-    content: str,
-    strategy: str,
-    semantic: dict[str, Any] | None,
-    profile: dict[str, Any],
-    target: dict[str, Any],
-    selected_cards: list[resume_renderer.CardView],
-    claims: list[dict[str, Any]],
-    paths: dict[str, Path],
-    missing_profile: list[str],
-    missing_target: list[str],
-) -> dict[str, Any]:
-    missing_evidence = [
-        f"{card['id']}.{field}"
-        for card in selected_cards
-        for field in ("context", "time_range", "actions")
-        if not card[field]
-    ]
-    # 本人职责属于表达完整性问题：批量提炼卡从技术文档抽取，常没有角色措辞。
-    # 缺失时记录提示，但不作为内容完整性硬阻断（事实仍在卡内，正文只是不显示角色行）。
-    missing_soft_evidence = [
-        f"{card['id']}.role_scope" for card in selected_cards if not card["role_scope"]
-    ]
-    if not resume_renderer.unique_stack(selected_cards):
-        missing_evidence.append("skills")
-    field_labels = {
-        "context": "项目场景",
-        "role_scope": "本人职责",
-        "time_range": "经历时间",
-        "actions": "具体行动",
-    }
-    evidence_reasons = [
-        f"{card['title']}：待补"
-        + "、".join(field_labels[f] for f in field_labels if not card[f])
-        for card in selected_cards
-        if any(not card[f] for f in field_labels)
-    ]
-    if not resume_renderer.unique_stack(selected_cards):
-        evidence_reasons.append("缺少已审核的技能依据")
-    from tools.infra.career_profile import career_generation_issues
-
-    career_reasons = career_generation_issues(profile, selected_cards)
-    # 职业档案引用的证据卡目录同样不能只看 profile 同级：profile 可能在临时
-    # 目录，此时应回退到工作区 evidence_cards，否则 trace 的 inputs 全部不存在。
-    profile_evidence_dir = Path(str(paths["personal_profile"])).parent / "evidence_cards"
-    if not profile_evidence_dir.is_dir():
-        profile_evidence_dir = Path("evidence_cards")
-    for ref in profile.get("evidence_hashes", {}):
-        paths["career_evidence:" + ref] = profile_evidence_dir / f"{ref}.yaml"
-    trace_inputs = {
-            key: {
-                "path": str(path.resolve()),
-                "exists": path.is_file(),
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest()
-                if path.is_file()
-                else "",
-            }
-            for key, path in paths.items()
-        }
-    for card in selected_cards:
-        for key, source in card.get("material_inputs", {}).items():
-            if trace_inputs[key]["path"] != str(source.resolve()):
-                raise ValueError("material_source_changed")
-            assert_captured_source(card["material_inputs"], key, trace_inputs[key]["sha256"])
-    return {
-        "schema_version": 1,
-        "version": version,
-        "content_schema_version": 1,
-        "occurrence_lineage_version": 1,
-        "career_revision": profile.get("revision", ""),
-        "display_policy": "targeted_v1" if semantic else "complete_v1",
-        "generation_strategy": strategy,
-        "resume_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
-        "evidence_card_ids": [card["id"] for card in selected_cards],
-        "claims": claims,
-        "field_provenance": {
-            card["id"]: {
-                "time_range": card.get("time_range_provenance"),
-                "role_scope": card.get("role_scope_provenance"),
-                "time_range_level": card.get("time_range_level", "L1"),
-                "role_scope_level": card.get("role_scope_level", "L1"),
-            }
-            for card in selected_cards
-        },
-        "inputs": trace_inputs,
-        "target": target,
-        "readiness": {
-            "status": "NEEDS_EVIDENCE"
-            if missing_profile or missing_target or missing_evidence or career_reasons
-            else "NEEDS_REVIEW",
-            "deliverable": False,
-            "missing_profile_fields": missing_profile,
-            "missing_target_fields": missing_target,
-            "missing_evidence_fields": missing_evidence,
-            "missing_soft_fields": missing_soft_evidence,
-            "missing_career_fields": career_reasons,
-            "content_ready": not (
-                missing_profile or missing_target or missing_evidence or career_reasons
-            ),
-            "reasons": (
-                ["个人资料或目标岗位信息不完整"]
-                if missing_profile or missing_target
-                else []
-            )
-            + evidence_reasons
-            + career_reasons
-            + ["需人工审核简历事实与岗位适用性"],
-        },
-    }
+    for local_key, semantic_key in (("personal_profile", "personal_profile"),
+                                    ("job_description", "jd_source")):
+        expected = inputs.get(semantic_key)
+        if expected and captured_inputs.get(local_key) != expected["sha256"]:
+            raise ValueError("semantic_personal_profile_changed" if local_key == "personal_profile"
+                             else "semantic_target_changed")
+    for card in cards:
+        if card["source_sha256"] != inputs.get(card["id"], {}).get("sha256"):
+            raise ValueError("semantic_evidence_changed")
+        for key, (_, digest) in getattr(card.get("material_inputs"), "snapshots", {}).items():
+            if digest != inputs.get(key, {}).get("sha256"):
+                raise ValueError("semantic_input_changed")
 
 
 def run_generation_flow(config: GenerationFlowConfig) -> int:
@@ -285,13 +155,13 @@ def run_generation_flow(config: GenerationFlowConfig) -> int:
 
     report_path = config.matching_report_path
     report_id = report_path.stem
-    now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
     output_dir = config.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        report_text = _read_text(report_path)
-        score_total = resume_renderer.extract_score_total(report_text)
+        report_raw = report_path.read_bytes()
+        report_text = report_raw.decode("utf-8")
+        captured_inputs = {"matching_report": hashlib.sha256(report_raw).hexdigest()}
         cards = resume_renderer.load_cards(
             config.evidence_dir,
             resume_renderer.extract_top_card_ids(report_text),
@@ -299,14 +169,12 @@ def run_generation_flow(config: GenerationFlowConfig) -> int:
         )
         semantic = load_semantic_report(report_path)
         if semantic:
-            _check_semantic_binding(
-                semantic=semantic,
-                job_path=config.job_profile_path,
-                cards=cards,
-                profile_path=config.personal_profile_path,
-            )
+            semantic_raw = report_path.with_suffix(".semantic.json").read_bytes()
+            if json.loads(semantic_raw) != semantic:
+                raise ValueError("semantic_report_changed")
+            captured_inputs["semantic_matching"] = hashlib.sha256(semantic_raw).hexdigest()
         profile, target = resume_renderer.load_generation_context(
-            config.personal_profile_path, config.job_profile_path
+            config.personal_profile_path, config.job_profile_path, captured_inputs=captured_inputs
         )
         missing_profile = [
             key
@@ -327,16 +195,11 @@ def run_generation_flow(config: GenerationFlowConfig) -> int:
         )
         all_cards = resume_renderer.load_all_cards(config.evidence_dir, material_dir)
         base_cards = all_cards if (semantic or not config.use_llm) else cards
+        if semantic:
+            _check_semantic_binding(semantic=semantic, cards=base_cards, captured_inputs=captured_inputs)
         if not base_cards:
             print("[generation] 没有可用的已入池证据卡，无法生成。")
             return 1
-        career = dict(profile.get("career") or {})
-        # project_key → 该卡所属项目簇；同一簇的多张卡合并为一个项目块。
-        project_groups = {
-            str(card["id"]): str(card.get("project_key") or "")
-            for card in base_cards
-            if card.get("project_key")
-        }
         for version in ["A", "B"]:
             selected_cards = base_cards
             strategy = (
@@ -364,50 +227,13 @@ def run_generation_flow(config: GenerationFlowConfig) -> int:
                         return 1
                     strategy = "rule_fallback_locked_evidence_fields"
             claims: list[dict[str, Any]] = []
-            # 培训/面试/分享类活动卡不作为项目经历；运维类仍保留（属于真实工作）。
-            plan_cards = [
-                card
-                for card in selected_cards
-                if str(card.get("card_category") or "project") != "activity"
-            ]
-            fact_index = build_fact_index(
-                plan_cards,
-                career,
-                semantic,
-                preferred_card_ids=(semantic or {}).get("selected_card_ids") or (),
-            )
-            selection = select_facts(
-                fact_index,
-                weights=VARIANTS.get(version, VARIANTS["A"]),
-                budget=SelectionBudget(),
-                project_groups=project_groups,
-            )
-            plan = build_resume_plan(
-                fact_index,
-                selection,
-                career,
-                job_context=target,
-                variant=version,
-                project_groups=project_groups,
-            )
-            if not plan.projects and not plan.work:
-                print("[generation] 事实池中没有可呈现的事实，无法生成。")
-                return 1
-            content = render_plan(
-                plan,
-                fact_index,
-                profile=profile,
-                job_context=target,
-                claims=claims,
-                version=version,
-                positioning=config.resume_positioning,
+            content = resume_renderer.build_template_resume(
+                version, selected_cards, personal_profile=profile, job_context=target,
+                claims=claims, semantic_report=semantic, positioning=config.resume_positioning,
                 custom_positioning=config.custom_positioning,
             )
-            used_card_ids = {
-                fact.source_id
-                for fact in fact_index.facts
-                if fact.fact_id in set(plan.fact_ids) and fact.kind == "evidence"
-            }
+            used_card_ids = {claim["evidence_id"] for claim in claims
+                             if claim.get("source_kind") == "evidence"}
             selected_cards = [card for card in selected_cards if card["id"] in used_card_ids]
             paths: dict[str, Path] = {
                 "personal_profile": config.personal_profile_path,
@@ -425,7 +251,7 @@ def run_generation_flow(config: GenerationFlowConfig) -> int:
             )
             for card in selected_cards:
                 paths.update(card.get("material_inputs", {}))
-            trace = _build_trace(
+            trace = resume_renderer.build_generation_trace(
                 version=version,
                 content=content,
                 strategy=strategy,
@@ -435,11 +261,18 @@ def run_generation_flow(config: GenerationFlowConfig) -> int:
                 selected_cards=selected_cards,
                 claims=claims,
                 paths=paths,
+                captured_inputs=captured_inputs,
                 missing_profile=missing_profile,
                 missing_target=missing_target,
             )
             artifacts.append((output_dir / f"resume_{report_id}_{version}.md", content, trace))
         # 两版都通过校验后才发布产物，避免 LLM 中途失败留下看似完整的单版结果。
+        from tools.infra.persistence.review_snapshot import validate_generation_trace
+        if semantic:
+            from tools.engines.matching.semantic_matching import validate_inputs
+            validate_inputs(semantic["inputs"])
+        if not all(validate_generation_trace(content, trace) for _, content, trace in artifacts):
+            raise ValueError("generation_input_changed")
         for output_path, content, trace in artifacts:
             _ = output_path.write_text(content, encoding="utf-8")
             _ = output_path.with_suffix(".trace.json").write_text(

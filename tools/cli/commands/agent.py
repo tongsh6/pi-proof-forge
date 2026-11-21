@@ -94,24 +94,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _generation_context(
-    personal_profile_path: str, job_profile_path: str
-) -> tuple[dict, dict]:
-    """加载个人资料与岗位上下文供真实生成/评测引擎使用；缺失时返回空上下文。"""
-    if not job_profile_path:
-        return {}, {}
-    profile_path = Path(personal_profile_path)
-    job_path = Path(job_profile_path)
-    if not profile_path.is_file() or not job_path.is_file():
-        return {}, {}
-    try:
-        from tools.engines.generation.resume_renderer import load_generation_context
-
-        return load_generation_context(profile_path, job_path)
-    except (OSError, ValueError):
-        return {}, {}
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -160,9 +142,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         llm_client = LLMClient(base_url=llm_base, api_key=llm_key, timeout=llm_timeout_from_env())
 
     if evidence_cards and args.full_pipeline:
-        personal_profile, job_context = _generation_context(
-            args.personal_profile, args.job_profile
-        )
         loop = composer.build_agent_loop(
             run_id=run_id,
             dry_run=bool(args.dry_run),
@@ -171,8 +150,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             job_profile=job_profile,
             llm_client=llm_client,
             llm_model=llm_model,
-            personal_profile=personal_profile,
-            job_context=job_context,
+            evidence_dir=Path(args.evidence_dir),
+            personal_profile_path=Path(args.personal_profile),
+            job_profile_path=Path(args.job_profile) if args.job_profile else None,
         )
     else:
         agent_loop_cls = getattr(

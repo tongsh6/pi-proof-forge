@@ -36,6 +36,17 @@ def pool_eligible_scalars(scalars: Mapping[str, object], *, card_id: str = "") -
     return True
 
 
+def is_saved_eligible_evidence(doc: Mapping[str, Mapping[str, object]]) -> bool:
+    """App 明确入池状态；结构和标志本身不替代当前来源及逐事实范围校验。"""
+    scalars, lists = doc["scalars"], doc["lists"]
+    return (
+        scalars.get("status", "") == "saved_eligible"
+        and scalars.get("candidate_pool_eligible", "") == "true"
+        and bool(lists.get("results", []))
+        and bool(lists.get("artifacts", []))
+    )
+
+
 def pool_approval_reason(card: dict, *, source_verifiable: bool = True) -> str:
     """只读完整性预检查，返回缺失或来源未核验原因。
 

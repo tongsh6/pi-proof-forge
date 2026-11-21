@@ -71,13 +71,9 @@ def test_generation_uses_profile_and_target_without_internal_metadata(monkeypatc
 
 def test_missing_profile_is_explicitly_not_deliverable(monkeypatch, generation_inputs):
     generation_inputs[0].unlink()
-    assert run_generation_cli(monkeypatch, generation_inputs) == 0
-    trace_path = generation_inputs[-1] / "resume_mr-target_A.trace.json"
-    assert trace_path.exists()
-    trace = json.loads(trace_path.read_text())
-    assert trace["readiness"]["status"] == "NEEDS_EVIDENCE"
-    assert "name" in trace["readiness"]["missing_profile_fields"]
-    assert trace["readiness"]["deliverable"] is False
+    assert run_generation_cli(monkeypatch, generation_inputs) == 1
+    assert not list(generation_inputs[-1].glob("*.md"))
+    assert not list(generation_inputs[-1].glob("*.trace.json"))
 
 
 def test_unknown_selected_evidence_does_not_fall_back(monkeypatch, generation_inputs):
@@ -242,46 +238,48 @@ def test_high_score_with_pdf_clip_check_pending_still_allows_manual_review(monke
 
 
 def test_generation_keeps_context_and_prioritizes_relevant_actions_without_inventing():
-    card={'id':'ec-1','title':'交易服务','raw_source':'材料','time_range':'2024-2025','context':'高峰期订单查询慢','role_scope':'模块负责人',
+    card={'id':'ec-1','title':'交易服务','raw_source':'材料','time_range':'2024-2025','context':'高峰期交易订单查询延迟较高','role_scope':'模块负责人',
           'actions':['整理接口文档','使用 Redis 缓存订单查询','通过压测分析数据库瓶颈','设置灰度回滚流程'],
           'results':['请求延迟降低 20%'],'stack':['Redis'],'artifacts':['材料']}
     claims=[]
-    text=build_template_resume('A','report',80,'now',[card],personal_profile={'name':'测试候选人'},job_context={'keywords':['Redis']},claims=claims)
-    assert '场景：高峰期订单查询慢' in text
-    assert text.index('使用 Redis 缓存订单查询')<text.index('整理接口文档')
-    assert any(c['field']=='context' and c['text']=='高峰期订单查询慢' for c in claims)
+    text=build_template_resume('A', [card],personal_profile={'name':'测试候选人'},job_context={'keywords':['Redis']},claims=claims)
+    assert '背景：高峰期交易订单查询延迟较高' in text
+    assert '使用 Redis 缓存订单查询' in text
+    assert any(c['field']=='context' and c['text']=='高峰期交易订单查询延迟较高' for c in claims)
     assert 'C++' not in text
 
 
 def test_generation_prioritizes_semantically_cited_action_over_literal_keyword_order():
     card={'id':'ec-1','title':'交易服务','raw_source':'材料','time_range':'2024-2025','context':'查询慢','role_scope':'负责人',
-          'actions':['Java接口开发','Java文档整理','Java单元测试','实现幂等去重与故障恢复'],
+          'actions':['Java交易接口开发与联调','Java交易文档整理与交付','Java交易服务单元测试','实现幂等去重与故障恢复'],
           'results':['成功率99%'],'stack':['Java'],'artifacts':['报告']}
     claims=[]
-    text=build_template_resume('A','r',80,'now',[card],job_context={'keywords':['Java']},claims=claims,
-        preferred_facts=[{'source_id':'ec-1','field':'actions','text':'实现幂等去重与故障恢复'}])
+    text=build_template_resume('A', [card],job_context={'keywords':['Java']},claims=claims,
+        semantic_report={'requirements':[{'id':'r1','text':'实现幂等去重与故障恢复'}],
+            'assessments':[{'requirement_id':'r1','status':'supported',
+                            'citations':[{'fact_id':'ec-1:actions:3'}]}]})
     assert '实现幂等去重与故障恢复' in text
-    assert text.index('实现幂等去重与故障恢复') < text.index('Java接口开发')
-    assert len([c for c in claims if c['field']=='actions']) == 3
+    assert text.index('实现幂等去重与故障恢复') < text.index('Java交易接口开发与联调')
+    assert any(c.get('fact_id') == 'ec-1:actions:3' for c in claims)
 
 
 def test_actions_without_lexical_result_match_are_not_paired_as_bullets():
     from tools.engines.evaluation.tiered_evaluator import inspect_bullet_trace
     card = {'id': 'ec-1', 'title': '交易平台', 'time_range': '2024 ~ 2025', 'role_scope': '负责人',
-            'context': '多端交易交付。', 'actions': ['接口开发', '发布治理', '监控改进', '主导前后端方案设计'],
-            'results': ['完成 15 个系统', '服务 6 个品牌', '查询耗时从 2 秒降至 300 毫秒'],
+            'context': '多端交易交付。', 'actions': ['实现消费端接口与回调联调', '构建发布核对及回滚流程', '完成监控告警与指标接入', '主导前后端接口方案设计'],
+            'results': ['完成 15 个业务系统的联调验收', '交付服务于 6 个品牌的订阅能力', '查询耗时从 2 秒降至 300 毫秒'],
             'stack': ['Java'], 'artifacts': ['报告']}
     profile = {'career': {'skills': [{'id': 's1', 'category': '技术', 'description': '后端开发'}]}}
     claims = []
-    text = build_template_resume('A', 'r', 50, 'now', [card],
+    text = build_template_resume('A', [card],
              personal_profile=profile, claims=claims)
     bullets = [line for line in text.splitlines() if line.startswith('- ')]
     assert not any(any(a in line for a in card['actions']) and any(r in line for r in card['results']) for line in bullets)
-    assert any(line.startswith('职责：') and card['actions'][0] in line for line in text.splitlines())
-    assert any(line.startswith('结果：') and card['results'][0] in line for line in text.splitlines())
+    assert '- ' + card['actions'][0] in text
+    assert '- ' + card['results'][0] in text
     for value in (card['actions'][0], card['results'][0]):
         assert value in text
-    checked = inspect_bullet_trace(text, {'claims': claims})
+    checked = inspect_bullet_trace(text, {'claims': claims, 'occurrence_lineage_version': 1})
     assert checked['verified_bullets'] == checked['total_bullets']
 
 
@@ -291,20 +289,16 @@ def test_targeted_generation_preserves_measured_improvement_over_repeated_scale(
             'stack': [], 'artifacts': ['报告']}
     refs = [{'source_id': 'ec-1', 'field': 'results', 'text': r, 'requirement_id': 'r1', 'support_weight': 2}
             for r in card['results'][:2]]
-    text = build_template_resume('A', 'r', 50, 'now', [card], preferred_facts=refs)
+    text = build_template_resume('A', [card], semantic_report={'requirements':[{'id':'r1'}], 'assessments':[{'requirement_id':'r1','status':'supported','citations':[{'fact_id':'ec-1:results:0'},{'fact_id':'ec-1:results:1'}]}]})
     assert card['results'][2] in text
 
 
-def test_thin_evidence_generates_explicit_missing_fields(monkeypatch,generation_inputs):
-    path=generation_inputs[2]/'ec-1.yaml';s=path.read_text();s=s.replace('role_scope: "模块负责人"','role_scope: ""').replace('time_range: "2024-01 ~ 2024-06"','time_range: ""').replace('  - "Java"\n','')
-    path.write_text(s)
-    assert run_generation_cli(monkeypatch,generation_inputs)==0
-    trace=json.loads((generation_inputs[-1]/'resume_mr-target_A.trace.json').read_text())
-    assert trace['readiness']['status']=='NEEDS_EVIDENCE'
-    assert {'ec-1.time_range','skills'}<=set(trace['readiness']['missing_evidence_fields'])
-    # 本人职责缺失属于表达完整性提示，不再作为内容完整性硬阻断
-    assert 'ec-1.role_scope' in trace['readiness']['missing_soft_fields']
-    assert trace['readiness']['deliverable'] is False
+def test_untimed_evidence_cannot_publish_a_complete_resume(monkeypatch, generation_inputs):
+    path = generation_inputs[2] / "ec-1.yaml"
+    path.write_text(path.read_text().replace('time_range: "2024-01 ~ 2024-06"', 'time_range: ""'))
+    assert run_generation_cli(monkeypatch, generation_inputs) == 1
+    assert not list(generation_inputs[-1].glob("*.md"))
+    assert not list(generation_inputs[-1].glob("*.trace.json"))
 
 
 @pytest.mark.parametrize('placeholder', ['[]', '{}', 'null', 'None'])
@@ -432,3 +426,48 @@ def test_same_project_action_order_follows_explicit_jd_responsibility_rank(monke
         assert not any(line.startswith("#") for line in lines[by_line[0][0]:by_line[1][0]])
         for line, fact_id, word in by_line:
             assert word == actions[fact_ids.index(fact_id)] and word in lines[line - 1] and markdown.count(word) == 1
+
+@pytest.mark.parametrize("changed", ["profile", "job", "card"])
+def test_semantic_binding_uses_consumed_input_version(monkeypatch, generation_inputs, changed):
+    from tools.engines.generation import resume_renderer
+    from tools.engines.matching.semantic_matching import run_semantic_matching, write_semantic_report
+
+    profile, job, evidence, report, output = generation_inputs
+
+    class Client:
+        chat_completions_url = "http://localhost/v1/chat/completions"
+
+        def post_json(self, url, payload, **kwargs):
+            data = json.loads(payload["messages"][1]["content"])
+            cite = {"fact_id": "ec-1:actions:0", "quote": "使用 Java 重构交易服务"}
+            if data["stage"] == "recall":
+                body = {"cards": [{"id": "ec-1", "score": 90, "reason": "合成事实",
+                                  "requirement_ids": ["r1"], "citations": [cite]}]}
+            else:
+                body = {"assessments": [{"requirement_id": row["id"], "status": "supported",
+                                        "reason": "合成引文", "citations": [cite]}
+                                       for row in data["requirements"]]}
+            return {"choices": [{"message": {"content": json.dumps(body)}}]}
+
+        @staticmethod
+        def extract_content(response):
+            return response["choices"][0]["message"]["content"]
+
+    semantic = run_semantic_matching(
+        job_path=job, evidence_files=list(evidence.glob("*.yaml")), personal_profile=profile,
+        client=Client(), model="fixture", cache_dir=output.parent / "cache")
+    write_semantic_report(report, semantic)
+    hook = "load_all_cards" if changed == "card" else "load_generation_context"
+    original = getattr(resume_renderer, hook)
+
+    def change_after_initial_binding(*args, **kwargs):
+        path = {"profile": profile, "job": job, "card": evidence / "ec-1.yaml"}[changed]
+        before = path.read_text()
+        path.write_text(before.replace("测试候选人", "修改后的候选人")
+                       if changed == "profile" else before.replace("目标公司", "修改后的公司")
+                       if changed == "job" else before.replace("重构交易服务", "重构库存服务"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(resume_renderer, hook, change_after_initial_binding)
+    assert run_generation_cli(monkeypatch, generation_inputs, "--use-llm", "--require-llm") == 1
+    assert not list(output.glob("*.md"))

@@ -111,10 +111,43 @@ def field_provenance(fields: dict, field: str) -> dict[str, Any] | None:
 
 def field_level(fields: dict, field: str) -> str:
     value = field_value(fields, field)
+    raw = parse_provenance(fields.get(PROVENANCE_SCALARS.get(field, "")))
+    if raw and str(raw.get("level", "")).upper() == "L5":
+        return "L5"
     provenance = field_provenance(fields, field)
     if provenance:
         return str(provenance.get("level", "L1"))
     return "L1" if value else "L5"
+
+
+def format_presented_period(value: str, *, level: str, precision: str) -> str:
+    """结构化日期的显示精度；保留原文区间与至今边界，不改变底稿字段。"""
+    text = " ".join(str(value or "").split())
+    if not text or level == "L5":
+        return ""
+    if level == "L3":
+        precision = "year"
+    elif level != "L2":
+        return text
+    if level == "L2" and precision == "day":
+        precision = "month"
+    if precision not in {"year", "month"}:
+        return text
+
+    def date(match):
+        year, month = match.group("year"), match.group("month")
+        return year if precision == "year" or not month else f"{year}-{int(month):02d}"
+
+    text = re.sub(
+        r"(?P<year>(?:19|20)\d{2})(?:\s*[-./年]\s*(?P<month>\d{1,2})(?!\d)"
+        r"(?:\s*[-./月]\s*(?P<day>\d{1,2})(?!\d))?(?:\s*[日月])?)?",
+        date, text,
+    )
+    if precision == "year":
+        same_year = re.fullmatch(r"((?:19|20)\d{2})\s*(?:~|至|—|–|-)\s*\1", text)
+        if same_year:
+            return same_year.group(1)
+    return text
 
 
 def provenance_json(provenance: dict[str, Any] | None) -> str:

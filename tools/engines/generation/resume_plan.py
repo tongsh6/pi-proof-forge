@@ -210,7 +210,7 @@ def build_resume_plan(
             (fact.text for fact in facts if fact.field == "context"), ""
         )
         role_text = structured.get("role_scope", "")
-        period_text = structured.get("time_range", "")
+        period_text = next((fact.time_range for fact in facts if fact.kind == "evidence" and fact.time_range), "")
         actions = [fact for fact in facts if fact.field == "actions" and presentable(fact.text, field="actions")]
         results = [fact for fact in facts if fact.field == "results" and presentable(fact.text, field="results")]
         stacks = [fact.text for fact in facts if fact.field == "stack"]

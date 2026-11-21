@@ -94,7 +94,8 @@ def test_project_block_renders_background_work_and_outcomes():
     assert "- 核心查询从 2–3 秒降至 300–400 毫秒" in text
 
 
-def test_untimed_project_omits_period_but_keeps_facts():
+def test_internal_plan_can_render_untimed_facts_without_inventing_dates():
+    # The complete-resume builder rejects this card before selection; internal excerpts can represent it.
     text, _claims = render(cards=[card(id="ec_untimed", title="无时间项目", time_range="")])
 
     assert "### 无时间项目" in text

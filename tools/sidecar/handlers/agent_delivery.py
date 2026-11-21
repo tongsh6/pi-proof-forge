@@ -111,21 +111,6 @@ def _read_domain_job_profile(job_profile_id: str) -> Any:
     )
 
 
-def _generation_context(job_profile_id: str) -> tuple[dict, dict]:
-    """加载个人资料与岗位上下文供真实生成/评测引擎使用；缺失时返回空上下文。"""
-    from tools.engines.generation.resume_renderer import load_generation_context
-
-    root = _facade()._PROJECT_ROOT
-    profile_path = root / "personal_profile.yaml"
-    job_path = root / "job_profiles" / f"{job_profile_id}.yaml"
-    if not profile_path.is_file() or not job_path.is_file():
-        return {}, {}
-    try:
-        return load_generation_context(profile_path, job_path)
-    except (OSError, ValueError):
-        return {}, {}
-
-
 def _domain_evidence_cards(options: dict[str, Any]) -> tuple[Any, ...]:
     from tools.domain.models import EvidenceCard
 
@@ -146,6 +131,8 @@ def _domain_evidence_cards(options: dict[str, Any]) -> tuple[Any, ...]:
             doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
         except OSError:
             continue
+        if doc["scalars"].get("id", path.stem) != path.stem:
+            raise ValueError("evidence_card_identity_mismatch")
         if not _is_saved_eligible_evidence(doc):
             continue
         cards.append(
@@ -159,8 +146,12 @@ def _domain_evidence_cards(options: dict[str, Any]) -> tuple[Any, ...]:
                 stack=tuple(doc["lists"].get("stack", [])),
                 period=doc["scalars"].get("time_range", ""),
                 context=doc["scalars"].get("context", ""),
+                role_scope=doc["scalars"].get("role_scope", ""),
+                actions=tuple(doc["lists"].get("actions", [])),
             )
         )
+    if allowed_ids and allowed_ids != {card.id for card in cards}:
+        raise ValueError("selected_evidence_missing_or_invalid")
     if not cards:
         raise ValueError("missing_eligible_evidence_cards")
     return tuple(cards)

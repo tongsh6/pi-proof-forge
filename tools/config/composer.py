@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from importlib import import_module
+from pathlib import Path
 from typing import Protocol, cast
 
 from tools.config.fragments import PolicyConfig
@@ -58,20 +59,23 @@ class Composer:
         *,
         llm_client: object | None = None,
         llm_model: str = "",
-        personal_profile: dict | None = None,
-        job_context: dict | None = None,
+        evidence_dir: Path,
+        personal_profile_path: Path,
+        job_profile_path: Path | None = None,
+        material_dir: Path | None = None,
     ) -> object:
         """Build a fully wired AgentLoop.
 
         Without llm_client: uses rule-mode engines (fast, deterministic).
         With llm_client: uses hybrid matching + LLM evaluator (semantic).
 
-        Caller provides data inputs (evidence_cards, job_profile, candidates) and
-        optional generation context (personal_profile/job_context). 生成上下文缺省
-        为空时仍可渲染，仅不包含个人资料与 JD 细节。
+        Caller provides selected identities and explicit current source paths.
+        Generation always uses the same verified fact plan; models never rewrite its body.
         """
         matching_reg = self.build_matching_registry()
-        generation_reg = self.build_generation_registry(personal_profile, job_context)
+        generation_reg = self.build_generation_registry(
+            evidence_dir=evidence_dir, personal_profile_path=personal_profile_path,
+            job_profile_path=job_profile_path, material_dir=material_dir)
         evaluation_reg = self.build_evaluation_registry()
         discovery_reg = self.build_discovery_registry()
 
@@ -80,15 +84,11 @@ class Composer:
             self.add_llm_strategies(
                 llm_client, llm_model,
                 self.build_evidence_registry(),
-                matching_reg, generation_reg, evaluation_reg,
-                personal_profile=personal_profile,
-                job_context=job_context,
+                matching_reg, evaluation_reg,
             )
 
         matching_engine = matching_reg.create("hybrid" if use_llm else "rule")
-        generation_engine = generation_reg.create(
-            "llm_rewrite" if use_llm else "template"
-        )
+        generation_engine = generation_reg.create("template")
         evaluation_engine = evaluation_reg.create("llm" if use_llm else "rule")
         discovery_engine = discovery_reg.create("rule")
 
@@ -155,18 +155,16 @@ class Composer:
         return registry
 
     def build_generation_registry(
-        self,
-        personal_profile: dict | None = None,
-        job_context: dict | None = None,
+        self, *, evidence_dir: Path, personal_profile_path: Path,
+        job_profile_path: Path | None = None, material_dir: Path | None = None,
     ) -> _RegistryLike:
         registry = _new_registry()
         registry.register(
             "template",
             lambda: _construct(
-                "tools.engines.generation.template_assembler",
-                "TemplateAssembler",
-                personal_profile,
-                job_context,
+                "tools.engines.generation.template_assembler", "TemplateAssembler",
+                evidence_dir=evidence_dir, personal_profile_path=personal_profile_path,
+                job_profile_path=job_profile_path, material_dir=material_dir,
             ),
         )
         return registry
@@ -199,11 +197,7 @@ class Composer:
         model: str,
         evidence_registry: _RegistryLike,
         matching_registry: _RegistryLike,
-        generation_registry: _RegistryLike,
         evaluation_registry: _RegistryLike,
-        *,
-        personal_profile: dict | None = None,
-        job_context: dict | None = None,
     ) -> None:
         evidence_registry.register(
             "llm",
@@ -231,17 +225,6 @@ class Composer:
                 llm_client,
                 model,
                 5,
-            ),
-        )
-        generation_registry.register(
-            "llm_rewrite",
-            lambda: _construct(
-                "tools.engines.generation.llm_rewriter",
-                "LLMRewriter",
-                llm_client,
-                model,
-                personal_profile,
-                job_context,
             ),
         )
         evaluation_registry.register(

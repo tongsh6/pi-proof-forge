@@ -115,7 +115,8 @@ def test_project_block_uses_three_part_structure():
     assert any("毫秒" in item.text for item in project.outcomes)
 
 
-def test_project_without_time_is_kept_as_fact_only():
+def test_internal_plan_represents_untimed_facts_without_granting_resume_eligibility():
+    # This is a plan representation, not the public complete-resume builder.
     untimed = card(id="ec_untimed", title="无时间项目", time_range="")
     plan = plan_for(cards=[untimed])
 

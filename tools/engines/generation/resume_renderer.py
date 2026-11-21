@@ -1,505 +1,312 @@
-"""简历模板拼装与渲染（确定性、证据优先）。
-
-把选定的 Evidence Card 与已确认个人资料渲染为 A/B 版 Markdown 简历，并产出
-逐条 claim 追溯信息。渲染只做措辞降级、排序与排版，不引入新事实；字段等级与
-时间精度由 template_assembler 的呈现规则决定。
-"""
-
+"""已核定来源加载与唯一事实计划生成；正文与 occurrence trace 同源。"""
 from __future__ import annotations
 
-import datetime
 import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any
 
-from tools.domain.value_objects import FIRST_SCREEN_MARKER
-from tools.engines.generation import template_assembler
 from tools.infra import evidence_provenance as provenance
 from tools.infra.evidence_fact_scope import personal_claim_exclusions
-from tools.infra.career_profile import career_generation_issues
-
-
-# 一页优先的版式上限：每段工作经历最多展示的职责条数（完整事实仍保留在
-# trace/证据卡中，可追溯；此处只控制候选人正文的展示密度）。
-MAX_WORK_DUTIES_PER_ITEM = 2
-
-_TECH_TERM_CASES = {
-    "spring": "Spring", "springboot": "SpringBoot", "boot": "Boot", "java": "Java",
-    "redis": "Redis", "mysql": "MySQL", "oracle": "Oracle", "jenkins": "Jenkins",
-    "docker": "Docker", "kubernetes": "Kubernetes", "nacos": "Nacos", "maven": "Maven",
-    "gradle": "Gradle", "linux": "Linux", "jpa": "JPA", "hibernate": "Hibernate",
-    "mybatis": "MyBatis", "kafka": "Kafka", "rabbitmq": "RabbitMQ", "nginx": "Nginx",
-    "git": "Git", "http": "HTTP", "rest": "REST", "json": "JSON", "api": "API",
-    "sql": "SQL", "jvm": "JVM", "ci": "CI", "cd": "CD",
-}
-
-
-def _normalize_tech_terms(text: str) -> str:
-    """统一技术术语大小写（只替换 ASCII 词边界内的独立词，不改变事实表述）。"""
-
-    def replace(match: "re.Match[str]") -> str:
-        term = match.group(1)
-        canonical = _TECH_TERM_CASES.get(term.casefold()) if term.isascii() else None
-        return canonical or term
-
-    return re.sub(r"(?<![A-Za-z])([A-Za-z][A-Za-z0-9+#./-]*)(?![A-Za-z])", replace, text)
+from tools.infra.evidence_pool import pool_eligible_scalars
+from tools.infra.evidence_sources import assert_captured_source, validated_source_inputs
 from tools.infra.persistence.yaml_io import parse_simple_yaml
+
+CardView = dict[str, Any]
 
 
 def read_text(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def load_prompt(
-    template_path: str, report_text: str, evidence_text: str, version: str
-) -> str:
+def load_prompt(template_path: str, report_text: str, evidence_text: str, version: str) -> str:
     template = read_text(template_path)
-    content = template.replace("<MATCHING_REPORT>", report_text)
-    content = content.replace("<EVIDENCE_CARDS>", evidence_text)
-    return content.replace("{{A|B}}", version)
-
-
-def extract_score_total(report_text: str) -> int:
-    match = re.search(r"^score_total:\s*(\d+)", report_text, re.MULTILINE)
-    if match:
-        return int(match.group(1))
-    return 0
+    return template.replace("<MATCHING_REPORT>", report_text).replace("<EVIDENCE_CARDS>", evidence_text).replace("{{A|B}}", version)
 
 
 def extract_top_card_ids(report_text: str) -> list[str]:
-    top_ids = cast(
-        list[str],
-        re.findall(r"^\s*-\s*id:\s*\"?([^\"\n]+)\"?\s*$", report_text, re.MULTILINE),
-    )
+    top_ids = re.findall(r'^\s*-\s*id:\s*"?([^"\n]+)"?\s*$', report_text, re.MULTILINE)
     if top_ids:
         return top_ids[:3]
-    fallback_ids = cast(
-        list[str],
-        re.findall(r"^\s*-\s*\"?(ec-[^\"\n]+)\"?\s*$", report_text, re.MULTILINE),
-    )
-    unique: list[str] = []
-    for card_id in fallback_ids:
-        if card_id not in unique:
-            unique.append(card_id)
-    return unique[:3]
+    return list(dict.fromkeys(re.findall(r'^\s*-\s*"?(ec-[^"\n]+)"?\s*$', report_text, re.MULTILINE)))[:3]
 
 
-def load_cards(evidence_dir: Path, card_ids: list[str], material_dir: Path | None = None) -> list[CardView]:
-    from tools.infra.evidence_sources import validated_source_inputs
+def _card_view(file_path: Path, raw: bytes, doc: dict, material_root: Path) -> CardView:
+    scalars, values = doc["scalars"], doc["lists"]
+    material_inputs = validated_source_inputs(doc, material_root)
+    exclusions = personal_claim_exclusions(doc, material_root, card_id=file_path.stem, validated_sources=material_inputs)
+    if scalars.get("id") and scalars["id"] != file_path.stem:
+        raise ValueError("selected_evidence_identity_mismatch")
+    role_scope = scalars.get("role_scope", "").strip()
+    if role_scope.casefold() in {"[]", "{}", "null", "none"}:
+        role_scope = ""
+    return {
+        "id": file_path.stem,
+        "source_sha256": hashlib.sha256(raw).hexdigest(),
+        "material_inputs": material_inputs,
+        "personal_claim_exclusions": exclusions,
+        "title": scalars.get("title", file_path.stem),
+        "raw_source": scalars.get("raw_source", ""),
+        "time_range": scalars.get("time_range", ""),
+        "context": scalars.get("context", ""),
+        "role_scope": role_scope,
+        **{field: values.get(field, []) for field in ("actions", "results", "stack", "artifacts")},
+        **{field + "_provenance": provenance.field_provenance(scalars, field) for field in ("time_range", "role_scope")},
+        **{field + "_level": provenance.field_level(scalars, field) for field in ("time_range", "role_scope")},
+        "project_key": str(scalars.get("project_key") or ""),
+        "card_category": str(scalars.get("card_category") or "project"),
+    }
+
+
+def load_cards(evidence_dir: Path, card_ids: list[str], material_dir: Path | None = None,
+               *, require_saved_eligible: bool = False) -> list[CardView]:
+    from tools.infra.evidence_pool import is_saved_eligible_evidence
+
     material_root = material_dir if material_dir is not None else evidence_dir.parent / "materials"
-    card_map: dict[str, CardView] = {}
-    if not card_ids or any(not re.fullmatch(r"[A-Za-z0-9_-]+", card_id) for card_id in card_ids):
+    if (not card_ids or len(set(card_ids)) != len(card_ids)
+            or any(not isinstance(card_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", card_id) for card_id in card_ids)):
         raise ValueError("selected_evidence_missing_or_invalid")
+    cards = []
     for card_id in card_ids:
-        file_path = evidence_dir / f"{card_id}.yaml"
-        if not file_path.is_file():
+        path = evidence_dir / f"{card_id}.yaml"
+        if not path.is_file() or path.is_symlink():
             raise ValueError("selected_evidence_missing_or_invalid")
-        raw = file_path.read_bytes()
+        raw = path.read_bytes()
         doc = parse_simple_yaml(raw.decode("utf-8"))
-        if not doc["lists"].get("results") or not doc["lists"].get("artifacts") or not doc["scalars"].get("title"):
+        if (not pool_eligible_scalars(doc["scalars"], card_id=card_id)
+                or (require_saved_eligible and not is_saved_eligible_evidence(doc))
+                or not doc["lists"].get("results") or not doc["lists"].get("artifacts")
+                or not doc["scalars"].get("title")):
             raise ValueError("selected_evidence_ineligible")
-        role_scope = doc["scalars"].get("role_scope", "").strip()
-        if role_scope.casefold() in {"[]", "{}", "null", "none"}:
-            role_scope = ""
-        material_inputs = validated_source_inputs(doc, material_root)
-        card_map[card_id] = {
-            "material_inputs": material_inputs,
-            "personal_claim_exclusions": personal_claim_exclusions(doc, material_root, card_id=file_path.stem, validated_sources=material_inputs),
-            "id": card_id,
-            "source_sha256": hashlib.sha256(raw).hexdigest(),
-            "title": doc["scalars"].get("title", card_id),
-            "raw_source": doc["scalars"].get("raw_source", ""),
-            "time_range": doc["scalars"].get("time_range", ""),
-            "context": doc["scalars"].get("context", ""),
-            "role_scope": role_scope,
-            "actions": doc["lists"].get("actions", []),
-            "results": doc["lists"].get("results", []),
-            "stack": doc["lists"].get("stack", []),
-            "artifacts": doc["lists"].get("artifacts", []),
-            "time_range_provenance": provenance.field_provenance(doc["scalars"], "time_range"),
-            "role_scope_provenance": provenance.field_provenance(doc["scalars"], "role_scope"),
-            "time_range_level": provenance.field_level(doc["scalars"], "time_range"),
-            "role_scope_level": provenance.field_level(doc["scalars"], "role_scope"),
-        }
-
-    cards: list[CardView] = []
-    for card_id in card_ids:
-        if card_id in card_map:
-            cards.append(card_map[card_id])
+        cards.append(_card_view(path, raw, doc, material_root))
     return cards
 
 
 def load_all_cards(evidence_dir: Path, material_dir: Path | None = None) -> list[CardView]:
-    """加载目录下全部已入池证据卡，供事实级选材使用。
-
-    与 `load_cards` 的差别：不依赖匹配报告的 top_cards 截断，也不因单卡缺字段
-    而整体失败——不可用卡直接跳过，由选材层决定用哪些事实。
-    """
-    from tools.infra.evidence_sources import validated_source_inputs
-
+    """加载现行入池卡；来源无效必须失败，不能降级为未核定正文。"""
     material_root = material_dir if material_dir is not None else evidence_dir.parent / "materials"
-    cards: list[CardView] = []
-    for file_path in sorted(evidence_dir.glob("*.yaml")):
+    cards = []
+    for path in sorted(evidence_dir.glob("*.yaml")):
         try:
-            raw = file_path.read_bytes()
+            raw = path.read_bytes()
             doc = parse_simple_yaml(raw.decode("utf-8"))
         except (ValueError, OSError):
             continue
-        scalars = doc["scalars"]
-        from tools.infra.evidence_pool import pool_eligible_scalars
-
-        candidate_id = str(scalars.get("id") or file_path.stem)
-        if not pool_eligible_scalars(scalars, card_id=candidate_id):
+        if (not pool_eligible_scalars(doc["scalars"], card_id=path.stem)
+                or not doc["lists"].get("results") or not doc["lists"].get("artifacts")
+                or not doc["scalars"].get("title")):
             continue
-        if not doc["lists"].get("results") or not doc["lists"].get("artifacts") or not scalars.get("title"):
-            continue
-        role_scope = scalars.get("role_scope", "").strip()
-        if role_scope.casefold() in {"[]", "{}", "null", "none"}:
-            role_scope = ""
-        card_id = str(scalars.get("id") or file_path.stem)
+        if path.is_symlink():
+            raise ValueError("generation_input_changed")
         try:
-            material_inputs = validated_source_inputs(doc, material_root)
-            exclusions = personal_claim_exclusions(doc, material_root, card_id=file_path.stem, validated_sources=material_inputs)
+            cards.append(_card_view(path, raw, doc, material_root))
         except ValueError as exc:
-            # 来源校验失败必须点名到卡：整批"来源不合格"无法定位是哪张卡。
-            raise ValueError(f"{file_path.stem}:{exc}") from exc
-        cards.append(
-            {
-                "material_inputs": material_inputs,
-                "personal_claim_exclusions": exclusions,
-                "id": card_id,
-                "source_sha256": hashlib.sha256(raw).hexdigest(),
-                "title": scalars.get("title", card_id),
-                "raw_source": scalars.get("raw_source", ""),
-                "time_range": scalars.get("time_range", ""),
-                "context": scalars.get("context", ""),
-                "role_scope": role_scope,
-                "actions": doc["lists"].get("actions", []),
-                "results": doc["lists"].get("results", []),
-                "stack": doc["lists"].get("stack", []),
-                "artifacts": doc["lists"].get("artifacts", []),
-                "time_range_provenance": provenance.field_provenance(scalars, "time_range"),
-                "role_scope_provenance": provenance.field_provenance(scalars, "role_scope"),
-                "time_range_level": provenance.field_level(scalars, "time_range"),
-                "role_scope_level": provenance.field_level(scalars, "role_scope"),
-                "project_key": str(scalars.get("project_key") or ""),
-                "card_category": str(scalars.get("card_category") or "project"),
-            }
-        )
+            raise ValueError(f"{path.stem}:{exc}") from exc
     return cards
 
 
 def unique_stack(cards: list[CardView], limit: int = 8) -> list[str]:
-    values: list[str] = []
+    return list(dict.fromkeys(value for card in cards for value in card.get("stack", [])))[:limit]
+
+
+def build_template_resume(version: str, cards: list[CardView], *,
+                          personal_profile: dict[str, Any] | None = None,
+                          job_context: dict[str, Any] | None = None,
+                          positioning: str = "technical_depth", custom_positioning: str = "",
+                          claims: list[dict[str, Any]] | None = None,
+                          semantic_report: dict[str, Any] | None = None) -> str:
+    """唯一选材/计划/排版组合；不改写字段，也不把卡级引用伪装为事实引用。"""
+    from dataclasses import replace
+    from tools.engines.generation.fact_index import build_fact_index
+    from tools.engines.generation.fact_selector import VARIANTS, SelectionBudget, select_facts
+    from tools.engines.generation.resume_plan import build_resume_plan
+    from tools.engines.generation.plan_renderer import render_plan
+
+    profile, target = personal_profile or {}, job_context or {}
+    career = dict(profile.get("career") or {})
+    plan_cards, periods = [], {}
     for card in cards:
-        for item in card["stack"]:
-            if item not in values:
-                values.append(item)
-            if len(values) >= limit:
-                return values
-    return values
-
-
-def pick_action(card: CardView, version: str) -> str:
-    if not card["actions"]:
-        return ""
-    if version == "A":
-        preferred = ["架构", "重构", "链路", "一致性", "性能", "稳定性", "扩展"]
-    else:
-        preferred = ["推进", "治理", "协作", "交付", "灰度", "回滚", "owner", "负责人"]
-    for action in card["actions"]:
-        lower = action.lower()
-        if any(token.lower() in lower for token in preferred):
-            return action
-    return card["actions"][0]
-
-
-def semantic_preferred_facts(review: dict[str, Any]) -> list[dict[str, Any]]:
-    """保留子项支持及父要求归属，供正文取舍使用，不改变评估结论。"""
-    result = []
-    for parent in review['assessments']:
-        for row in parent.get('checks', [parent]):
-            weight = {'supported': 2, 'partial': 1}.get(row['status'], 0)
-            if weight:
-                result.extend({**review['facts'][c['fact_id']], 'requirement_id': parent['requirement_id'],
-                               'support_weight': weight} for c in row['citations'])
-    return result
-
-
-def prioritize_project_facts(values: list[str], card_id: str, field: str,
-                             preferred_facts: list[dict[str, Any]],
-                             covered_requirements: dict[str, int] | None = None) -> list[str]:
-    """在既有稳定顺序上优先增加要求覆盖，同一父项的重复引用只计一次。"""
-    coverage: dict[str, dict[str, int]] = {}
-    for ref in preferred_facts:
-        if ref['source_id'] != card_id or ref['field'] != field:
+        if str(card.get("card_category") or "project") == "activity":
             continue
-        weights = coverage.setdefault(ref['text'], {})
-        parent = ref.get('requirement_id', '')
-        weights[parent] = max(weights.get(parent, 0), ref.get('support_weight', 1))
-    remaining = list(dict.fromkeys(values))
-    ranked: list[str] = []
-    covered: dict[str, int] = dict(covered_requirements or {})
-    while remaining:
-        def priority(value):
-            weights = coverage.get(value, {})
-            return (sum(max(0, weight - covered.get(parent, 0)) for parent, weight in weights.items()
-                        if parent in {'d1', 'd2', 'd3'}),
-                    int(field == 'results' and bool(re.search(r'\d', value))
-                        and bool(re.search(r'→|降低|降至|提升|缩短|减少|从.+(?:到|至)|由.+(?:到|至)', value))),
-                    sum(max(0, weight - covered.get(parent, 0)) for parent, weight in weights.items()),
-                    sum(weights.values()))
-        value = max(remaining, key=priority)
-        ranked.append(value)
-        remaining.remove(value)
-        for parent, weight in coverage.get(value, {}).items():
-            covered[parent] = max(covered.get(parent, 0), weight)
-    return ranked
+        raw_period = str(card.get("time_range") or "").strip()
+        time_source = card.get("time_range_provenance") or {}
+        time_level = card.get("time_range_level") or time_source.get("level") or ("L1" if raw_period else "L5")
+        if (time_level == "L5" or provenance.period_bounds(raw_period)[0] is None
+                or (time_level in {"L2", "L3"} and
+                    (time_source.get("confirmed_by_user") is not True or not time_source.get("evidence")))):
+            continue
+        periods[card["id"]] = provenance.format_presented_period(
+            raw_period, level=time_level, precision=str(time_source.get("precision") or "month"))
+        role_source = card.get("role_scope_provenance") or {}
+        role_level = card.get("role_scope_level") or role_source.get("level") or ("L1" if card.get("role_scope") else "L5")
+        hidden_role = role_level in {"L2", "L5"} or (
+            role_level == "L3" and (role_source.get("confirmed_by_user") is not True or not role_source.get("evidence")))
+        plan_cards.append({**card, "role_scope": ""} if hidden_role else card)
+    groups = {str(card["id"]): str(card["project_key"]) for card in plan_cards if card.get("project_key")}
+    index = build_fact_index(plan_cards, career, semantic_report,
+                             preferred_card_ids=(semantic_report or {}).get("selected_card_ids") or ())
+    # Fact.text keeps original source values. Only the existing display-period context changes.
+    facts = tuple(replace(fact, time_range=periods[fact.source_id])
+                  if fact.kind == "evidence" else fact for fact in index.facts)
+    index = replace(index, facts=facts, by_id={fact.fact_id: fact for fact in facts})
+    selection = select_facts(index, weights=VARIANTS.get(version, VARIANTS["A"]),
+                             budget=SelectionBudget(), project_groups=groups)
+    plan = build_resume_plan(index, selection, career, job_context=target,
+                             variant=version, project_groups=groups)
+    if not plan.projects and not plan.work:
+        raise ValueError("no_presentable_resume_facts")
+    return render_plan(plan, index, profile=profile, job_context=target, claims=claims,
+                       version=version, positioning=positioning, custom_positioning=custom_positioning)
 
 
-def build_template_resume(
-    version: str, report_id: str, score_total: int, now: str, cards: list[CardView],
-    *, personal_profile: dict[str, Any] | None = None,
-    job_context: dict[str, Any] | None = None,
-    positioning: str = "technical_depth", custom_positioning: str = "",
-    claims: list[dict[str, Any]] | None = None,
-    preferred_facts: list[dict[str, Any]] | None = None,
-    semantic_report: dict[str, Any] | None = None,
-) -> str:
-    profile = personal_profile or {}
-    target = job_context or {}
-    claims = claims if claims is not None else []
-    targeted=preferred_facts is not None
-    preferred_profile={f['field'] for f in (preferred_facts or []) if f['source_id']=='personal_profile'}
-
-    def fact(text: str, kind: str, field: str, evidence_id: str = "", field_provenance: dict[str, Any] | None = None) -> str:
-        # 证据字段可能带 Markdown 强调标记；候选人正文不保留这些标记，避免 PDF 出现 ** / ` 等噪声。
-        text = re.sub(r"\*\*|__|`", "", str(text))
-        text = _normalize_tech_terms(" ".join(text.split()))
-        if re.search(r"Evidence trace|Source report|(?:/Users/|/private/|/tmp/)|\bec[-_][\w-]+", text, re.I):
-            raise ValueError("internal_metadata_in_resume_fact")
-        if text:
-            claim: dict[str, Any] = {"text": text, "source_kind": kind, "field": field, "evidence_id": evidence_id}
-            if field_provenance:
-                claim["provenance"] = field_provenance
-            claims.append(claim)
-        return text
-
-    name = fact(profile.get("name", ""), "personal_profile", "name")
-    lines = [f"# {name or '个人简历'}"]
-    contact = [fact(profile.get(key, ""), "personal_profile", key) for key in ("phone", "email", "city")]
-    lines.append(" | ".join(value for value in contact if value))
-    if profile.get("current_position"):
-        lines.append("当前定位：" + fact(profile["current_position"], "personal_profile", "current_position"))
-    role = custom_positioning if positioning == "custom" and custom_positioning else target.get("target_role", "")
-    if role:
-        company = fact(target.get("company", ""), "job_profile", "company")
-        lines.append("求职意向：" + " · ".join(value for value in (
-            company, fact(role, "positioning" if positioning == "custom" else "job_profile", "target_role")
-        ) if value))
-    career = profile.get('career') or {}
-    work = sorted(career.get('work', []), key=lambda item: item.get('start',''), reverse=True)
-    def personal(value, field):return fact(value,'personal_profile',field)
-    def career_period(item, group):
-        first=personal(item.get('start',''),f"career.{group}.{item['id']}.start")
-        last='至今' if item.get('current') else personal(item.get('end',''),f"career.{group}.{item['id']}.end")
-        return ' ~ '.join(v for v in (first,last) if v)
-    summary=career.get('summary','')
-    if targeted and work and work[0].get('scope'):
-        current=work[0];base=f"career.work.{current['id']}"
-        lines.extend(['','## 职业概述',personal(current['scope'],base+'.scope')])
-        if current.get('contributions'):
-            value=current['contributions'][0]
-            lines.append(personal(value,base+'.contributions'))
-    elif summary:
-        lines.extend(['','## 职业概述',personal(summary,'career.summary')])
-    elif work and work[0].get('scope'):
-        lines.extend(['','## 职业概述',personal(profile.get('current_position',''),'current_position')+'。'+personal(work[0]['scope'],f"career.work.{work[0]['id']}.scope")])
-    groups=[item for item in career.get('skills',[]) if item.get('category') and item.get('description')]
-    skills_start = len(lines)
-    # 版式上限：核心能力最多展示 3 组（两种版式一致，控制一页优先密度；完整事实仍在档案中）。
-    selected_ids={c['id'] for c in cards}
-    groups.sort(key=lambda g:(not any(field.startswith(f"career.skills.{g['id']}.") for field in preferred_profile),not bool(selected_ids.intersection(g.get('evidence_ids',[])))))
-    groups=groups[:3]
-    if groups:
-        lines.extend(['','## 核心能力'])
-        for item in groups:
-            lines.append('- '+personal(item['category'],f"career.skills.{item['id']}.category")+'：'+personal(item['description'],f"career.skills.{item['id']}.description"))
-    # 首屏切分标记：优先放在第一条经历之后，使 JD 前三条职责对应的经历 bullet 进入首屏；
-    # 没有可用经历时退回摘要/能力区结尾。渲染层忽略该注释行。
-    first_screen_fallback = len(lines)
-    visible_cards = [card for card in cards if template_assembler.visible_in_resume(card)]
-    render_cards = template_assembler.first_screen_priority(
-        template_assembler.order_cards_for_resume(visible_cards, semantic_report)
-    )
-    stacks = unique_stack(visible_cards,limit=sum(len(c['stack']) for c in visible_cards)) if targeted else unique_stack(visible_cards)
-    keywords = [str(term).casefold() for term in target.get("keywords", [])]
-    stacks.sort(key=lambda value: value.casefold() not in keywords)
-    if targeted:
-        cited_stack={f['text'] for f in preferred_facts if f['field']=='stack' and f['source_id'] in {c['id'] for c in cards}}
-        stacks.sort(key=lambda value:value not in cited_stack)
-        stacks=stacks[:max(8,len(cited_stack))]
-    if stacks and (targeted or not groups):
-        lines.extend(["", "## 核心技能", "、".join(stacks)])
-        for skill in stacks:
-            sources=[card for card in cards if skill in card['stack']]
-            for source in (sources if targeted else sources[:1]):fact(skill, "evidence", "stack", source["id"])
-    deferred_skills = lines[skills_start:] if targeted else []
-    if targeted:
-        del lines[skills_start:]
-        first_screen_fallback = len(lines)
-    visible_work=[item for item in work if item.get('company') and item.get('title')]
-    work_start=len(lines)
-    if visible_work:
-        lines.extend(['','## 工作经历'])
-        for item in visible_work:
-            base=f"career.work.{item['id']}"
-            if targeted:
-                lines.append('### '+personal(item['company'],base+'.company')+' · '+personal(item['title'],base+'.title')+'（'+career_period(item,'work')+'）')
-                if item.get('scope'):
-                    # 已确认档案的任职范围是事实；targeted 模式不复制未引用贡献，但保留任职范围让工作经历可读。
-                    lines.append('场景：'+personal(item['scope'],base+'.scope'))
-                cited_contributions = [
-                    contribution for contribution in item.get('contributions',[])
-                    if any(f['source_id']=='personal_profile' and f['field']==base+'.contributions' and f['text']==contribution for f in (preferred_facts or []))
-                    and not any(c['text']==contribution for c in claims)
-                ]
-                for contribution in cited_contributions[:MAX_WORK_DUTIES_PER_ITEM]:
-                    # 工作经历没有可核验的成果段，职责以非 bullet 行呈现，避免把职责伪装成成果。
-                    lines.append('职责：'+personal(contribution,base+'.contributions'))
-                continue
-            lines.append('### '+personal(item['company'],base+'.company')+'（'+career_period(item,'work')+'）')
-            lines.append('角色：'+' · '.join(v for v in (personal(item.get('department',''),base+'.department'),personal(item['title'],base+'.title')) if v))
-            if item.get('scope'):lines.append('场景：'+personal(item['scope'],base+'.scope'))
-            for contribution in item.get('contributions',[])[:MAX_WORK_DUTIES_PER_ITEM]:
-                lines.append('职责：'+personal(contribution,base+'.contributions'))
-    deferred_work=lines[work_start:] if targeted else []
-    if targeted:del lines[work_start:]
-    lines.extend(["", "## 项目经历"])
-    marker_done = False
-    for card in render_cards:
-        time_level = template_assembler.level_of(card, "time_range")
-        role_level = template_assembler.level_of(card, "role_scope")
-        title = fact(card["title"], "evidence", "title", card["id"])
-        period_text = template_assembler.format_time(
-            card["time_range"], time_level, template_assembler.precision_of(card)
-        )
-        period = fact(period_text, "evidence", "time_range", card["id"],
-                      card.get("time_range_provenance")) if period_text else ""
-        lines.append(f"### {title}" + (f"（{period}）" if period else ""))
-        role_value = template_assembler.role_text(card["role_scope"], role_level)
-        if role_value:
-            lines.append("角色：" + fact(role_value, "evidence", "role_scope", card["id"],
-                                         card.get("role_scope_provenance")))
-        if card["context"]:
-            lines.append("场景：" + fact(card["context"], "evidence", "context", card["id"]))
-        linked=[item for item in work if card['id'] in item.get('evidence_ids',[]) and item.get('company')]
-        if linked:lines.append('所属工作：'+'、'.join(personal(item['company'],f"career.work.{item['id']}.company") for item in linked))
-        action_version = "B" if version == "B" or positioning == "delivery_owner" else "A"
-        actions = list(dict.fromkeys(card["actions"]))
-        preferred = pick_action(card, action_version)
-        actions.sort(key=lambda value: (-sum(term in value.casefold() for term in keywords if term), value != preferred))
-        if targeted:
-            actions = prioritize_project_facts(actions, card['id'], 'actions', preferred_facts)
-        results = list(card['results'])
-        if targeted:
-            results = prioritize_project_facts(results, card['id'], 'results', preferred_facts)
-        pairs, unpaired_actions, unpaired_results = template_assembler.pair_actions_results(
-            actions, results, max_bullets=3, max_results_per_bullet=2,
-        )
-        if pairs:
-            def clean_fact_value(value: str) -> str:
-                return re.sub(r"[。；;，,\s]+$", "", " ".join(str(value).split()))
-            for action, result_values in pairs:
-                action_text = fact(
-                    clean_fact_value(template_assembler.downgrade_wording(action, role_level)),
-                    "evidence", "actions", card["id"],
-                )
-                result_texts = [
-                    fact(clean_fact_value(template_assembler.downgrade_wording(value, role_level)),
-                         "evidence", "results", card["id"])
-                    for value in result_values
-                ]
-                combined = template_assembler.paired_bullet_text(action_text, result_texts)
-                if targeted and combined in ' '.join(card['context'].split()):
-                    continue
-                lines.append("- " + combined)
-        else:
-            # 无可核对关联时不把行动/成果硬拼成成就 bullet；以非 bullet 事实行保留原文，
-            # 避免 R3.1 被无结果支撑的成就条目拉低，同时让关联缺口继续显式暴露。
-            for action in list(unpaired_actions)[:3]:
-                lines.append("职责：" + fact(template_assembler.downgrade_wording(action, role_level),
-                                             "evidence", "actions", card["id"]))
-            for result in list(unpaired_results)[:2]:
-                rendered = fact(template_assembler.downgrade_wording(result, role_level),
-                                "evidence", "results", card["id"])
-                if targeted and rendered in ' '.join(card['context'].split()):
-                    continue
-                lines.append("结果：" + rendered)
-        lines.append("")
-        if not marker_done:
-            lines.extend(["", FIRST_SCREEN_MARKER, ""])
-            marker_done = True
-    if not marker_done:
-        lines[first_screen_fallback:first_screen_fallback] = ["", FIRST_SCREEN_MARKER, ""]
-    project_end = len(lines)
-    lines.extend(deferred_work)
-    lines.extend(deferred_skills)
-    education=[item for item in career.get('education',[]) if item.get('school') and item.get('degree')]
-    if career.get('education_visibility')=='show' and education:
-        lines.extend(['','## 教育经历'])
-        for item in education:
-            base=f"career.education.{item['id']}"
-            if targeted:
-                lines.append(' · '.join(personal(item[key],base+'.'+key) for key in ('school','major','degree') if item.get(key))+'（'+career_period(item,'education')+'）')
-                continue
-            lines.append('### '+personal(item['school'],base+'.school')+'（'+career_period(item,'education')+'）')
-            lines.append(' · '.join(v for v in (personal(item.get('major',''),base+'.major'),personal(item['degree'],base+'.degree')) if v))
-    extras=[item for item in career.get('extras',[]) if item.get('title') and item.get('description')]
-    if targeted:
-        extras = [item for item in extras if any(field.startswith(f"career.extras.{item['id']}.") for field in preferred_profile)]
-        extra_refs = [{**ref, 'field': 'extras', 'text': item['id']}
-                      for item in extras for ref in preferred_facts
-                      if ref['source_id'] == 'personal_profile' and ref['field'].startswith(f"career.extras.{item['id']}.")]
-        body_coverage: dict[str, int] = {}
-        def _same_fact_text(left: str, right: str) -> bool:
-            normalize = lambda value: re.sub(r"[。；;，,\s]+$", "", " ".join(str(value).split()))
-            return normalize(left) == normalize(right)
-        for ref in preferred_facts:
-            if any(_same_fact_text(claim['text'], ref['text']) and claim['field'] == ref['field']
-                   and (claim.get('evidence_id') or 'personal_profile') == ref['source_id'] for claim in claims):
-                parent = ref.get('requirement_id', '')
-                body_coverage[parent] = max(body_coverage.get(parent, 0), ref.get('support_weight', 1))
-        order = prioritize_project_facts([item['id'] for item in extras], 'personal_profile', 'extras',
-                                        extra_refs, covered_requirements=body_coverage)
-        extras.sort(key=lambda item: order.index(item['id']))
-        extras = extras[:2]
-    extras_start=len(lines)
-    if extras:
-        lines.extend(['','## 补充成果'])
-        for item in extras:
-            base=f"career.extras.{item['id']}"
-            lines.append('- '+personal(item['title'],base+'.title')+'：'+personal(item['description'],base+'.description'))
-            if item.get('url'):lines.append(personal(item['url'],base+'.url'))
-    if targeted and extras:
-        extras_lines = lines[extras_start:]
-        del lines[extras_start:]
-        lines[project_end:project_end] = extras_lines
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def load_generation_context(profile_path: Path, job_path: Path | None) -> tuple[dict[str, str], dict[str, Any]]:
-    from tools.infra.career_profile import load_career_profile
-    profile = load_career_profile(profile_path)
-    profile["current_position"] = profile.get("current_position") or profile.get("current_title", "")
-    doc = parse_simple_yaml(job_path.read_text(encoding="utf-8")) if job_path and job_path.is_file() else {"scalars": {}, "lists": {}}
-    target: dict[str, Any] = {**doc["scalars"], **doc["lists"]}
-    target["target_role"] = target.get("target_role") or target.get("title", "")
+def load_generation_context(profile_path: Path, job_path: Path | None, *,
+                            captured_inputs: dict[str, str] | None = None) -> tuple[dict, dict]:
+    """解析实际消费的字节并捕获版本；发布时不得给旧正文补上新版本指纹。"""
+    from tools.infra.career_profile import inspect_career
     from tools.infra.job_context import load_jd_source
+
+    captures = captured_inputs if captured_inputs is not None else {}
+    raw_profile = profile_path.read_bytes()
+    fields = dict(parse_simple_yaml(raw_profile.decode("utf-8"))["scalars"])
+    captures["personal_profile"] = hashlib.sha256(raw_profile).hexdigest()
+    evidence_dir = profile_path.parent / "evidence_cards"
+    if not evidence_dir.is_dir():
+        evidence_dir = Path("evidence_cards")
+    profile = {**fields, **inspect_career(fields, evidence_dir)}
+    profile["current_position"] = profile.get("current_position") or profile.get("current_title", "")
+    target = {}
+    if job_path is not None:
+        raw_job = job_path.read_bytes()
+        doc = parse_simple_yaml(raw_job.decode("utf-8"))
+        target = {**doc["scalars"], **doc["lists"]}
+        captures["job_profile"] = hashlib.sha256(raw_job).hexdigest()
+    target["target_role"] = target.get("target_role") or target.get("title", "")
     target["jd_text"], jd_path = load_jd_source(str(target.get("source_jd", "")), job_path)
     if jd_path:
+        raw_jd = jd_path.read_bytes()
+        target["jd_text"] = raw_jd.decode("utf-8")
         target["jd_source_path"] = str(jd_path.resolve())
+        captures["job_description"] = hashlib.sha256(raw_jd).hexdigest()
     return profile, target
 
+
+def build_generation_trace(
+    *,
+    version: str,
+    content: str,
+    strategy: str,
+    semantic: dict[str, Any] | None,
+    profile: dict[str, Any],
+    target: dict[str, Any],
+    selected_cards: list[CardView],
+    claims: list[dict[str, Any]],
+    paths: dict[str, Path],
+    captured_inputs: dict[str, str],
+    missing_profile: list[str],
+    missing_target: list[str],
+) -> dict[str, Any]:
+    paths = dict(paths)
+    expected = dict(captured_inputs)
+    missing_evidence = [
+        f"{card['id']}.{field}"
+        for card in selected_cards
+        for field in ("context", "time_range", "actions")
+        if not card[field]
+    ]
+    # 本人职责属于表达完整性问题：批量提炼卡从技术文档抽取，常没有角色措辞。
+    # 缺失时记录提示，但不作为内容完整性硬阻断（事实仍在卡内，正文只是不显示角色行）。
+    missing_soft_evidence = [
+        f"{card['id']}.role_scope" for card in selected_cards if not card["role_scope"]
+    ]
+    if not unique_stack(selected_cards):
+        missing_evidence.append("skills")
+    field_labels = {
+        "context": "项目场景",
+        "role_scope": "本人职责",
+        "time_range": "经历时间",
+        "actions": "具体行动",
+    }
+    evidence_reasons = [
+        f"{card['title']}：待补"
+        + "、".join(field_labels[f] for f in field_labels if not card[f])
+        for card in selected_cards
+        if any(not card[f] for f in field_labels)
+    ]
+    if not unique_stack(selected_cards):
+        evidence_reasons.append("缺少已审核的技能依据")
+    from tools.infra.career_profile import career_generation_issues
+
+    career_reasons = career_generation_issues(profile, selected_cards)
+    # 职业档案引用的证据卡目录同样不能只看 profile 同级：profile 可能在临时
+    # 目录，此时应回退到工作区 evidence_cards，否则 trace 的 inputs 全部不存在。
+    profile_evidence_dir = Path(str(paths["personal_profile"])).parent / "evidence_cards"
+    if not profile_evidence_dir.is_dir():
+        profile_evidence_dir = Path("evidence_cards")
+    for ref in profile.get("evidence_hashes", {}):
+        paths["career_evidence:" + ref] = profile_evidence_dir / f"{ref}.yaml"
+        expected["career_evidence:" + ref] = profile["evidence_hashes"][ref]
+    for card in selected_cards:
+        expected[card["id"]] = card["source_sha256"]
+        for key, (source, digest) in getattr(card.get("material_inputs"), "snapshots", {}).items():
+            if paths.get(key) != source:
+                raise ValueError("material_source_changed")
+            expected[key] = digest
+    trace_inputs = {}
+    for key, path in paths.items():
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("generation_input_changed")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if not expected.get(key) or digest != expected[key]:
+            raise ValueError("generation_input_changed")
+        trace_inputs[key] = {"path": str(path.resolve()), "exists": True, "sha256": digest}
+    for card in selected_cards:
+        for key, source in card.get("material_inputs", {}).items():
+            if trace_inputs[key]["path"] != str(source.resolve()):
+                raise ValueError("material_source_changed")
+            assert_captured_source(card["material_inputs"], key, trace_inputs[key]["sha256"])
+    return {
+        "schema_version": 1,
+        "version": version,
+        "content_schema_version": 1,
+        "occurrence_lineage_version": 1,
+        "career_revision": profile.get("revision", ""),
+        "display_policy": "targeted_v1" if semantic else "complete_v1",
+        "generation_strategy": strategy,
+        "resume_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "evidence_card_ids": [card["id"] for card in selected_cards],
+        "claims": claims,
+        "field_provenance": {
+            card["id"]: {
+                "time_range": card.get("time_range_provenance"),
+                "role_scope": card.get("role_scope_provenance"),
+                "time_range_level": card.get("time_range_level", "L1"),
+                "role_scope_level": card.get("role_scope_level", "L1"),
+            }
+            for card in selected_cards
+        },
+        "inputs": trace_inputs,
+        "target": target,
+        "readiness": {
+            "status": "NEEDS_EVIDENCE"
+            if missing_profile or missing_target or missing_evidence or career_reasons
+            else "NEEDS_REVIEW",
+            "deliverable": False,
+            "missing_profile_fields": missing_profile,
+            "missing_target_fields": missing_target,
+            "missing_evidence_fields": missing_evidence,
+            "missing_soft_fields": missing_soft_evidence,
+            "missing_career_fields": career_reasons,
+            "content_ready": not (
+                missing_profile or missing_target or missing_evidence or career_reasons
+            ),
+            "reasons": (
+                ["个人资料或目标岗位信息不完整"]
+                if missing_profile or missing_target
+                else []
+            )
+            + evidence_reasons
+            + career_reasons
+            + ["需人工审核简历事实与岗位适用性"],
+        },
+    }

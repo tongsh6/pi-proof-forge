@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.unit.sidecar.test_evidence_source_merge import sample as source_sample
+
 
 @pytest.fixture(autouse=True)
 def synthetic_review_pdf(monkeypatch):
@@ -1139,6 +1141,66 @@ def test_skipped_matching_does_not_claim_a_resume_exists(tmp_path, monkeypatch):
     assert result['resume_readiness']['reasons']==['本次未生成简历']
 
 
+@pytest.fixture
+def guided_reviewed_source(source_sample, monkeypatch):
+    from tools.sidecar.handlers import evidence
+
+    materials_dir, card_path, params = source_sample
+    evidence.handle_evidence_save_draft(params)
+    project_root = materials_dir.parent
+    _write_active_profile(project_root / "job_profiles", "jp-guided-source")
+    _write_job_lead(project_root, "jl-guided-source")
+    (project_root / "personal_profile.yaml").write_text('name: "合成候选人"\n', encoding="utf-8")
+    (project_root / "policy.yaml").write_text("", encoding="utf-8")
+    runs_dir = project_root / "outputs" / "agent_runs"
+    review_dir = project_root / "outputs" / "review_queue"
+    monkeypatch.setattr(agent, "_PROJECT_ROOT", project_root)
+    monkeypatch.setattr(agent, "_AGENT_RUN_DIR", runs_dir)
+    monkeypatch.setattr(agent, "_REVIEW_QUEUE_DIR", review_dir)
+    monkeypatch.setattr(agent, "_build_agent_run_id", lambda: "ar_source_guard")
+    monkeypatch.setattr(agent, "_persisted_llm_runtime_context",
+                        lambda: ({"provider": "lm_studio", "model": "synthetic"}, {}))
+    monkeypatch.setenv("PPF_POLICY_PATH", str(project_root / "policy.yaml"))
+    request = {
+        "meta": {"correlation_id": "guided-source-guard"},
+        "job_profile_id": "jp-guided-source",
+        "options": {
+            "execute_guided_batch": True, "preflight_confirmed": True,
+            "confirmed_no_real_submit": True, "max_rounds": 1, "max_candidates": 1,
+            "matching_threshold": 0.01, "evaluation_threshold": 0.01,
+            "candidate_ids": ["jl-guided-source"], "evidence_ids": [card_path.stem],
+        },
+    }
+    return materials_dir, card_path, params, request
+
+
+@pytest.mark.parametrize("changed_source", ["m1", "m2"])
+def test_guided_api_rejects_changed_reviewed_source(guided_reviewed_source, changed_source):
+    materials_dir, _, _, request = guided_reviewed_source
+    (materials_dir / f"{changed_source}.txt").write_text("来源已修订，旧结论不再有效。", encoding="utf-8")
+    with pytest.raises(ValueError, match="material_source"):
+        handle_agent_start(request)
+    assert not list(agent._AGENT_RUN_DIR.glob("*/review_snapshots/*/resume.md"))
+    assert not (agent._REVIEW_QUEUE_DIR / "ar_source_guard.json").exists()
+
+
+def test_guided_api_rejects_card_identity_alias_outside_selection(guided_reviewed_source):
+    from tools.sidecar.handlers import evidence
+
+    _, card_path, params, request = guided_reviewed_source
+    outside_id = evidence.handle_evidence_save_draft({
+        "meta": params["meta"], "review": {"decision": "approved"}, "save_mode": "eligible",
+        "draft": {**params["draft"], "title": "未选择的合成项目"},
+    })["evidence_id"]
+    original = card_path.read_text(encoding="utf-8")
+    id_line = next(line for line in original.splitlines() if line.startswith("id:"))
+    card_path.write_text(original.replace(id_line, f'id: "{outside_id}"', 1), encoding="utf-8")
+    with pytest.raises(ValueError, match="evidence_card_identity_mismatch"):
+        handle_agent_start(request)
+    assert not list(agent._AGENT_RUN_DIR.glob("*/review_snapshots/*/resume.md"))
+    assert not (agent._REVIEW_QUEUE_DIR / "ar_source_guard.json").exists()
+
+
 class TestAgentRunStart:
     def test_guided_batch_records_gate_review_queue_and_blocks_delivery(self):
         with TemporaryDirectory() as project_tmp:
@@ -1150,6 +1212,7 @@ class TestAgentRunStart:
             _write_eligible_evidence(project_root, evidence_id="ec_guided")
             _write_job_lead(project_root, "jl-guided-1")
             _write_job_lead(project_root, "jl-guided-2", company="Beta")
+            (project_root / "personal_profile.yaml").write_text('name: "合成候选人"\n', encoding="utf-8")
             policy_path.write_text(
                 "\n".join(
                     [

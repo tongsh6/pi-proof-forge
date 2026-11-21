@@ -1,4 +1,5 @@
 import unittest
+import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -11,7 +12,32 @@ class CliEntrypointsTests(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_agent_command_runs_and_writes_run_log(self) -> None:
-        with TemporaryDirectory() as tmp:
+        with TemporaryDirectory() as tmp, pytest.MonkeyPatch.context() as patch:
+            patch.chdir(tmp)
+            evidence_dir = Path(tmp) / "evidence_cards"
+            evidence_dir.mkdir()
+            (evidence_dir / "ec-cli.yaml").write_text(
+                'id: "ec-cli"\ntitle: "合成 Java 队列服务"\nstatus: "saved_eligible"\n'
+                'candidate_pool_eligible: "true"\nreview_decision: "approved"\n'
+                'time_range: "2024-01 ~ 2024-06"\ncontext: "合成队列测试验收"\n'
+                'role_scope: "负责接口实现与测试联调"\n'
+                'actions:\n  - "使用 Java 实现消费接口并完成测试联调"\n'
+                'results:\n  - "在隔离测试环境中，1000 条合成请求的 P95 从 200ms 降至 120ms。"\n'
+                'stack:\n  - "Java"\nartifacts:\n  - "合成测试报告"\n',
+                encoding="utf-8",
+            )
+            profile_path = Path(tmp) / "personal_profile.yaml"
+            profile_path.write_text(
+                'name: "合成候选人"\nphone: "13800000000"\nemail: "candidate@example.com"\n'
+                'city: "上海"\ncurrent_position: "Java 工程师"\n',
+                encoding="utf-8",
+            )
+            job_path = Path(tmp) / "jp-cli.yaml"
+            job_path.write_text(
+                'id: "jp-cli"\ntarget_role: "Java 工程师"\ncompany: "合成公司"\n'
+                'source_jd: "负责 Java 队列服务接口和测试联调"\nkeywords:\n  - "Java"\n',
+                encoding="utf-8",
+            )
             policy = Path(tmp) / "policy.yaml"
             policy.write_text(
                 """n_pass_required: 1
@@ -35,6 +61,12 @@ excluded_legal_entities: []
                     "--dry-run",
                     "--run-id",
                     "run-cli-1",
+                    "--evidence-dir",
+                    str(evidence_dir),
+                    "--personal-profile",
+                    str(profile_path),
+                    "--job-profile",
+                    str(job_path),
                     "--output-dir",
                     str(output_dir),
                 ]

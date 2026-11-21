@@ -138,7 +138,6 @@ class MatchingEngineTests(unittest.TestCase):
             client, "test-model",
             composer.build_evidence_registry(),
             matching,
-            composer.build_generation_registry(),
             composer.build_evaluation_registry(),
         )
         strategies = matching.list()

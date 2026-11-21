@@ -6,6 +6,7 @@ LEARN → DONE) when built via Composer with real rule-mode engines.
 """
 
 import json
+import hashlib
 import os
 import unittest
 from importlib import import_module
@@ -119,6 +120,45 @@ def _make_candidates() -> tuple[Candidate, ...]:
     )
 
 
+def _generation_paths() -> dict[str, Path]:
+    """Persist the same synthetic fixture as current card/material/profile inputs."""
+    root = Path.cwd()
+    evidence_dir, material_dir = root / "evidence_cards", root / "materials"
+    evidence_dir.mkdir(exist_ok=True)
+    material_dir.mkdir(exist_ok=True)
+
+    def write_yaml(path, scalars, lists=()):
+        rows = [f"{key}: " + json.dumps(value, ensure_ascii=False) for key, value in scalars.items()]
+        for key, values in dict(lists).items():
+            rows.append(key + ":")
+            rows.extend("  - " + json.dumps(value, ensure_ascii=False) for value in values)
+        path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    for card in _make_evidence_cards():
+        material = material_dir / (card.id + ".txt")
+        material.write_text("\n".join((card.title, *card.results, *card.artifacts)), encoding="utf-8")
+        fingerprints = {card.id: {"filename": material.name,
+                                 "sha256": hashlib.sha256(material.read_bytes()).hexdigest()}}
+        write_yaml(evidence_dir / (card.id + ".yaml"), {
+            "id": card.id, "title": card.title, "raw_source": material.name,
+            "status": "saved_eligible", "candidate_pool_eligible": "true",
+            "time_range": "2024-01 ~ 2024-06",
+            "source_material_fingerprints_json": json.dumps(fingerprints),
+        }, {"results": list(card.results), "artifacts": list(card.artifacts),
+            "tags": list(card.tags), "source_material_ids": [card.id]})
+
+    profile = root / "personal_profile.yaml"
+    write_yaml(profile, {"name": "Synthetic Candidate", "current_position": "Backend Engineer",
+                         "email": "candidate@example.test", "phone": "00000000000", "city": "Test City"})
+    job = _make_job_profile()
+    job_path = root / (job.id + ".yaml")
+    write_yaml(job_path, {"target_role": job.title, "company": "Synthetic Employer",
+                          "source_jd": "Synthetic API design and performance tuning role."},
+               {"keywords": list(job.keywords), "must_have": list(job.must_have)})
+    return {"evidence_dir": evidence_dir, "material_dir": material_dir,
+            "personal_profile_path": profile, "job_profile_path": job_path}
+
+
 class FullPipelineIntegrationTests(unittest.TestCase):
     """Verify AgentLoop runs all 10 states with real engines wired via Composer."""
 
@@ -141,7 +181,7 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             composer = _composer_class().from_policy_path(str(policy_path))
             store = _file_run_store_class()(base_dir=tmp)
 
-            loop = composer.build_agent_loop(
+            loop = composer.build_agent_loop(**_generation_paths(),
                 run_id="run-full-int-001",
                 dry_run=True,
                 run_store=store,
@@ -195,7 +235,7 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             composer = _composer_class().from_policy_path(str(policy_path))
             store = _file_run_store_class()(base_dir=tmp)
 
-            loop = composer.build_agent_loop(
+            loop = composer.build_agent_loop(**_generation_paths(),
                 run_id="run-max-rounds",
                 dry_run=False,
                 run_store=store,
@@ -232,7 +272,7 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             composer = _composer_class().from_policy_path(str(policy_path))
             store = _file_run_store_class()(base_dir=tmp)
 
-            loop = composer.build_agent_loop(
+            loop = composer.build_agent_loop(**_generation_paths(),
                 run_id="run-replay-test",
                 dry_run=True,
                 run_store=store,
@@ -267,7 +307,7 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             composer = _composer_class().from_policy_path(str(policy_path))
             store = _file_run_store_class()(base_dir=tmp)
 
-            loop = composer.build_agent_loop(
+            loop = composer.build_agent_loop(**_generation_paths(),
                 run_id="run-gate-pass",
                 dry_run=True,
                 run_store=store,
@@ -307,7 +347,7 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             store = _file_run_store_class()(base_dir=tmp)
             os.chdir(tmp)
             try:
-                loop = composer.build_agent_loop(
+                loop = composer.build_agent_loop(**_generation_paths(),
                     run_id="run-review-pending",
                     dry_run=True,
                     run_store=store,
@@ -362,7 +402,7 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             store = _file_run_store_class()(base_dir=tmp)
             os.chdir(tmp)
             try:
-                loop = composer.build_agent_loop(
+                loop = composer.build_agent_loop(**_generation_paths(),
                     run_id="run-batch-review-pending",
                     dry_run=True,
                     run_store=store,
@@ -420,7 +460,7 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             composer = _composer_class().from_policy_path(str(policy_path))
             store = _file_run_store_class()(base_dir=tmp)
 
-            loop = composer.build_agent_loop(
+            loop = composer.build_agent_loop(**_generation_paths(),
                 run_id="run-multi-candidate-batch",
                 dry_run=True,
                 run_store=store,
@@ -466,7 +506,7 @@ class FullPipelineIntegrationTests(unittest.TestCase):
             composer = _composer_class().from_policy_path(str(policy_path))
             store = _file_run_store_class()(base_dir=tmp)
 
-            loop = composer.build_agent_loop(
+            loop = composer.build_agent_loop(**_generation_paths(),
                 run_id="run-exclusion-test",
                 dry_run=True,
                 run_store=store,
@@ -513,7 +553,7 @@ def test_agent_counts_only_confirmed_submissions(tmp_path, monkeypatch, second_s
         gate_mode="strict", matching_threshold=0, evaluation_threshold=0,
     ))
     store = _file_run_store_class()(base_dir=str(tmp_path / "runs"))
-    loop = composer.build_agent_loop(
+    loop = composer.build_agent_loop(**_generation_paths(),
         run_id="count-confirmed",
         dry_run=False,
         run_store=store,
@@ -546,7 +586,7 @@ def test_unknown_delivery_pauses_other_candidates(tmp_path, monkeypatch):
                         lambda source, destination: destination.write_bytes(b'%PDF-test-only'))
     composer = _composer_class()(policy=_make_policy(max_rounds=2, gate_mode='strict',
         matching_threshold=0, evaluation_threshold=0))
-    loop = composer.build_agent_loop(run_id='unknown-pauses', dry_run=False,
+    loop = composer.build_agent_loop(**_generation_paths(), run_id='unknown-pauses', dry_run=False,
         evidence_cards=_make_evidence_cards(), job_profile=_make_job_profile(),
         candidates=tuple(replace(c, platform='liepin', job_url=f'https://www.liepin.com/job/{i+1}.shtml')
                          for i,c in enumerate(_make_candidates())))
@@ -559,7 +599,7 @@ def test_unknown_delivery_pauses_other_candidates(tmp_path, monkeypatch):
 def test_manual_mode_without_injected_review_stage_still_waits(tmp_path):
     composer = _composer_class()(policy=_make_policy(delivery_mode='manual', max_rounds=1,
         gate_mode='strict', matching_threshold=0, evaluation_threshold=0))
-    loop = composer.build_agent_loop(run_id='missing-review-stage', dry_run=True,
+    loop = composer.build_agent_loop(**_generation_paths(), run_id='missing-review-stage', dry_run=True,
         evidence_cards=_make_evidence_cards(), job_profile=_make_job_profile(), candidates=_make_candidates())
     loop._review = None
     assert loop.run().status == 'REVIEW_PENDING'
@@ -571,7 +611,7 @@ def test_full_pipeline_dry_run_separates_simulated_and_real_delivery_counts(tmp_
         gate_mode="strict", matching_threshold=0, evaluation_threshold=0,
     ))
     store = _file_run_store_class()(base_dir=str(tmp_path))
-    loop = composer.build_agent_loop(
+    loop = composer.build_agent_loop(**_generation_paths(),
         run_id="dry-counts", dry_run=True, run_store=store,
         evidence_cards=_make_evidence_cards(), job_profile=_make_job_profile(),
         candidates=_make_candidates(),
@@ -601,7 +641,7 @@ def test_official_candidates_cannot_use_another_profile_in_cli_auto_discovery(tm
     monkeypatch.setattr("tools.engines.discovery.job_leads_loader.discover_candidates", lambda **kwargs: [candidate])
     store = _file_run_store_class()(base_dir=str(tmp_path / "runs"))
     loop = _composer_class()(policy=_make_policy(max_rounds=1, gate_mode="strict",
-        matching_threshold=0, evaluation_threshold=0, delivery_mode="manual", batch_review=True)).build_agent_loop(
+        matching_threshold=0, evaluation_threshold=0, delivery_mode="manual", batch_review=True)).build_agent_loop(**_generation_paths(),
         run_id="bound-cli", dry_run=True, run_store=store, evidence_cards=_make_evidence_cards(),
         job_profile=_make_job_profile())
     loop.run()

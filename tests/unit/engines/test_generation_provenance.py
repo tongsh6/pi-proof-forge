@@ -1,18 +1,10 @@
-"""职责表达保留已采纳范围；人物、项目及指标均为合成样例。"""
+"""唯一正文生成保留已采纳责任限定，并按原Fact身份建立occurrence。"""
 from __future__ import annotations
-
-import json
-from pathlib import Path
 
 import pytest
 
-from tools.domain.models import EvidenceCard, JobProfile, ResumeOutput
-from tools.engines.generation import template_assembler as ta
-from tools.engines.generation.llm_rewriter import LLMRewriter
-from tools.engines.generation.template_assembler import TemplateAssembler
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.generation.resume_renderer import build_template_resume, load_cards
-
 
 PROFILE = {
     "name": "测试候选人", "phone": "13800000000", "email": "a@b.com", "city": "上海",
@@ -35,100 +27,38 @@ def card(card_id, *, title, time_range, role_scope, time_level=None, role_level=
         value["time_range_level"] = time_level
         if time_level in {"L2", "L3"}:
             value["time_range_provenance"] = {
-                "level": time_level, "precision": precision, "confidence": 0.6,
+                "level": time_level, "precision": precision, "confidence": 0.6, "confirmed_by_user": True,
                 "evidence": [{"material_id": "mat_1", "document_id": "doc_1",
                               "excerpt": "2022 年以来持续投入"}]}
     if role_level:
         value["role_scope_level"] = role_level
         if role_level == "L3":
             value["role_scope_provenance"] = {
-                "level": "L3", "confidence": 0.6,
+                "level": "L3", "confidence": 0.6, "confirmed_by_user": True,
                 "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "excerpt": "我推动改造"}],
                 "first_person_hits": {"owner": 2, "participant": 3}}
     return value
 
 
-def test_time_precision_and_adopted_role_rendering():
-    assert ta.format_time("2021-03 ~ 2024-03", "L1", "day") == "2021-03 ~ 2024-03"
-    assert ta.format_time("2022-03 ~ 2022-09", "L3", "year") == "2022"
-    assert ta.format_time("2022-03", "L5", "month") == ""
-    assert ta.role_text("平台负责人", "L1") == "平台负责人"
-    assert ta.role_text("平台负责人", "L3") == "平台负责人"
-    assert ta.role_text("平台负责人", "L5") == ""
-    assert ta.downgrade_wording("负责合成活动平台改造并主导上线", "L3") == "负责合成活动平台改造并主导上线"
-    assert ta.downgrade_wording("负责合成活动平台改造", "L1") == "负责合成活动平台改造"
-    assert ta.visible_in_resume(card("ec-2", title="无时间", time_range="", role_scope="", time_level="L5")) is False
-
-
-@pytest.mark.parametrize("text", ["非负责人，仅参与联调", "协助负责人完成上线", "不负责总体设计",
-                                  "参与接口联调，由平台组负责总体设计"])
-def test_l3_keeps_negation_and_other_peoples_responsibility(text):
-    assert ta.role_text(text,"L3")==text
-
-
-def test_l3_keeps_self_claim_and_exclusion_in_the_same_sentence():
-    assert ta.role_text("主导接口联调，但不负责总体设计","L3")=="主导接口联调，但不负责总体设计"
-
-
-@pytest.mark.parametrize("original,expected", [
-    ("协助联调并主导架构设计","协助联调并主导架构设计"),
-    ("协助负责人并独立负责上线","协助负责人并独立负责上线"),
+@pytest.mark.parametrize("role", [
+    "非负责人，仅参与联调", "协助负责人完成上线", "不负责总体设计",
+    "参与接口联调，由平台组负责总体设计",
+    "主导接口联调，但不负责总体设计", "协助联调并主导架构设计",
+    "协助负责人并独立负责上线", "主导或深度参与方案设计与核心开发",
 ])
-def test_l3_keeps_mixed_assistance_and_ownership_scope(original,expected):
-    assert ta.role_text(original,"L3")==expected
-
 @pytest.mark.parametrize("version", ["A", "B"])
-def test_inferred_role_keeps_adopted_scope_in_resume_and_trace_without_changing_source(version):
-    original="主导或深度参与方案设计与核心开发"
-    inferred=card("ec-inferred",title="售后服务",time_range="2023",role_scope=original,role_level="L3")
-    claims=[]
-    content=build_template_resume(version,"mr",80,"now",[inferred],
-                                  personal_profile=PROFILE,job_context=JOB,claims=claims)
-    role=next(c for c in claims if c["field"]=="role_scope")
-    assert "角色：主导或深度参与方案设计与核心开发" in content
-    assert role["text"]==original
-    assert role["provenance"]["level"]=="L3"
-    assert inferred["role_scope"]==original
-    assert ta.role_text(original,"L1")==original
-    assert ta.role_text(original,"L4")==original
-
-
-def test_build_template_resume_applies_levels_first_screen_and_trace_provenance():
-    cards = [
-        card("ec-1", title="交易服务重构", time_range="2021-03 ~ 2024-03", role_scope="负责人"),
-        card("ec-2", title="合成活动平台", time_range="2022-03 ~ 2022-09", role_scope="平台负责人",
-             time_level="L3", role_level="L3", precision="year",
-             actions=["负责合成活动平台改造", "推动活动报名聚合"],
-             results=["主导合成活动平台上线"]),
-        card("ec-3", title="无时间项目", time_range="", role_scope="", time_level="L5"),
-    ]
-    semantic = {
-        "facts": {"f1": {"source_id": "ec-2"}},
-        "assessments": [{"requirement_id": "d1", "status": "supported", "citations": [{"fact_id": "f1"}]}],
-    }
-    claims: list[dict] = []
-    content = build_template_resume(
-        "A", "mr-1", 80, "now", cards, personal_profile=PROFILE, job_context=JOB,
-        claims=claims, semantic_report=semantic,
-    )
-    # JD 引用的 L3 卡优先，且 L5 卡不进入正文。
-    assert "无时间项目" not in content
-    assert content.index("合成活动平台") < content.index("交易服务重构")
-    # 时间按精度显示；L3 来源等级不改变已采纳职责和原文行动。
-    assert "### 合成活动平台（2022）" in content
-    assert "角色：平台负责人" in content
-    segment = content[content.index("合成活动平台"):content.index("交易服务重构")]
-    assert "负责合成活动平台改造" in segment and "主导合成活动平台上线" in segment
-    # 首屏标记位于第一条经历之后：第一条经历 bullet 在首屏内。
-    first, rest = content.split(FIRST_SCREEN_MARKER)
-    assert "合成活动平台" in first and "交易服务重构" in rest
-    # trace claims 带字段等级与依据。
-    time_claim = next(item for item in claims if item["field"] == "time_range" and item["evidence_id"] == "ec-2")
-    role_claim = next(item for item in claims if item["field"] == "role_scope" and item["evidence_id"] == "ec-2")
-    assert time_claim["text"] == "2022"
-    assert time_claim["provenance"]["level"] == "L3" and time_claim["provenance"]["precision"] == "year"
-    assert role_claim["provenance"]["level"] == "L3"
-    assert role_claim["provenance"]["first_person_hits"] == {"owner": 2, "participant": 3}
+@pytest.mark.parametrize("level", ["L1", "L3", "L4"])
+def test_adopted_role_qualifiers_are_preserved_without_word_replacement(role, version, level):
+    current = card("ec-role", title="队列接口", time_range="2024", role_scope=role, role_level=level,
+                   actions=["实现接口适配并完成测试联调"], results=["完成合成请求回归验收"])
+    claims = []
+    content = build_template_resume(version, [current], personal_profile=PROFILE, job_context=JOB, claims=claims)
+    assert "角色：" + role in content
+    assert current["role_scope"] == role
+    assert any(c["text"] == role and c["source_kind"] == "presentation" for c in claims)
+    result, = [c for c in claims if c.get("fact_id") == "ec-role:results:0"]
+    assert result["text"] == current["results"][0]
+    assert result["text"] in content.splitlines()[result["render_line"] - 1]
 
 
 def test_load_cards_reads_provenance_levels(tmp_path):
@@ -147,140 +77,90 @@ def test_load_cards_reads_provenance_levels(tmp_path):
     assert cards[0]["time_range_provenance"]["precision"] == "year"
 
 
-class FakeClient:
-    chat_completions_url = "http://fake/v1/chat/completions"
+def test_actions_and_results_remain_independent_full_facts():
+    current = card("ec-full", title="合成队列", time_range="2024", role_scope="接口负责人",
+                   actions=["实现重试消费与事务回滚"],
+                   results=["在隔离测试环境中，1000 条合成记录处理耗时由 20 秒降至 12 秒。",
+                            "完成消息格式及接口兼容性验收"])
+    claims = []
+    content = build_template_resume("A", [current], personal_profile=PROFILE, claims=claims)
+    first = content.split(FIRST_SCREEN_MARKER)[0]
+    for field in ("actions", "results"):
+        for index, original in enumerate(current[field]):
+            row, = [claim for claim in claims if claim.get("fact_id") == f"ec-full:{field}:{index}"]
+            assert row["text"] == original
+            assert content.splitlines()[row["render_line"] - 1] == "- " + original
+            assert original in first
+    assert "生产环境" not in content
 
-    def __init__(self, content):
-        self.content = content
-
-    def post_json(self, url, payload):
-        return {"choices": [{"message": {"content": self.content}}]}
-
-    @staticmethod
-    def extract_content(response):
-        return response["choices"][0]["message"]["content"]
-
-
-def test_rewriter_detects_role_strength_and_time_precision_violations():
-    original = "# 张三\n\n## 项目经历\n### 合成活动平台（2022）\n角色：平台负责人\n- 参与合成活动平台改造\n"
-    resume = ResumeOutput("A", "jp", original, "markdown")
-    stronger = original.replace("参与合成活动平台改造", "负责合成活动平台改造")
-    result = LLMRewriter(FakeClient(stronger), "m").rewrite(
-        resume, "jd", "company", level_context={"max_role_level": "L3", "time_precision": "year"})
-    assert result.content == original
-    more_precise = original.replace("（2022）", "（2022-03）")
-    result = LLMRewriter(FakeClient(more_precise), "m").rewrite(
-        resume, "jd", "company", level_context={"max_role_level": "L3", "time_precision": "year"})
-    assert result.content == original
-    safe = original.replace("参与合成活动平台改造", "推动合成活动平台改造")
-    result = LLMRewriter(FakeClient(safe), "m").rewrite(
-        resume, "jd", "company", level_context={"max_role_level": "L3", "time_precision": "year"})
-    assert result.content == safe
+def dated_card(**changes):
+    current = card("ec-period", title="合成队列交付", time_range="2023-03 ~ 2024-09",
+                   role_scope="主导接口联调，但不负责总体设计",
+                   actions=["实现队列消费与回调接口并完成联调"],
+                   results=["完成消息格式及接口兼容性验收"])
+    current.update(changes)
+    return current
 
 
-def test_template_assembler_engine_uses_levels():
-    from tools.domain.models import MatchingReport
-    card_l3 = EvidenceCard(id="ec-2", title="合成活动平台", raw_source="m", results=("系统上线完成",),
-                           artifacts=("报告.pdf",), period="2022-03 ~ 2022-09", context="背景", role_scope="平台负责人")
-    with_provenance = EvidenceCard(
-        id="ec-2", title="合成活动平台", raw_source="m", results=("系统上线完成",), artifacts=("报告.pdf",),
-        period="2022-03 ~ 2022-09", context="背景", role_scope="平台负责人",
-        time_range_provenance={"level": "L3", "precision": "year", "evidence": [{"material_id": "m", "document_id": "d", "excerpt": "2022"}]},
-        role_scope_provenance={"level": "L3", "evidence": [{"material_id": "m", "document_id": "d", "excerpt": "我推动"}]},
-    )
-    report = MatchingReport("jp", ("ec-2",), {}, ())
-    content = TemplateAssembler().generate(report, [with_provenance], "A").content
-    assert "（2022）" in content and "2022-03" not in content
-    assert "平台负责人" in content
-    assert "系统上线完成" in content
-    # 显式 L5 时间卡不得进入正文；旧数据（无 provenance）保持兼容。
-    empty_time = EvidenceCard(id="ec-3", title="无时间", raw_source="m", results=("结果",),
-                              artifacts=("报告.pdf",),
-                              time_range_provenance={"level": "L5", "evidence": []})
-    with pytest.raises(Exception):
-        TemplateAssembler().generate(report, [empty_time], "A")
-    legacy = EvidenceCard(id="ec-4", title="旧卡", raw_source="m", results=("结果",),
-                          artifacts=("报告.pdf",))
-    assert "旧卡" in TemplateAssembler().generate(report, [legacy], "A").content
+@pytest.mark.parametrize("level,precision,raw,expected", [
+    ("L1", "day", "2023-03-14 ~ 2024-09-20", "2023-03-14 ~ 2024-09-20"),
+    ("L4", "month", "2023-03-14 ~ 2024-09-20", "2023-03-14 ~ 2024-09-20"),
+    ("L2", "year", "2023-03 ~ 2024-09", "2023 ~ 2024"),
+    ("L2", "month", "2023-03-14 ~ 2024-09-20", "2023-03 ~ 2024-09"),
+    ("L2", "day", "2023-03-14 ~ 2024-09-20", "2023-03 ~ 2024-09"),
+    ("L3", "day", "2023-03-14 ~ 2024-09-20", "2023 ~ 2024"),
+    ("L3", "month", "2023-03 ~ 2024-09", "2023 ~ 2024"),
+    ("L3", "year", "2023-03 ~ 2023-09", "2023"),
+    ("L3", "month", "2024 年 01 月 ~ 2024 年 03 月", "2024"),
+    ("L2", "year", "2024 年 01 月 ~ 2024 年 03 月", "2024"),
+    ("L2", "month", "2024 年 01 月 ~ 2024 年 03 月（内部 Beta 验证）",
+     "2024-01 ~ 2024-03（内部 Beta 验证）"),
+])
+def test_public_builder_respects_proven_time_precision_without_mutating_source(level, precision, raw, expected):
+    from copy import deepcopy
+    current = dated_card(time_range=raw, time_range_level=level,
+        time_range_provenance={"level": level, "precision": precision, "confirmed_by_user": True,
+                               "evidence": [{"material_id": "m", "document_id": "d", "excerpt": raw}]})
+    original = deepcopy(current)
+    text = build_template_resume("A", [current], personal_profile=PROFILE)
+    assert "### 合成队列交付（" + expected + "）" in text
+    assert current == original
+    assert current["results"][0] in text
 
 
-def test_action_result_pairing_requires_lexical_association_and_unique_use():
-    from tools.engines.generation.template_assembler import pair_actions_results, paired_bullet_text
-
-    pairs, unpaired_actions, unpaired_results = pair_actions_results(
-        ["将核心存储迁移至 MongoDB", "修复聚合查询慢查询", "整理接口文档"],
-        ["迁移后 1 万条合成记录往返次数从 10,200 次降至 120 次",
-         "慢查询 P95 从 4 秒降至 250 毫秒",
-         "服务 3 类合成业务"],
-    )
-    assert len(pairs) == 2
-    assert unpaired_actions == ["整理接口文档"]
-    assert unpaired_results == ["服务 3 类合成业务"]
-    used = set()
-    for action, results in pairs:
-        text = paired_bullet_text(action, results)
-        assert action in text
-        for result in results:
-            assert result in text and result not in used
-            used.add(result)
+@pytest.mark.parametrize("period,level", [("", "L5"), ("2023", "L5")])
+def test_public_builder_excludes_untimed_or_explicitly_unproven_card_before_selection(period, level):
+    unavailable = dated_card(id="ec-no-time", title="缺少项目时间", time_range=period,
+                             time_range_level=level, results=["不应进入完整简历的项目结果"])
+    available = dated_card()
+    claims = []
+    text = build_template_resume("A", [unavailable, available], personal_profile=PROFILE, claims=claims)
+    assert "缺少项目时间" not in text and unavailable["results"][0] not in text
+    assert available["results"][0] in text
+    assert all(c.get("evidence_id") != "ec-no-time" for c in claims)
+    with pytest.raises(ValueError, match="no_presentable_resume_facts"):
+        build_template_resume("A", [unavailable], personal_profile=PROFILE)
 
 
-def test_generation_pairs_action_with_related_result_inside_first_screen():
-    card = {
-        "id": "ec-1", "title": "合成批处理存储改造", "time_range": "2024 ~ 2025", "role_scope": "负责人",
-        "context": "测试导出链改造。",
-        "actions": ["将核心存储迁移至 MongoDB 并重写查询索引",
-                    "对测试导出链采用流式批量写入"],
-        "results": ["慢查询 P95 从 4 秒降至 250 毫秒",
-                    "1 万条合成记录导出链往返次数从 10,200 次降至 120 次"],
-        "stack": ["Java"], "artifacts": ["报告"],
-    }
-    claims: list[dict] = []
-    text = build_template_resume("A", "r", 80, "now", [card], personal_profile={"career": {}}, claims=claims)
-    first = text.split(FIRST_SCREEN_MARKER)[0]
-    bullets = [line for line in first.splitlines() if line.startswith("- ")]
-    assert bullets
-    assert all("- " not in line or "：" in line for line in bullets)
-    assert any(card["actions"][0] in line and card["results"][0] in line for line in bullets)
-    from tools.engines.evaluation.tiered_evaluator import evaluate_strong
-    from tools.engines.evaluation.tiered_evaluator import load_quality_config
-
-    report = evaluate_strong(resume=text, cards={"ec-1": card}, trace={"claims": claims},
-                             config=load_quality_config())
-    # 历史模板不带精确 Fact ID/行号的 trace，可验证展示但不能获得现行 R3.2 分数。
-    assert report.metrics["quant_first_screen"] == 0.0
+def test_l5_role_omission_keeps_independent_actions_and_nonquantified_results():
+    current = dated_card(role_scope_level="L5")
+    text = build_template_resume("A", [current], personal_profile=PROFILE)
+    assert "角色：" not in text
+    assert current["actions"][0] in text and current["results"][0] in text
 
 
-def test_work_history_responsibilities_render_without_achievement_bullets():
-    profile = {
-        "career": {
-            "work": [{"id": "w1", "company": "示例公司", "title": "工程师", "start": "2020-01",
-                      "end": "2024-01", "current": False, "scope": "交易平台",
-                      "contributions": ["负责后端开发与接口联调"]}],
-            "education_visibility": "omit", "education": [], "skills": [], "extras": [],
-        }
-    }
-    text = build_template_resume("A", "r", 60, "now", [], personal_profile=profile,
-                                 preferred_facts=[{"source_id": "personal_profile",
-                                                   "field": "career.work.w1.contributions",
-                                                   "text": "负责后端开发与接口联调"}] if False else None)
-    assert "职责：负责后端开发与接口联调" in text
-    work_section = text.split("## 工作经历", 1)[1].split("## ", 1)[0]
-    assert not any(line.startswith("- ") for line in work_section.splitlines() if "接口联调" in line)
+def test_unconfirmed_l3_role_is_not_promoted_by_card_eligibility():
+    current = dated_card(role_scope_level="L3",
+        role_scope_provenance={"level": "L3", "evidence": [{"material_id": "m", "document_id": "d", "excerpt": "候选归属"}]})
+    text = build_template_resume("A", [current], personal_profile=PROFILE)
+    assert "角色：" not in text
+    assert current["actions"][0] in text and current["results"][0] in text
 
 
-def test_first_screen_priority_orders_by_quantified_pairs_not_original_first_card():
-    from tools.engines.generation.template_assembler import first_screen_priority
-
-    context_only = {
-        "id": "ec_context", "title": "微服务架构",
-        "actions": ["使用 Spring Boot 构建微服务", "通过 HTTP/REST 通信"],
-        "results": ["减少业务开发成本", "提高业务开发效率"],
-    }
-    quantified = {
-        "id": "ec_quant", "title": "性能治理",
-        "actions": ["执行慢查询改写与索引优化"],
-        "results": ["合成数据列表查询 4–5s → 200–300ms"],
-    }
-    ordered = first_screen_priority([context_only, quantified])
-    assert [card["id"] for card in ordered] == ["ec_quant", "ec_context"]
+@pytest.mark.parametrize("level", ["L2", "L3"])
+def test_unconfirmed_inferred_time_is_not_promoted_by_card_eligibility(level):
+    current = dated_card(time_range_level=level,
+        time_range_provenance={"level": level, "precision": "year",
+                               "evidence": [{"material_id": "m", "document_id": "d", "excerpt": "候选时期"}]})
+    with pytest.raises(ValueError, match="no_presentable_resume_facts"):
+        build_template_resume("A", [current], personal_profile=PROFILE)

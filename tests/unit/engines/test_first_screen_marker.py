@@ -23,9 +23,6 @@ def build_resume():
     claims: list[dict[str, str]] = []
     content = build_template_resume(
         "A",
-        "mr-test",
-        85,
-        "2026-10-18 10:00:00",
         [CARD],
         personal_profile={
             "name": "测试候选人",

@@ -36,7 +36,7 @@ class ComposerTests(unittest.TestCase):
 
             evidence = composer.build_evidence_registry()
             matching = composer.build_matching_registry()
-            generation = composer.build_generation_registry()
+            generation = composer.build_generation_registry(evidence_dir=Path(tmp) / 'evidence_cards', personal_profile_path=Path(tmp) / 'personal_profile.yaml')
             evaluation = composer.build_evaluation_registry()
             discovery = composer.build_discovery_registry()
 
@@ -46,8 +46,8 @@ class ComposerTests(unittest.TestCase):
             self.assertIn("rule", evaluation.list())
             self.assertIn("rule", discovery.list())
 
-    def test_llm_mode_registers_controlled_rewrite_generation_strategy(self) -> None:
-        """LLM 模式的生成策略是受控改写（模板基线 + 事实校验回退），不是自由改写。"""
+    def test_llm_mode_keeps_single_fact_plan_generation_strategy(self) -> None:
+        """模型只参与匹配和评价；正文始终使用唯一事实计划。"""
         from tools.infra.llm.client import LLMClient
 
         class FakeClient(LLMClient):
@@ -59,22 +59,19 @@ class ComposerTests(unittest.TestCase):
             policy_path.write_text(_VALID_POLICY, encoding="utf-8")
             composer = Composer.from_policy_path(str(policy_path))
             generation = composer.build_generation_registry(
-                {"name": "候选人"}, {"target_role": "后端"}
+                evidence_dir=Path(tmp) / "evidence_cards", personal_profile_path=Path(tmp) / "personal_profile.yaml"
             )
             composer.add_llm_strategies(
                 FakeClient(),  # type: ignore[arg-type]
                 "test-model",
                 composer.build_evidence_registry(),
                 composer.build_matching_registry(),
-                generation,
                 composer.build_evaluation_registry(),
-                personal_profile={"name": "候选人"},
-                job_context={"target_role": "后端"},
             )
-            self.assertIn("llm_rewrite", generation.list())
-            engine = generation.create("llm_rewrite")
+            self.assertEqual(generation.list(), ("template",))
+            engine = generation.create("template")
             self.assertTrue(hasattr(engine, "generate"))
-            self.assertFalse(hasattr(engine, "rewrite_content"))  # 没有自由改写入口
+            self.assertFalse(hasattr(engine, "rewrite"))
 
 
 if __name__ == "__main__":
