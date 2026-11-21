@@ -8,8 +8,38 @@ META = {'correlation_id': 'source-merge-test'}
 
 
 @pytest.fixture
-def sample(tmp_path, monkeypatch, request):
-    root = tmp_path / 'materials'; root.mkdir()
+def result_review_model(monkeypatch):
+    """Transport-only substitute; expected semantic verdicts are declared by each test."""
+    from types import SimpleNamespace
+    from tools.infra.llm.client import LLMClient
+    from tools.sidecar.handlers import evidence_draft
+
+    state = {"calls": [], "reply": {"outcome": "unknown", "measurement_quote": None,
+             "rationale": "本测试未核定结果语义。"}, "during_call": None}
+
+    def post_json(url, payload):
+        state["calls"].append((url, payload))
+        if state["during_call"]:
+            state["during_call"]()
+        if isinstance(state["reply"], Exception):
+            raise state["reply"]
+        content = state["reply"] if isinstance(state["reply"], str) else json.dumps(state["reply"], ensure_ascii=False)
+        return {"choices": [{"message": {"content": content}}]}
+
+    client = SimpleNamespace(chat_completions_url="http://127.0.0.1:8000/v1/chat/completions",
+                             post_json=post_json, extract_content=LLMClient.extract_content)
+    monkeypatch.setattr(evidence, "LLMClient", lambda **kwargs: client)
+    monkeypatch.setattr(evidence_draft, "load_llm_config", lambda: {
+        "provider": "openai_compatible", "model": "synthetic-result-review",
+        "base_url": "http://127.0.0.1:8000/v1", "api_key_for_request": "",
+        "timeout": 20, "temperature": 0, "thinking_enabled": False,
+    })
+    return state
+
+
+@pytest.fixture
+def sample(tmp_path, monkeypatch, request, result_review_model):
+    root = tmp_path / 'materials'; root.mkdir(exist_ok=True)
     cards = tmp_path / 'evidence_cards'
     monkeypatch.setattr(materials, '_MATERIALS_DIR', root)
     monkeypatch.setattr(evidence, '_EVIDENCE_DIR', cards)
@@ -208,23 +238,301 @@ def test_semantic_report_binds_merged_sources_before_model_calls(sample):
     assert client.calls == calls
 
 
-def _scoped_review(sample):
+def _scoped_review(sample, *, field="actions", index=0):
     root, path, params = sample
     evidence.handle_evidence_save_draft(params)
     params['review'].pop('merge_sources')
     params['expected_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
     m1 = params['draft']['source_documents'][0]
-    val = params['draft']['actions'][0]
+    val = params['draft'][field][index]
     source = {k:m1[k] for k in ('material_id','document_id','sha256')}
-    params['draft']['field_sources'].append({'field':'actions','value':val,'quote':val,
+    params['draft']['field_sources'].append({'field':field,'value':val,'quote':val,
                                           'material_id':m1['material_id'],'document_id':m1['document_id']})
-    directive={'kind':'adopt','field':'actions','index':0,'value':val,'source':{**source,'quote':val},
+    directive={'kind':'adopt','field':field,'index':index,'value':val,'source':{**source,'quote':val},
                'attribution':'self','target':'预约能力','environment':'test','implementation':'implemented','release':'not_released'}
     return root,path,params,directive
 
 
+
+def _review_input_snapshot(path, material_dir, *other_paths):
+    from tools.infra.evidence_sources import validated_source_inputs
+
+    sources = validated_source_inputs(parse_simple_yaml(path.read_text()), material_dir)
+    return {**{str(item.resolve()): hashlib.sha256(item.read_bytes()).hexdigest() for item in (path, *other_paths)},
+            **{str(source.resolve()): digest for source, digest in sources.snapshots.values()}}
+
+
+def test_result_review_fingerprint_aba_cannot_write_a_new_hash_for_old_evidence(
+        sample, result_review_model, monkeypatch):
+    from tools.sidecar.handlers import evidence_draft
+
+    root, path, params, scope = _scoped_review(sample, field="results")
+    params["review"]["fact_scope"] = scope
+    result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                    "rationale": "完整交付已经发生。"}
+    source = root / "m1.txt"
+    before_source, before_card = source.read_bytes(), path.read_bytes()
+    fingerprints = evidence_draft.source_fingerprints
+
+    def changed_during_fingerprint(records):
+        if not result_review_model["calls"]:
+            return fingerprints(records)
+        source.write_bytes(before_source + b"\ntransient source bytes\n")
+        try:
+            return fingerprints(records)
+        finally:
+            source.write_bytes(before_source)
+
+    monkeypatch.setattr(evidence_draft, "source_fingerprints", changed_during_fingerprint)
+    with pytest.raises(ValueError, match="material_source_changed"):
+        evidence.handle_evidence_save_draft(params)
+    assert source.read_bytes() == before_source
+    assert path.read_bytes() == before_card
+
+
+@pytest.mark.parametrize("sample", [(
+    ["预测章节：\n测试环境固定输入下响应时间减半。", "验收章节："],
+    ["测试环境固定输入下响应时间减半。"],
+)], indirect=True)
+@pytest.mark.parametrize("wide_quote", [False, True])
+def test_result_review_locates_value_within_its_quote_not_the_whole_document(
+        sample, result_review_model, wide_quote):
+    root, path, params, scope = _scoped_review(sample, field="results")
+    source = evidence.handle_read_material_document({
+        "material_id": scope["source"]["material_id"], "document_id": scope["source"]["document_id"]})["text"]
+    assert source.count(scope["value"]) == 2
+    quote = source if wide_quote else "验收章节：\n" + scope["value"]
+    scope["source"]["quote"] = quote
+    params["draft"]["field_sources"][-1]["quote"] = quote
+    params["review"]["fact_scope"] = scope
+    result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                    "rationale": "定位后的完整已发生结果。"}
+    before = path.read_bytes()
+    if wide_quote:
+        with pytest.raises(ValueError, match="result_review_ambiguous_source"):
+            evidence.handle_evidence_save_draft(params)
+        assert path.read_bytes() == before
+    else:
+        evidence.handle_evidence_save_draft(params)
+        assert _live_scope(path)[0]["sources"][0]["result_review"]["outcome"] == "established"
+
+
 def _live_scope(path):
     return evidence.handle_evidence_get({'meta': META,'evidence_id':path.stem})['evidence']['fact_scope_review']
+
+@pytest.mark.parametrize("sample, outcome, measurement_quote", [
+    ((["整理测试记录。"], ["在隔离测试环境的固定输入下，接口响应时间减半。"]),
+     "established", "在隔离测试环境的固定输入下，接口响应时间减半。"),
+    ((["记录验收过程。"], ["已交付并被团队采用的故障排查手册。"]),
+     "established", None),
+    ((["整理评估材料。"], ["已交付容量评估报告；下一阶段目标为每秒 120 次。"]),
+     "established", None),
+    ((["整理规划。"], ["预计每秒处理 120 次，尚未验证。"]),
+     "not_established", None),
+    ((["保存记录。"], ["P95 从 200 ms 降至 120 ms。"]),
+     "unknown", None),
+], indirect=["sample"])
+def test_result_review_save_uses_independent_source_and_persists_verdict(
+        sample, result_review_model, outcome, measurement_quote):
+    from tools.infra import evidence_fact_scope
+
+    root, path, params, scope = _scoped_review(sample, field="results")
+    reply = {"outcome": outcome, "measurement_quote": measurement_quote,
+             "rationale": "固定测试判定；真实模型能力另走合成 App 验收。"}
+    result_review_model["reply"] = reply
+    params["review"]["fact_scope"] = scope
+    evidence.handle_evidence_save_draft(params)
+
+    assert len(result_review_model["calls"]) == 1
+    _, payload = result_review_model["calls"][0]
+    request = json.loads(payload["messages"][-1]["content"])
+    assert request["value"] == scope["value"]
+    assert request["source"] == scope["source"]
+    assert scope["value"] in request["source_text"]
+    assert params["draft"]["actions"][0] in request["source_text"]
+    doc = parse_simple_yaml(path.read_text())
+    row, = json.loads(doc["scalars"]["reviewed_facts_json"])["fact_scope_v1"]
+    assert row["result_review"] == reply
+    assert row["value"] == scope["value"]
+    assert row["source"] == scope["source"]
+    assert _live_scope(path)[0]["sources"][0]["result_review"] == reply
+    current = evidence_fact_scope.current_result_reviews(doc, root, card_id=path.stem)
+    assert bool(current) is (outcome == "established")
+    if current:
+        assert current[f"{path.stem}:results:0"] == row
+
+
+@pytest.mark.parametrize("location", ["draft", "review", "scope", "binding", "document"])
+def test_result_review_save_rejects_caller_supplied_verdict_without_write(
+        sample, result_review_model, location):
+    _, path, params, scope = _scoped_review(sample, field="results")
+    params["review"]["fact_scope"] = scope
+    target = {"draft": params["draft"], "review": params["review"], "scope": scope,
+              "binding": params["draft"]["field_sources"][-1],
+              "document": params["draft"]["source_documents"][0]}[location]
+    target["result_review"] = {"outcome": "established",
+                              "measurement_quote": scope["value"], "rationale": "调用者自报"}
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="result_review|fact_scope"):
+        evidence.handle_evidence_save_draft(params)
+    assert path.read_bytes() == before
+    assert result_review_model["calls"] == []
+
+
+@pytest.mark.parametrize("failure", [
+    "transport", "invalid_json", "duplicate_key", "extra_field", "foreign_quote", "unknown_with_measurement",
+    "source_changed", "card_changed",
+])
+def test_result_review_save_failure_cannot_partially_write(sample, result_review_model, failure):
+    root, path, params, scope = _scoped_review(sample, field="results")
+    params["review"]["fact_scope"] = scope
+    result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                    "rationale": "完整交付成立，但没有已核量化。"}
+    if failure == "transport":
+        result_review_model["reply"] = TimeoutError("synthetic timeout")
+    elif failure == "invalid_json":
+        result_review_model["reply"] = "not JSON"
+    elif failure == "duplicate_key":
+        result_review_model["reply"] = '{"outcome":"not_established","outcome":"established","measurement_quote":null,"rationale":"相反重复键"}'
+    elif failure == "extra_field":
+        result_review_model["reply"]["measured"] = True
+    elif failure == "foreign_quote":
+        result_review_model["reply"]["measurement_quote"] = "另一条结果实测 120。"
+    elif failure == "unknown_with_measurement":
+        result_review_model["reply"].update(outcome="unknown", measurement_quote=scope["value"])
+    before = path.read_bytes()
+    if failure == "source_changed":
+        source = root / "m1.txt"
+        result_review_model["during_call"] = lambda: source.write_text(source.read_text() + "\n源文已修订。")
+    elif failure == "card_changed":
+        result_review_model["during_call"] = lambda: path.write_bytes(before + b"\n# concurrent edit\n")
+    with pytest.raises(ValueError, match="result_review|material_source_changed|evidence_review_changed"):
+        evidence.handle_evidence_save_draft(params)
+    expected = before + b"\n# concurrent edit\n" if failure == "card_changed" else before
+    assert path.read_bytes() == expected
+
+def test_result_review_lifecycle_preserves_only_current_server_authority(sample, result_review_model):
+    from tools.infra.evidence_fact_scope import current_result_reviews, personal_claim_exclusions
+
+    root, path, params, scope = _scoped_review(sample, field="results")
+    result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                    "rationale": "已完成的非量化交付。"}
+    params["review"]["fact_scope"] = scope
+    evidence.handle_evidence_save_draft(params)
+    fid = f"{path.stem}:results:0"
+
+    def current():
+        return current_result_reviews(parse_simple_yaml(path.read_text()), root, card_id=path.stem)
+
+    accepted = current()[fid]
+    evidence.handle_evidence_update({"meta": META, "evidence_id": path.stem, "patch": {"title": "更清晰的标题"}})
+    assert current() == {}
+    params["draft"]["title"] = "更清晰的标题"
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    params["review"].pop("fact_scope")
+    evidence.handle_evidence_save_draft(params)
+    assert current()[fid] == accepted
+    assert len(result_review_model["calls"]) == 1
+
+    action = params["draft"]["actions"][0]
+    ref = scope["source"]
+    params["draft"]["field_sources"].append({"field": "actions", "value": action, "quote": action,
+        "material_id": ref["material_id"], "document_id": ref["document_id"]})
+    params["review"]["fact_scope"] = {**scope, "field": "actions", "value": action,
+                                      "source": {**ref, "quote": action}}
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    doc = parse_simple_yaml(path.read_text())
+    assert personal_claim_exclusions(doc, root, card_id=path.stem) == {f"{path.stem}:actions:0"}
+    assert current()[fid] == accepted and len(result_review_model["calls"]) == 1
+
+    params["review"]["fact_scope"] = {"kind": "revoke", "field": "results", "index": 0, "value": scope["value"]}
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    assert current() == {}
+    assert any(binding["field"] == "results" for binding in
+               json.loads(parse_simple_yaml(path.read_text())["scalars"]["field_sources_json"]))
+    params["review"].pop("fact_scope")
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    assert current() == {} and len(result_review_model["calls"]) == 1
+
+
+@pytest.mark.parametrize("sample", [(
+    ["保存完整测试记录。"],
+    ["测试环境固定输入下，响应时间减半；测试环境固定输入下，错误率降至千分之三。"],
+)], indirect=True)
+@pytest.mark.parametrize("case", ["different_measurements", "one_nonquant", "unrelated_unknown",
+                                   "opposite_attribution", "opposite_outcome"])
+def test_result_review_projects_one_complete_supporting_row(sample, result_review_model, case):
+    from tools.infra.evidence_fact_scope import current_result_reviews
+
+    root, path, params, first = _scoped_review(sample, field="results")
+    first_reply = {"outcome": "established", "measurement_quote": "测试环境固定输入下，响应时间减半",
+                   "rationale": "第一条独立支持完整结果。"}
+    result_review_model["reply"] = first_reply
+    params["review"]["fact_scope"] = first
+    evidence.handle_evidence_save_draft(params)
+
+    full_source = evidence.handle_read_material_document({
+        "material_id": first["source"]["material_id"], "document_id": first["source"]["document_id"]})["text"]
+    second = {**first, "source": {**first["source"], "quote": full_source}}
+    params["draft"]["field_sources"].append({"field": "results", "value": first["value"], "quote": full_source,
+        "material_id": first["source"]["material_id"], "document_id": first["source"]["document_id"]})
+    second_reply = {"outcome": "established", "measurement_quote": "测试环境固定输入下，错误率降至千分之三。",
+                    "rationale": "第二条也独立支持完整结果。"}
+    if case == "one_nonquant":
+        second_reply["measurement_quote"] = None
+    elif case == "unrelated_unknown":
+        second["target"] = "另一个独立适用对象"
+        second_reply.update(outcome="unknown", measurement_quote=None)
+    elif case == "opposite_attribution":
+        second["attribution"] = "teammate"
+    elif case == "opposite_outcome":
+        second_reply.update(outcome="not_established", measurement_quote=None)
+    result_review_model["reply"] = second_reply
+    params["review"]["fact_scope"] = second
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    evidence.handle_evidence_save_draft(params)
+    doc = parse_simple_yaml(path.read_text())
+    stored = json.loads(doc["scalars"]["reviewed_facts_json"])["fact_scope_v1"]
+    current = current_result_reviews(doc, root, card_id=path.stem)
+    if case.startswith("opposite"):
+        assert current == {}
+    else:
+        selected = current[f"{path.stem}:results:0"]
+        assert selected in stored
+        assert selected["result_review"] == first_reply
+        assert selected["source"] == first["source"]
+    assert len(result_review_model["calls"]) == 2
+
+
+def test_result_review_source_aba_is_rejected_by_selected_document_sha(sample, result_review_model, monkeypatch):
+    from tools.sidecar.handlers import evidence_draft
+
+    root, path, params, scope = _scoped_review(sample, field="results")
+    params["review"]["fact_scope"] = scope
+    source = root / "m1.txt"
+    original_source = source.read_bytes()
+    original_card = path.read_bytes()
+    read_documents = evidence_draft.read_source_documents
+
+    def changed_during_read(*args, **kwargs):
+        source.write_bytes(original_source + "\n临时替换的原文。".encode())
+        try:
+            return read_documents(*args, **kwargs)
+        finally:
+            source.write_bytes(original_source)
+
+    monkeypatch.setattr(evidence_draft, "read_source_documents", changed_during_read)
+    with pytest.raises(ValueError, match="material_document_changed_or_missing"):
+        evidence.handle_evidence_save_draft(params)
+    assert source.read_bytes() == original_source
+    assert path.read_bytes() == original_card
+    assert result_review_model["calls"] == []
+
+
+
 
 
 @pytest.mark.parametrize("sample", [(
@@ -765,7 +1073,7 @@ def test_changed_fact_pending_scope_cannot_resurface_or_disappear_on_ordinary_re
     (['实现会员时间轴页面并接入平台已有接口。'], ['完成预约能力的测试验收，覆盖改期流程。']),
     (['实现会员时间轴页面，\n并接入平台已有接口。'], ['完成预约能力的测试验收，\n覆盖改期流程；本次仅验证测试环境。']),
 ], indirect=True)
-def test_reviewed_page_does_not_inherit_project_role_in_plan_or_preview(sample):
+def test_reviewed_page_does_not_inherit_project_role_in_plan_or_preview(sample, result_review_model):
     from tools.domain.quality_text import render_fact_text
     from tools.engines.generation.plan_renderer import render_plan
     from tools.engines.generation.fact_index import build_fact_index
@@ -779,6 +1087,16 @@ def test_reviewed_page_does_not_inherit_project_role_in_plan_or_preview(sample):
     root,path,params,scope = _scoped_review(sample)
     unsigned = build_fact_index(load_cards(path.parent, [path.stem], root))
     assert path.stem + ':actions:0' in build_resume_plan(unsigned, select_facts(unsigned), {}).fact_ids
+    value = params["draft"]["results"][0]
+    source = scope["source"]
+    params["draft"]["field_sources"].append({"field": "results", "value": value, "quote": value,
+        "material_id": source["material_id"], "document_id": source["document_id"]})
+    params["review"]["fact_scope"] = {**scope, "field": "results", "value": value,
+                                      "source": {**source, "quote": value}}
+    result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                    "rationale": "已完成的测试验收；不扩大为生产。"}
+    evidence.handle_evidence_save_draft(params)
+    params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
     scope = {**scope, 'attribution':'teammate'}
     params['review']['fact_scope'] = scope
     evidence.handle_evidence_save_draft(params)
@@ -810,7 +1128,7 @@ def test_reviewed_page_does_not_inherit_project_role_in_plan_or_preview(sample):
            "assessments":aggregate_assessments(requirements,checks,assessed),"completed_check_ids":[checks[0]["id"]],
            "facts":facts}
     inputs = {"evidence_files":[path],"personal_profile":root.parent/'personal.yaml',"job_path":job,
-              "direction":{"status":"needs_review"},"pool":{}}
+              "direction":{"status":"needs_review"},"pool":{}, "snapshot": _review_input_snapshot(path, root, job)}
     excerpt = preview.render_reviewed_excerpt('jp_test',inputs,raw)
     assert action_id not in [c["fact_id"] for c in excerpt["claims"]]
     assert result_id in [c["fact_id"] for c in excerpt["claims"]]
@@ -906,7 +1224,7 @@ def test_unclassified_prior_scope_keeps_exact_veto_until_explicit_review(sample)
     ("self", "teammate", False, True, False, "supported"),
     ("teammate", "unknown", False, True, False, "supported"),
 ])
-def test_matching_never_credits_teammate_only_occurrence(sample, monkeypatch, relation, other, mixed, advisory, negative, expected):
+def test_matching_never_credits_teammate_only_occurrence(sample, result_review_model, monkeypatch, relation, other, mixed, advisory, negative, expected):
     import io
     from tools.domain.assessment_support import positive_citations
     from tools.engines.matching import semantic_matching as engine
@@ -925,6 +1243,17 @@ def test_matching_never_credits_teammate_only_occurrence(sample, monkeypatch, re
         evidence.handle_evidence_save_draft(params)
         assert {(row["attribution"],row["environment"]) for row in _live_scope(path)} == {
             (relation,"test"),(other,"production")}
+    if mixed:
+        value = params["draft"]["results"][0]
+        source = scope["source"]
+        params["draft"]["field_sources"].append({"field": "results", "value": value, "quote": value,
+            "material_id": source["material_id"], "document_id": source["document_id"]})
+        params["review"]["fact_scope"] = {**scope, "field": "results", "value": value,
+                                          "source": {**source, "quote": value}}
+        params["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        result_review_model["reply"] = {"outcome": "established", "measurement_quote": None,
+                                        "rationale": "独立兄弟验收结果成立，且保留测试条件。"}
+        evidence.handle_evidence_save_draft(params)
     fid, sibling = f"{path.stem}:actions:0", f"{path.stem}:results:0"
     job = root.parent/"job.yaml"
     job.write_text('target_role: "Engineer"\nmust_have:\n  - "平台开发"\n')
@@ -967,7 +1296,8 @@ def test_matching_never_credits_teammate_only_occurrence(sample, monkeypatch, re
         from tools.sidecar.handlers.preparation_preview import render_reviewed_excerpt
 
         profile = root.parent/"personal_profile.yaml"
-        inputs = {"direction":{}, "evidence_files":[path], "pool":{}, "personal_profile":profile, "job_path":job}
+        inputs = {"direction":{}, "evidence_files":[path], "pool":{}, "personal_profile":profile, "job_path":job,
+                  "snapshot": _review_input_snapshot(path, root, job)}
         projected = semantic._safe_summary(job.stem,inputs,client,report,"")
         audit = root.parent/"audit.json"
         monkeypatch.setattr(semantic, "_audit_path", lambda _: audit)

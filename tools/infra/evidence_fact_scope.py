@@ -12,6 +12,24 @@ _CLAIM = _POSITION | {"source", "attribution", "target", "environment", "impleme
 _ATTRIBUTIONS = {"self", "team_lead", "contributor", "teammate", "unknown"}
 
 
+
+def checked_result_review(review, *, value, source_quote):
+    """Validate only the server result protocol and its exact textual binding."""
+    if not isinstance(value, str) or not value or not isinstance(source_quote, str) or source_quote.count(value) != 1:
+        raise ValueError("result_review_ambiguous_source")
+    if (not isinstance(review, dict)
+            or review.keys() != {"outcome", "measurement_quote", "rationale"}
+            or review["outcome"] not in ("established", "not_established", "unknown")
+            or not isinstance(review["rationale"], str) or not review["rationale"].strip()):
+        raise ValueError("result_review_invalid")
+    quote = review["measurement_quote"]
+    if quote is not None:
+        if (review["outcome"] != "established" or not isinstance(quote, str) or not quote.strip()
+                or value.count(quote) != 1 or source_quote.count(quote) != 1):
+            raise ValueError("result_review_invalid_measurement_binding")
+    return dict(review)
+
+
 def _position(item, fields):
     field, index, value = (item.get(k) for k in ("field", "index", "value"))
     if field not in ("actions", "results") or type(index) is not int or not isinstance(value, str):
@@ -66,6 +84,19 @@ def _checked(item, fields, bindings, refs):
             or (env == "unknown" and release != "unknown")
             or (release == "released" and imp in ("planned","not_implemented"))):
         raise ValueError("fact_scope_invalid")
+    return item
+
+
+
+def _checked_stored(item, fields, bindings, refs):
+    if not isinstance(item, dict):
+        raise ValueError("fact_scope_invalid")
+    if "result_review" not in item:
+        return _checked(item, fields, bindings, refs)
+    _checked({key: value for key, value in item.items() if key != "result_review"}, fields, bindings, refs)
+    if item["field"] != "results":
+        raise ValueError("result_review_invalid")
+    checked_result_review(item["result_review"], value=item["value"], source_quote=item["source"]["quote"])
     return item
 
 
@@ -130,7 +161,7 @@ def apply_fact_scope(existing, fields, bindings, refs, directive, *, provided, d
     if kind != "adopt":
         raise ValueError("fact_scope_invalid")
     claim = _checked(claim, fields, bindings, refs)
-    classified = [row for row in _retained(rows, fields, bindings, refs, validate=_checked)
+    classified = [row for row in _retained(rows, fields, bindings, refs, validate=_checked_stored)
                   if _unique_source(row, documents)]
     rows = [row for row in rows if not (same_position(row) and (row not in classified
             or all(row[k] == claim[k] for k in ("source","target","environment"))))]
@@ -143,7 +174,7 @@ def _checked_rows(doc, rows, refs, bindings, documents):
     fields = {**doc["scalars"], **doc["lists"]}
     bound = _retained(rows, fields, bindings, refs, validate=_bound)
     _require_unique_sources(bound, documents)
-    return _retained(bound, fields, bindings, refs, validate=_checked)
+    return _retained(bound, fields, bindings, refs, validate=_checked_stored)
 
 
 def _project_scopes(card_id, rows):
@@ -171,7 +202,8 @@ def _project_scopes(card_id, rows):
                         "attribution":relation, "target":target, "environment":env,
                         "implementation":implementation, "release":release,
                         "sources":[{**r["source"], "attribution":r["attribution"],
-                                    "implementation":r["implementation"], "release":r["release"]} for r in rows]})
+                                    "implementation":r["implementation"], "release":r["release"],
+                                    **({"result_review": r["result_review"]} if "result_review" in r else {})} for r in rows]})
     return out
 
 
@@ -183,46 +215,90 @@ def project_fact_scope(doc, refs, bindings, *, documents):
     return _project_scopes(scalars["id"], _checked_rows(doc, _saved(scalars), refs, bindings, documents))
 
 
-def personal_claim_exclusions(doc, material_dir, *, card_id, validated_sources=None):
-    """Decline rendering of all reviewed scope until the renderer can preserve exact attribution."""
+def _current_scope_rows(doc, material_dir, *, card_id, validated_sources=None):
+    """Read the same current source snapshot for positive and negative projections."""
     scalars = doc["scalars"]
     rows = _saved(scalars)
     if not rows:
-        return frozenset()
+        return [], []
     if scalars.get("id") != card_id:
         raise ValueError("fact_scope_card_identity_mismatch")
     from tools.infra.evidence_sources import assert_source_snapshot, validated_source_inputs
 
-    sources = (validated_source_inputs(doc, material_dir) if validated_sources is None else validated_sources)
+    sources = validated_source_inputs(doc, material_dir) if validated_sources is None else validated_sources
     if not sources:
         raise ValueError("fact_scope_source_unverified")
     assert_source_snapshot(sources.snapshots)
-    # Old/unclassified review rows never confer attribution. Their exact source-bound
-    # occurrences must still abstain rather than silently reverting to whole-card credit.
     refs = json.loads(scalars.get("source_documents_json") or "[]")
     bindings = json.loads(scalars.get("field_sources_json") or "[]")
     bound = _retained(rows, {**scalars, **doc["lists"]}, bindings, refs, validate=_bound)
     if not isinstance(rows, list) or any(row not in bound for row in rows):
         raise ValueError("fact_scope_unverifiable")
     _require_unique_sources(bound, sources.documents)
-    return frozenset(f'{card_id}:{row["field"]}:{row["index"]}' for row in bound)
+    return bound, _retained(bound, {**scalars, **doc["lists"]}, bindings, refs, validate=_checked_stored)
+
+
+def _result_reviews(card_id, bound, checked):
+    """Select a complete supporting row; never combine verdicts or count source votes."""
+    out = {}
+    for row in checked:
+        if (row["field"] != "results" or row["attribution"] not in {"self", "team_lead", "contributor"}
+                or row.get("result_review", {}).get("outcome") != "established"):
+            continue
+        occurrence = (row["field"], row["index"], row["value"])
+        peers = [peer for peer in bound
+                 if tuple(peer[key] for key in ("field", "index", "value")) == occurrence]
+        # Unclassified stored constraints cannot be silently discarded to obtain a positive.
+        if any(peer not in checked for peer in peers):
+            continue
+        related = [peer for peer in peers
+                   if (peer["target"], peer["environment"]) == (row["target"], row["environment"])]
+        projected = _project_scopes(card_id, related)
+        implementations = {peer["implementation"] for peer in related} - {"unknown"}
+        releases = {peer["release"] for peer in related} - {"unknown"}
+        conflict = (any(peer["attribution"] == "conflict" for peer in projected)
+                    or ("implemented" in implementations and len(implementations) > 1)
+                    or len(releases) > 1
+                    or ("released" in releases and bool(implementations & {"planned", "not_implemented"}))
+                    or any(peer.get("result_review", {}).get("outcome") == "not_established" for peer in related))
+        if conflict:
+            continue
+        fid = f'{card_id}:results:{row["index"]}'
+        # A missing or different measured proposition is not contrary evidence. Prefer
+        # an entire supporting measured row without taking any field from another row.
+        if fid not in out or (out[fid]["result_review"]["measurement_quote"] is None
+                              and row["result_review"]["measurement_quote"] is not None):
+            out[fid] = row
+    return out
+
+
+def current_result_reviews(doc, material_dir, *, card_id, validated_sources=None):
+    """Current, source-bound complete results shared by both renderers and quality."""
+    if doc["scalars"].get("candidate_pool_eligible") != "true":
+        return {}
+    bound, checked = _current_scope_rows(doc, material_dir, card_id=card_id,
+                                        validated_sources=validated_sources)
+    return _result_reviews(card_id, bound, checked)
+
+
+def personal_claim_exclusions(doc, material_dir, *, card_id, validated_sources=None):
+    """Keep action scope closed; only independently established complete results open."""
+    bound, checked = _current_scope_rows(doc, material_dir, card_id=card_id,
+                                        validated_sources=validated_sources)
+    allowed = (_result_reviews(card_id, bound, checked)
+               if doc["scalars"].get("candidate_pool_eligible") == "true" else {})
+    return frozenset(f'{card_id}:{row["field"]}:{row["index"]}' for row in bound).difference(allowed)
 
 
 def nonpersonal_reviewed_fact_ids(doc, material_dir, *, card_id, validated_sources):
     """Current, source-bound negative attribution only; ambiguous scopes do not prove it."""
-    scalars = doc["scalars"]
-    saved = _saved(scalars)
-    if scalars.get("candidate_pool_eligible") != "true" or not saved:
+    if doc["scalars"].get("candidate_pool_eligible") != "true":
         return frozenset()
-    excluded = personal_claim_exclusions(doc, material_dir, card_id=card_id, validated_sources=validated_sources)
-    refs = json.loads(scalars.get("source_documents_json") or "[]")
-    bindings = json.loads(scalars.get("field_sources_json") or "[]")
-    verified = _checked_rows(doc, saved, refs, bindings, validated_sources.documents)
-    # The source-bound guard above requires every saved row to have a valid occurrence.
-    # Unclassified rows are not authority for either assertion or whole-fact exclusion.
-    unknown = {f'{card_id}:{r["field"]}:{r["index"]}' for r in saved if r not in verified}
+    bound, checked = _current_scope_rows(doc, material_dir, card_id=card_id,
+                                        validated_sources=validated_sources)
+    unknown = {f'{card_id}:{row["field"]}:{row["index"]}' for row in bound if row not in checked}
     grouped = defaultdict(set)
-    for row in _project_scopes(card_id, verified):
+    for row in _project_scopes(card_id, checked):
         grouped[row["fact_id"]].add(row["attribution"])
     return frozenset(fid for fid, relations in grouped.items()
-                     if fid in excluded and fid not in unknown and relations <= {"teammate", "conflict"})
+                     if fid not in unknown and relations <= {"teammate", "conflict"})

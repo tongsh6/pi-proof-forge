@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -97,7 +98,11 @@ def evidence_bound_materials(material_ids, references, whole_material_ids, *, fi
         if not item:
             raise ValueError("material_source_changed")
         if item.get("source_mode") != "referenced":
-            records.extend(selected_text_materials([mid]))
+            selected = selected_text_materials([mid])
+            records.extend(selected)
+            for record in selected:
+                path = record["path"]
+                snapshots[f"evidence_material:{mid}"] = (path, hashlib.sha256(path.read_bytes()).hexdigest())
             continue
         try:
             cache, docs, verified = verify_bound_documents(

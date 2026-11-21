@@ -4,12 +4,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from tools.domain.models import EvidenceCard
-from tools.errors.exceptions import EvidenceValidationError
-
-
-def _validator_class():
-    module = import_module("tools.engines.evidence.validator")
-    return module.EvidenceValidator
 
 
 def _rule_extractor_class():
@@ -27,38 +21,36 @@ def _llm_extractor_class():
     return module.LLMEvidenceExtractor
 
 
-class EvidenceValidatorTests(unittest.TestCase):
-    def test_validator_accepts_valid_card(self) -> None:
-        card = EvidenceCard(
-            id="ec-1",
-            title="OK",
-            raw_source="raw",
-            results=("result",),
-            artifacts=("artifact",),
-        )
-        _validator_class()().validate(card)
+class ResultReviewProtocolTests(unittest.TestCase):
+    def test_one_source_quote_cannot_merge_repeated_occurrences(self):
+        from tools.engines.evidence.validator import parse_result_review
+        import json
 
-    def test_validator_rejects_missing_results(self) -> None:
-        card = EvidenceCard(
-            id="ec-1",
-            title="BAD",
-            raw_source="raw",
-            results=(),
-            artifacts=("artifact",),
-        )
-        with self.assertRaises(EvidenceValidationError):
-            _validator_class()().validate(card)
+        value = "响应时间减半。"
+        scope = {"value": value, "source": {"quote": "预测：" + value + "\n实测：" + value}}
+        reply = {"outcome": "established", "measurement_quote": None, "rationale": "不能确定同次原文"}
+        with self.assertRaisesRegex(ValueError, "result_review"):
+            parse_result_review(json.dumps(reply), scope)
 
-    def test_validator_rejects_missing_artifacts(self) -> None:
-        card = EvidenceCard(
-            id="ec-1",
-            title="BAD",
-            raw_source="raw",
-            results=("result",),
-            artifacts=(),
-        )
-        with self.assertRaises(EvidenceValidationError):
-            _validator_class()().validate(card)
+    def test_unique_context_keeps_non_digit_measurement(self):
+        from tools.engines.evidence.validator import parse_result_review
+        import json
+
+        value = "测试环境固定输入下响应时间减半。"
+        scope = {"value": value, "source": {"quote": "实测记录：" + value}}
+        reply = {"outcome": "established", "measurement_quote": value, "rationale": "原文测量限定保留"}
+        self.assertEqual(parse_result_review(json.dumps(reply), scope), reply)
+
+    def test_measurement_quote_cannot_restore_conditions_missing_from_value(self):
+        from tools.engines.evidence.validator import parse_result_review
+        import json
+
+        value = "响应时间减半。"
+        full = "测试环境固定输入下" + value
+        scope = {"value": value, "source": {"quote": full}}
+        reply = {"outcome": "established", "measurement_quote": full, "rationale": "完整条件只在原文"}
+        with self.assertRaisesRegex(ValueError, "result_review"):
+            parse_result_review(json.dumps(reply), scope)
 
 
 class RuleExtractorTests(unittest.TestCase):

@@ -442,6 +442,33 @@ def handle_evidence_generate_draft(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
+def _review_result_scope(scope, source_text):
+    """Use the configured client for a separate source review, never generator self-review."""
+    from tools.engines.evidence.validator import parse_result_review, result_review_messages
+    from tools.infra.llm.client import llm_request_available
+
+    config = load_llm_config()
+    base_url = str(config.get("base_url") or "").strip()
+    provider = str(config.get("provider") or "").strip()
+    model = str(config.get("model") or "").strip()
+    api_key = str(config.get("api_key_for_request") or "")
+    if not base_url or not llm_request_available(provider=provider, api_key=api_key,
+                                                 model=model, base_url=base_url):
+        raise ValueError("result_review_provider_unavailable")
+    try:
+        client = _origin.LLMClient(base_url=base_url, api_key=api_key, timeout=int(config["timeout"]),
+                                   provider=provider, thinking_enabled=False,
+                                   reasoning_effort=str(config.get("thinking_effort", "high")))
+        payload = {"model": model, "messages": result_review_messages(scope, source_text),
+                   "temperature": float(config["temperature"]), "response_format": {"type": "json_object"}}
+        response = client.post_json(client.chat_completions_url, payload)
+        content = client.extract_content(response)
+    except Exception:
+        raise ValueError("result_review_unavailable") from None
+    return parse_result_review(content, scope)
+
+
 def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
     correlation_id = params["meta"]["correlation_id"]
     draft = params.get("draft")
@@ -450,6 +477,13 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
     review = params.get("review")
     if not isinstance(review, dict) or str(review.get("decision", "")) != "approved":
         raise ValueError("review_required_before_save")
+
+    if any("result_review" in item for item in (params, draft, review)):
+        raise ValueError("result_review_server_owned")
+    for field in ("field_sources", "source_documents"):
+        items = draft.get(field)
+        if isinstance(items, list) and any(isinstance(item, dict) and "result_review" in item for item in items):
+            raise ValueError("result_review_server_owned")
 
     scope_provided = "fact_scope" in review
     if "fact_scope" in draft:
@@ -575,9 +609,24 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
     # 暂存仍维护既有事实约束；候选权威继续由保存状态和读时校验决定。
     scopes = apply_fact_scope(existing_doc, normalized_draft, field_sources, source_documents,
                               review.get("fact_scope"), provided=scope_provided, documents=documents)
+    if scope_provided and review["fact_scope"].get("kind") == "adopt" and review["fact_scope"].get("field") == "results":
+        assert_source_snapshot(snapshots)
+        if existing_path.read_bytes() != original_bytes:
+            raise ValueError("evidence_review_changed")
+        claim = scopes[-1]
+        source = claim["source"]
+        result_review = _review_result_scope(claim, documents[(source["material_id"], source["document_id"])])
+        scopes[-1] = {**claim, "result_review": result_review}
     if scopes:
         reviewed_facts[FACT_SCOPE_KEY] = scopes
     now = _origin._utcnow_iso()
+    keep_fingerprints = bool(field_sources or snapshots or (
+        existing_doc and existing_doc["scalars"].get("source_material_fingerprints_json")))
+    saved_fingerprints = source_fingerprints(selected_records) if keep_fingerprints else {}
+    for mid, fingerprint in saved_fingerprints.items():
+        captured = snapshots.get(f"evidence_material:{mid}")
+        if captured is not None and fingerprint["sha256"] != captured[1]:
+            raise ValueError("material_source_changed")
     fields = {
         "id": evidence_id,
         "title": normalized_draft["title"] or "Untitled evidence draft",
@@ -600,7 +649,7 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
         "missing_items": missing_items,
         "source_documents_json": json.dumps(source_documents,ensure_ascii=False) if source_documents else "",
         "field_sources_json": json.dumps(field_sources,ensure_ascii=False) if field_sources else "",
-        "source_material_fingerprints_json": json.dumps(source_fingerprints(selected_records),ensure_ascii=False) if field_sources or snapshots or (existing_doc and existing_doc['scalars'].get('source_material_fingerprints_json')) else "",
+        "source_material_fingerprints_json": json.dumps(saved_fingerprints,ensure_ascii=False) if keep_fingerprints else "",
         "reviewed_facts_json": json.dumps(reviewed_facts,ensure_ascii=False) if field_sources or (existing_doc and existing_doc['scalars'].get('reviewed_facts_json')) else '',
         "source_whole_material_ids_json": json.dumps(whole_material_ids,ensure_ascii=False) if whole_material_ids else '',
         "time_range_provenance_json": provenance.provenance_json(saved_provenance.get("time_range")),
@@ -608,7 +657,6 @@ def handle_evidence_save_draft(params: dict[str, Any]) -> dict[str, Any]:
     }
     if strict_ids:
         current_fingerprints = source_fingerprints(selected_text_materials(strict_ids))
-        saved_fingerprints = json.loads(fields['source_material_fingerprints_json'])
         if any(strict_fingerprints[mid] != current_fingerprints[mid] or strict_fingerprints[mid] != saved_fingerprints[mid]
                for mid in strict_ids):
             raise ValueError('material_source_changed')

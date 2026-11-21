@@ -29,6 +29,21 @@
 
 2026-10-13 `evidence.saveDraft` 增量：同项目补证沿重审保存，增加 `expected_sha256` 和 `review.merge_sources`。开启补证时 source_material_ids/source_documents 只能追加、不能移除原来源，精确文档最多8个；`draft.field_sources` 为 `{field,value,quote,material_id,document_id}[]`，支持 time_range/role_scope/context/actions/results，逐项核对正文、原文及指纹。新事实必须绑定引用；普通编辑后的重审与最后批准的事实快照比较，不能把待审核编辑当成旧事实。陈旧卡版本报 `evidence_review_changed`，错误引用报 `field_source_*`，来源不允许的替换报 `evidence_review_source_mismatch`。`evidence.get` 返回 field_sources/source_sha256/source_error；来源失效时 candidate_pool_eligible=false。补证卡的材料指纹进入职业档案修订、语义输入与生成 trace，旧卡无此元数据时保持兼容。
 
+2026-11-21 结果核定增量（切片 I，限定工程范围已完成）：复用 `evidence.saveDraft` 的 `review.fact_scope {kind:"adopt", field:"results", index, value, source, attribution, target, environment, implementation, release}`。请求不新增核定字段；完成现行来源绑定与 `expected_sha256` CAS 后，由服务端独立核验完整 value 和必要上下文，在同一 `reviewed_facts_json.fact_scope_v1[]` 行附：
+
+```json
+{
+  "result_review": {
+    "outcome": "established",
+    "measurement_quote": null,
+    "rationale": "完整交付有来源支持；没有已核定的实测量化。"
+  }
+}
+```
+
+- outcome 为 `established|not_established|unknown`，针对完整 value；非 established 的 measurement_quote 必须 null。非空 quote 须是 value/source.quote 同次出现的连续完整量化实测命题，不限定数字写法，不是裸数字或另一段同文。客户端在 draft/review/source 中附 result_review 明确拒绝，不接收生成自评作为授权。
+- 核验不可用、格式无效、调用期间卡/源版本改变均失败且不部分保存，不静默改用其他 provider；有效 unknown/not_established 可按既有 advisory 保存待补证，不能获正文/量化信用。复审撤销、待审、来源失效沿原机制；仅标题变化且来源/事实/scope 未变可保留核定再审。此契约不增加 RPC、投递权限或第二套记录。
+
 > 状态：active
 > 用途：冻结 Tauri host / React frontend / Python sidecar 之间的字段级 JSON-RPC contract，避免 UI 与 sidecar 并行开发时发生漂移。
 > 裁决关系：若本文件与 `ui/design/DESIGN.md` 的 JSON-RPC 摘要冲突，以本文件为准；若与更高层产品约束冲突，以 `ui/design/DESIGN.md` 与 `AIEF/context/tech/GUI_ARCHITECTURE.md` 回收修正。
@@ -392,6 +407,8 @@ Host 内部依次调用以下 sidecar 方法（均包含标准 `meta.correlation
   }
 }
 ```
+
+I 详情增量（限定工程范围已完成）：现有 `fact_scope_review[].sources[]` 可选返回服务端的 `result_review:{outcome,measurement_quote,rationale}`；与该 source 的 material_id/document_id/sha256/quote 一并展示。不存在表示未核定，不能默认补成 unknown 或从 implemented/released 推得实测。原复审 panel 只读显示各来源 outcome、完整实测命题或“无已核定量化”、说明与出处，不在聚合 scope 标整句实测，不增加“实测”勾选。当前批准及来源校验不成立时沿原投影撤权，UI 显示记录不授正文/评分信用。实际合成应用生产/消费链与组件行为已验证；不代表 rationale 文案、原生 UI 或完整预览 RPC 验收。自由文本 scope 别名的跨来源真实冲突仍按 R5 的实现缺口推进，不降低真实冲突必须拒绝的规范。
 
 ### 6.6 evidence.import
 
