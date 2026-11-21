@@ -15,25 +15,12 @@ from typing import Any
 
 from tools.infra.material_documents import split_material_documents
 from tools.infra.persistence.yaml_io import parse_simple_yaml
-from tools.infra.career_profile import parse_project_period
+from tools.infra.career_profile import company_aliases, parse_project_period
 from tools.infra import referenced_materials as rm
 from tools.infra.knowledge_coverage import build_source_coverage
 
 BUILDER_VERSION = "kb-index-v1"
 
-# 人写文档白名单：本人角色/经历的逐字来源；其余文档的"负责/主导"多为系统职责噪声。
-PERSON_DOC_MATERIALS = {
-    "mat_331bc1bc": "已确认职业与教育时间线（时间事实唯一来源）",
-    "mat_723e3040": "EC+工作经历详细底稿（含'我的角色'段落）",
-    "mat_ff4f2006": "九恒星项目经验原始记录（逐项目区间与责任描述）",
-    "mat_2e91704b": "早期个人与工作经历原始记录（2017 版项目角色）",
-    "mat_4c98d63a": "个人 AI 开源作品集（个人项目自述）",
-    "mat_ae7f0dbd": "Sophon 面试准备排练稿（未排练；不新增事实）",
-    "mat_2b6f65a5": "职业方向综合分析（含已确认求职偏好来源）",
-    "mat_660ac6d6": "众安入职月工作日志",
-}
-PERSON_DOC_LABELS = {"工作汇总-1.md", "工作汇总.md"}
-PERSON_DOC_LABEL_MATERIALS = {"mat_7dad703c": "工作汇总（品牌级周期与角色句）"}
 # 合成测试夹具：任何情况下不得作为简历事实来源。
 NONFACT_MATERIALS = {"mat_quick_run_verify": "合成测试夹具，不得作为简历事实来源"}
 
@@ -43,12 +30,6 @@ DOC_TYPES = (
     ("总结", "总结"), ("需求", "需求"), ("方案", "方案"), ("日志", "日志"),
     ("清单", "清单"), ("手册", "手册"), ("规范", "规范"), ("INDEX", "索引"),
 )
-SHORT_COMPANY = {
-    "一里智辉（EC+）": "EC+",
-    "众安保险": "众安",
-    "九恒星（上海）金融信息服务有限公司": "九恒星",
-    "上海伊尔普信息技术有限公司": "伊尔普",
-}
 
 _DATE_RE = re.compile(r"(20\d{2})\s*[-./年]\s*(\d{1,2})")
 _CREATED_RE = re.compile(r"created:\s*'?(\d{4}-\d{2}-\d{2})")
@@ -88,26 +69,12 @@ def extract_dates(text: str) -> dict[str, Any]:
 
 
 def short_company(company: str) -> str:
-    if company in SHORT_COMPANY:
-        return SHORT_COMPANY[company]
-    inner = re.search(r"[（(]([^）)]{1,10})[）)]", company)
-    if inner:
-        return inner.group(1)
-    cleaned = re.sub(r"(股份有限公司|有限责任公司|有限公司|（上海）|\(上海\))", "", company).strip()
-    return (cleaned or company)[:6]
+    aliases = company_aliases(company)
+    return aliases[-1][:6] if aliases else ""
 
 
 def _file_sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _is_person_doc(material_id: str, label: str) -> bool:
-    if material_id in PERSON_DOC_MATERIALS:
-        return True
-    if material_id in PERSON_DOC_LABEL_MATERIALS and label.split("/")[-1] in PERSON_DOC_LABELS:
-        return True
-    return False
-
 
 def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[str, dict[str, Any]], dict[tuple[str, str], list[str] | None]]:
     materials: dict[str, dict[str, Any]] = {}
@@ -172,7 +139,6 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
                 "chars": doc["char_count"],
                 "sha256": doc["sha256"],
                 "dates": dates,
-                "person_doc": _is_person_doc(material_id, doc["label"]),
             })
         materials[material_id] = {
             "material_id": material_id,
@@ -393,9 +359,6 @@ def build_index(root: Path, now: str | None = None) -> dict[str, Any]:
     for card in cards.values():
         key = card["status"] or "demo"
         status_counts[key] = status_counts.get(key, 0) + 1
-    person_docs = [{"material_id": material_id, "label": materials[material_id]["label"], "note": note}
-                   for material_id, note in (*PERSON_DOC_MATERIALS.items(), *PERSON_DOC_LABEL_MATERIALS.items())
-                   if material_id in materials]
     nonfact = [{"material_id": material_id, "reason": reason}
                for material_id, reason in NONFACT_MATERIALS.items() if material_id in materials]
     return {
@@ -418,7 +381,6 @@ def build_index(root: Path, now: str | None = None) -> dict[str, Any]:
         "leads": leads,
         "profile": profile,
         "relations": _build_relations(cards, profile, jobs, leads),
-        "person_docs": person_docs,
         "nonfact_materials": nonfact,
         "skipped": skipped,
         "asset_inventory": _asset_inventory(root),
@@ -515,7 +477,7 @@ def render_index_md(index: dict[str, Any]) -> str:
             lines.append(f"- 扫描未完成：{error['root_id']}/{error['path']}（{error['reason']}）")
     lines += ["", "## 范围说明",
               "- 纳入：材料 / 证据卡 / 职业档案 / 岗位画像 / 岗位线索",
-              "- 上游：私有工作仓 worklog-private/ 为材料来源；引用式材料（source_mode=referenced）不复制纳入，其余未纳入部分按需分批",
+              "- 上游：用户配置的本地来源根；引用式材料（source_mode=referenced）不复制纳入，其余未纳入部分按需分批",
               "- 正文只纳入材料库的 md/txt；INDEX/AGENTS/CLAUDE/local-paths 与 templates/rules 目录按原拆档规则过滤。",
               "- 排除：匹配报告与运行产物（matching_reports/、outputs/，属运行输出）、上传简历记录（uploaded_resumes/，平台产物）、"
               "profiles/candidate_profile.yaml（模板占位）、release-notes/ 与 scripts/（仓库工程）；"
@@ -523,12 +485,12 @@ def render_index_md(index: dict[str, Any]) -> str:
               "", "## 待办信号（自动统计）",
               f"- 真实卡 {len(real)} 张，其中 **{len(missing_any)} 张缺时间或职责**（"
               + " / ".join(f"{k} {v}" for k, v in sorted(by_employer.items(), key=lambda kv: -kv[1])) + "）",
-              f"- 其中 {len(with_hints)} 张引用文档含日期线索；人写文档白名单 {len(index['person_docs'])} 份（角色句可信来源）",
+              f"- 其中 {len(with_hints)} 张引用文档含日期线索；材料身份与标题不授予职责归属或成果真实性",
               "", "## AI 使用说明（纪律）",
               "1. 索引里的派生值（日期窗口/类型/线索）**不是事实**；引用前必须 `kb read` 回原文",
               "2. 每个引用必须携带 material_id / document_id / sha256 三元组",
               "3. 材料变化后先 `kb verify`，不通过则 `kb build` 重建",
-              "4. 常用命令：`kb tree / kb find / kb grep / kb read / kb refs / kb cards / kb person-docs`"]
+              "4. 常用命令：`kb tree / kb find / kb grep / kb read / kb refs / kb cards`"]
     return "\n".join(lines) + "\n"
 
 

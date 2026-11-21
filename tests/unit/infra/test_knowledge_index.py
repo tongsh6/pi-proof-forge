@@ -51,22 +51,22 @@ def make_root(tmp_path: Path) -> Path:
     (materials / "mat_aaaa1111.txt").write_text(BUNDLE, encoding="utf-8")
     (materials / "mat_aaaa1111.meta.yaml").write_text(
         _meta("mat_aaaa1111", "客户A项目记录", "mat_aaaa1111.txt", "raw_work_material_directory"), encoding="utf-8")
-    timeline = "# 个人职业与教育时间线\n\n九恒星 2015.06–2018.10。\n"
-    (materials / "mat_331bc1bc.md").write_text(timeline, encoding="utf-8")
-    (materials / "mat_331bc1bc.meta.yaml").write_text(
-        _meta("mat_331bc1bc", "已确认职业与教育时间线", "mat_331bc1bc.md"), encoding="utf-8")
+    timeline = "# 个人职业与教育时间线\n\n远帆科技 2016.04–2019.07。\n"
+    (materials / "mat_timeline.md").write_text(timeline, encoding="utf-8")
+    (materials / "mat_timeline.meta.yaml").write_text(
+        _meta("mat_timeline", "已确认职业与教育时间线", "mat_timeline.md"), encoding="utf-8")
     summary_bundle = (
-        "# Source: 00-EC+/00-overview/工作汇总/工作汇总-1.md\n"
+        "# Source: 00-CB/00-overview/工作汇总/工作汇总-1.md\n"
         "角色：Tech Lead / 全栈负责人\n"
-        "# Source: 00-EC+/00-overview/工作汇总/项目目录/始祖鸟/会员中心小程序/5 分钟速读卡.md\n"
+        "# Source: 00-CB/00-overview/工作汇总/项目目录/客户甲/会员中心小程序/5 分钟速读卡.md\n"
         "系统概览。\n"
     )
-    (materials / "mat_7dad703c.txt").write_text(summary_bundle, encoding="utf-8")
-    (materials / "mat_7dad703c.meta.yaml").write_text(
-        _meta("mat_7dad703c", "EC+ 工作汇总与模块架构切片", "mat_7dad703c.txt", "raw_work_material_directory"), encoding="utf-8")
-    (materials / "mat_723e3040.md").write_text("# EC+工作经历详细底稿\n\n2021 年 3 月起任 Tech Lead。\n", encoding="utf-8")
-    (materials / "mat_723e3040.meta.yaml").write_text(
-        _meta("mat_723e3040", "EC+工作经历详细底稿", "mat_723e3040.md"), encoding="utf-8")
+    (materials / "mat_summary.txt").write_text(summary_bundle, encoding="utf-8")
+    (materials / "mat_summary.meta.yaml").write_text(
+        _meta("mat_summary", "CB 工作汇总与模块架构切片", "mat_summary.txt", "raw_work_material_directory"), encoding="utf-8")
+    (materials / "mat_career_notes.md").write_text("# CB工作经历详细底稿\n\n2022 年 2 月起任 Tech Lead。\n", encoding="utf-8")
+    (materials / "mat_career_notes.meta.yaml").write_text(
+        _meta("mat_career_notes", "CB工作经历详细底稿", "mat_career_notes.md"), encoding="utf-8")
     (materials / "mat_quick_run_verify.md").write_text(
         "# Quick Run verifier material\n时间：2025-06 ~ 2025-09\n", encoding="utf-8")
     (materials / "mat_quick_run_verify.meta.yaml").write_text(
@@ -99,11 +99,11 @@ def make_root(tmp_path: Path) -> Path:
         'context: "仓库示例。"\n',
         encoding="utf-8")
 
-    timeline_docs = split_material_documents(timeline, "mat_331bc1bc.md")
-    pref_source = {"material_id": "mat_331bc1bc", "document_id": timeline_docs[0]["document_id"],
+    timeline_docs = split_material_documents(timeline, "mat_timeline.md")
+    pref_source = {"material_id": "mat_timeline", "document_id": timeline_docs[0]["document_id"],
                    "label": timeline_docs[0]["label"], "sha256": timeline_docs[0]["sha256"]}
     career = {"schema_version": 1, "summary": "", "work": [
-        {"id": "work_ecplus", "company": "一里智辉（EC+）", "title": "Tech Lead", "start": "2021-03", "end": "",
+        {"id": "work_example", "company": "云桥（CB）", "title": "Tech Lead", "start": "2022-02", "end": "",
          "scope": "", "current": True, "evidence_ids": ["ec_1111aaaa"], "contributions": []}],
         "education": [], "skills": [], "extras": []}
     prefs = {"schema_version": 1, "source": pref_source, "items": [{"kind": "primary", "text": "产品型", "quote": "主方向"}],
@@ -175,9 +175,9 @@ def test_materials_and_documents(root: Path):
     assert research["sha256"]
     assert docs["02-CustomerA/05-全量验收.md"]["doc_type"] == "验收"
     assert docs["02-CustomerA/上线安排.md"]["dates"]["frontmatter"]["created"] == "2018-06-01"
-    bbbb = index["materials"]["mat_331bc1bc"]["documents"][0]
+    bbbb = index["materials"]["mat_timeline"]["documents"][0]
     assert bbbb["title"] == "个人职业与教育时间线"
-    assert bbbb["dates"]["window"] == ["2015-06", "2018-10"]
+    assert bbbb["dates"]["window"] == ["2016-04", "2019-07"]
 
 
 def test_cards_completion_fields(root: Path):
@@ -186,7 +186,7 @@ def test_cards_completion_fields(root: Path):
     assert card["title"] == "客户A资金改造"
     assert card["demo"] is False
     assert card["missing"] == ["time_range", "role_scope"]
-    assert card["employer"] == "EC+"
+    assert card["employer"] == "CB"
     assert card["date_hints"] == ["2017-02", "2018-05"]
     assert card["sha256"] == hashlib.sha256((root / "evidence_cards" / "ec_1111aaaa.yaml").read_bytes()).hexdigest()
     assert card["source_documents"][0]["material_id"] == "mat_aaaa1111"
@@ -204,7 +204,7 @@ def test_relations_cover_cites_evidence_and_preferences(root: Path):
     index = _build(root)
     rels = {(r["from"], r["type"]) for r in index["relations"]}
     assert ("card:ec_1111aaaa", "cites") in rels
-    assert ("work:work_ecplus", "evidence") in rels
+    assert ("work:work_example", "evidence") in rels
     assert ("profile:job_preferences", "sourced_from") in rels
     cites = [r for r in index["relations"] if r["from"] == "card:ec_1111aaaa" and r["type"] == "cites"][0]
     assert cites["to"].startswith("doc:mat_aaaa1111:")
@@ -215,30 +215,33 @@ def test_relations_cover_cites_evidence_and_preferences(root: Path):
 def test_profile_and_jobs(root: Path):
     index = _build(root)
     profile = index["profile"]
-    assert profile["work"][0]["short"] == "EC+"
+    assert profile["work"][0]["short"] == "CB"
     assert profile["work"][0]["evidence_ids"] == ["ec_1111aaaa"]
-    assert profile["job_preferences"]["source"]["material_id"] == "mat_331bc1bc"
+    assert profile["job_preferences"]["source"]["material_id"] == "mat_timeline"
     assert index["jobs"]["jp_abc12345"]["demo"] is False
     assert index["jobs"]["jp-2026-001"]["demo"] is True
     assert index["jobs"]["jp_abc12345"]["jd_chars"] == len("做一个 AI 系统")
 
 
-def test_person_docs_and_nonfact_constants(root: Path):
+def test_index_does_not_assign_personal_authority_to_material_identifiers(root: Path):
     index = _build(root)
-    person_ids = {p["material_id"] for p in index["person_docs"]}
-    assert "mat_723e3040" in person_ids
-    assert "mat_331bc1bc" in person_ids
-    assert "mat_7dad703c" in person_ids
-    assert "mat_aaaa1111" not in person_ids
-    doc = index["materials"]["mat_723e3040"]["documents"][0]
-    assert doc["person_doc"] is True
-    assert index["materials"]["mat_aaaa1111"]["documents"][0]["person_doc"] is False
-    summary_docs = {d["label"].split("/")[-1]: d for d in index["materials"]["mat_7dad703c"]["documents"]}
-    assert summary_docs["工作汇总-1.md"]["person_doc"] is True
-    assert summary_docs["5 分钟速读卡.md"]["person_doc"] is False
+    assert "person_docs" not in index
+    assert all("person_doc" not in doc for material in index["materials"].values()
+               for doc in material["documents"])
     nonfact = {n["material_id"]: n["reason"] for n in index["nonfact_materials"]}
     assert "mat_quick_run_verify" in nonfact
     assert "事实" in nonfact["mat_quick_run_verify"]
+
+
+@pytest.mark.parametrize("name, expected", [
+    ("星河信息技术有限公司", "星河"),
+    ("上海远帆金融信息服务有限公司", "远帆"),
+    ("云桥科技（CB）", "CB"),
+    ("", ""),
+])
+def test_company_short_name_uses_general_alias_rules(name: str, expected: str):
+    from tools.infra.knowledge_index import short_company
+    assert short_company(name) == expected
 
 
 def test_render_index_md_sections(root: Path):
@@ -252,7 +255,7 @@ def test_render_index_md_sections(root: Path):
     assert "mat_quick_run_verify" in md
     assert "岗位线索" in md
     assert "索引缺口" in md
-    assert "worklog-private" in md
+    assert "本地来源根" in md
     assert "缺" in md
     assert "kb read" in md
 

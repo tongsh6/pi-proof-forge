@@ -120,3 +120,123 @@ def merge_text(target: Path, files: list[dict[str, Any]]) -> str:
         if text:
             sections.append(f"# Source: {item['relpath']}\n\n{text}")
     return ("\n\n".join(sections).strip() + "\n") if sections else ""
+
+
+def _relative_parts(value):
+    if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
+        raise ValueError("material_source_changed")
+    parts = value.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError("material_source_changed")
+    return parts
+
+
+def _beneath(root, parts):
+    current = root
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("material_source_changed")
+    return current
+
+
+def verify_bound_documents(material_dir, item, refs, roots, *, fingerprint=None):
+    """Reverify only existing document bindings. A cache hit determines a path, never text authority."""
+    from collections import Counter
+    from tools.infra.material_documents import split_material_documents
+
+    error = "material_source_changed"
+    mid = item.get("material_id", "")
+    if not isinstance(mid, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", mid):
+        raise ValueError(error)
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+
+    library = Path(material_dir).resolve()
+    meta_path = _beneath(library, [f"{mid}.meta.yaml"])
+    if not meta_path.is_file():
+        raise ValueError(error)
+    meta_bytes = meta_path.read_bytes()
+    meta = parse_simple_yaml(meta_bytes.decode("utf-8"))["scalars"]
+    if any(meta.get(key) != item.get(key) for key in (
+            "material_id","source_mode","filename","source_root","source_relpath","manifest_sha256")):
+        raise ValueError(error)
+    manifest_path = _beneath(library, [".referenced", f"{mid}.manifest.json"])
+    if not manifest_path.is_file():
+        raise ValueError(error)
+    manifest_bytes = manifest_path.read_bytes()
+    manifest = json.loads(manifest_bytes)
+    files = manifest["files"]
+    digest = manifest_digest(files)
+    if (digest != manifest.get("manifest_sha256") or digest != item.get("manifest_sha256")
+            or manifest.get("source_root") != item.get("source_root")
+            or manifest.get("source_relpath") != item.get("source_relpath")):
+        raise ValueError(error)
+    root = [root for root in roots
+            if root.get("id") == manifest.get("root_id") and root.get("path") == item.get("source_root")]
+    if len(root) != 1:
+        raise ValueError(error)
+    root_path = Path(root[0]["path"]).resolve()
+    relative = manifest["source_relpath"]
+    target = root_path if relative in ("", ".") else _beneath(root_path, _relative_parts(relative))
+    by_path = {}
+    for row in files:
+        rel = row["relpath"]
+        _relative_parts(rel)
+        if rel in by_path:
+            raise ValueError(error)
+        by_path[rel] = row
+    filename = f".referenced/{mid}-{digest[:12]}.txt"
+    if item.get("filename") != filename:
+        raise ValueError(error)
+    cache = _beneath(library, _relative_parts(filename))
+    if not cache.is_file():
+        raise ValueError(error)
+    cache_bytes = cache.read_bytes()
+    cache_sha = hashlib.sha256(cache_bytes).hexdigest()
+    if fingerprint is not None and fingerprint != {
+        "filename":filename, "sha256":cache_sha, "mode":"referenced", "manifest_sha256":digest,
+        "source_root":item["source_root"], "source_relpath":relative,
+    }:
+        raise ValueError(error)
+    cache_text = cache_bytes.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    headers = Counter(match.strip() for match in re.findall(r"^# Source: ([^\n]+)$", cache_text, re.M))
+    indexed = {doc["document_id"]:doc for doc in split_material_documents(cache_text, cache.name)}
+    verified, originals, snapshots = {}, {}, {}
+    is_file = target.is_file()
+    for ref in refs:
+        cached_doc = indexed.get(ref["document_id"])
+        if not cached_doc or cached_doc["sha256"] != ref["sha256"]:
+            raise ValueError(error)
+        if is_file:
+            rel, display = target.name, cache.name
+            if headers or cached_doc["source_name"] != display:
+                raise ValueError(error)
+        else:
+            rel = display = cached_doc["source_name"]
+            if not target.is_dir() or headers[display] != 1:
+                raise ValueError(error)
+        if rel not in by_path:
+            raise ValueError(error)
+        if rel not in originals:
+            path = target if is_file else _beneath(target, _relative_parts(rel))
+            if not path.is_file():
+                raise ValueError(error)
+            raw = path.read_bytes()
+            sha = hashlib.sha256(raw).hexdigest()
+            if sha != by_path[rel]["sha256"] or len(raw) != by_path[rel]["bytes"]:
+                raise ValueError(error)
+            text = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n").strip()
+            if re.search(r"^# Source: [^\n]+$", text, re.M):
+                raise ValueError(error)
+            canonical = text if is_file else f"# Source: {display}\n\n{text}\n"
+            originals[rel] = (path, sha, {doc["document_id"]:doc for doc in split_material_documents(canonical, cache.name)})
+        path, sha, documents = originals[rel]
+        fresh = documents.get(ref["document_id"])
+        if fresh != cached_doc or ("label" in ref and ref["label"] != fresh["label"]):
+            raise ValueError(error)
+        verified[ref["document_id"]] = fresh["text"]
+        snapshots[f"evidence_document:{mid}:{ref['document_id']}"] = (path,sha)
+    snapshots[f"evidence_meta:{mid}"] = (meta_path,hashlib.sha256(meta_bytes).hexdigest())
+    snapshots[f"evidence_material:{mid}"] = (cache,cache_sha)
+    snapshots[f"evidence_manifest:{mid}"] = (manifest_path,hashlib.sha256(manifest_bytes).hexdigest())
+    return cache, verified, snapshots

@@ -14,30 +14,30 @@ def make_index():
         "nonfact_materials": [{"material_id": "mat_fixture"}],
         "materials": {
             "mat_work": {
-                "material_id": "mat_work", "label": "EC+ 工作日志", "filename": "mat_work.txt",
+                "material_id": "mat_work", "label": "示例公司工作日志", "filename": "mat_work.txt",
                 "documents": [
-                    {"document_id": "doc_1", "label": "2023-03 周报", "title": "统一运动中心周报",
+                    {"document_id": "doc_1", "label": "2023-03 周报", "title": "订单服务周报",
                      "source_name": "2023-03-06.md", "sha256": "s1", "dates": {"window": "2023-03"}},
-                    {"document_id": "doc_2", "label": "2023-08 周报", "title": "统一运动中心上线复盘",
+                    {"document_id": "doc_2", "label": "2023-08 周报", "title": "订单服务上线复盘",
                      "source_name": "2023-08-15.md", "sha256": "s2", "dates": {}},
                 ],
             },
             "mat_design": {
                 "material_id": "mat_design", "label": "设计/实施计划（非完成证明）", "filename": "mat_design.txt",
-                "documents": [{"document_id": "doc_design", "label": "统一运动中心设计", "title": "统一运动中心",
+                "documents": [{"document_id": "doc_design", "label": "订单服务设计", "title": "订单服务",
                                "source_name": "design.md", "sha256": "sd", "dates": {}}],
             },
             "mat_fixture": {
                 "material_id": "mat_fixture", "label": "合成测试夹具", "filename": "mat_fixture.txt",
-                "documents": [{"document_id": "doc_fixture", "label": "统一运动中心", "title": "统一运动中心",
+                "documents": [{"document_id": "doc_fixture", "label": "订单服务", "title": "订单服务",
                                "source_name": "fixture.md", "sha256": "sf", "dates": {}}],
             },
         },
     }
 
 
-CARD_FIELDS = {"title": "统一运动中心", "context": "会员中心活动报名链路"}
-CARD_LISTS = {"tags": ["会员"], "stack": ["Java"]}
+CARD_FIELDS = {"title": "订单服务", "context": "订单处理与库存同步链路"}
+CARD_LISTS = {"tags": ["订单"], "stack": ["Java"]}
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -111,21 +111,28 @@ def test_context_without_first_person_is_available_to_the_model_and_bounded():
     assert document["owner_hits"]==0
 
 
-def test_bound_material_personal_summary_is_not_lost_to_generic_documents():
-    index=make_index()
-    documents=index["materials"]["mat_work"]["documents"]
-    documents.append({"document_id":"summary","title":"个人工作总结","label":"工作汇总",
-                      "sha256":"summary","person_doc":True})
-    fields={**CARD_FIELDS,"source_documents_json":json.dumps([
-        {"material_id":"mat_work","document_id":"doc_1","sha256":"s1"}])}
-    selected=inference.select_documents(index,fields,CARD_LISTS,limit=2)
-    assert [d["document_id"] for d in selected]==["doc_1","summary"]
+def test_personal_document_hint_does_not_override_exact_source_and_relevance():
+    index = make_index()
+    documents = index["materials"]["mat_work"]["documents"]
+    documents.append({"document_id": "summary", "title": "个人工作总结", "label": "工作汇总",
+                      "sha256": "summary", "person_doc": True})
+    fields = {**CARD_FIELDS, "source_documents_json": json.dumps([
+        {"material_id": "mat_work", "document_id": "doc_1", "sha256": "s1"}])}
+    selected = inference.select_documents(index, fields, CARD_LISTS, limit=2)
+    assert [d["document_id"] for d in selected] == ["doc_1", "doc_2"]
+    assert all("source_kind" not in document for document in selected)
+
+    # 任意文档被精确绑定时仍优先召回；个人标签或同材料关系不是绑定。
+    fields["source_documents_json"] = json.dumps([
+        {"material_id": "mat_work", "document_id": "summary", "sha256": "summary"}])
+    selected = inference.select_documents(index, fields, CARD_LISTS, limit=1)
+    assert [d["document_id"] for d in selected] == ["summary"]
 
 
 def test_inference_receives_only_linked_confirmed_work_context_and_invalidates_cache(tmp_path,monkeypatch):
     from tools.prompts import context
     profile={"career_status":{"reviewed":True},"career":{"work":[
-        {"id":"work1","company":"公司甲","title":"后端负责人","start":"2021-03","current":True,
+        {"id":"work1","company":"公司甲","title":"后端负责人","start":"2022-02","current":True,
          "scope":"售后服务与订单系统","contributions":["负责售后服务状态机设计"],"evidence_ids":["ec1"]},
         {"id":"work2","company":"无关公司","title":"研究员","evidence_ids":["other"]},
     ]}}
@@ -153,37 +160,37 @@ def test_inference_receives_only_linked_confirmed_work_context_and_invalidates_c
 
 def test_aggregate_documents_extracts_dates_and_first_person_statements():
     texts = {
-        "doc_1": "2023-03-06 周报。我负责统一运动中心改造，推动活动报名聚合。我参与会员中心联调。",
-        "doc_2": "2023-08-15 上线复盘。我主导统一运动中心上线，完成报名链路重构。",
+        "doc_1": "2023-03-06 周报。我负责订单服务改造，推动库存同步功能。我参与库存接口联调。",
+        "doc_2": "2023-08-15 上线复盘。我主导订单服务上线，完成订单链路重构。",
     }
     documents = [{"material_id": "mat_work", "document_id": "doc_1", "label": "2023-03 周报",
-                  "title": "统一运动中心周报", "sha256": "s1", "material_label": "EC+ 工作日志",
+                  "title": "订单服务周报", "sha256": "s1", "material_label": "示例公司工作日志",
                   "document_dates": {"window": "2023-03"}},
                  {"material_id": "mat_work", "document_id": "doc_2", "label": "2023-08 周报",
-                  "title": "统一运动中心上线复盘", "sha256": "s2", "material_label": "EC+ 工作日志",
+                  "title": "订单服务上线复盘", "sha256": "s2", "material_label": "示例公司工作日志",
                   "document_dates": {}}]
     aggregates = inference.aggregate_documents(documents, texts)
     assert aggregates[0]["owner_hits"] == 1 and aggregates[0]["participant_hits"] == 1
     assert "2023-03" in aggregates[0]["dates"] and "2023-03-06" in aggregates[0]["dates"]
-    assert any("我负责统一运动中心改造" in snippet for snippet in aggregates[0]["snippets"])
+    assert any("我负责订单服务改造" in snippet for snippet in aggregates[0]["snippets"])
 
 
 def test_parse_candidates_validates_window_and_readable_excerpts():
-    texts = {"doc_1": "2023-03-06 我负责统一运动中心改造，推动活动报名聚合上线。",
-             "doc_2": "2023-08-15 我主导统一运动中心上线。"}
+    texts = {"doc_1": "2023-03-06 我负责订单服务改造，推动库存同步功能上线。",
+             "doc_2": "2023-08-15 我主导订单服务上线。"}
     aggregates = [
         {"material_id": "mat_work", "document_id": "doc_1", "label": "2023-03 周报", "sha256": "s1",
          "owner_hits": 1, "participant_hits": 0, "snippets": []},
         {"material_id": "mat_work", "document_id": "doc_2", "label": "2023-08 周报", "sha256": "s2",
          "owner_hits": 1, "participant_hits": 0, "snippets": []},
     ]
-    windows = [(2021 * 12 + 3, 999999)]
+    windows = [(2022 * 12 + 2, 999999)]
     payload = {
         "time_range": {"value": "2023-03 ~ 2023-08", "precision": "month", "confidence": 0.7,
-                       "evidence": [{"security": "x", "document_id": "doc_1", "excerpt": "我负责统一运动中心改造"},
+                       "evidence": [{"security": "x", "document_id": "doc_1", "excerpt": "我负责订单服务改造"},
                                     {"document_id": "doc_2", "excerpt": "原文没有这句"}]},
-        "role_scope": {"value": "统一运动中心负责人", "confidence": 0.6,
-                       "evidence": [{"document_id": "doc_2", "excerpt": "我主导统一运动中心上线"}]},
+        "role_scope": {"value": "订单服务负责人", "confidence": 0.6,
+                       "evidence": [{"document_id": "doc_2", "excerpt": "我主导订单服务上线"}]},
     }
     candidates = inference.parse_inference_candidates(json.dumps(payload, ensure_ascii=False),
                                                       aggregates=aggregates, texts=texts, windows=windows)
@@ -193,7 +200,7 @@ def test_parse_candidates_validates_window_and_readable_excerpts():
     assert role_candidate["first_person_hits"] == {"owner": 1, "participant": 0}
     outside = dict(payload)
     outside["time_range"] = {"value": "2019-01 ~ 2019-06", "confidence": 0.9,
-                             "evidence": [{"document_id": "doc_1", "excerpt": "我负责统一运动中心改造"}]}
+                             "evidence": [{"document_id": "doc_1", "excerpt": "我负责订单服务改造"}]}
     assert [item for item in inference.parse_inference_candidates(json.dumps(outside), aggregates=aggregates,
                                                                 texts=texts, windows=windows)
             if item["field"] == "time_range"] == []
@@ -202,7 +209,7 @@ def test_parse_candidates_validates_window_and_readable_excerpts():
 def test_rules_only_candidates_are_l2_and_within_window():
     aggregates = [{"material_id": "mat_work", "document_id": "doc_1", "sha256": "s1",
                    "dates": ["2023-03", "2019-01"]}]
-    candidates = inference.rules_only_candidates(aggregates, [(2021 * 12 + 3, 999999)])
+    candidates = inference.rules_only_candidates(aggregates, [(2022 * 12 + 2, 999999)])
     assert len(candidates) == 1
     assert candidates[0]["level"] == "L2" and candidates[0]["value"] == "2023-03"
     assert candidates[0]["evidence"][0]["key"] == "document_date:2023-03"
@@ -211,12 +218,12 @@ def test_rules_only_candidates_are_l2_and_within_window():
 def test_infer_card_caches_and_filters_rejected_candidates(tmp_path, monkeypatch):
     root = tmp_path
     monkeypatch.setattr(inference, "select_documents", lambda *a, **k: [
-        {"material_id": "mat_work", "document_id": "doc_1", "label": "周报", "title": "统一运动中心",
+        {"material_id": "mat_work", "document_id": "doc_1", "label": "周报", "title": "订单服务",
          "sha256": "s1", "material_label": "工作日志", "material_filename": "mat_work.txt", "document_dates": {}}])
-    monkeypatch.setattr(inference, "read_document_texts", lambda *a, **k: {"doc_1": "2023-03 我负责统一运动中心改造上线。"})
-    monkeypatch.setattr(inference, "employment_windows", lambda *a, **k: ([(2021 * 12 + 3, 999999)], ["2021-03 ~ 至今"]))
+    monkeypatch.setattr(inference, "read_document_texts", lambda *a, **k: {"doc_1": "2023-03 我负责订单服务改造上线。"})
+    monkeypatch.setattr(inference, "employment_windows", lambda *a, **k: ([(2022 * 12 + 2, 999999)], ["2022-02 ~ 至今"]))
     payload = {"time_range": {"value": "2023-03", "confidence": 0.7,
-                              "evidence": [{"document_id": "doc_1", "excerpt": "我负责统一运动中心改造上线"}]},
+                              "evidence": [{"document_id": "doc_1", "excerpt": "我负责订单服务改造上线"}]},
                "role_scope": {}}
     calls = []
 
@@ -225,31 +232,31 @@ def test_infer_card_caches_and_filters_rejected_candidates(tmp_path, monkeypatch
         return json.dumps(payload, ensure_ascii=False)
 
     first = inference.infer_card(root=root, index={}, card_id="ec_1", card_sha256="sha1",
-                                 card_fields={"title": "统一运动中心", "context": ""}, card_lists={},
+                                 card_fields={"title": "订单服务", "context": ""}, card_lists={},
                                  enabled=True, llm_call=llm)
     assert first["cache"] == "miss" and len(calls) == 1 and len(first["candidates"]) == 1
     second = inference.infer_card(root=root, index={}, card_id="ec_1", card_sha256="sha1",
-                                  card_fields={"title": "统一运动中心", "context": ""}, card_lists={},
+                                  card_fields={"title": "订单服务", "context": ""}, card_lists={},
                                   enabled=True, llm_call=llm)
     assert second["cache"] == "hit" and len(calls) == 1
     state = inference.load_state(root)
     state["cards"]["ec_1"]["rejected"] = [first["candidates"][0]["candidate_hash"]]
     inference.save_state(root, state)
     third = inference.infer_card(root=root, index={}, card_id="ec_1", card_sha256="sha1",
-                                 card_fields={"title": "统一运动中心", "context": ""}, card_lists={},
+                                 card_fields={"title": "订单服务", "context": ""}, card_lists={},
                                  enabled=True, llm_call=llm)
     assert third["cache"] == "hit" and third["candidates"] == []
 
 
 def test_infer_card_disabled_returns_rules_only(tmp_path, monkeypatch):
     monkeypatch.setattr(inference, "select_documents", lambda *a, **k: [
-        {"material_id": "mat_work", "document_id": "doc_1", "label": "2023-03 周报", "title": "统一运动中心",
+        {"material_id": "mat_work", "document_id": "doc_1", "label": "2023-03 周报", "title": "订单服务",
          "sha256": "s1", "material_label": "工作日志", "material_filename": "mat_work.txt",
          "document_dates": {"window": "2023-03"}}])
-    monkeypatch.setattr(inference, "read_document_texts", lambda *a, **k: {"doc_1": "2023-03 我负责统一运动中心改造。"})
-    monkeypatch.setattr(inference, "employment_windows", lambda *a, **k: ([(2021 * 12 + 3, 999999)], ["2021-03 ~ 至今"]))
+    monkeypatch.setattr(inference, "read_document_texts", lambda *a, **k: {"doc_1": "2023-03 我负责订单服务改造。"})
+    monkeypatch.setattr(inference, "employment_windows", lambda *a, **k: ([(2022 * 12 + 2, 999999)], ["2022-02 ~ 至今"]))
     result = inference.infer_card(root=tmp_path, index={}, card_id="ec_1", card_sha256="sha1",
-                                  card_fields={"title": "统一运动中心", "context": ""}, card_lists={},
+                                  card_fields={"title": "订单服务", "context": ""}, card_lists={},
                                   enabled=False, llm_call=lambda prompt: (_ for _ in ()).throw(AssertionError("no llm")))
     assert result["status"] == "rules_only"
     assert result["candidates"] and result["candidates"][0]["level"] == "L2"

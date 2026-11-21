@@ -1,4 +1,4 @@
-"""知识索引命令：转发到 tooling/knowledge（build/tree/find/grep/read/refs/cards/leads/person-docs/verify/coverage）。
+"""知识索引命令：转发到 tooling/knowledge（build/tree/find/grep/read/refs/cards/leads/verify/coverage）。
 
 用法见 AIEF/docs/plans/2026-10-17-knowledge-index.md；索引只做导航，引用前必须
 用 ``kb read`` 回原文，并以 material_id/document_id/sha256 锚定。

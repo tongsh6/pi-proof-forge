@@ -24,12 +24,12 @@ def test_suggest_then_apply_links_and_invalidates_review():
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "materials").mkdir(); (root / "evidence_cards").mkdir()
-        (root / "materials" / "mat_ec.meta.yaml").write_text('material_id: "mat_ec"\nlabel: "EC+ 工作汇总"\nkind: "raw_work_material"\nfilename: "mat_ec.md"\nextension: ".md"\n', encoding="utf-8")
-        (root / "materials" / "mat_ec.md").write_text("x", encoding="utf-8")
-        _card(root / "evidence_cards" / "ec_new.yaml", "ec_new", "新卡", "mat_ec")
+        (root / "materials" / "mat_demo.meta.yaml").write_text('material_id: "mat_demo"\nlabel: "DEMO 合成工作汇总"\nkind: "raw_work_material"\nfilename: "mat_demo.md"\nextension: ".md"\n', encoding="utf-8")
+        (root / "materials" / "mat_demo.md").write_text("x", encoding="utf-8")
+        _card(root / "evidence_cards" / "ec_new.yaml", "ec_new", "新卡", "mat_demo")
         _card(root / "evidence_cards" / "ec_far.yaml", "ec_far", "无关卡", "mat_other")
         career = {"schema_version": 1, "summary": "s", "education_visibility": "omit", "education": [], "skills": [{"id": "sk1", "category": "c", "description": "d", "evidence_ids": []}], "extras": [],
-                  "work": [{"id": "w_ec", "company": "一里智辉（EC+）", "department": "", "title": "Tech Lead", "start": "2021-03", "end": "", "current": True, "scope": "s", "contributions": ["c"], "evidence_ids": []}]}
+                  "work": [{"id": "w_demo", "company": "示例软件（DEMO）", "department": "", "title": "Tech Lead", "start": "2020-01", "end": "", "current": True, "scope": "s", "contributions": ["c"], "evidence_ids": []}]}
         profile_path = root / "personal_profile.yaml"
         profile_path.write_text("\n".join([
             'name: "N"', 'phone: "13800000000"', 'email: "a@b.co"', 'city: "上海"', 'current_position: "Tech Lead"',

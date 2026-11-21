@@ -318,3 +318,167 @@ def test_job_preferences_roundtrip_from_referenced_material(env):
     (vault / "proj" / "a.md").write_text("# 甲改\n\n甲内容改了。\n", encoding="utf-8")
     with pytest.raises(ValueError):
         load_preferences(profile_path)
+
+
+def _exact_card(env, monkeypatch, *, whole=False):
+    from tools.sidecar.handlers import evidence
+    from tools.infra.material_documents import split_material_documents
+    tmp, vault, library = env
+    bound = vault / "proj" / "a.md"
+    bound.write_text("原始可核结果。\n编辑后可核结果。\n", encoding="utf-8")
+    created = _create(root_id="msr_test", relpath="proj", label="引用·已有卡片")
+    mid = created["material_id"]
+    cache = library / created["filename"]
+    doc = next(d for d in split_material_documents(cache.read_text(), cache.name) if d["source_name"]=="a.md")
+    refs = [{"material_id":mid,"document_id":doc["document_id"],"sha256":doc["sha256"]}]
+    card_dir = tmp / "evidence_cards"
+    monkeypatch.setattr(evidence, "_EVIDENCE_DIR", card_dir)
+    card = card_dir / "ec_exact.yaml"
+    evidence._write_evidence_file(card, {
+        "id":"ec_exact","title":"已有卡片","status":"saved_eligible","review_decision":"approved",
+        "candidate_pool_eligible":True,"source_material_ids":[mid],
+        "source_documents_json":json.dumps(refs),"source_whole_material_ids_json":json.dumps([mid] if whole else []),
+        "results":["原始可核结果。"],"artifacts":[mid],"time_range":"","context":"","role_scope":"",
+        "created_at":"","updated_at":"","actions":[],"stack":[],"tags":[]
+    })
+    return evidence,card,bound,cache,mid,refs
+
+
+def test_exact_card_edit_rereview_and_snapshot_across_unrelated_collection_drift(env,monkeypatch):
+    import hashlib
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+    from tools.infra.evidence_sources import assert_captured_source, validated_source_inputs
+    from tools.sidecar.handlers._shared.material_sources import selected_text_materials
+
+    evidence,card,bound,cache,mid,refs = _exact_card(env,monkeypatch)
+    (bound.parent/"sub"/"b.md").write_text("无关源文件改动。",encoding="utf-8")
+    (bound.parent/"new.md").write_text("新增文件未被选定。",encoding="utf-8")
+    cache_before=cache.read_bytes()
+    with pytest.raises(ValueError, match="material_source_changed"):
+        selected_text_materials([mid])
+    evidence.handle_evidence_update({"meta":{"correlation_id":"t"},"evidence_id":"ec_exact",
+                                     "patch":{"results":"编辑后可核结果。"}})
+    saved=parse_simple_yaml(card.read_text())
+    assert saved["lists"]["results"]==["编辑后可核结果。"]
+    assert saved["scalars"]["status"]=="needs_review"
+    assert saved["scalars"]["review_decision"]=="pending"
+    assert saved["scalars"]["candidate_pool_eligible"]=="false"
+    params={"meta":{"correlation_id":"t"},"evidence_id":"ec_exact","save_mode":"eligible",
+            "expected_sha256":hashlib.sha256(card.read_bytes()).hexdigest(),"review":{"decision":"approved"},
+            "draft":{"title":"已有卡片","results":"编辑后可核结果。","artifacts":[{"ref":mid,"type":"text_document","label":"原始材料"}],
+                     "source_material_ids":[mid],"source_documents":refs,
+                     "field_sources":[{"field":"results","value":"编辑后可核结果。","quote":"编辑后可核结果。",**refs[0]}]}}
+    evidence.handle_evidence_save_draft(params)
+    saved=parse_simple_yaml(card.read_text())
+    assert saved["scalars"]["status"]=="saved_eligible"
+    sources=validated_source_inputs(saved, cache.parent.parent)
+    assert bound.resolve() in {path.resolve() for path in sources.values()}
+    assert cache.read_bytes()==cache_before
+    bound.write_text(bound.read_text()+"所绑定文件有改动。",encoding="utf-8")
+    source_key=next(key for key,path in sources.items() if path.resolve()==bound.resolve())
+    with pytest.raises(ValueError,match="material_source_changed"):
+        assert_captured_source(sources,source_key,hashlib.sha256(bound.read_bytes()).hexdigest())
+    with pytest.raises(ValueError,match="material_source_changed"):
+        validated_source_inputs(saved,cache.parent.parent)
+
+
+@pytest.mark.parametrize("fault",["bound_edited","bound_missing","cached_tampered","ambiguous","forged_label","unbound_new","whole_material"])
+def test_scoped_edit_fails_closed_and_preserves_card_on_integrity_failure(env,monkeypatch,fault):
+    evidence,card,bound,cache,mid,_=_exact_card(env,monkeypatch,whole=fault=="whole_material")
+    (bound.parent/"sub"/"b.md").write_text("无关源文件改动。",encoding="utf-8")
+    proposal="编辑后可核结果。"
+    if fault=="bound_edited":
+        bound.write_text(bound.read_text()+"所绑定文件有改动。",encoding="utf-8")
+    elif fault=="bound_missing":
+        bound.unlink()
+    elif fault=="cached_tampered":
+        cache.write_text(cache.read_text().replace("编辑后可核结果。","缓存伪造。"),encoding="utf-8")
+    elif fault=="ambiguous":
+        cache.write_text(cache.read_text()+"\n# Source: a.md\n\n"+bound.read_text(),encoding="utf-8")
+    elif fault=="forged_label":
+        from tools.infra.persistence.yaml_io import parse_simple_yaml
+        text=card.read_text()
+        refs=json.loads(parse_simple_yaml(text)["scalars"]["source_documents_json"])
+        refs[0]["label"]="伪来源"
+        encoded=json.dumps(json.dumps(refs,ensure_ascii=False),ensure_ascii=False)
+        card.write_text("\n".join("source_documents_json: "+encoded if line.startswith("source_documents_json:")
+                                    else line for line in text.splitlines())+"\n",encoding="utf-8")
+    elif fault=="unbound_new":
+        proposal="新增文件未被选定。"
+        (bound.parent/"new.md").write_text(proposal,encoding="utf-8")
+    before=card.read_bytes()
+    with pytest.raises(ValueError):
+        evidence.handle_evidence_update({"meta":{"correlation_id":"t"},"evidence_id":"ec_exact",
+                                         "patch":{"results":proposal}})
+    assert card.read_bytes()==before
+
+
+def test_bound_file_race_does_not_commit_evidence_edit(env,monkeypatch):
+    from tools.sidecar.handlers import evidence_crud
+    evidence,card,bound,cache,mid,_=_exact_card(env,monkeypatch)
+    original=evidence_crud.read_source_documents
+    def after_read(*args,**kwargs):
+        selected=original(*args,**kwargs)
+        bound.write_text(bound.read_text()+"所绑定文件竞态改动。",encoding="utf-8")
+        return selected
+    monkeypatch.setattr(evidence_crud,"read_source_documents",after_read)
+    before=card.read_bytes()
+    with pytest.raises(ValueError,match="material_source_changed"):
+        evidence.handle_evidence_update({"meta":{"correlation_id":"t"},"evidence_id":"ec_exact",
+                                        "patch":{"results":"编辑后可核结果。"}})
+    assert card.read_bytes()==before
+
+
+@pytest.mark.parametrize("case", ["success", "same_material_expansion", "whole", "changed_new", "changed_old", "stale", "reordered", "new_race", "card_race"])
+def test_merge_scopes_only_unchanged_exact_materials(env, monkeypatch, case):
+    import hashlib
+    from tools.infra.evidence_sources import validated_source_inputs
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+
+    evidence,card,bound,cache,mid,refs = _exact_card(env,monkeypatch,whole=case=="whole")
+    tmp,vault,library = env
+    extra=vault/"new.md"; extra.write_text("独立材料证实本人职责。",encoding="utf-8")
+    fresh=_create(root_id="msr_test",relpath="new.md",label="新增材料")["material_id"]
+    same_docs=evidence.handle_list_material_documents({"material_id":mid})["items"]
+    fresh_doc=evidence.handle_list_material_documents({"material_id":fresh})["items"][0]
+    extra_ref={"material_id":fresh,**{k:fresh_doc[k] for k in ("document_id","sha256","label")}}
+    source_docs=refs+[extra_ref]
+    if case=="same_material_expansion":
+        same_doc=next(d for d in same_docs if d["document_id"]!=refs[0]["document_id"])
+        source_docs=source_docs+[{"material_id":mid,**{k:same_doc[k] for k in ("document_id","sha256","label")}}]
+    (bound.parent/"sub"/"b.md").write_text("无关文件另有改动。",encoding="utf-8")
+    if case=="changed_new": extra.write_text("新增证据已改变。",encoding="utf-8")
+    if case=="changed_old": bound.write_text("所选正文已改变。",encoding="utf-8")
+    if case=="reordered": source_docs.reverse()
+    before=card.read_bytes()
+    role="独立材料证实本人职责。"
+    params={"meta":{"correlation_id":"synthetic-qa"},"evidence_id":"ec_exact","save_mode":"eligible",
+        "expected_sha256":hashlib.sha256(before).hexdigest() if case!="stale" else "stale",
+        "review":{"decision":"approved","merge_sources":True},
+        "draft":{"title":"已有卡片","role_scope":role,"results":"原始可核结果。",
+                 "source_material_ids":[mid,fresh],"source_documents":source_docs,
+                 "artifacts":[{"ref":mid,"type":"text_document","label":"原始材料"}],
+                 "field_sources":[{"field":"role_scope","value":role,"quote":role,**extra_ref}]}}
+    if case in {"new_race", "card_race"}:
+        from tools.sidecar.handlers import evidence_draft
+        read = evidence_draft.read_source_documents
+        def read_then_change(*args, **kwargs):
+            result = read(*args, **kwargs)
+            if case == "new_race":
+                extra.write_text("合并验证后的变更。", encoding="utf-8")
+            else:
+                card.write_bytes(before+b"# concurrent\n")
+            return result
+        monkeypatch.setattr(evidence_draft, "read_source_documents", read_then_change)
+    if case!="success":
+        error={"stale":"evidence_review_changed","card_race":"evidence_review_changed","reordered":"evidence_review_source_mismatch"}.get(case,"material_source_changed")
+        with pytest.raises(ValueError,match=error):
+            evidence.handle_evidence_save_draft(params)
+        assert card.read_bytes()==(before+b"# concurrent\n" if case=="card_race" else before)
+        return
+    result=evidence.handle_evidence_save_draft(params)
+    assert result["candidate_pool_eligible"] is True
+    saved=parse_simple_yaml(card.read_text())
+    assert json.loads(saved["scalars"]["source_documents_json"])==source_docs
+    sources=validated_source_inputs(saved,library)
+    assert {bound.resolve(),extra.resolve()}<={path.resolve() for path in sources.values()}

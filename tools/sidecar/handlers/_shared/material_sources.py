@@ -75,3 +75,36 @@ def list_material_source_items() -> list[dict[str, Any]]:
 
 def ensure_referenced_text(item: dict[str, Any]) -> Path:
     return materials_handler.ensure_referenced_text(item)
+
+
+def evidence_bound_materials(material_ids, references, whole_material_ids, *, fingerprints=None):
+    """Only already persisted refs may be passed here; new selection uses the standard reader."""
+    from tools.infra.evidence_sources import exact_document_groups
+    from tools.infra.referenced_materials import verify_bound_documents
+    groups = exact_document_groups(material_ids, references, whole_material_ids)
+    if not groups:
+        return selected_text_materials(material_ids), {}
+    items = {}
+    for item in list_material_source_items():
+        mid = item["material_id"]
+        if mid in groups:
+            if mid in items:
+                raise ValueError("material_source_changed")
+            items[mid] = item
+    records, snapshots = [], {}
+    for mid in material_ids:
+        item = items.get(mid)
+        if not item:
+            raise ValueError("material_source_changed")
+        if item.get("source_mode") != "referenced":
+            records.extend(selected_text_materials([mid]))
+            continue
+        try:
+            cache, docs, verified = verify_bound_documents(
+                materials_dir(), item, groups[mid], materials_handler._allowed_roots(),
+                fingerprint=fingerprints[mid] if fingerprints else None)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+            raise ValueError("material_source_changed") from exc
+        snapshots.update(verified)
+        records.append({**item, "path":cache, "verified_documents":docs})
+    return records, snapshots

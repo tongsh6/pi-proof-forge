@@ -13,15 +13,15 @@ from tools.sidecar.handlers import evidence
 
 
 CARD_YAML = (
-    'id: "ec_1"\ntitle: "统一运动中心"\ntime_range: ""\ncontext: "会员中心活动报名"\n'
+    'id: "ec_1"\ntitle: "订单服务"\ntime_range: ""\ncontext: "订单处理与库存同步"\n'
     'role_scope: ""\nstatus: "saved_incomplete"\ncreated_at: "now"\nupdated_at: "now"\n'
-    'actions:\n  - "改造会员中心"\nresults:\n  - "活动报名聚合上线"\n'
-    'stack:\n  - "Java"\ntags:\n  - "会员"\n'
+    'actions:\n  - "改造订单服务"\nresults:\n  - "库存同步功能上线"\n'
+    'stack:\n  - "Java"\ntags:\n  - "订单"\n'
 )
 
 INDEX = {"nonfact_materials": [], "materials": {"mat_work": {
-    "material_id": "mat_work", "label": "EC+ 工作日志", "filename": "mat_work.txt",
-    "documents": [{"document_id": "doc_1", "label": "2023-03 周报", "title": "统一运动中心周报",
+    "material_id": "mat_work", "label": "示例公司工作日志", "filename": "mat_work.txt",
+    "documents": [{"document_id": "doc_1", "label": "2023-03 周报", "title": "订单服务周报",
                    "source_name": "2023-03-06.md", "sha256": "s1", "dates": {"window": "2023-03"}}]}}}
 
 
@@ -36,21 +36,21 @@ def _setup(tmp_path, monkeypatch):
     monkeypatch.setattr(evidence, "_EVIDENCE_DIR", evidence_dir)
     monkeypatch.setattr(inference, "select_documents", lambda *a, **k: [
         {"material_id": "mat_work", "document_id": "doc_1", "label": "2023-03 周报",
-         "title": "统一运动中心周报", "sha256": "s1", "material_label": "EC+ 工作日志",
+         "title": "订单服务周报", "sha256": "s1", "material_label": "示例公司工作日志",
          "material_filename": "mat_work.txt", "document_dates": {"window": "2023-03"}}])
     monkeypatch.setattr(inference, "read_document_texts", lambda *a, **k: {
-        "doc_1": "2023-03-06 周报。我负责统一运动中心改造，推动活动报名聚合上线。"})
+        "doc_1": "2023-03-06 周报。我负责订单服务改造，推动库存同步功能上线。"})
     monkeypatch.setattr(inference, "employment_windows", lambda *a, **k: (
-        [(2021 * 12 + 3, 999999)], ["2021-03 ~ 至今"]))
+        [(2022 * 12 + 2, 999999)], ["2022-02 ~ 至今"]))
     return path
 
 
 def _fake_llm(prompt: str) -> str:
     return json.dumps({
         "time_range": {"value": "2023-03", "precision": "month", "confidence": 0.7,
-                       "evidence": [{"document_id": "doc_1", "excerpt": "我负责统一运动中心改造"}]},
-        "role_scope": {"value": "会员中心改造负责人", "confidence": 0.6,
-                       "evidence": [{"document_id": "doc_1", "excerpt": "我负责统一运动中心改造"}]},
+                       "evidence": [{"document_id": "doc_1", "excerpt": "我负责订单服务改造"}]},
+        "role_scope": {"value": "订单服务改造负责人", "confidence": 0.6,
+                       "evidence": [{"document_id": "doc_1", "excerpt": "我负责订单服务改造"}]},
     }, ensure_ascii=False)
 
 

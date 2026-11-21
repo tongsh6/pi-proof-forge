@@ -323,18 +323,6 @@ def _cmd_leads(args) -> int:
     return 0
 
 
-def _cmd_person_docs(args) -> int:
-    index = _load_index(args.root)
-    if index is None:
-        return 1
-    if args.json:
-        print(json.dumps(index["person_docs"], ensure_ascii=False, indent=1))
-        return 0
-    for item in index["person_docs"]:
-        print(f"{item['material_id']}  {item['label']}  ({item['note']})")
-    return 0
-
-
 def _cmd_verify(args) -> int:
     index = _load_index(args.root)
     if index is None:
@@ -452,10 +440,6 @@ def main(argv: list[str] | None = None) -> int:
     leads.add_argument("--include-demo", action="store_true")
     leads.add_argument("--limit", type=int, default=200)
     leads.set_defaults(func=_cmd_leads)
-
-    person = sub.add_parser("person-docs", help="列出人写文档白名单（角色句可信来源）")
-    add_root(person)
-    person.set_defaults(func=_cmd_person_docs)
 
     verify = sub.add_parser("verify", help="重哈希校验索引是否失效")
     add_root(verify)

@@ -72,7 +72,7 @@ def career_from_scalars(fields):
 
 
 def inspect_career(fields, evidence_dir:Path):
-    from tools.infra.evidence_sources import validated_source_inputs
+    from tools.infra.evidence_sources import assert_captured_source, validated_source_inputs
     career=career_from_scalars(fields);missing=[];hashes={};source_hashes={}
     def gap(field,label):missing.append({'field':field,'label':label})
     for field in BASIC_FIELDS:
@@ -97,8 +97,14 @@ def inspect_career(fields, evidence_dir:Path):
                     if s.get('source_material_fingerprints_json'):
                         try:
                             paths=validated_source_inputs(doc,evidence_dir.parent/'materials')
-                            source_hashes[ref]={key:hashlib.sha256(path.read_bytes()).hexdigest() for key,path in paths.items()}
-                        except ValueError:
+                            captured={}
+                            for key,path in paths.items():
+                                digest=hashlib.sha256(path.read_bytes()).hexdigest()
+                                assert_captured_source(paths,key,digest)
+                                captured[key]=digest
+                            if captured:
+                                source_hashes[ref]=captured
+                        except (ValueError,OSError):
                             valid=False;source_hashes[ref]='invalid'
                 if not valid:gap('evidence.'+ref,'关联证据不可用或尚未审核：'+ref)
     body={'basic':{k:fields.get(k,'') for k in BASIC_FIELDS},'career':career,'evidence_hashes':hashes}
@@ -111,8 +117,16 @@ def inspect_career(fields, evidence_dir:Path):
 
 
 def load_career_profile(path:Path):
+    """加载档案并实时计算确认状态。
+
+    profile 可能不在仓库根（CLI 的 --personal-profile、验收副本），此时证据卡
+    目录回退到工作区 evidence_cards——否则关联卡全部读不到，会把已确认档案
+    误判为未确认，进而让档案事实从语义评审里整体消失。
+    """
     fields=dict(parse_simple_yaml(path.read_text(encoding='utf-8'))['scalars']) if path.is_file() else {}
-    return {**fields,**inspect_career(fields,path.parent/'evidence_cards')}
+    evidence_dir=path.parent/'evidence_cards'
+    if not evidence_dir.is_dir():evidence_dir=Path('evidence_cards')
+    return {**fields,**inspect_career(fields,evidence_dir)}
 
 
 def career_generation_issues(profile, cards):
@@ -161,7 +175,7 @@ _COMPANY_SUFFIX=re.compile(r'(股份有限公司|有限责任公司|有限公司
 
 
 def company_aliases(company):
-    """公司全称、去掉城市前缀与行业/组织形式后缀的核心名、括号里的简称（如 EC+）；过滞泛词。"""
+    """公司全称、去掉城市前缀与行业/组织形式后缀的核心名、括号里的简称（如 CB）；过滞泛词。"""
     text=(company or '').strip()
     if not text:return []
     aliases=[text]

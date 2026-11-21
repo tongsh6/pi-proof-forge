@@ -42,10 +42,10 @@ def make_root(tmp_path: Path) -> Path:
     (materials / "mat_aaaa1111.meta.yaml").write_text(
         'material_id: "mat_aaaa1111"\nlabel: "客户A项目记录"\nkind: "raw_work_material_directory"\n'
         'filename: "mat_aaaa1111.txt"\n', encoding="utf-8")
-    (materials / "mat_331bc1bc.md").write_text("# 个人职业与教育时间线\n\n九恒星 2015.06–2018.10。\n", encoding="utf-8")
-    (materials / "mat_331bc1bc.meta.yaml").write_text(
-        'material_id: "mat_331bc1bc"\nlabel: "已确认职业与教育时间线"\nkind: "raw_work_material"\n'
-        'filename: "mat_331bc1bc.md"\n', encoding="utf-8")
+    (materials / "mat_timeline.md").write_text("# 个人职业与教育时间线\n\n远帆科技 2016.04–2019.07。\n", encoding="utf-8")
+    (materials / "mat_timeline.meta.yaml").write_text(
+        'material_id: "mat_timeline"\nlabel: "已确认职业与教育时间线"\nkind: "raw_work_material"\n'
+        'filename: "mat_timeline.md"\n', encoding="utf-8")
     (materials / "mat_quick_run_verify.md").write_text(
         "# Quick Run verifier material\n时间：2025-06 ~ 2025-09\n", encoding="utf-8")
     (materials / "mat_quick_run_verify.meta.yaml").write_text(
@@ -73,7 +73,7 @@ def make_root(tmp_path: Path) -> Path:
         'id: "ec-2026-001"\ntitle: "示例卡"\ntime_range: "2026-01 ~ 2026-02"\nrole_scope: "示例职责"\n',
         encoding="utf-8")
 
-    career = {"work": [{"id": "work_ecplus", "company": "一里智辉（EC+）", "start": "2021-03", "end": "",
+    career = {"work": [{"id": "work_example", "company": "云桥（CB）", "start": "2022-02", "end": "",
                         "current": True, "evidence_ids": ["ec_1111aaaa"]}], "education": [], "skills": [], "extras": []}
     (tmp_path / "personal_profile.yaml").write_text(
         'name: "测试"\n'
@@ -156,7 +156,7 @@ def test_refs_outputs_relations(root: Path, capsys):
     assert kb.main(["refs", "ec_1111aaaa", "--root", str(root)]) == 0
     out = capsys.readouterr().out
     assert "cites" in out and "mat_aaaa1111" in out
-    assert "work_ecplus" in out
+    assert "work_example" in out
     assert "time_range" in out
 
 
@@ -168,13 +168,6 @@ def test_cards_filters_and_demo(root: Path, capsys):
     assert "ec-2026-001" in capsys.readouterr().out
     assert kb.main(["cards", "--has-date-hints", "--root", str(root)]) == 0
     assert "2017-02" in capsys.readouterr().out
-
-
-def test_person_docs_lists_whitelist(root: Path, capsys):
-    assert kb.main(["person-docs", "--root", str(root)]) == 0
-    out = capsys.readouterr().out
-    assert "mat_331bc1bc" in out
-    assert "mat_quick_run_verify" not in out
 
 
 def test_json_flag_returns_valid_json(root: Path, capsys):

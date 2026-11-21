@@ -14,10 +14,11 @@ from typing import Any, Callable
 
 from tools.infra import evidence_provenance as provenance
 from tools.infra.career_profile import load_career_profile
+from tools.infra.persistence.atomic_io import atomic_write_text
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.prompts.context import context_fingerprint
 
-INFERENCE_PROMPT_VERSION = 5
+INFERENCE_PROMPT_VERSION = 6
 INFERENCE_STATE_SCHEMA_VERSION = 1
 MAX_DOCUMENTS = 20
 MAX_EXCERPTS = 5
@@ -101,8 +102,7 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
         if isinstance(ref, dict)
         and all(isinstance(ref.get(key), str) and ref[key] for key in ("material_id", "document_id", "sha256"))
     }
-    bound_materials = {ref[0] for ref in bound}
-    scored: list[tuple[bool, bool, int, int, dict[str, Any]]] = []
+    scored: list[tuple[bool, int, int, dict[str, Any]]] = []
     for material_id, material in materials.items():
         if not isinstance(material, dict) or material_id in nonfact:
             continue
@@ -124,10 +124,9 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
             label_overlap = len(query_grams & material_grams)
             score = overlap * 2 + label_overlap
             is_bound = (material_id, document_id, str(document.get("sha256", ""))) in bound
-            is_summary = material_id in bound_materials and document.get("person_doc") is True
-            if score <= 0 and not (is_bound or is_summary):
+            if score <= 0 and not is_bound:
                 continue
-            scored.append((is_bound, is_summary, len(title_grams & doc_grams), score, {
+            scored.append((is_bound, len(title_grams & doc_grams), score, {
                 "material_id": material_id,
                 "document_id": document_id,
                 "label": str(document.get("label", "")),
@@ -136,11 +135,10 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
                 "material_label": label,
                 "material_filename": str(material.get("filename", "")),
                 "document_dates": document.get("dates") or {},
-                "source_kind": "career_summary" if document.get("person_doc") else "work_material",
             }))
-    scored.sort(key=lambda item: (-item[0], -item[1], -item[2], -item[3],
-                                  item[4]["material_id"], item[4]["document_id"]))
-    return [item[4] for item in scored[:limit]]
+    scored.sort(key=lambda item: (-item[0], -item[1], -item[2],
+                                  item[3]["material_id"], item[3]["document_id"]))
+    return [item[3] for item in scored[:limit]]
 
 
 def read_document_texts(root: Path, documents: list[dict[str, Any]]) -> dict[str, str]:
@@ -205,7 +203,6 @@ def aggregate_documents(
             "snippets": list(dict.fromkeys([*owner, *participant]))[:max_excerpts],
             "context_excerpt": text[:1000],
             "excerpt_truncated": len(text) > 1000,
-            "source_kind": document.get("source_kind", "work_material"),
         })
     return aggregates
 
@@ -458,9 +455,9 @@ def load_state(root: Path) -> dict[str, Any]:
 def save_state(root: Path, state: dict[str, Any]) -> Path:
     path = state_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(
+        path, json.dumps(state, ensure_ascii=False, indent=1, sort_keys=True)
+    )
     return path
 
 
