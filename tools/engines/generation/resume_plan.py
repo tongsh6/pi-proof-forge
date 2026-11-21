@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from tools.engines.generation.fact_index import Fact, FactIndex
+from tools.engines.generation.fact_index import Fact, FactIndex, PROFILE_GROUPS
 from tools.engines.generation.fact_quality import presentable
 from tools.engines.generation.fact_selector import SelectedFacts
 
@@ -22,7 +22,6 @@ from tools.engines.generation.fact_selector import SelectedFacts
 MAX_WORK_DUTIES = 4
 MAX_WORK_ACHIEVEMENTS = 2
 MAX_CAPABILITIES = 4
-MAX_EXTRAS = 2
 MAX_STACK = 12
 MAX_BACKGROUND_CHARS = 120
 
@@ -357,21 +356,35 @@ def build_resume_plan(
                 )
             )
 
+    # selector 交付完整条目的所有非空字段；这里只装配，不从 career 补选
+    # 原数组前两项，也不通过删说明或链接改变原子成本。
+    extra_fields = PROFILE_GROUPS["extras"]
+    extra_groups: dict[str, list[Fact]] = {}
+    for fact_id in selected.profile_highlights:
+        fact = index.get(fact_id)
+        parts = fact.field.split(".") if fact is not None else []
+        if (fact is None or fact.kind != "profile" or fact.source_id != "personal_profile"
+                or len(parts) != 4 or parts[:2] != ["career", "extras"]
+                or parts[3] not in extra_fields):
+            raise ValueError("unbound_resume_fact")
+        extra_groups.setdefault(".".join(parts[:3]), []).append(fact)
     extras: list[ExtraBlock] = []
-    for item in (career.get("extras") or [])[:MAX_EXTRAS]:
-        if not isinstance(item, dict) or not item.get("title") or not item.get("description"):
-            continue
-        fact_ids = tuple(
-            fact.fact_id
-            for key in ("title", "description", "url")
-            if (fact := index.get(f"personal_profile:career.extras.{item['id']}.{key}:0")) is not None
-        )
+    for prefix, facts in extra_groups.items():
+        current = {
+            name: fact for name in extra_fields
+            if (fact := index.get(f"personal_profile:{prefix}.{name}:0")) is not None
+        }
+        if (not {"title", "description"}.issubset(current)
+                or len(facts) != len(current)
+                or {fact.fact_id for fact in facts} != {fact.fact_id for fact in current.values()}):
+            raise ValueError("unbound_resume_fact")
+        fact_ids = tuple(fact.fact_id for fact in current.values())
         push(fact_ids)
         extras.append(
             ExtraBlock(
-                title=_squash(item.get("title")),
-                description=_squash(item.get("description")),
-                url=_squash(item.get("url")),
+                title=current["title"].text,
+                description=current["description"].text,
+                url=current["url"].text if "url" in current else "",
                 fact_ids=fact_ids,
             )
         )

@@ -8,16 +8,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from tools.engines.generation.fact_index import Fact, FactIndex, _requirement_map
+from tools.engines.generation.fact_index import Fact, FactIndex, PROFILE_GROUPS, _requirement_map
 from tools.engines.generation.fact_quality import judge_fact_text
 
 MAX_PROJECTS = 3
+MAX_EXTRAS = 2
 PROJECT_FIELD_LIMITS = {"actions": 3, "results": 2}
 
 
 @dataclass(frozen=True)
 class SelectionBudget:
-    """章节配额；min 是希望保留的下限，所有选择仍受全篇与正文上限约束。"""
+    """可选 Fact 配额；min 是剩余预算下的软下限，不计必要档案结构。"""
 
     min_work_facts: int = 3
     max_work_facts: int = 8
@@ -29,8 +30,7 @@ class SelectionBudget:
 class SelectedFacts:
     work: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     projects: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    profile_highlights: tuple[str, ...] = ()
-    excluded: Mapping[str, str] = field(default_factory=dict)
+    profile_highlights: tuple[str, ...] = ()  # 完整选中的可选档案条目字段
     total: int = 0
 
 
@@ -99,50 +99,82 @@ def select_facts(
     total_limit = max(0, budget.max_total_facts)
     project_limit = max(0, min(max_projects, MAX_PROJECTS))
     block_limit = max(0, budget.max_project_facts)
-    verdicts = {
-        fact.fact_id: judge_fact_text(
+    # 本轮只有证据/工作候选使用正文句可用性检查。已确认 extras 的
+    # title/description/url 是完整结构条目，不能借行动句规则删掉合法链接。
+    allowed = {
+        fact.fact_id for fact in index.facts
+        if (fact.kind == "evidence" or fact.work_id)
+        and judge_fact_text(
             fact.text, field=fact.field,
             strict=fact.kind != "profile" and fact.field != "results",
-        )
-        for fact in index.facts
+        ).presentable
     }
-    allowed = {fid for fid, verdict in verdicts.items() if verdict.presentable}
 
-    # 合并同一项目后才分配 3 行动 / 2 成果。结构上下文由 plan 读取，
-    # 不产生 occurrence，因而既不占正文名额也不授引用覆盖。
+    # 同一项目先合并，再分配 3 行动 / 2 成果；原始 Fact 顺序只作稳定取舍。
     groups = project_groups or {}
-    grouped: dict[str, list[Fact]] = {}
+    grouped: dict[str, tuple[int, list[Fact]]] = {}
     for card_id in index.card_ids:
+        card_facts = index.by_card(card_id)
         key = groups.get(card_id) or card_id
-        grouped.setdefault(key, []).extend(
-            fact for fact in index.by_card(card_id)
+        _order, facts = grouped.setdefault(key, (card_facts[0].order, []))
+        facts.extend(
+            fact for fact in card_facts
             if fact.fact_id in allowed and fact.field in PROJECT_FIELD_LIMITS
         )
+    extra_fields = PROFILE_GROUPS["extras"]
+    extra_groups: dict[str, list[Fact]] = {}
+    for fact in index.facts:
+        parts = fact.field.split(".")
+        if (fact.kind == "profile" and fact.source_id == "personal_profile"
+                and len(parts) == 4 and parts[:2] == ["career", "extras"]
+                and parts[3] in extra_fields):
+            extra_groups.setdefault(".".join(parts[:3]), []).append(fact)
+    extra_groups = {
+        key: sorted(facts, key=lambda fact: extra_fields.index(fact.field.rsplit(".", 1)[1]))
+        for key, facts in extra_groups.items()
+        if {"title", "description"}.issubset(
+            fact.field.rsplit(".", 1)[1] for fact in facts
+        )
+    }
     remaining = dict(grouped)
+    remaining_extras = dict(extra_groups)
     projects: dict[str, list[Fact]] = {}
+    extras: dict[str, list[Fact]] = {}
     used: set[str] = set()
 
-    # 先选真正新增的正引用；未引用补充不能先耗尽其他项目的引用预算。
-    while remaining and len(projects) < project_limit and len(used) < total_limit:
+    # 项目与完整 extras 在同一轮比较新增正引用。条目伴随字段共同计成本，
+    # 但只被精确正向引用的身份贡献支持；未引用补充不能先耗尽其预算。
+    while len(used) < total_limit:
         proposals = []
-        capacity = min(block_limit, total_limit - len(used))
-        for position, (key, facts) in enumerate(remaining.items()):
-            candidates = [
-                fact for fact in facts
-                if fact.fact_id not in used and (not granular or requirements.get(fact.fact_id))
-            ]
-            chosen = _take(candidates, capacity, requirements,
-                           field_limits=PROJECT_FIELD_LIMITS)
-            if chosen:
-                proposals.append((_support_value(chosen, requirements), position, key, chosen))
+        capacity = total_limit - len(used)
+        if len(projects) < project_limit:
+            for key, (order, facts) in remaining.items():
+                candidates = [
+                    fact for fact in facts
+                    if fact.fact_id not in used and (not granular or requirements.get(fact.fact_id))
+                ]
+                chosen = _take(candidates, min(block_limit, capacity), requirements,
+                               field_limits=PROJECT_FIELD_LIMITS)
+                if chosen:
+                    proposals.append((_support_value(chosen, requirements), order, "project", key, chosen))
+        if len(extras) < MAX_EXTRAS:
+            for key, facts in remaining_extras.items():
+                new = [fact for fact in facts if fact.fact_id not in used]
+                if new and len(new) <= capacity:
+                    proposals.append((_support_value(new, requirements),
+                                      min(fact.order for fact in facts), "extra", key, facts))
         if not proposals:
             break
-        gain, _position, key, chosen = min(proposals, key=lambda row: (-row[0], row[1]))
+        gain, _order, kind, key, chosen = min(proposals, key=lambda row: (-row[0], row[1]))
         if granular and gain == 0:
             break
-        projects[key] = chosen
+        if kind == "project":
+            projects[key] = chosen
+            del remaining[key]
+        else:
+            extras[key] = chosen
+            del remaining_extras[key]
         used.update(fact.fact_id for fact in chosen)
-        del remaining[key]
 
     # 工作块先取得希望保留的最小份额；只会新增当前剩余预算容许的身份，
     # 已在项目中选择的事实不重复计费。后续装配仍按原章节职责处理。
@@ -178,7 +210,7 @@ def select_facts(
     # 对已选项目补足可读的原文，仍沿同一预算、去重与稳定顺序。
     for key, chosen in projects.items():
         capacity = min(block_limit, len(chosen) + total_limit - len(used))
-        expanded = _take(grouped[key], capacity, requirements, chosen=chosen,
+        expanded = _take(grouped[key][1], capacity, requirements, chosen=chosen,
                          field_limits=PROJECT_FIELD_LIMITS)
         projects[key] = expanded
         used.update(fact.fact_id for fact in expanded)
@@ -186,7 +218,7 @@ def select_facts(
     # 无直接引用背景最多一项，不制造任何要求支持；无报告的显式输入
     # 已在上面的同一选择循环中按原顺序处理，无另一套词表评分路径。
     if granular and len(projects) < project_limit and len(used) < total_limit:
-        for key, facts in remaining.items():
+        for key, (_order, facts) in remaining.items():
             if any(requirements.get(fact.fact_id) for fact in facts):
                 continue
             chosen = _take(facts, min(block_limit, total_limit - len(used)),
@@ -197,28 +229,10 @@ def select_facts(
                 break
 
     fill_work(budget.max_work_facts)
-    highlights = tuple(
-        fact.fact_id for fact in index.facts
-        if fact.kind == "profile" and fact.fact_id in used
-        and fact.field.endswith((".scope", ".contributions", ".summary"))
-    )
-    excluded: dict[str, str] = {}
-    for fact in index.facts:
-        if fact.fact_id in used:
-            continue
-        verdict = verdicts[fact.fact_id]
-        if not verdict.presentable:
-            excluded[fact.fact_id] = f"not_presentable:{verdict.reason}"
-        elif len(used) >= total_limit:
-            excluded[fact.fact_id] = "budget_exhausted"
-        elif fact.support_weight == 0 and fact.field in {"tags", "time_range", "stack"}:
-            excluded[fact.fact_id] = "structural_field_not_selected"
-        else:
-            excluded[fact.fact_id] = "below_block_quota"
+    highlights = tuple(fact.fact_id for facts in extras.values() for fact in facts)
     return SelectedFacts(
         work={key: tuple(fact.fact_id for fact in facts) for key, facts in work.items()},
         projects={key: tuple(fact.fact_id for fact in facts) for key, facts in projects.items()},
         profile_highlights=highlights,
-        excluded=excluded,
         total=len(used),
     )

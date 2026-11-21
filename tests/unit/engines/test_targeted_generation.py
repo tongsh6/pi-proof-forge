@@ -775,7 +775,7 @@ def test_semantic_action_budget_keeps_new_parent_before_more_same_parent_quotes(
 
 
 @pytest.fixture
-def summary_profile(generation, monkeypatch):
+def reviewed_profile_inputs(generation, monkeypatch):
     """Confirm synthetic career through the existing App API before either consumer reads it."""
     import hashlib
     from tests.unit.engines.test_complete_resume import complete_profile
@@ -787,14 +787,16 @@ def summary_profile(generation, monkeypatch):
     _, identity, _, paths = generation
     monkeypatch.setattr(profile_api, "_PROFILE_PATH", paths["profile"])
     monkeypatch.setattr("tools.infra.llm.client.LLMClient.post_json",
-                        lambda *args, **kwargs: pytest.fail("summary rendering must not call a model"))
+                        lambda *args, **kwargs: pytest.fail("generation must not call a model"))
 
-    def prepare(work, summary=""):
+    def prepare(work, summary="", *, extras=None):
         basic = complete_profile()
         career = basic.pop("career")
         career.update(summary=summary, work=work)
+        if extras is not None:
+            career["extras"] = extras
         career["skills"][0]["evidence_ids"] = [identity.id]
-        meta = {"correlation_id": "synthetic-summary-contract"}
+        meta = {"correlation_id": "synthetic-profile-generation-contract"}
         before = profile_api.handle_profile_get({"meta": meta})["profile"]
         profile_api.handle_profile_update({
             "meta": meta, "expected_revision": before["revision"],
@@ -822,7 +824,7 @@ def summary_profile(generation, monkeypatch):
     return prepare
 
 
-def _summary_work(work_id, *, start="2020-01", end="", current=True,
+def _profile_work(work_id, *, start="2020-01", end="", current=True,
                   company="合成平台公司", title="技术负责人", scope="负责平台接口对接与交付核验",
                   contributions=None):
     return {
@@ -866,7 +868,7 @@ def _summary_render(prepared, citations):
 
 
 @pytest.mark.parametrize("explicit", ["", "以接口交付与服务稳定性为中心的跨任职工程实践。"])
-def test_summary_keeps_current_anchors_when_jd_prioritizes_the_third_contribution(summary_profile, explicit):
+def test_summary_keeps_current_anchors_when_jd_prioritizes_the_third_contribution(reviewed_profile_inputs, explicit):
     scope = (
         "只负责合成预约平台与外部系统的接口对接、契约评审和验收协调，不承担外部系统的生产运维。"
         "对接范围限于已签订接口契约内的数据字段与异常回执，不包含合作方的调度策略、数据库容量规划或线上值班。"
@@ -877,11 +879,11 @@ def test_summary_keeps_current_anchors_when_jd_prioritizes_the_third_contributio
     )
     second = "完成合成预约流程的接口边界说明与验收记录。"
     third = "负责合成回执异常的逐项排查与可重放验证。"
-    current = _summary_work("current", scope=scope, contributions=[first, second, third])
-    ended = _summary_work("ended", start="2024-01", end="2025-12", current=False,
+    current = _profile_work("current", scope=scope, contributions=[first, second, third])
+    ended = _profile_work("ended", start="2024-01", end="2025-12", current=False,
                           company="后来已结束的合成公司", scope="负责历史系统的批次归档",
                           contributions=["完成历史系统归档接口与调用方的联合验收。"])
-    prepared = summary_profile([current, ended], explicit)
+    prepared = reviewed_profile_inputs([current, ended], explicit)
     first_id = "personal_profile:career.work.current.contributions:0"
     third_id = "personal_profile:career.work.current.contributions:2"
     markdown, claims, report, assessment = _summary_render(prepared, [third_id])
@@ -916,15 +918,15 @@ def test_summary_keeps_current_anchors_when_jd_prioritizes_the_third_contributio
     assert paths["profile"].read_bytes() == prepared[5]
 
 
-def test_summary_keeps_parallel_current_roles_and_equal_text_as_distinct_occurrences(summary_profile):
+def test_summary_keeps_parallel_current_roles_and_equal_text_as_distinct_occurrences(reviewed_profile_inputs):
     same = "在各自约定接口范围内完成合成回执联调与独立验收。"
-    north = _summary_work("north", title="接口负责人", scope="负责北区系统的接口对接",
+    north = _profile_work("north", title="接口负责人", scope="负责北区系统的接口对接",
                           contributions=[same, "完成北区调用方异常回执的核对。"])
-    south = _summary_work("south", title="联调工程师", scope="负责南区系统的接口对接",
+    south = _profile_work("south", title="联调工程师", scope="负责南区系统的接口对接",
                           contributions=[same, "完成南区调用方异常回执的核对。"])
-    ended = _summary_work("ended", start="2018-01", end="2019-12", current=False,
+    ended = _profile_work("ended", start="2018-01", end="2019-12", current=False,
                           title="历史联调工程师", scope="负责历史系统的独立接口联调", contributions=[same])
-    prepared = summary_profile([north, south, ended], "保留跨任职的接口交付实践。")
+    prepared = reviewed_profile_inputs([north, south, ended], "保留跨任职的接口交付实践。")
     required = [f"personal_profile:career.work.{work_id}.contributions:0"
                 for work_id in ("north", "south")]
     markdown, claims, report, assessment = _summary_render(prepared, required)
@@ -951,14 +953,14 @@ def test_summary_keeps_parallel_current_roles_and_equal_text_as_distinct_occurre
 
 
 @pytest.mark.parametrize("explicit", ["", "已有确认的跨系统交付经历与接口设计实践。"])
-def test_summary_without_current_preserves_explicit_or_identified_historical_facts(summary_profile, explicit):
-    recent = _summary_work("recent", start="2024-01", end="2025-12", current=False,
+def test_summary_without_current_preserves_explicit_or_identified_historical_facts(reviewed_profile_inputs, explicit):
+    recent = _profile_work("recent", start="2024-01", end="2025-12", current=False,
                            company="合成历史公司", scope="只负责历史批处理接口对接",
                            contributions=["完成历史批处理回执接口与调用方的联合验收。"])
-    older = _summary_work("older", start="2020-01", end="2023-12", current=False,
+    older = _profile_work("older", start="2020-01", end="2023-12", current=False,
                           company="更早的合成公司", scope="负责早期工具接口设计",
                           contributions=["完成早期工具接口的设计与合成数据验收。"])
-    prepared = summary_profile([older, recent], explicit)
+    prepared = reviewed_profile_inputs([older, recent], explicit)
     first_id = "personal_profile:career.work.recent.contributions:0"
     markdown, claims, _, assessment = _summary_render(prepared, [first_id])
     rows = _summary_rows(markdown, claims)
@@ -977,3 +979,263 @@ def test_summary_without_current_preserves_explicit_or_identified_historical_fac
         assert all(value in line for value in (recent["company"], recent["title"], "2024-01", "2025-12"))
         assert "至今" not in line and "当前" not in line
     assert any(row.get("fact_id") == "personal_profile:career.work.older.contributions:0" for row in claims)
+
+
+def _profile_extra(extra_id, *, url=True, description=None):
+    return {
+        "id": extra_id, "title": "合成工程实践 " + extra_id,
+        "description": description or (
+            "在本机隔离环境中完成 " + extra_id + " 的合成接口验证，"
+            "仅代表个人练习，不代表生产交付或合作方的成果。"
+        ),
+        "url": "https://example.com/practice/" + extra_id if url else "",
+    }
+
+
+def _extra_fact_ids(entry):
+    return tuple(
+        f"personal_profile:career.extras.{entry['id']}.{field}:0"
+        for field in ("title", "description", "url") if entry[field]
+    )
+
+
+def _render_profile_selection(prepared, assessments=None, *, budget=None):
+    from tools.engines.generation.fact_index import build_fact_index
+    from tools.engines.generation.fact_selector import SelectionBudget, select_facts
+    from tools.engines.generation.resume_plan import build_resume_plan
+    from tools.engines.generation.plan_renderer import render_plan
+    from tools.engines.matching.semantic_review import resume_assessment
+
+    _, profile, target, cards, base, _ = prepared
+    report = _selection_report(base, assessments, preferred=["ec-engine"]) if assessments is not None else None
+    claims = []
+    chosen = None
+    if budget is None:
+        markdown = build_template_resume(
+            "A", cards, personal_profile=profile, job_context=target,
+            semantic_report=report, claims=claims,
+        )
+    else:
+        index = build_fact_index(cards, profile["career"], report)
+        chosen = select_facts(index, budget=SelectionBudget(max_total_facts=budget), semantic_report=report)
+        plan = build_resume_plan(index, chosen, profile["career"], job_context=target)
+        markdown = render_plan(plan, index, profile=profile, job_context=target, claims=claims)
+        used = {fact_id for rows in (*chosen.work.values(), *chosen.projects.values()) for fact_id in rows}
+        used.update(chosen.profile_highlights)
+        assert chosen.total == len(used) <= budget
+    for claim in claims:
+        if claim.get("fact_id"):
+            assert claim["text"] in markdown.splitlines()[claim["render_line"] - 1]
+    assessment = resume_assessment(report, claims, occurrence_coverage_known=True) if report is not None else None
+    return markdown, claims, assessment, chosen, report
+
+
+def _assert_extra_occurrences(markdown, claims, entries):
+    actual = [row for row in claims if row.get("field", "").startswith("career.extras.")]
+    expected = [
+        (f"personal_profile:career.extras.{entry['id']}.{field}:0", entry[field])
+        for entry in entries for field in ("title", "description", "url") if entry[field]
+    ]
+    assert [(row["fact_id"], row["text"]) for row in actual] == expected
+    for row in actual:
+        assert row["source_kind"] == "personal_profile"
+        assert row["text"] in markdown.splitlines()[row["render_line"] - 1]
+    return actual
+
+
+@pytest.mark.parametrize("cited_field", ["title", "description", "url"])
+def test_extras_exact_reference_selects_third_complete_entry(reviewed_profile_inputs, cited_field):
+    entries = [_profile_extra(name) for name in ("early-a", "early-b", "target")]
+    prepared = reviewed_profile_inputs([_profile_work("current")], extras=entries)
+    selected = entries[2]
+    assessments = [
+        {"requirement_id": "r-extra", "status": "supported",
+         "citations": [{"fact_id": f"personal_profile:career.extras.target.{cited_field}:0"}]},
+        {"requirement_id": "r-without-proof", "status": "insufficient", "citations": []},
+    ]
+    markdown, claims, assessment, _, _ = _render_profile_selection(prepared, assessments)
+    _assert_extra_occurrences(markdown, claims, [selected])
+    assert [row["resume_status"] for row in assessment["requirements"]] == ["supported", "insufficient"]
+    assert "仅代表个人练习，不代表生产交付或合作方的成果。" in markdown
+    assert prepared[0][3]["profile"].read_bytes() == prepared[5]
+
+
+@pytest.mark.parametrize("budget,has_url,present", [(2, True, False), (3, True, True), (2, False, True)])
+def test_extras_budget_adopts_whole_entry_or_no_occurrences(reviewed_profile_inputs, budget, has_url, present):
+    entry = _profile_extra("atomic", url=has_url)
+    work = _profile_work("current")
+    prepared = reviewed_profile_inputs([work], extras=[entry])
+    assessments = [{"requirement_id": "r-extra", "status": "supported",
+                    "citations": [{"fact_id": "personal_profile:career.extras.atomic.description:0"}]}]
+    markdown, claims, assessment, chosen, _ = _render_profile_selection(prepared, assessments, budget=budget)
+    _assert_extra_occurrences(markdown, claims, [entry] if present else [])
+    assert tuple(chosen.profile_highlights) == (_extra_fact_ids(entry) if present else ())
+    assert assessment["requirements"][0]["resume_status"] == ("supported" if present else "not_present")
+    # Optional selection cannot make the confirmed work identity or summary disappear.
+    assert "## 工作经历" in markdown and "## 职业概述" in markdown
+    for value in (work["company"], work["title"], work["scope"], work["contributions"][0], "2020-01"):
+        assert value in markdown
+    if not present:
+        assert all(value not in markdown for value in (entry["title"], entry["description"], entry["url"]))
+
+
+@pytest.mark.parametrize("mode", ["independent-parents", "same-partial-parent", "one-reference-tie"])
+def test_extras_and_projects_compete_by_parent_support_without_cost_ratio(reviewed_profile_inputs, mode):
+    entry = _profile_extra("competition")
+    prepared = reviewed_profile_inputs([_profile_work("current")], extras=[entry])
+    extra_ids = _extra_fact_ids(entry)
+    project = {"requirement_id": "r-project", "status": "supported",
+               "citations": [{"fact_id": "ec-engine:actions:0"}]}
+    if mode == "independent-parents":
+        extras = [{"requirement_id": f"r-extra-{index}", "status": "partial",
+                   "citations": [{"fact_id": fact_id}]} for index, fact_id in enumerate(extra_ids)]
+    elif mode == "same-partial-parent":
+        extras = [{"requirement_id": "r-extra", "status": "partial", "checks": [
+            {"requirement_id": f"r-extra.c{index}", "status": "supported",
+             "citations": [{"fact_id": fact_id}, {"fact_id": fact_id}]}
+            for index, fact_id in enumerate(extra_ids)
+        ]}]
+    else:
+        extras = [{"requirement_id": "r-extra", "status": "supported",
+                   "citations": [{"fact_id": extra_ids[0]}]}]
+    markdown, claims, assessment, chosen, _ = _render_profile_selection(
+        prepared, [project, *extras], budget=3,
+    )
+    extra_wins = mode == "independent-parents"
+    _assert_extra_occurrences(markdown, claims, [entry] if extra_wins else [])
+    actual = {row["fact_id"] for row in claims if row.get("fact_id")}
+    assert ("ec-engine:actions:0" in actual) is not extra_wins
+    assert tuple(chosen.profile_highlights) == (extra_ids if extra_wins else ())
+    statuses = {row["requirement_id"]: row["resume_status"] for row in assessment["requirements"]}
+    assert statuses["r-project"] == ("not_present" if extra_wins else "supported")
+    assert all(statuses[row["requirement_id"]] == ("partial" if extra_wins else "not_present") for row in extras)
+
+
+def test_extras_and_project_citations_precede_uncited_filler(reviewed_profile_inputs):
+    entry = _profile_extra("joint")
+    prepared = reviewed_profile_inputs([_profile_work("current")], extras=[entry])
+    assessments = [
+        {"requirement_id": "r-project", "status": "supported", "citations": [{"fact_id": "ec-engine:actions:0"}]},
+        {"requirement_id": "r-extra", "status": "supported",
+         "citations": [{"fact_id": "personal_profile:career.extras.joint.description:0"}]},
+    ]
+    markdown, claims, assessment, chosen, _ = _render_profile_selection(prepared, assessments, budget=4)
+    _assert_extra_occurrences(markdown, claims, [entry])
+    assert tuple(chosen.profile_highlights) == _extra_fact_ids(entry)
+    assert chosen.total == 4
+    assert [row["resume_status"] for row in assessment["requirements"]] == ["supported", "supported"]
+    actual = {row["fact_id"] for row in claims if row.get("fact_id")}
+    assert "ec-engine:actions:0" in actual
+    assert "ec-engine:results:0" not in actual
+
+
+@pytest.mark.parametrize("status,candidate_support", [("conflict", True), ("insufficient", True), ("supported", False)])
+def test_extras_audit_and_false_references_do_not_consume_positive_budget(
+    reviewed_profile_inputs, status, candidate_support,
+):
+    audit, actual = _profile_extra("audit"), _profile_extra("actual")
+    prepared = reviewed_profile_inputs([_profile_work("current")], extras=[audit, actual])
+    assessments = [
+        {"requirement_id": "r-audit", "status": status,
+         "citations": [{"fact_id": "personal_profile:career.extras.audit.description:0",
+                        "candidate_support": candidate_support}]},
+        {"requirement_id": "r-actual", "status": "supported",
+         "citations": [{"fact_id": "personal_profile:career.extras.actual.description:0"}]},
+    ]
+    markdown, claims, assessment, chosen, _ = _render_profile_selection(prepared, assessments, budget=3)
+    _assert_extra_occurrences(markdown, claims, [actual])
+    assert tuple(chosen.profile_highlights) == _extra_fact_ids(actual)
+    assert assessment["requirements"][1]["resume_status"] == "supported"
+    assert assessment["requirements"][0]["resume_status"] != "supported"
+
+
+def test_extras_same_text_keeps_exact_entry_identity_in_actual_coverage(reviewed_profile_inputs):
+    first = _profile_extra("first")
+    other = {**_profile_extra("other"), "title": first["title"], "description": first["description"]}
+    prepared = reviewed_profile_inputs(
+        [_profile_work("current")], extras=[first, _profile_extra("uncited"), other],
+    )
+    assessments = [
+        {"requirement_id": "r-first", "status": "supported",
+         "citations": [{"fact_id": "personal_profile:career.extras.first.title:0"}]},
+        {"requirement_id": "r-other", "status": "supported",
+         "citations": [{"fact_id": "personal_profile:career.extras.other.description:0"}]},
+    ]
+    markdown, claims, assessment, _, report = _render_profile_selection(prepared, assessments)
+    _assert_extra_occurrences(markdown, claims, [first, other])
+    assert [row["resume_status"] for row in assessment["requirements"]] == ["supported", "supported"]
+    from tools.engines.matching.semantic_review import resume_assessment
+    missing_other = [row for row in claims if row.get("fact_id") != "personal_profile:career.extras.other.description:0"]
+    assert [row["resume_status"] for row in resume_assessment(
+        report, missing_other, occurrence_coverage_known=True,
+    )["requirements"]] == ["supported", "not_present"]
+
+
+def test_extras_without_semantic_report_follow_input_order_and_use_real_trace(reviewed_profile_inputs):
+    from tools.infra.persistence.review_snapshot import validate_generation_trace
+
+    entries = [_profile_extra(name) for name in ("first", "second", "third")]
+    for ordered in (entries, list(reversed(entries))):
+        prepared = reviewed_profile_inputs([_profile_work("current")], extras=ordered)
+        markdown, claims, assessment, chosen, _ = _render_profile_selection(prepared, budget=36)
+        _assert_extra_occurrences(markdown, claims, ordered[:2])
+        assert assessment is None
+        assert tuple(chosen.profile_highlights) == tuple(fid for entry in ordered[:2] for fid in _extra_fact_ids(entry))
+        assembler, identity, matching, paths = prepared[0]
+        resume = assembler.generate(matching, [identity], "extras-stable")
+        assert validate_generation_trace(resume.content, resume.generation_trace)
+        _assert_extra_occurrences(resume.content, resume.generation_trace["claims"], ordered[:2])
+        assert resume.generation_trace["inputs"]["personal_profile"]["sha256"] == prepared[4]["inputs"]["personal_profile"]["sha256"]
+        assert paths["profile"].read_bytes() == prepared[5]
+
+
+def test_extras_without_positive_citation_do_not_fill_semantic_body(reviewed_profile_inputs):
+    entries = [_profile_extra("uncited-a"), _profile_extra("uncited-b")]
+    prepared = reviewed_profile_inputs([_profile_work("current")], extras=entries)
+    markdown, claims, assessment, _, _ = _render_profile_selection(prepared, [
+        {"requirement_id": "r-project", "status": "supported", "citations": [{"fact_id": "ec-engine:actions:0"}]},
+    ])
+    _assert_extra_occurrences(markdown, claims, [])
+    assert assessment["requirements"][0]["resume_status"] == "supported"
+
+
+def test_extras_semantic_entry_limit_keeps_first_two_positive_ties(reviewed_profile_inputs):
+    entries = [_profile_extra(name) for name in ("z-first", "a-second", "m-third")]
+    prepared = reviewed_profile_inputs([_profile_work("current")], extras=entries)
+    assessments = [
+        {"requirement_id": f"r-{index}", "status": "supported",
+         "citations": [{"fact_id": f"personal_profile:career.extras.{entry['id']}.description:0"}]}
+        for index, entry in enumerate(entries)
+    ]
+    markdown, claims, assessment, _, _ = _render_profile_selection(prepared, assessments)
+    _assert_extra_occurrences(markdown, claims, entries[:2])
+    assert [row["resume_status"] for row in assessment["requirements"]] == [
+        "supported", "supported", "not_present",
+    ]
+
+
+@pytest.mark.parametrize("budget,complete", [(4, True), (3, False)])
+def test_extras_and_project_joint_citations_keep_same_check_complementarity(
+    reviewed_profile_inputs, budget, complete,
+):
+    entry = _profile_extra("joint-check")
+    prepared = reviewed_profile_inputs([_profile_work("current")], extras=[entry])
+    assessments = [{
+        "requirement_id": "r-joint", "status": "supported", "checks": [{
+            "requirement_id": "r-joint.c1", "status": "supported",
+            "citations": [
+                {"fact_id": "ec-engine:actions:0"},
+                {"fact_id": "personal_profile:career.extras.joint-check.description:0"},
+            ],
+        }],
+    }]
+    markdown, claims, assessment, chosen, _ = _render_profile_selection(
+        prepared, assessments, budget=budget,
+    )
+    _assert_extra_occurrences(markdown, claims, [entry] if complete else [])
+    assert tuple(chosen.profile_highlights) == (_extra_fact_ids(entry) if complete else ())
+    action, = [row for row in claims if row.get("fact_id") == "ec-engine:actions:0"]
+    assert action["text"] in markdown.splitlines()[action["render_line"] - 1]
+    expected = "supported" if complete else "not_present"
+    assert assessment["requirements"][0]["resume_status"] == expected
+    assert assessment["requirements"][0]["checks"][0]["resume_status"] == expected

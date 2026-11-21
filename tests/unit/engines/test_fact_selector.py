@@ -135,16 +135,29 @@ def test_without_semantic_report_projects_follow_explicit_input_order():
         assert list(chosen.projects) == [ordered[0]["id"]]
 
 
-def test_records_excluded_facts_with_reason():
+def test_internal_metadata_and_action_urls_do_not_enter_selected_facts():
     index = build_fact_index(
-        [card("ec_a", "项目 A", actions=["实现回执校验", "建立恢复机制"], results=["通过独立验收"])],
+        [card("ec_a", "项目 A", actions=[
+            "此卡记录项目材料整理过程", "https://example.com/api/debug",
+            "完成回执协议的独立联调验证",
+        ], results=["通过独立验收"])],
         career({"w1": ["ec_a"]}),
     )
     chosen = select_facts(index, budget=SelectionBudget(max_total_facts=3))
 
     assert isinstance(chosen, SelectedFacts)
-    assert chosen.excluded
-    assert all(reason for reason in chosen.excluded.values())
+    actual = {fact_id for rows in (*chosen.work.values(), *chosen.projects.values()) for fact_id in rows}
+    actual.update(chosen.profile_highlights)
+    assert "ec_a:actions:2" in actual
+    assert not {"ec_a:actions:0", "ec_a:actions:1"} & actual
+    assert chosen.total == len(actual) <= 3
+    from tools.engines.generation.resume_plan import build_resume_plan
+    from tools.engines.generation.plan_renderer import render_plan
+    plan = build_resume_plan(index, chosen, career({"w1": ["ec_a"]}))
+    markdown = render_plan(plan, index, profile={}, job_context={})
+    assert "完成回执协议的独立联调验证" in markdown
+    assert "此卡记录项目材料整理过程" not in markdown
+    assert "https://example.com/api/debug" not in markdown
 
 
 def test_empty_index_returns_empty_selection():
