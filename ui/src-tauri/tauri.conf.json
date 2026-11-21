@@ -19,9 +19,6 @@
     ],
     "resources": [
       "./resources/tools",
-      "./resources/evidence_cards",
-      "./resources/matching_reports",
-      "./resources/job_profiles",
       "./resources/sidecar",
       "./resources/python"
     ]

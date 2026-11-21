@@ -607,17 +607,20 @@ def _staged_runtime_is_current() -> bool:
 
 
 def _stage_project_assets() -> None:
-    asset_dirs = {
-        "tools": REPO_ROOT / "tools",
-        "evidence_cards": REPO_ROOT / "evidence_cards",
-        "matching_reports": REPO_ROOT / "matching_reports",
-        "job_profiles": REPO_ROOT / "job_profiles",
-    }
-
-    for name, source_dir in asset_dirs.items():
-        if not source_dir.exists():
-            continue
-        _copytree(source_dir, RESOURCES_DIR / name)
+    # UI_DIR 已解析为真实路径；资源准备不能跟随被重定向的资源根。
+    if RESOURCES_DIR.resolve() != RESOURCES_DIR:
+        raise ValueError("project_resource_root_redirected")
+    # 运行数据由用户工作区创建；源码演示样例不作为安装包的初始数据。
+    for name in ("evidence_cards", "matching_reports", "job_profiles"):
+        target = RESOURCES_DIR / name
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        elif target.exists():
+            shutil.rmtree(target)
+    _copytree_with_ignore(
+        REPO_ROOT / "tools", RESOURCES_DIR / "tools",
+        "__pycache__", "*.pyc", "*.pyo", ".DS_Store", "test", "tests", "sample_raw.txt",
+    )
 
 
 def main() -> None:
