@@ -183,6 +183,16 @@ class LLMClient:
         *,
         response_schema: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
+        return self.send_request(self.prepare_request(url, payload, response_schema=response_schema))
+
+    def prepare_request(
+        self,
+        url: str,
+        payload: Mapping[str, object],
+        *,
+        response_schema: Mapping[str, object] | None = None,
+    ) -> request.Request:
+        """Assemble and serialize once, without transport or caller-data mutation."""
         payload = with_job_search_context(payload)
         # Verified Splash service deployment, independent of model alias.
         # Keep provider wire adaptation here, not duplicated in task handlers.
@@ -263,7 +273,10 @@ class LLMClient:
                 )
             payload = {**payload, "reasoning_effort": reasoning_effort}
         data = json.dumps(payload).encode("utf-8")
-        req = request.Request(url, data=data, headers=self.build_headers(), method="POST")
+        return request.Request(url, data=data, headers=self.build_headers(), method="POST")
+
+    def send_request(self, req: request.Request) -> dict[str, Any]:
+        """Send the accepted URL/body unchanged through the existing transport."""
         resp = self._open_with_retry(req)
         try:
             body = resp.read().decode("utf-8")

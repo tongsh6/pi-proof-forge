@@ -1,21 +1,25 @@
 """Independent pending-order regressions, synthetic responses only."""
 import json
 from tools.engines.matching import semantic_matching as m
+from tools.infra.llm.client import LLMClient
 
 
 def fixture(tmp_path):
     job=tmp_path/"jp.yaml"
-    terms=[prefix+" "+("x"*5400) for prefix in ("5 years related experience", "Bachelor education", "Java engineering", "C++ or Go or Rust")]
+    # Include shared context/schema: recall fits; two complete checks still require separate batches.
+    terms=[prefix+" "+("x"*5000) for prefix in ("5 years related experience", "Bachelor education", "Java engineering", "C++ or Go or Rust")]
     job.write_text("target_role: Engineer\nmust_have:\n"+"".join("  - "+json.dumps(t)+"\n" for t in terms))
     card=tmp_path/"ec.yaml"
     card.write_text('title: Service\nrole_scope: Developer\nresults:\n  - Built services\nartifacts:\n  - Report\n')
     return dict(job_path=job,evidence_files=[card],personal_profile=None,model="fixture",cache_dir=tmp_path/"cache"),terms
 
 
-class Client:
-    chat_completions_url="http://synthetic.invalid/chat/completions"
-    def __init__(self):self.seen=[]
-    def post_json(self,url,payload,**kw):
+class Client(LLMClient):
+    def __init__(self):
+        super().__init__("http://synthetic.invalid", "", provider="openai_compatible")
+        self.seen=[]
+    def send_request(self, request):
+        payload=json.loads(request.data)
         d=json.loads(payload["messages"][1]["content"]);self.seen.append(d)
         fid=next(k for k in d["facts"] if ":results:" in k)
         if d["stage"]=="recall":
@@ -80,7 +84,8 @@ def test_changed_facts_miss_cache_old_completed_ids_never_supply_results(tmp_pat
 
 def test_three_rounds_accumulate_order_history_without_reusing_conclusions(tmp_path):
     kw,_=fixture(tmp_path)
-    terms=["Requirement "+str(i)+" "+("x"*3700) for i in range(6)]
+    # Full recall fits; each assessment batch fits two complete checks, not three.
+    terms=["Requirement "+str(i)+" "+("x"*3300) for i in range(6)]
     kw["job_path"].write_text("target_role: Engineer\nmust_have:\n"+"".join("  - "+json.dumps(t)+"\n" for t in terms))
     prior=()
     for turn,expected in enumerate((["r1","r2"],["r3","r4"],["r5","r6"])):

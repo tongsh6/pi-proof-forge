@@ -1,11 +1,20 @@
 """求职偏好从材料提炼，经确认保存，再由 App 筛岗使用。"""
 import importlib
+import io
 import json
 
 import pytest
 
 from tools.sidecar.handlers import materials, profile
 from tools.infra.llm.client import LLMClient
+
+
+def _mock_http(monkeypatch, respond):
+    def open_response(request, **kwargs):
+        payload = json.loads(request.data)
+        return io.BytesIO(json.dumps(respond(payload)).encode())
+
+    monkeypatch.setattr('tools.infra.llm.client.request.urlopen', open_response)
 
 
 def setup(tmp_path, monkeypatch):
@@ -20,7 +29,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(module.settings_handler,'_load_llm_config',lambda:{'provider':'lm_studio','base_url':'http://localhost/v1','api_key_for_request':'local','model':'test','timeout':30})
     response={'items':[{'kind':'primary','text':'产品型 Tech Lead','quote':'主投产品型公司 Tech Lead。'},
                        {'kind':'avoid','text':'客户交付、驻场、普通Java开发','quote':'不选择客户交付、驻场和普通 Java 开发岗位。'}]}
-    monkeypatch.setattr(LLMClient,'post_json',lambda *args,**kwargs:{'choices':[{'message':{'content':json.dumps(response)}}]})
+    _mock_http(monkeypatch, lambda payload: {'choices':[{'message':{'content':json.dumps(response)}}]})
     return module,root,response
 
 
@@ -69,22 +78,21 @@ def test_app_matching_continues_on_excluded_direction_as_advisory(tmp_path,monke
     job=tmp_path/'job.yaml';job.write_text('target_role: "Java交付负责人"\nsource_jd: "负责客户驻场实施与交付"\nkeywords:\n  - "Java"\n')
     card=tmp_path/'ec1.yaml';card.write_text('title: "Java项目"\nresults:\n  - "完成接口"\nartifacts:\n  - "报告"\n')
     calls=[]
-    class Client:
-        chat_completions_url='http://localhost/v1/chat/completions'
-        def post_json(self,url,payload,**kwargs):
-            calls.append(payload)
-            data=json.loads(payload['messages'][1]['content'])
-            if 'preferences' in data:
-                content={'status':'excluded','reason':'驻场交付与偏好冲突','criterion_index':1,'jd_quote':'负责客户驻场实施与交付'}
-            elif data.get('stage')=='recall':
-                content={'cards':[{'id':'ec1','score':80,'reason':'Java接口开发','requirement_ids':['r1'],'citations':[{'fact_id':'ec1:results:0','quote':'完成接口'}]}]}
-            else:
-                content={'assessments':[{'requirement_id':'r1','status':'supported','reason':'有Java接口开发','citations':[{'fact_id':'ec1:results:0','quote':'完成接口'}]}]}
-            return {'choices':[{'message':{'content':json.dumps(content)}}]}
-        @staticmethod
-        def extract_content(response):return response['choices'][0]['message']['content']
+    def response(payload):
+        calls.append(payload)
+        data=json.loads(payload['messages'][1]['content'])
+        if 'preferences' in data:
+            content={'status':'excluded','reason':'驻场交付与偏好冲突','criterion_index':1,'jd_quote':'负责客户驻场实施与交付'}
+        elif data.get('stage')=='recall':
+            content={'cards':[{'id':'ec1','score':80,'reason':'Java接口开发','requirement_ids':['r1'],'citations':[{'fact_id':'ec1:results:0','quote':'完成接口'}]}]}
+        else:
+            content={'assessments':[{'requirement_id':'r1','status':'supported','reason':'有Java接口开发','citations':[{'fact_id':'ec1:results:0','quote':'完成接口'}]}]}
+        return {'choices':[{'message':{'content':json.dumps(content)}}]}
+
+    _mock_http(monkeypatch, response)
+    client=LLMClient('http://localhost/v1', '', provider='openai_compatible')
     result=semantic_matching.run_semantic_matching(job_path=job,evidence_files=[card],personal_profile=profile._PROFILE_PATH,
-        client=Client(),model='test',cache_dir=tmp_path/'cache')
+        client=client,model='test',cache_dir=tmp_path/'cache')
     assert result['direction_review']['status']=='excluded'
     assert result['direction_review']['reason']=='驻场交付与偏好冲突'
     assert result['reviewed_card_ids']==['ec1']
@@ -102,23 +110,22 @@ def test_direction_binds_material_and_file_jd_to_reused_report(tmp_path,monkeypa
     job=tmp_path/'job.yaml';job.write_text('target_role: "平台负责人"\nsource_jd: "job.txt"\nmust_have:\n  - "平台建设"\n')
     card=tmp_path/'ec1.yaml';card.write_text('title: "平台"\nresults:\n  - "完成平台的长期架构建设"\nartifacts:\n  - "报告"\n')
     calls=[]
-    class Client:
-        chat_completions_url='http://localhost/v1/chat/completions'
-        def post_json(self,url,payload,**kwargs):
-            data=json.loads(payload['messages'][1]['content']);calls.append(data)
-            if 'jd' in data:
-                assert data['jd']==jd.read_text(), '文件路径必须解析为正文'
-                if repair_direction and len(calls)==1:
-                    return {'choices':[{'message':{'content':''},'finish_reason':'length'}]}
-                response={'status':'aligned','reason':'产品平台主投方向','criterion_index':0,'jd_quote':data['jd']}
-            else:
-                citation={'fact_id':'ec1:results:0','quote':'完成平台的长期架构建设'}
-                response=({'cards':[{'id':'ec1','score':90,'reason':'平台经验','requirement_ids':['r1'],'citations':[citation]}]}
-                          if data['stage']=='recall' else {'assessments':[{'requirement_id':'r1','status':'supported','reason':'平台经验','citations':[citation]}]})
-            return {'choices':[{'message':{'content':json.dumps(response)}}]}
-        @staticmethod
-        def extract_content(response):return response['choices'][0]['message']['content']
-    options=dict(job_path=job,evidence_files=[card],personal_profile=profile._PROFILE_PATH,client=Client(),model='test',cache_dir=tmp_path/'cache')
+    def response(payload):
+        data=json.loads(payload['messages'][1]['content']);calls.append(data)
+        if 'jd' in data:
+            assert data['jd']==jd.read_text(), '文件路径必须解析为正文'
+            if repair_direction and len(calls)==1:
+                return {'choices':[{'message':{'content':''},'finish_reason':'length'}]}
+            content={'status':'aligned','reason':'产品平台主投方向','criterion_index':0,'jd_quote':data['jd']}
+        else:
+            citation={'fact_id':'ec1:results:0','quote':'完成平台的长期架构建设'}
+            content=({'cards':[{'id':'ec1','score':90,'reason':'平台经验','requirement_ids':['r1'],'citations':[citation]}]}
+                     if data['stage']=='recall' else {'assessments':[{'requirement_id':'r1','status':'supported','reason':'平台经验','citations':[citation]}]})
+        return {'choices':[{'message':{'content':json.dumps(content)}}]}
+
+    _mock_http(monkeypatch, response)
+    client=LLMClient('http://localhost/v1', '', provider='openai_compatible')
+    options=dict(job_path=job,evidence_files=[card],personal_profile=profile._PROFILE_PATH,client=client,model='test',cache_dir=tmp_path/'cache')
     result=infra.run_semantic_matching(**options)
     assert result['statistics']['model_calls']==3+int(repair_direction)
     assert result['statistics']['repair_calls']==int(repair_direction)
@@ -156,14 +163,13 @@ def test_direction_repairs_once_and_caches_only_validated_result(tmp_path, monke
     jd='负责产品平台长期架构建设'
     good={'status':status,'reason':'依据真实岗位职责','criterion_index':0,'jd_quote':jd}
     calls=[]
-    class Client:
-        chat_completions_url='http://localhost/v1/chat/completions'
-        extract_content=staticmethod(LLMClient.extract_content)
-        def post_json(self, url, payload, **kwargs):
-            calls.append(payload)
-            content=bad_content if len(calls)==1 else json.dumps(good)
-            return {'choices':[{'message':{'content':content},'finish_reason':'length' if not content else 'stop'}]}
-    client=Client()
+    def response(payload):
+        calls.append(payload)
+        content=bad_content if len(calls)==1 else json.dumps(good)
+        return {'choices':[{'message':{'content':content},'finish_reason':'length' if not content else 'stop'}]}
+
+    _mock_http(monkeypatch, response)
+    client=LLMClient('http://localhost/v1', '', provider='openai_compatible')
     result=assess_direction(preferences,jd,client,'test',tmp_path)
     assert result['status']==status
     assert result['model_calls']==2
@@ -184,31 +190,32 @@ def test_direction_repairs_once_and_caches_only_validated_result(tmp_path, monke
 
 
 @pytest.mark.parametrize('content,code', [('', 'empty_content'), ('{"status":', 'invalid_json')])
-def test_direction_repeated_invalid_content_stops_without_cache(tmp_path, content, code):
+def test_direction_repeated_invalid_content_stops_without_cache(tmp_path, monkeypatch, content, code):
     from tools.infra.job_preferences import assess_direction
     calls=[]
-    class Client:
-        chat_completions_url='http://localhost/v1/chat/completions'
-        extract_content=staticmethod(LLMClient.extract_content)
-        def post_json(self, url, payload, **kwargs):
-            calls.append(payload)
-            return {'choices':[{'message':{'content':content},'finish_reason':'length'}]}
+    def response(payload):
+        calls.append(payload)
+        return {'choices':[{'message':{'content':content},'finish_reason':'length'}]}
+
+    _mock_http(monkeypatch, response)
+    client=LLMClient('http://localhost/v1', '', provider='openai_compatible')
     with pytest.raises(ValueError, match=f'career_direction_{code}'):
-        assess_direction({'items':[{'kind':'primary'}],'revision':'test'},'真实职责',Client(),'test',tmp_path)
+        assess_direction({'items':[{'kind':'primary'}],'revision':'test'},'真实职责',client,'test',tmp_path)
     assert len(calls)==2
     assert not list(tmp_path.glob('*.json'))
 
 
-def test_direction_timeout_is_not_retried(tmp_path):
+def test_direction_timeout_is_not_retried(tmp_path, monkeypatch):
     from tools.infra.job_preferences import assess_direction
     calls=[]
-    class Client:
-        chat_completions_url='http://localhost/v1/chat/completions'
-        def post_json(self, url, payload, **kwargs):
-            calls.append(payload)
-            raise TimeoutError('本机模型超时')
+    def response(payload):
+        calls.append(payload)
+        raise TimeoutError('本机模型超时')
+
+    _mock_http(monkeypatch, response)
+    client=LLMClient('http://localhost/v1', '', provider='openai_compatible')
     with pytest.raises(TimeoutError):
-        assess_direction({'items':[{'kind':'primary'}],'revision':'test'},'真实职责',Client(),'test',tmp_path)
+        assess_direction({'items':[{'kind':'primary'}],'revision':'test'},'真实职责',client,'test',tmp_path)
     assert len(calls)==1
     assert not list(tmp_path.glob('*.json'))
 
@@ -223,10 +230,10 @@ def test_direction_empty_response_blocks_cli_with_readable_error(tmp_path, monke
     pool=tmp_path/'pool';pool.mkdir()
     (pool/'e1.yaml').write_text('title: "平台"\nresults:\n  - "完成平台架构建设"\nartifacts:\n  - "报告"\n')
     calls=[]
-    def empty_response(self, url, payload, **kwargs):
+    def empty_response(payload):
         calls.append(payload)
         return {'choices':[{'message':{'content':''},'finish_reason':'length'}]}
-    monkeypatch.setattr(LLMClient,'post_json',empty_response)
+    _mock_http(monkeypatch, empty_response)
     output=tmp_path/'report.yaml'
     monkeypatch.setattr('sys.argv',['matching','--job-profile',str(job),'--evidence-dir',str(pool),
         '--personal-profile',str(profile._PROFILE_PATH),'--output',str(output),

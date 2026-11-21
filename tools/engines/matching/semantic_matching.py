@@ -11,11 +11,11 @@ from pathlib import Path
 from tools.engines.matching.semantic_review import (validate_cards, validate_assessments, support_score, select_cards,
     job_requirements, requirement_checks, aggregate_assessments)
 from tools.infra.llm.bounded_local import LocalAttemptBudget, LocalProviderTimeout
-from tools.infra.llm.task_contract import (REASON_INPUT_BUDGET_EXCEEDED, REASON_INVALID_JSON, REASON_TIMEOUT, SEMANTIC_MATCHING)
-from tools.infra.llm.task_runner import execute
+from tools.infra.llm.task_contract import (REASON_INPUT_BUDGET_EXCEEDED, REASON_INVALID_JSON, REASON_INVALID_REQUEST,
+    REASON_TIMEOUT, SEMANTIC_MATCHING)
+from tools.infra.llm.task_runner import check_budget, execute
 from tools.infra.career_profile import load_career_profile, career_generation_issues
 from tools.infra.persistence.yaml_io import parse_simple_yaml
-from tools.prompts.context import context_fingerprint
 
 VERSION = 'evidence-semantic-v7'
 
@@ -137,58 +137,64 @@ def _assessment_output_estimate(checks, visible_facts):
          'citations':[ref] * citation['maxItems']} for check in checks]}))
 
 
-def _pack_advisory_assessment(checks, fits):
-    """Keep fitting parents whole; split oversized parents without mixing segments."""
+def _pack_advisory_assessment(checks, prepare, fits):
+    """Keep fitting parents whole and retain each final batch's prepared request."""
     groups = {}
     for check in checks:
         groups.setdefault(check['parent_id'], []).append(check)
-    batches, segments, incomplete_parents, current = [], [], set(), []
+    batches, segments, incomplete_parents = [], [], set()
+    current, current_request = [], None
     for parent, group in groups.items():
-        if fits(group):
-            if current and not fits(current + group):
-                batches.append(current)
-                current = []
-            current.extend(group)
+        group_request = prepare(group)
+        if fits(group, group_request):
+            if current:
+                proposed = current + group
+                proposed_request = prepare(proposed)
+                if fits(proposed, proposed_request):
+                    current, current_request = proposed, proposed_request
+                else:
+                    batches.append((current, current_request))
+                    current, current_request = list(group), group_request
+            else:
+                current, current_request = list(group), group_request
             continue
         incomplete_parents.add(parent)
-        segment = []
+        segment, segment_request = [], None
         for check in group:
-            if segment and not fits(segment + [check]):
-                segments.append(segment)
-                segment = []
-            segment.append(check)
+            proposed = segment + [check]
+            proposed_request = group_request if len(group) == 1 else prepare(proposed)
+            if segment and not fits(proposed, proposed_request):
+                segments.append((segment, segment_request))
+                segment, segment_request = [check], prepare([check])
+            else:
+                segment, segment_request = proposed, proposed_request
         if segment:
-            segments.append(segment)
+            segments.append((segment, segment_request))
     if current:
-        batches.append(current)
+        batches.append((current, current_request))
     return [*batches, *segments], incomplete_parents
-
 
 def _wire_facts(facts, *, assessment):
     fields = ('text', 'source_role', 'source_qualifiers', 'candidate_support') if assessment else ('text', 'source_role')
     return {key:{k:fact[k] for k in fields if k in fact} for key, fact in facts.items()}
 
 
-def _bounded_assessment_facts(facts, shortlist, budget, *, encoded_size=lambda value:len(_json(value)),
-                              breadth_first=False):
-    """Send cited facts first; use fallback space for intact, attributable work."""
+def _bounded_assessment_facts(facts, shortlist, fits, *, breadth_first=False):
+    """Send cited facts first; admit only intact work whose complete request fits."""
     per_card = {}
     for key, fact in facts.items():
         per_card.setdefault(fact['source_id'], []).append(key)
-    # Measure the same text/role projection as the model request, including JSON separators.
-    costs = {key:encoded_size({key:fact}) for key, fact in _wire_facts(facts, assessment=True).items()}
-    selected, used = {}, 2
+    selected = {}
 
     def add(keys):
-        nonlocal used
         missing = list(dict.fromkeys(key for key in keys if key not in selected))
-        delta = sum(costs[key] for key in missing) - (2 if missing and not selected else 0)
-        if used + delta > budget:
+        if not missing:
+            return True
+        proposed = {**selected, **{key: facts[key] for key in missing}}
+        if not fits(proposed):
             return False
         selected.update((key, facts[key]) for key in missing)
-        used += delta
         return True
-
     for key in sorted(shortlist):
         add([key])
     cards = [per_card[source_id] for source_id in sorted(per_card)]
@@ -408,43 +414,50 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                 'max_tokens': 4096 if stage == 'recall' else 6144,
                 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': _json(body)}]}
 
-    def request(stage, payload, validator, *, cache_only=False):
-        request_body = build_request(stage, payload)
+    def prepare_request(stage, payload):
+        count = len(payload['cards']) if stage == 'recall' else len(payload.get('requirements', requirements))
+        try:
+            prepared = client.prepare_request(
+                client.chat_completions_url, build_request(stage, payload),
+                response_schema=_schema(stage, count))
+            check_budget(SEMANTIC_MATCHING, prepared)
+            return prepared
+        except Exception as exc:
+            # Keep local preparation failures with their batch; the runner owns their outcome.
+            return exc
+
+    def fits_request(prepared):
+        return not isinstance(prepared, Exception) and not check_budget(SEMANTIC_MATCHING, prepared)
+
+    def request(stage, payload, validator, prepared, *, cache_only=False):
         relevant_inputs = set(inputs)
         if stage == 'recall':
             relevant_inputs = {'job_profile', 'jd_source'} & inputs.keys()
             for card in payload['cards']:
                 relevant_inputs.update(card_input_keys[card['id']])
-        key = _sha(_json({'version': VERSION, 'task_context': context_fingerprint(),
-                         'url': client.chat_completions_url, 'request': request_body,
-                         'input_fingerprints': {key: inputs[key]['sha256'] for key in relevant_inputs}}).encode())
-        cached = cache_dir / f'{key}.json'
-        readable_cache = cached
-        if stage == 'recall' and not cached.is_file():
-            legacy_key = _sha(_json({'version': VERSION, 'task_context': context_fingerprint(),
-                'url': client.chat_completions_url, 'request': request_body,
-                'input_fingerprints': {key: value['sha256'] for key, value in inputs.items()}}).encode())
-            readable_cache = cache_dir / f'{legacy_key}.json'
-        if readable_cache.is_file():
+        cached = None
+        if not isinstance(prepared, Exception):
+            key = _sha(_json({'version': VERSION, 'url': prepared.full_url,
+                'request_sha256': _sha(prepared.data),
+                'input_fingerprints': {key: inputs[key]['sha256'] for key in relevant_inputs}}).encode())
+            cached = cache_dir / f'{key}.json'
+        if cached is not None and cached.is_file():
             try:
-                response = json.loads(readable_cache.read_text())
+                response = json.loads(cached.read_text())
                 validated = validator(response)
-                if readable_cache != cached:
-                    cached.write_text(_json(response))
                 statistics['cache_hits'] += 1
                 return validated
             except (ValueError, TypeError, KeyError):
                 pass
         if cache_only:
             return None
-        count = len(payload['cards']) if stage == 'recall' else len(payload.get('requirements',requirements))
-        original_messages = request_body['messages']
+        count = len(payload['cards']) if stage == 'recall' else len(payload.get('requirements', requirements))
         captured: dict[str, object] = {}
 
         local_reason = None
         call_count = 0
 
-        def _call(body: dict) -> dict:
+        def _call(prepared_request) -> dict:
             nonlocal local_reason, call_count
             call_count += 1
             if before_model_call is not None:
@@ -456,7 +469,7 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                         local_reason = 'attempt_budget'
                     raise
             try:
-                response = client.post_json(client.chat_completions_url, body, response_schema=_schema(stage, count))
+                response = client.send_request(prepared_request)
             except LocalProviderTimeout:
                 local_reason = 'provider_timeout'
                 raise
@@ -467,6 +480,8 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                 local_reason = 'response_invalid'
                 raise
             statistics['model_calls'] += 1
+            if call_count > 1:
+                statistics['repair_calls'] += 1
             try:
                 captured['content'] = client.extract_content(response)
             except (TypeError, ValueError, KeyError, AttributeError):
@@ -478,11 +493,12 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
             captured['parsed'] = parsed
             return validator(parsed)
 
-        def _repair(body: dict, exc: ValueError) -> dict:
-            statistics['repair_calls'] += 1
+        def _repair(previous, exc: ValueError):
+            body = build_request(stage, payload)
+            original_messages = body['messages']
             code = str(exc) if str(exc).startswith('semantic_') else 'invalid_json'
             content = str(captured.get('content') or '')
-            return {**body, 'messages': [*original_messages,
+            repaired = {**body, 'messages': [*original_messages,
                 {'role': 'assistant', 'content': content},
                 {'role': 'user', 'content': '程序校验失败：' + code + '。冒号后的标识定位错误项。'
                  '顶层结构必须严格保持为 ' + ('{"cards":[...]}' if stage == 'recall' else '{"assessments":[...]}')
@@ -494,13 +510,19 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
                  'wrong_source 表示引用串卡，expected后的卡只能引用属于该卡的事实。'
                  'numeric_contradiction 表示年限比较自相矛盾；added_requirement 表示增加了当前JD没有的条件。'
                  '请修正对应结论或引用，完整保留逐卡/逐要求条目。'}]}
+            return client.prepare_request(previous.full_url, repaired, response_schema=_schema(stage, count))
+
+        def initial_request():
+            if isinstance(prepared, Exception):
+                raise prepared
+            return prepared
 
         # 统一走任务执行器：预算校验、受控重试、状态与原因码都由它负责，
         # 本函数不再自己维护 try/except 重试循环。
         run = execute(
             SEMANTIC_MATCHING,
             model=model,
-            payload=request_body,
+            prepare=initial_request,
             call=_call,
             extract=client.extract_content,
             validate=_validate,
@@ -508,34 +530,44 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
         )
         if run.status != 'complete':
             if advisory:
-                mapped = {REASON_INPUT_BUDGET_EXCEEDED:'input_budget',
+                mapped = {REASON_INPUT_BUDGET_EXCEEDED:'input_budget', REASON_INVALID_REQUEST:'invalid_request',
                           REASON_INVALID_JSON:'response_invalid', REASON_TIMEOUT:'provider_timeout'}
                 code = local_reason or mapped.get(run.reason_code, 'transport_other')
                 raise _AdvisoryTaskFailure(code, retry_budget_blocked=code=='attempt_budget' and call_count>1)
             raise ValueError(f"semantic_{run.reason_code}:{run.outcome.detail[:160]}")
         parsed = captured.get('parsed')
         validated = run.outcome.result
-        cached.write_text(_json(parsed))
+        if cached is not None:
+            cached.write_text(_json(parsed))
         return validated
+    def recall_payload(batch):
+        return {'cards': batch, 'facts': {key: facts[key] for card in batch for key in card['facts']}}
 
-    batches, batch, size = [], [], 0
+    batches, batch, size, batch_request = [], [], 0, None
     for card in cards:
         card_size = len(_json({key:{k:v for k,v in facts[key].items() if k!='source_qualifiers'} for key in card['facts']}))
         if batch and (len(batch) >= max(1, batch_size) or size + card_size > 9000):
-            batches.append(batch)
+            batches.append((batch, batch_request))
             batch, size = [], 0
-        batch.append(card)
-        size += card_size
+        proposed = [*batch, card]
+        proposed_request = prepare_request('recall', recall_payload(proposed))
+        if batch and not fits_request(proposed_request):
+            batches.append((batch, batch_request))
+            batch, size = [card], card_size
+            batch_request = prepare_request('recall', recall_payload(batch))
+        else:
+            batch, size, batch_request = proposed, size + card_size, proposed_request
     if batch:
-        batches.append(batch)
+        batches.append((batch, batch_request))
     reviews = []
     degraded_cards = []
     budget_deferred_cards = []
-    for batch in batches:
-        batch_facts = {key: facts[key] for card in batch for key in card['facts']}
+    for batch, prepared in batches:
+        payload = recall_payload(batch)
+        batch_facts = payload['facts']
         try:
-            reviews.extend(request('recall', {'cards': batch, 'facts': batch_facts},
-                                   lambda response: validate_cards(response, batch, batch_facts, requirements)))
+            reviews.extend(request('recall', payload,
+                                   lambda response: validate_cards(response, batch, batch_facts, requirements), prepared))
         except ValueError as exc:
             # 失败隔离：模型在本批持续漂移时降级该批，不拖垮其余批次的语义结果。
             # 降级原因必须留痕，否则"整批降级"在运行记录里不可解释。
@@ -569,19 +601,24 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
         return {'facts':visible_facts, 'preferred_source_ids':preferred_ids,
                 'requirements':check_batch, 'assessment_date':assessment_date}
 
-    def assessment_size(check_batch, visible_facts):
-        return len(_json(build_request('assess', assessment_payload(check_batch, visible_facts))))
+    def prepare_assessment(batch, visible_facts):
+        return prepare_request('assess', assessment_payload(batch, visible_facts))
 
-    # Exact wire calculation also accounts for escaping inner JSON as a string
-    # in the outer model request. Keep the existing maximum and a slot for a check.
-    max_input = SEMANTIC_MATCHING.capability.max_input_chars
-    reserved = max((assessment_size([check], compact_facts) for check in checks),
-                   default=assessment_size([], compact_facts))
-    facts_budget = max(0, max_input - reserved + (0 if compact_facts else 2))
-    def encoded_size(value):
-        return len(_json(_json(value))) - 2  # omit the enclosing string quotes
+    # A check that cannot fit with mandatory profile facts remains unassessed,
+    # but must not prevent other checks from admitting intact optional facts.
+    fact_constraints = []
+    for check in checks:
+        prepared = prepare_assessment([check], compact_facts)
+        if fits_request(prepared):
+            fact_constraints.append(check)
+
+    def fits_facts(proposed):
+        visible = proposed | compact_facts
+        return bool(fact_constraints) and all(
+            fits_request(prepare_assessment([check], visible)) for check in fact_constraints)
+
     assessment_facts = _bounded_assessment_facts(
-        facts, shortlist, facts_budget, encoded_size=encoded_size, breadth_first=advisory) | compact_facts
+        facts, shortlist, fits_facts, breadth_first=advisory) | compact_facts
     visible_ids = sorted(assessment_facts)
     omitted_ids = sorted(set(facts) - set(assessment_facts))
     card_ids = {card["id"] for card in cards}
@@ -597,35 +634,41 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
     check_assessments=[];degraded_checks=[]
     budget_deferred_checks = []
     output_work_limit = SEMANTIC_MATCHING.capability.max_output_tokens
-    def fits_assessment(batch):
-        return (assessment_size(batch, assessment_facts) <= max_input and
+    def fits_assessment(batch, prepared):
+        return (fits_request(prepared) and
                 _assessment_output_estimate(batch, assessment_facts) <= output_work_limit)
+
+    def prepare_batch(batch):
+        return prepare_assessment(batch, assessment_facts)
 
     segmented_parents = set()
     if advisory:
-        check_batches, segmented_parents = _pack_advisory_assessment(checks, fits_assessment)
+        check_batches, segmented_parents = _pack_advisory_assessment(checks, prepare_batch, fits_assessment)
     else:
-        check_batches, current_batch = [], []
+        check_batches, current_batch, current_request = [], [], None
         for check in checks:
-            if current_batch and assessment_size([*current_batch, check], assessment_facts) > max_input:
-                check_batches.append(current_batch)
-                current_batch = []
-            current_batch.append(check)
+            proposed = [*current_batch, check]
+            prepared = prepare_batch(proposed)
+            if current_batch and not fits_request(prepared):
+                check_batches.append((current_batch, current_request))
+                current_batch, current_request = [check], prepare_batch([check])
+            else:
+                current_batch, current_request = proposed, prepared
         if current_batch:
-            check_batches.append(current_batch)
+            check_batches.append((current_batch, current_request))
     current_ids = {check['id'] for check in checks}
     prior_checked = {value for value in previous_completed_check_ids
                      if isinstance(value, str) and value in current_ids}
     schedule = {'policy':'pending_source_requirements_v1',
                 'prior_completed_check_ids':sorted(prior_checked), 'entries':[],
                 'section_policy':'explicit_numbered_section_v1', 'section_bindings':section_bindings}
-    def assess_batch(current, *, cache_only=False):
-        if advisory and _assessment_output_estimate(current, assessment_facts) > output_work_limit:
+    def assess_batch(current, prepared, *, cache_only=False):
+        if advisory and not isinstance(prepared, Exception) and _assessment_output_estimate(current, assessment_facts) > output_work_limit:
             if cache_only:
                 return None
             raise _AdvisoryTaskFailure('answer_budget')
         return request('assess', assessment_payload(current, assessment_facts),
-                       lambda response:validate_assessments(response,assessment_facts,current),
+                       lambda response:validate_assessments(response,assessment_facts,current), prepared,
                        cache_only=cache_only)
     def priority(current):
         pending = [check for check in current if check['id'] not in prior_checked]
@@ -640,18 +683,18 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
             return 1, 'pending_responsibility'
         return (2, 'pending_other') if pending else (5, 'previously_checked')
     pending_batches = []
-    for current in check_batches:
+    for current, prepared in check_batches:
         # Only the advisory scheduler preloads cache. A hit is validated and counted exactly once.
-        cached_rows = assess_batch(current, cache_only=True) if advisory and reviews else None
+        cached_rows = assess_batch(current, prepared, cache_only=True) if advisory and reviews else None
         if cached_rows is not None:
             check_assessments.extend(cached_rows)
             schedule['entries'].append({'check_ids':[check['id'] for check in current],
                 'reason':'validated_cache','cache_hit':True,'completed':True,'outcome':'cache_validated'})
         else:
-            pending_batches.append(current)
+            pending_batches.append((current, prepared))
     if advisory:
-        pending_batches.sort(key=lambda current:priority(current)[0])  # Stable; original batch/parent content unchanged.
-    for current in pending_batches:
+        pending_batches.sort(key=lambda batch:priority(batch[0])[0])  # Stable; original batch/parent content unchanged.
+    for current, prepared in pending_batches:
         entry = {'check_ids':[check['id'] for check in current],
                  'reason':priority(current)[1] if advisory else 'canonical_source_order',
                  'cache_hit':False,'completed':False,'outcome':'scheduled'}
@@ -659,7 +702,7 @@ def run_semantic_matching(*, job_path, evidence_files, personal_profile, client,
         try:
             if advisory and not reviews:
                 raise _AdvisoryTaskFailure('attempt_budget' if budget_deferred_cards else 'recall_prerequisite')
-            check_assessments.extend(assess_batch(current))
+            check_assessments.extend(assess_batch(current, prepared))
             entry.update(completed=True, outcome='completed')
         except ValueError as exc:
             safe_code = exc.reason_code if isinstance(exc, _AdvisoryTaskFailure) else 'transport_other'

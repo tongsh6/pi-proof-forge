@@ -684,40 +684,40 @@ def test_evaluation_checks_bytes_read_inside_career_inspection(tmp_path, monkeyp
     assert not config.output_path.with_suffix(".json").exists()
 
 
-def _semantic_quality_fixture(tmp_path):
+def _semantic_quality_fixture(tmp_path, monkeypatch):
+    import io
+
+    from tools.infra.llm.client import LLMClient
     from tools.engines.matching.semantic_matching import run_semantic_matching, write_semantic_report
     from tools.infra.persistence.review_snapshot import read_generation_trace
 
     config, trace = _bound_quality_fixture(tmp_path)
 
-    class Client:
-        chat_completions_url = "http://localhost/v1/chat/completions"
+    def open_response(request, **kwargs):
+        payload = json.loads(request.data)
+        data = json.loads(payload["messages"][1]["content"])
+        cite = {"fact_id": "ec-1:results:0", "quote": "请求延迟降低 20%"}
+        if data["stage"] == "recall":
+            response = {"cards": [{"id": "ec-1", "score": 90, "reason": "接口性能验证",
+                                  "requirement_ids": ["r1"], "citations": [cite]}]}
+        else:
+            response = {"assessments": [
+                {"requirement_id": row["id"],
+                 "status": "supported" if row["text"] == "Java" else "insufficient",
+                 "reason": "基于本次固定原文判读",
+                 "citations": [cite] if row["text"] == "Java" else []}
+                for row in data["requirements"]]}
+        return io.BytesIO(json.dumps({"choices": [{"message": {"content": json.dumps(response)}}]}).encode())
 
-        def post_json(self, url, payload, **kwargs):
-            data = json.loads(payload["messages"][1]["content"])
-            cite = {"fact_id": "ec-1:results:0", "quote": "请求延迟降低 20%"}
-            if data["stage"] == "recall":
-                response = {"cards": [{"id": "ec-1", "score": 90, "reason": "接口性能验证",
-                                      "requirement_ids": ["r1"], "citations": [cite]}]}
-            else:
-                response = {"assessments": [
-                    {"requirement_id": row["id"],
-                     "status": "supported" if row["text"] == "Java" else "insufficient",
-                     "reason": "基于本次固定原文判读",
-                     "citations": [cite] if row["text"] == "Java" else []}
-                    for row in data["requirements"]]}
-            return {"choices": [{"message": {"content": json.dumps(response)}}]}
-
-        @staticmethod
-        def extract_content(response):
-            return response["choices"][0]["message"]["content"]
+    monkeypatch.setattr("tools.infra.llm.client.request.urlopen", open_response)
+    client = LLMClient("http://localhost/v1", "", provider="openai_compatible")
 
     report = tmp_path / "matching.yaml"
     semantic = run_semantic_matching(
         job_path=config.job_profile_path,
         evidence_files=[Path(trace["inputs"]["ec-1"]["path"])],
         personal_profile=Path(trace["inputs"]["personal_profile"]["path"]),
-        client=Client(), model="test", cache_dir=tmp_path / "cache")
+        client=client, model="test", cache_dir=tmp_path / "cache")
     write_semantic_report(report, semantic)
     trace["generation_strategy"] = "semantic_selection_locked_evidence_fields"
     for key, path in (("matching_report", report), ("semantic_matching", report.with_suffix(".semantic.json"))):
@@ -734,7 +734,7 @@ def test_evaluation_binds_semantic_object_to_consumed_trace_version(tmp_path, mo
     from tools.engines.matching.semantic_review import aggregate_assessments
     from tools.orchestration import evaluation_flow as flow
 
-    config, report, semantic = _semantic_quality_fixture(tmp_path)
+    config, report, semantic = _semantic_quality_fixture(tmp_path, monkeypatch)
     paths = (report, report.with_suffix(".semantic.json"))
     original = {path: path.read_bytes() for path in paths}
     changed = json.loads(json.dumps(semantic))

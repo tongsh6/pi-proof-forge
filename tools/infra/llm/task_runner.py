@@ -16,11 +16,13 @@ import json
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
+from urllib.request import Request
 
 from tools.infra.llm.task_contract import (
     REASON_INPUT_BUDGET_EXCEEDED,
     REASON_INVALID_JSON,
-    REASON_OUTPUT_TRUNCATED,
+    REASON_INVALID_REQUEST,
+    REASON_MODE_MISSING,
     REASON_TIMEOUT,
     TaskContract,
     TaskOutcome,
@@ -29,8 +31,6 @@ from tools.infra.llm.task_contract import (
     unavailable,
 )
 
-# 结构性错误值得重试一次：模型偶尔输出坏 JSON，这不是能力问题。
-RETRYABLE_REASONS = frozenset({REASON_INVALID_JSON, REASON_OUTPUT_TRUNCATED})
 MAX_ATTEMPTS = 2
 
 
@@ -64,18 +64,21 @@ class TaskRun:
         }
 
 
-def _payload_chars(payload: Mapping[str, Any]) -> int:
+def _request_chars(prepared: Request) -> int:
+    if not isinstance(prepared, Request) or not isinstance(prepared.data, bytes):
+        raise ValueError(REASON_INVALID_REQUEST)
     try:
+        payload = json.loads(prepared.data.decode("utf-8"))
         return len(json.dumps(payload, ensure_ascii=False))
-    except (TypeError, ValueError):
-        return 0
+    except (TypeError, ValueError, RecursionError):
+        raise ValueError(REASON_INVALID_REQUEST) from None
 
 
-def check_budget(contract: TaskContract, payload: Mapping[str, Any]) -> str:
-    """返回预算校验结论：空串表示通过，否则是拒绝原因。"""
-    size = _payload_chars(payload)
+def check_budget(contract: TaskContract, prepared: Request) -> str:
+    """Measure the complete prepared request; malformed requests are local input failures."""
+    size = _request_chars(prepared)
     if size > contract.capability.max_input_chars:
-        return f"input_budget_exceeded:{size}>{contract.capability.max_input_chars}"
+        return f"{REASON_INPUT_BUDGET_EXCEEDED}:{size}>{contract.capability.max_input_chars}"
     return ""
 
 
@@ -83,54 +86,52 @@ def execute(
     contract: TaskContract,
     *,
     model: str,
-    payload: Mapping[str, Any],
-    call: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    prepare: Callable[[], Request],
+    call: Callable[[Request], Mapping[str, Any]],
     extract: Callable[[Mapping[str, Any]], str],
     validate: Callable[[Any], Any],
-    on_retry: Callable[[Mapping[str, Any], ValueError], Mapping[str, Any]] | None = None,
+    on_retry: Callable[[Request, ValueError], Request] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> TaskRun:
-    """执行一次任务：预算校验 → 调用 → 校验 → 状态。
+    """Prepare once, check each request, then send that same request.
 
-    `call` 只负责发请求，`extract` 取正文，`validate` 做结构与事实校验并
-    返回结果（校验失败抛 ValueError）。执行器不吞异常语义：结构与事实问题
-    归为可重试/不可核实，服务问题归为不可用。
+    A repair is a new prepared request. Local construction or budget failures
+    never enter the sending callback and retain only earlier call attempts.
     """
     started = clock()
-    budget_reason = check_budget(contract, payload)
-    if budget_reason:
+    attempts = 0
+
+    def rejected(reason: str, detail: str) -> TaskRun:
         return TaskRun(
             contract.name,
             model,
-            unavailable(contract, reason_code=REASON_INPUT_BUDGET_EXCEEDED, detail=budget_reason),
-            0,
+            unavailable(contract, reason_code=reason, detail=detail),
+            attempts,
             clock() - started,
         )
 
-    attempts = 0
+    try:
+        current_request = prepare()
+    except Exception as exc:  # noqa: BLE001 - 本地构造失败不是模型或 transport 失败
+        return rejected(REASON_INVALID_REQUEST, f"request_preparation_failed:{type(exc).__name__}")
+
     last_reason = REASON_INVALID_JSON
     last_detail = ""
-    current_payload = payload
     while attempts < MAX_ATTEMPTS:
+        try:
+            budget_reason = check_budget(contract, current_request)
+        except ValueError:
+            return rejected(REASON_INVALID_REQUEST, "invalid_prepared_request")
+        if budget_reason:
+            return rejected(REASON_INPUT_BUDGET_EXCEEDED, budget_reason)
+
         attempts += 1
         try:
-            response = call(current_payload)
+            response = call(current_request)
         except TimeoutError as exc:
-            return TaskRun(
-                contract.name,
-                model,
-                unavailable(contract, reason_code=REASON_TIMEOUT, detail=str(exc)[:200]),
-                attempts,
-                clock() - started,
-            )
+            return rejected(REASON_TIMEOUT, str(exc)[:200])
         except Exception as exc:  # noqa: BLE001 - 服务层失败统一降级为"不可用"
-            return TaskRun(
-                contract.name,
-                model,
-                unavailable(contract, reason_code="model_unavailable", detail=str(exc)[:200]),
-                attempts,
-                clock() - started,
-            )
+            return rejected(REASON_MODE_MISSING, str(exc)[:200])
 
         try:
             content = extract(response)
@@ -150,21 +151,18 @@ def execute(
             last_reason, last_detail = REASON_INVALID_JSON, str(exc)[:200]
             if on_retry is not None and attempts < MAX_ATTEMPTS:
                 try:
-                    current_payload = on_retry(current_payload, exc)
-                except Exception:  # noqa: BLE001 - 修复请求构造失败就按原样重发
-                    current_payload = payload
+                    current_request = on_retry(current_request, exc)
+                except Exception as repair_exc:  # noqa: BLE001 - 不把失败的修复变成原样重发
+                    return rejected(
+                        REASON_INVALID_REQUEST,
+                        f"request_repair_failed:{type(repair_exc).__name__}",
+                    )
             continue
 
         return TaskRun(contract.name, model, complete(result), attempts, clock() - started)
 
     # 重试耗尽：明确不可用，不把坏结果交给下游。
-    return TaskRun(
-        contract.name,
-        model,
-        unavailable(contract, reason_code=last_reason, detail=last_detail),
-        attempts,
-        clock() - started,
-    )
+    return rejected(last_reason, last_detail)
 
 
 def run_partial(

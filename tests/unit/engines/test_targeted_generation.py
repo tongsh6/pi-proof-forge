@@ -9,6 +9,7 @@ from tests.unit.engines.test_generation_engines import generation, write_reviewe
 
 from tools.cli.commands import generate as generate_cli
 from tools.engines.generation.resume_renderer import build_template_resume, load_generation_context
+from tools.infra.llm.client import LLMClient
 
 
 @pytest.fixture
@@ -90,7 +91,7 @@ def test_unknown_selected_evidence_does_not_fall_back(monkeypatch, generation_in
     json.dumps({"evidence_ids": ["ec-invented"]}),
 ])
 def test_required_llm_rejects_unverifiable_output(monkeypatch, generation_inputs, response):
-    monkeypatch.setattr("tools.infra.llm.client.LLMClient.post_json", lambda *a: {
+    monkeypatch.setattr("tools.infra.llm.client.LLMClient.send_request", lambda *a: {
         "choices": [{"message": {"content": response}}],
     })
     assert run_generation_cli(
@@ -331,9 +332,11 @@ def test_generation_and_evaluation_reuse_verified_semantic_selection(monkeypatch
     from tools.engines.matching.semantic_matching import run_semantic_matching, write_semantic_report
     from tools.cli.commands import evaluate as evaluate_cli
     profile, job, evidence, report, output = generation_inputs
-    class Client:
-        chat_completions_url = 'http://localhost/v1/chat/completions'
-        def post_json(self, url, payload, **kwargs):
+    class Client(LLMClient):
+        def __init__(self):
+            super().__init__('http://localhost/v1', '', provider='openai_compatible')
+        def send_request(self, request):
+            payload = json.loads(request.data)
             data = json.loads(payload['messages'][1]['content'])
             cite = {'fact_id': 'ec-1:actions:0', 'quote': '使用 Java 重构交易服务'}
             if data['stage'] == 'recall':
@@ -347,7 +350,7 @@ def test_generation_and_evaluation_reuse_verified_semantic_selection(monkeypatch
     review = run_semantic_matching(job_path=job, evidence_files=list(evidence.glob('*.yaml')), personal_profile=profile,
                                    client=Client(), model='test', cache_dir=output.parent/'cache')
     write_semantic_report(report, review)
-    monkeypatch.setattr('tools.infra.llm.client.LLMClient.post_json', lambda *args, **kwargs: pytest.fail('不得重复调用模型选材/解释'))
+    monkeypatch.setattr('tools.infra.llm.client.LLMClient.send_request', lambda *args, **kwargs: pytest.fail('不得重复调用模型选材/解释'))
     assert run_generation_cli(monkeypatch, generation_inputs, '--use-llm', '--require-llm') == 0
     resume = output/'resume_mr-target_A.md'
     trace = json.loads(resume.with_suffix('.trace.json').read_text())
@@ -370,7 +373,7 @@ def test_generation_and_evaluation_reuse_verified_semantic_selection(monkeypatch
     other_profile.write_text(profile.read_text().replace('测试候选人', '另一候选人'))
     assert run_generation_cli(monkeypatch, (other_profile, job, evidence, report, output/'changed-profile'), '--use-llm', '--require-llm') == 1
     report.unlink()
-    monkeypatch.setattr('tools.infra.llm.client.LLMClient.post_json', lambda *args, **kwargs: {'choices': [{'message': {'content': '旧解释不能替代丢失的语义结果'}}]})
+    monkeypatch.setattr('tools.infra.llm.client.LLMClient.send_request', lambda *args, **kwargs: {'choices': [{'message': {'content': '旧解释不能替代丢失的语义结果'}}]})
     monkeypatch.setattr('sys.argv', ['evaluate', '--input', str(resume), '--output', str(output/'invalid.md'), '--job-profile', str(job), '--use-llm', '--require-llm', '--model', 'test', '--api-key', 'local'])
     assert evaluate_cli.main() == 1
     assert not (output/'invalid.md').exists()
@@ -393,10 +396,12 @@ def test_same_project_action_order_follows_explicit_jd_responsibility_rank(monke
     jd = job.with_suffix(".txt")
     job.write_text('target_role: "后端工程师"\ncompany: "目标公司"\nsource_jd: "job.txt"\n')
 
-    class Transport:
-        chat_completions_url = "http://localhost/v1/chat/completions"
+    class Transport(LLMClient):
+        def __init__(self):
+            super().__init__("http://localhost/v1", "", provider="openai_compatible")
 
-        def post_json(self, url, payload, **kwargs):
+        def send_request(self, request):
+            payload = json.loads(request.data)
             data = json.loads(payload["messages"][1]["content"])
             if data["stage"] == "recall":
                 return self.wrap({"cards": [{"id": "ec-1", "score": 90, "reason": "两条工作证据",
@@ -417,7 +422,7 @@ def test_same_project_action_order_follows_explicit_jd_responsibility_rank(monke
         def extract_content(response):
             return response["choices"][0]["message"]["content"]
 
-    monkeypatch.setattr("tools.infra.llm.client.LLMClient.post_json",
+    monkeypatch.setattr("tools.infra.llm.client.LLMClient.send_request",
                         lambda *args, **kwargs: pytest.fail("unexpected real model call"))
     # Swap only duties #1 and #4. The two unsupported middle duties remain untouched.
     swapped = (responsibilities[3], *responsibilities[1:3], responsibilities[0])
@@ -449,10 +454,12 @@ def test_semantic_binding_uses_consumed_input_version(monkeypatch, generation_in
 
     profile, job, evidence, report, output = generation_inputs
 
-    class Client:
-        chat_completions_url = "http://localhost/v1/chat/completions"
+    class Client(LLMClient):
+        def __init__(self):
+            super().__init__("http://localhost/v1", "", provider="openai_compatible")
 
-        def post_json(self, url, payload, **kwargs):
+        def send_request(self, request):
+            payload = json.loads(request.data)
             data = json.loads(payload["messages"][1]["content"])
             cite = {"fact_id": "ec-1:actions:0", "quote": "使用 Java 重构交易服务"}
             if data["stage"] == "recall":
@@ -786,7 +793,7 @@ def reviewed_profile_inputs(generation, monkeypatch):
 
     _, identity, _, paths = generation
     monkeypatch.setattr(profile_api, "_PROFILE_PATH", paths["profile"])
-    monkeypatch.setattr("tools.infra.llm.client.LLMClient.post_json",
+    monkeypatch.setattr("tools.infra.llm.client.LLMClient.send_request",
                         lambda *args, **kwargs: pytest.fail("generation must not call a model"))
 
     def prepare(work, summary="", *, extras=None):

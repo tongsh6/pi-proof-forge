@@ -18,6 +18,7 @@ UnavailableAction = Literal["block", "degrade", "skip"]
 # 稳定的不可用原因；新增原因必须在这里登记，禁止临时字符串。
 REASON_MODE_MISSING = "model_unavailable"
 REASON_INVALID_JSON = "invalid_json"
+REASON_INVALID_REQUEST = "invalid_request"
 REASON_TRANSCRIPT_FAILURE = "transcript_failure"
 REASON_OUTPUT_TRUNCATED = "output_truncated"
 REASON_TIMEOUT = "timeout"
@@ -30,6 +31,7 @@ KNOWN_REASONS = frozenset(
     {
         REASON_MODE_MISSING,
         REASON_INVALID_JSON,
+        REASON_INVALID_REQUEST,
         REASON_TRANSCRIPT_FAILURE,
         REASON_OUTPUT_TRUNCATED,
         REASON_TIMEOUT,
@@ -49,6 +51,7 @@ class Capability:
     # 是否要求模型逐字复制输入中的标识（如 fact_id）。高难度，优先用任务分解消掉。
     needs_exact_transcript: bool = False
     max_output_tokens: int = 4096
+    # 完整已准备请求的逻辑 JSON 字符，不是 token 或 UTF-8/wire 字节。
     max_input_chars: int = 24_000
 
     def __post_init__(self) -> None:
@@ -121,8 +124,8 @@ SEMANTIC_MATCHING = TaskContract(
         needs_json=True,
         needs_exact_transcript=False,
         max_output_tokens=6144,
-        # 单批 recall/assess 请求实测在 20-21k 字符；预算按实际请求体量设，
-        # 而不是留一个必然触发的下限（触发即整批降级）。
+        # 保留 24k 上限，按完整已准备请求的逻辑 JSON 字符准入；
+        # 共同语境、schema 与 provider 参数均计入，不以注入前体量代替。
         max_input_chars=24_000,
     ),
     on_unavailable="degrade",

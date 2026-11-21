@@ -2,12 +2,15 @@
 import json
 import pytest
 from tools.engines.matching import semantic_matching as m
+from tools.infra.llm.client import LLMClient
 
 
-class Client:
-    chat_completions_url="http://synthetic.invalid/chat/completions"
-    def __init__(self): self.seen=[]
-    def post_json(self,url,payload,**kw):
+class Client(LLMClient):
+    def __init__(self):
+        super().__init__("http://synthetic.invalid", "", provider="openai_compatible")
+        self.seen=[]
+    def send_request(self, request):
+        payload=json.loads(request.data)
         data=json.loads(payload["messages"][1]["content"]);self.seen.append(data)
         fact=next(k for k in data["facts"] if ":results:" in k)
         if data["stage"]=="recall":
@@ -22,7 +25,8 @@ class Client:
 
 def fixture(tmp_path):
     from tools.engines.matching.requirement_sections import bind_explicit_requirement_sections
-    terms=[name+" "+("x"*5400) for name in ("Experience","Education","Java","C++ or Go or Rust")]
+    # Shared context/schema fit recall while complete checks remain separately budgeted.
+    terms=[name+" "+("x"*5000) for name in ("Experience","Education","Java","C++ or Go or Rust")]
     body="任职要求：\n1. "+terms[0]+"\n"+terms[1]+"\n2. 核心技术栈硬性要求\n（1）"+terms[2]+"\n（2）"+terms[3]+"\n3. 其他要求\n"
     sources=[dict(kind="must_have",index=i,quote=t,start=body.index(t),end=body.index(t)+len(t)) for i,t in enumerate(terms)]
     bindings=bind_explicit_requirement_sections(body,sources)

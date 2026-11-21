@@ -76,6 +76,13 @@ config/composer 负责统一组装
 - 客户端只负责结构合同的传递和现有 provider 协议适配。业务调用方继续校验 JSON、字段、引用及语义，保持既有有限修复策略；schema 可见不等于模型输出已通过校验，客户端不得改写错误输出以使其合格。
 - 回归以实际序列化的 `Request.data` 为依据，同时保留原生 schema、无 schema、显式格式及错误输出被业务校验拒绝的对照；应用验收仍须经过真实 RPC 与配置的模型调用。
 
+## LLM 输入预算边界（L2，限定工程范围已完成）
+
+- `LLMClient` 是 context/schema/provider 组装与序列化的唯一所有者，标准库 `Request` 承载实际请求；`post_json` 组合准备与原 transport 发送。契约执行器与 matching 分批消费同份已准备对象，发送不再重建。
+- `max_input_chars` 按完整 `Request.data` 解码后的逻辑 JSON 字符计量（`ensure_ascii=False`），包括全部注入与内层转义，保留现有上限；不等于 token、UTF-8/wire 字节。初次和每次修复均先准备、检查，再进入发送及调度计数；超限不调用 HTTP，本地构造失败为 `invalid_request`，不按 0 放行或重发原输入。
+- matching 保留完整事实与原顺序，以实际准备请求准入批次；最终接受的 Request 同时决定预算、缓存身份与首次发送。原缓存命中仍须业务校验且不发送；无旧 key 双轨、新 DTO、持久字段或平行预算账本。
+- 当前统一执行器的真实生产消费者是语义匹配；其他直接客户端调用尚不能宣称已有契约预算。有限修复、输出预算和本地 transport 额度/超时/重定向约束保留，部署能力配置特例另片治理。详见 [LLM 任务契约](../../../docs/reports/llm-task-contract-design-20261110.md#输入预算执行切片-l2限定工程范围已完成)。
+
 ## 数据流（高层）
 1. Raw materials → evidence extraction → evidence cards
 2. JD input → job profile

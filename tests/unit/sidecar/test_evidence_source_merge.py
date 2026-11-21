@@ -221,29 +221,34 @@ def test_quick_run_rejects_merged_card_when_material_changed(sample):
         _load_eligible_evidence_card(path)
 
 
-def test_semantic_report_binds_merged_sources_before_model_calls(sample):
+def test_semantic_report_binds_merged_sources_before_model_calls(sample, monkeypatch):
+    import io
+
+    from tools.infra.llm.client import LLMClient
     root, path, params = sample
     evidence.handle_evidence_save_draft(params)
     from tools.engines.matching.semantic_matching import run_semantic_matching, validate_inputs
     job = root.parent / 'job.yaml'; job.write_text('target_role: "平台"\nmust_have:\n  - "模块验收"\n')
     cite = {'fact_id': path.stem + ':results:0', 'quote': '模块验收通过。'}
-    class Client:
-        chat_completions_url = 'http://localhost/unused'
-        calls = 0
-        def post_json(self, url, body, **kwargs):
-            self.calls += 1
-            stage = json.loads(body['messages'][-1]['content'])['stage']
-            return ({'cards': [{'id': path.stem, 'score': 80, 'reason': '验收有记录', 'requirement_ids': ['r1'], 'citations': [cite]}]}
+    calls = []
+
+    def open_response(request, **kwargs):
+        calls.append(request)
+        body = json.loads(request.data)
+        stage = json.loads(body['messages'][1]['content'])['stage']
+        response = ({'cards': [{'id': path.stem, 'score': 80, 'reason': '验收有记录', 'requirement_ids': ['r1'], 'citations': [cite]}]}
                     if stage == 'recall' else {'assessments': [{'requirement_id': 'r1', 'status': 'supported', 'reason': '验收有记录', 'citations': [cite]}]})
-        def extract_content(self, response): return json.dumps(response)
-    client = Client()
+        return io.BytesIO(json.dumps({'choices': [{'message': {'content': json.dumps(response)}}]}).encode())
+
+    monkeypatch.setattr('tools.infra.llm.client.request.urlopen', open_response)
+    client = LLMClient('http://localhost/v1', '', provider='openai_compatible')
     args = dict(job_path=job, evidence_files=[path], personal_profile=None, client=client, model='test', cache_dir=root.parent/'cache')
     report = run_semantic_matching(**args)
     assert str((root/'m2.txt').resolve()) in [v['path'] for v in report['inputs'].values()]
-    (root/'m2.txt').write_text('材料变更'); calls = client.calls
+    (root/'m2.txt').write_text('材料变更'); previous_calls = len(calls)
     with pytest.raises(ValueError): validate_inputs(report['inputs'])
     with pytest.raises(ValueError): run_semantic_matching(**args)
-    assert client.calls == calls
+    assert len(calls) == previous_calls
 
 
 def _scoped_review(sample, *, field="actions", index=0):

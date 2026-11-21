@@ -1,11 +1,13 @@
 """Assessed input scope is explicit, never inferred from all recalled cards."""
 import json
 from tools.engines.matching import semantic_matching as m
+from tools.infra.llm.client import LLMClient
 
 def test_bounded_selection_deterministic_despite_input_insertion_order():
     facts={key:{"source_id":key.split(":")[0],"field":"results","text":"a"*40} for key in ("z:results:0","a:results:0","b:results:0")}
-    selected=m._bounded_assessment_facts(facts,{"z:results:0","a:results:0"},100)
-    reverse=m._bounded_assessment_facts(dict(reversed(list(facts.items()))),set(reversed(["z:results:0","a:results:0"])),100)
+    fits=lambda selected: len(m._json(m._wire_facts(selected, assessment=True))) <= 100
+    selected=m._bounded_assessment_facts(facts,{"z:results:0","a:results:0"},fits)
+    reverse=m._bounded_assessment_facts(dict(reversed(list(facts.items()))),set(reversed(["z:results:0","a:results:0"])),fits)
     assert selected==reverse
     assert list(selected)==["a:results:0"]
 
@@ -17,10 +19,12 @@ def test_result_scope_matches_actual_assess_payload(tmp_path):
         path=tmp_path/f"ec_{index}.yaml"
         path.write_text(f'title: "Service"\nrole_scope: "Developer"\nresults:\n  - "Built Java services"\nartifacts:\n  - "Report"\nactions:\n  - "Implemented reliable services"\n')
         paths.append(path)
-    class Client:
-        chat_completions_url="http://local.invalid/chat/completions"
-        seen=[]
-        def post_json(self,url,payload,**kwargs):
+    class Client(LLMClient):
+        def __init__(self):
+            super().__init__("http://local.invalid", "", provider="openai_compatible")
+            self.seen=[]
+        def send_request(self, request):
+            payload=json.loads(request.data)
             data=json.loads(payload["messages"][1]["content"])
             if data["stage"]=="recall":
                 rows=[]
@@ -64,10 +68,11 @@ def test_advisory_assessment_admits_late_complete_facts_before_deepening_early_c
     measure = lambda value: len(m._json(m._json(value))) - 2
     budget = 22_000
     cited = {"ec_000:results:0"}
-    old = m._bounded_assessment_facts(facts, cited, budget, encoded_size=measure)
-    new = m._bounded_assessment_facts(facts, cited, budget, encoded_size=measure, breadth_first=True)
-    reversed_new = m._bounded_assessment_facts(dict(reversed(list(facts.items()))), cited, budget,
-                                               encoded_size=measure, breadth_first=True)
+    fits = lambda selected: measure(m._wire_facts(selected, assessment=True)) <= budget
+    old = m._bounded_assessment_facts(facts, cited, fits)
+    new = m._bounded_assessment_facts(facts, cited, fits, breadth_first=True)
+    reversed_new = m._bounded_assessment_facts(dict(reversed(list(facts.items()))), cited, fits,
+                                               breadth_first=True)
     work_cards = lambda selection: {row["source_id"] for row in selection.values()
                                     if row["field"] in ("actions", "results")}
     assert new == reversed_new

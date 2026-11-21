@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+from tools.infra.llm.client import LLMClient
+
 
 def engine():
     return importlib.import_module('tools.engines.matching.semantic_review')
@@ -248,18 +250,19 @@ def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path,monkeypatc
         p.write_text(f'id: "e{index}"\ntitle: "恢复方案"\nrole_scope: "核心开发者"\nresults:\n  - "实现多实例任务抢占与故障恢复"\nartifacts:\n  - "报告"\n')
         paths.append(p)
 
-    class Client:
-        chat_completions_url = 'http://localhost/v1/chat/completions'
-        calls = []
-        requests = []
+    class Client(LLMClient):
+        def __init__(self):
+            super().__init__('http://localhost/v1', '', provider='lm_studio')
+            self.calls = []
 
-        def post_json(self, url, payload, **kwargs):
+        def send_request(self, request):
+            payload = json.loads(request.data)
             data = json.loads(payload['messages'][1]['content'])
-            self.requests.append(payload)
             key = 'cards' if data['stage'] == 'recall' else 'assessments'
             expected_count = len(data['cards'] if key == 'cards' else data['requirements'])
-            assert kwargs['response_schema']['properties'][key]['minItems'] == expected_count
-            assert kwargs['response_schema']['properties'][key]['maxItems'] == expected_count
+            schema = payload['response_format']['json_schema']['schema']
+            assert schema['properties'][key]['minItems'] == expected_count
+            assert schema['properties'][key]['maxItems'] == expected_count
             assert payload['max_tokens'] <= 6144
             self.calls.append(data)
             if data['stage'] == 'recall':
@@ -305,18 +308,9 @@ def test_all_cards_batched_and_cached_without_rule_prefilter(tmp_path,monkeypatc
     with pytest.raises(ValueError, match='semantic_report_changed'):
         infra.load_semantic_report(report)
     report.write_text(original_report)
-    # 已有全输入指纹缓存按相同旧输入校验后迁移，无需重新调用。
-    from tools.prompts.context import context_fingerprint
-    first_cache = next(p for p in (tmp_path / 'cache').glob('*.json')
-                       if json.loads(p.read_text()).get('cards', [{}])[0].get('id') == 'e0')
-    legacy_key = infra._sha(infra._json({'version': infra.VERSION, 'task_context': context_fingerprint(),
-        'url': client.chat_completions_url, 'request': client.requests[0],
-        'input_fingerprints': {key: value['sha256'] for key, value in result['inputs'].items()}}).encode())
-    (tmp_path / 'cache' / f'{legacy_key}.json').write_text(first_cache.read_text())
-    first_cache.unlink()
+    # 相同完整请求与输入版本复用已校验结果，不保留旧缓存键迁移路径。
     repeated = infra.run_semantic_matching(**options)
     assert len(client.calls) == 4 and repeated['statistics']['cache_hits'] == 4
-    assert first_cache.exists()
     paths[0].write_text(paths[0].read_text().replace('报告', '新报告'))
     infra.run_semantic_matching(**options)
     assert len(client.calls) == 6  # 变更卡所在粗筛批次和逐项评审失效，其余两批复用。
@@ -371,7 +365,7 @@ def test_required_llm_invalid_semantic_output_does_not_publish_success(tmp_path,
     evidence.mkdir()
     (evidence / 'e1.yaml').write_text('title: "恢复"\nresults:\n  - "完成恢复方案"\nartifacts:\n  - "报告"\n')
     output = tmp_path / 'report.yaml'
-    monkeypatch.setattr(LLMClient, 'post_json', lambda *args, **kwargs: {'choices': [{'message': {'content': '{"cards":[]}'}}]})
+    monkeypatch.setattr(LLMClient, 'send_request', lambda *args, **kwargs: {'choices': [{'message': {'content': '{"cards":[]}'}}]})
     monkeypatch.setattr('sys.argv', ['match', '--job-profile', str(job), '--evidence-dir', str(evidence), '--output', str(output),
                                    '--use-llm', '--require-llm', '--model', 'test', '--api-key', 'local'])
     assert match_cli.main() == 1
@@ -386,10 +380,12 @@ def test_invalid_quote_gets_only_one_validated_repair(tmp_path, always_invalid, 
     job.write_text('target_role: "恢复能力"\nkeywords:\n  - "故障恢复"\n')
     evidence = tmp_path/'e1.yaml'
     evidence.write_text('title: "恢复实践"\nresults:\n  - "实现多实例任务抢占与故障恢复"\nartifacts:\n  - "报告"\n')
-    class Client:
-        chat_completions_url = 'http://localhost/v1/chat/completions'
-        calls = 0
-        def post_json(self, url, payload, **kwargs):
+    class Client(LLMClient):
+        def __init__(self):
+            super().__init__('http://localhost/v1', '', provider='openai_compatible')
+            self.calls = 0
+        def send_request(self, request):
+            payload = json.loads(request.data)
             self.calls += 1
             data = json.loads(payload['messages'][1]['content'])
             bad=always_invalid or self.calls==1

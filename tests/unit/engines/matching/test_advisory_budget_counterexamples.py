@@ -2,6 +2,8 @@
 import io
 import json
 
+import pytest
+
 from tools.engines.matching import semantic_matching as engine
 from tools.infra.llm.bounded_local import BoundedLocalClient
 from tools.sidecar.handlers.preparation_semantic import _safe_summary
@@ -214,8 +216,14 @@ def test_advisory_assess_terminal_safe_reasons_are_typed(tmp_path, monkeypatch):
             return io.BytesIO(json.dumps(response).encode())
 
         def invoke(contract, **options):
-            if name == "input_budget" and json.loads(options["payload"]["messages"][1]["content"])["stage"] == "assess":
-                options["payload"] = {**options["payload"], "size_pressure":"x"*30_000}
+            if name == "input_budget":
+                from dataclasses import replace
+
+                prepared = options["prepare"]()
+                options["prepare"] = lambda: prepared
+                data = json.loads(json.loads(prepared.data)["messages"][1]["content"])
+                if data["stage"] == "assess":
+                    contract = replace(contract, capability=replace(contract.capability, max_input_chars=1))
             return real_execute(contract, **options)
 
         def before(stage):
@@ -242,3 +250,178 @@ def test_advisory_assess_terminal_safe_reasons_are_typed(tmp_path, monkeypatch):
         assert entry.get("retry_budget_blocked", False) is (name == "retry_budget"), name
         assert private not in json.dumps(result), name
         assert len(list(kwargs["cache_dir"].glob("*.json"))) == 1, name
+
+
+def _capture_prepared_requests(client):
+    captured = []
+    transport = client._opener.open
+
+    def open_request(req, **options):
+        captured.append(req)
+        return transport(req, **options)
+
+    client._opener.open = open_request
+    return captured
+
+
+@pytest.mark.parametrize("phase", ["initial", "repair"])
+def test_prepared_input_budget_does_not_consume_http_hook_or_repair_counts(tmp_path, monkeypatch, phase):
+    from dataclasses import replace
+
+    options = _fixture(tmp_path, count=1)
+    baseline, _, _ = _client()
+    accepted = _capture_prepared_requests(baseline)
+    engine.run_semantic_matching(**options, client=baseline)
+    first = accepted[0]
+    complete_size = len(json.dumps(json.loads(first.data), ensure_ascii=False))
+    contract = replace(
+        engine.SEMANTIC_MATCHING,
+        capability=replace(engine.SEMANTIC_MATCHING.capability,
+                           max_input_chars=complete_size - (phase == "initial")),
+    )
+    monkeypatch.setattr(engine, "SEMANTIC_MATCHING", contract)
+    client, seen, _ = _client(invalid_recalls=1 if phase == "repair" else 0)
+    hooks = []
+    result = engine.run_semantic_matching(
+        **{**options, "cache_dir": tmp_path / "budget-cache"}, client=client,
+        advisory=True, before_model_call=hooks.append,
+    )
+    expected_calls = 1 if phase == "repair" else 0
+    expected_stages = ["recall"] if phase == "repair" else []
+    assert (
+        client.model_calls, result["statistics"]["model_calls"], result["statistics"]["repair_calls"],
+        hooks, seen, client.budget_exhausted,
+    ) == (expected_calls, expected_calls, 0, expected_stages, expected_stages, False)
+    assert not result["card_reviews"]
+    assert not list((tmp_path / "budget-cache").glob("*.json"))
+
+
+def test_cache_identity_tracks_prepared_provider_body_but_not_authorization_headers(tmp_path, monkeypatch):
+    options = _fixture(tmp_path, count=1)
+    first, first_stages, _ = _client()
+    first_requests = _capture_prepared_requests(first)
+    original = engine.run_semantic_matching(**options, client=first)
+    assert first_stages == ["recall", "assess"]
+    assert json.loads(first_requests[0].data)["response_format"] == {"type": "json_object"}
+
+    native, native_stages, _ = _client()
+    native._provider = "lm_studio"
+    native_requests = _capture_prepared_requests(native)
+    result = engine.run_semantic_matching(**options, client=native)
+    assert native_stages == ["recall", "assess"], "A different accepted provider body must not borrow an earlier cache entry"
+    assert json.loads(native_requests[0].data)["response_format"]["type"] == "json_schema"
+    assert result["assessments"] == original["assessments"]
+    cached_paths = set(options["cache_dir"].glob("*.json"))
+
+    validations = []
+    validate_cards = engine.validate_cards
+    validate_assessments = engine.validate_assessments
+
+    def validate_cached_cards(*args, **kwargs):
+        validations.append("recall")
+        return validate_cards(*args, **kwargs)
+
+    def validate_cached_assessments(*args, **kwargs):
+        validations.append("assess")
+        return validate_assessments(*args, **kwargs)
+
+    monkeypatch.setattr(engine, "validate_cards", validate_cached_cards)
+    monkeypatch.setattr(engine, "validate_assessments", validate_cached_assessments)
+    same_body, cached_stages, _ = _client()
+    same_body._provider = "lm_studio"
+    same_body._api_key = "synthetic-header-only-change"
+    cached = engine.run_semantic_matching(
+        **options, client=same_body, advisory=True,
+        before_model_call=lambda stage: pytest.fail("Validated cache reuse must not acquire a model attempt"),
+    )
+    assert same_body.model_calls == 0 and cached_stages == []
+    assert cached["statistics"]["cache_hits"] == 2
+    assert cached["assessments"] == result["assessments"]
+    assert set(options["cache_dir"].glob("*.json")) == cached_paths
+    assert validations == ["recall", "assess"]
+
+
+def test_oversized_single_check_does_not_starve_other_checks_of_whole_facts(tmp_path):
+    options = _fixture(tmp_path, count=1)
+    long_requirement = "Synthetic long qualification " + "x" * 11_000
+    terms = [long_requirement, "Java services"]
+    options["job_path"].write_text(
+        "target_role: Engineer\nmust_have:\n"
+        + "".join("  - " + json.dumps(term) + "\n" for term in terms)
+    )
+    client, stages, _ = _client()
+    requests = _capture_prepared_requests(client)
+    hooks = []
+    result = engine.run_semantic_matching(
+        **options, client=client, advisory=True, before_model_call=hooks.append,
+    )
+
+    assert stages == hooks == ["recall", "assess"]
+    assert client.model_calls == result["statistics"]["model_calls"] == 2
+    assert result["statistics"]["repair_calls"] == 0
+    assert client.budget_exhausted is False
+    assert all(
+        len(json.dumps(json.loads(request.data), ensure_ascii=False))
+        <= engine.SEMANTIC_MATCHING.capability.max_input_chars
+        for request in requests
+    )
+    assert result["requirements"][0]["text"] == long_requirement
+    checks = {check["id"]: check for check in result["requirement_checks"]}
+    assert checks["r1"]["criterion"] == long_requirement
+    entries = {check_id: entry for entry in result["assessment_schedule"]["entries"] for check_id in entry["check_ids"]}
+    assert entries["r1"]["reason_code"] == "input_budget"
+    assert entries["r1"]["completed"] is False
+    assert entries["r1"]["outcome"] == "degraded"
+    assert entries["r2"]["completed"] is True
+    assert result["completed_check_ids"] == ["r2"]
+    assert result["budget_deferred_check_ids"] == []
+
+    assessed = json.loads(json.loads(requests[1].data)["messages"][1]["content"])
+    assert [requirement["id"] for requirement in assessed["requirements"]] == ["r2"]
+    assert assessed["facts"]["ec_0:results:0"]["text"] == "Built Java services"
+    assessments = {row["requirement_id"]: row for row in result["criterion_assessments"]}
+    assert assessments["r1"]["status"] == "insufficient"
+    assert assessments["r2"]["status"] == "supported"
+    assert assessments["r2"]["citations"][0]["quote"] == "Built Java services"
+
+
+def test_invalid_single_check_does_not_starve_other_checks_of_whole_facts(tmp_path, monkeypatch):
+    options = _fixture(tmp_path, count=1)
+    options["job_path"].write_text(
+        'target_role: Engineer\nmust_have:\n  - "Synthetic local construction failure"\n  - "Java services"\n'
+    )
+    client, stages, _ = _client()
+    prepare_request = client.prepare_request
+
+    def prepare_check(url, payload, **kwargs):
+        data = json.loads(payload["messages"][1]["content"])
+        if data["stage"] == "assess" and any(check["id"] == "r1" for check in data["requirements"]):
+            raise ValueError("synthetic local construction failure")
+        return prepare_request(url, payload, **kwargs)
+
+    monkeypatch.setattr(client, "prepare_request", prepare_check)
+    requests = _capture_prepared_requests(client)
+    hooks = []
+    result = engine.run_semantic_matching(
+        **options, client=client, advisory=True, before_model_call=hooks.append,
+    )
+    assessed = [json.loads(json.loads(request.data)["messages"][1]["content"]) for request in requests]
+    assessed = [payload for payload in assessed if payload["stage"] == "assess"]
+    assert len(assessed) == 1
+    assert "ec_0:results:0" in assessed[0]["facts"], "An unconstructable peer check must not remove the fitting check's complete evidence"
+    assert assessed[0]["facts"]["ec_0:results:0"]["text"] == "Built Java services"
+    assert [check["id"] for check in assessed[0]["requirements"]] == ["r2"]
+    assert stages == hooks == ["recall", "assess"]
+    assert client.model_calls == result["statistics"]["model_calls"] == 2
+    assert result["statistics"]["repair_calls"] == 0
+    assert client.budget_exhausted is False
+    entries = {check_id: entry for entry in result["assessment_schedule"]["entries"] for check_id in entry["check_ids"]}
+    assert entries["r1"]["reason_code"] == "invalid_request"
+    assert entries["r1"]["completed"] is False
+    assert entries["r2"]["completed"] is True
+    assert result["completed_check_ids"] == ["r2"]
+    assert result["budget_deferred_check_ids"] == []
+    assessments = {row["requirement_id"]: row for row in result["criterion_assessments"]}
+    assert assessments["r1"]["status"] == "insufficient"
+    assert assessments["r2"]["status"] == "supported"
+    assert assessments["r2"]["citations"][0]["quote"] == "Built Java services"

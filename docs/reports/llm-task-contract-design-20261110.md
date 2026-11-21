@@ -43,7 +43,7 @@ class Capability:
     needs_json: bool               # 必须输出严格 JSON
     needs_exact_transcript: bool   # 必须逐字复制输入中的标识（高难度，尽量不用）
     max_output_tokens: int         # 单次输出预算
-    max_input_chars: int           # 单次输入预算（超了必须拆批）
+    max_input_chars: int           # 完整已准备请求的逻辑 JSON 字符预算；超限拆批或明确拒绝
 
 @dataclass(frozen=True)
 class TaskContract:
@@ -54,6 +54,20 @@ class TaskContract:
 ```
 
 **设计约束**：`needs_exact_transcript=True` 是最后手段。任何任务若能通过"任务分解"消掉这个要求，就不该保留它。
+
+
+### 输入预算执行（切片 L2，限定工程范围已完成）
+
+`Capability.max_input_chars` 约束每次实际准备发送的完整请求，单位为逻辑 JSON 字符：从已序列化的 UTF-8 `Request.data` 解码 JSON 后，以 `json.dumps(..., ensure_ascii=False)` 计长。该值包括任务消息、共同语境、输出 schema、provider 参数及消息中内层 JSON 的转义；不是 tokenizer token 数、UTF-8 字节或 wire 中 Unicode 转义后的字节数。保留现有 24,000 上限，不通过调大上限掩盖遗漏。
+
+- 请求准备只由 `LLMClient` 完成，复用标准库 `urllib.request.Request` 承载实际 URL、headers 与已序列化 body，不引入 Prepared DTO、`prepared=True`、持久字段或第二预算台账。准备不发 HTTP、不修改调用方数据；发送沿既有 `_open_with_retry`，不重新注入或重建内容。本次预算通过的同一请求对象必须是送入 transport 的对象，准备后的 URL/body 不得由预算、缓存或发送消费者改写。
+- 查重确认 `semantic_matching` 是 `task_runner.execute` 的唯一生产消费者；其余直接 `post_json` 消费者继续使用“准备→发送”的单一组合入口，不声明已全部接入契约执行器。客户端的准备和发送方法分别由分批/执行器与直接入口消费，不保留 raw/prepared 双轨或旧预算签名。
+- 初次与每次修复请求均先准备、再查预算，之后才允许进入发送回调和 `before_model_call`。初次超限为 `input_budget_exceeded`，尝试数 0；首请求已发但修复超限，只保留首请求的尝试，不能把构造反馈计作修复模型调用。不可序列化、循环输入或本地请求准备失败为现有原因集合中的 `invalid_request`，不能按大小 0 放行，也不按模型不可用、输出 JSON 错误或普通 transport 失败解释；构造失败不回发原输入。
+- 分批与执行器使用同一完整请求口径。recall 的粗体积提示不作最终准入依据；assessment 沿现有选取顺序尝试完整 Fact/既有来源组合，以完整准备请求是否容纳作准入判断，不用独立差额估算代替检查。某独立 check 与必需档案语境无法构造合法请求或已超限时，它保持完整原文及自身的 invalid_request/input_budget 未评审原因，不参与其他可容纳 checks 的可选事实准入约束；不删除该要求，也不扩成另一套逐 check 事实窗口。候选试算不读写缓存，不增加命中、修复或调度计数。最终接受的批次保留对应 Request，直到首次发送；必要语境或单条完整事实过大时显式保留输入预算/未评审缺口，不裁掉原文或限定，不据“准备过”授予完成或覆盖。
+- 原缓存继续承担结果复用并运行原业务 validator；命中结果不调用 HTTP。缓存身份由实际接受的请求 URL、body 与既有输入版本共同确定，不能使用随后重读的 context 或注入前 payload 表示另一份请求；不保留旧 key 的迁移双轨，不新增缓存账本或因本片清缓存。请求预算约束待发请求，不把有效缓存复用算作新发送；本地输入失败不设置 transport 的 budget_exhausted，也不因此授予续审资格。
+- 本片保留任务受控修复次数、输出预算与 BoundedLocal 的实际 HTTP 额度、超时、localhost/重定向约束。TaskRun.attempts 表达逻辑调用尝试，BoundedLocal.model_calls 表达实际 HTTP 尝试，两者不能混称。provider/部署能力配置中的既有模型名或端点特例另片治理，本片仅完整计入其当前注入参数。
+
+独立验收先复现 10 个业务反例，修复后保留原生 schema、无 schema、显式格式、中文/转义、完整 Fact、稳定分批、缓存校验和本地 transport 约束正控；审查补出的局部准备失败反例也已转绿。全量与纯合成真实 Router→Splash→内部预览通过，实际 matching 请求按完整逻辑 JSON 字符计量均未超过原上限。详细结果与未完成边界见 [Project Ledger](../project-ledger.md)；不以辅助脚本或孤立模型样本替代应用验收，也不据有限合成规模宣称所有直接调用已有契约预算。
 
 ### 第二层：任务分解（让模型只做它擅长的）
 
