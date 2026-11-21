@@ -89,7 +89,7 @@ def _run_semantic(config: MatchingFlowConfig, evidence_files: list[Path]) -> int
     api_key = config.api_key
     provider = os.getenv("LLM_PROVIDER", "")
     if not llm.llm_request_available(
-        provider=provider, api_key=api_key, model=model
+        provider=provider, api_key=api_key, model=model, base_url=config.base_url
     ):
         if config.require_llm:
             print("LLM mode required but model/api_key is missing")
@@ -149,13 +149,32 @@ def _semantic_error_detail(exc: BaseException) -> str:
     return detail
 
 
+def _pool_evidence_files(evidence_dir: Path) -> list[Path]:
+    """只把已入池卡送入匹配；样例卡与草稿不得参与评分。"""
+    from tools.infra.evidence_pool import pool_eligible_scalars
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+
+    files: list[Path] = []
+    for path in sorted(evidence_dir.glob("*.yaml")):
+        try:
+            doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        candidate_id = str(doc["scalars"].get("id") or path.stem)
+        if pool_eligible_scalars(doc["scalars"], card_id=candidate_id):
+            files.append(path)
+    return files
+
+
 def run_matching_flow(config: MatchingFlowConfig) -> int:
     """执行匹配与评分。返回进程退出码（0 成功、1 LLM 必需但失败、2 企业排除）。"""
     if config.require_llm and not config.use_llm:
         print("--require-llm requires --use-llm")
         return 1
 
-    evidence_files = sorted(config.evidence_dir.glob("*.yaml"))
+    evidence_files = _pool_evidence_files(config.evidence_dir)
+    if not evidence_files:
+        print("[matching] 警告：没有可用的已入池证据卡，本次匹配结果为空。")
     config.output_path.parent.mkdir(parents=True, exist_ok=True)
 
     policy_exit = _check_policy(config)

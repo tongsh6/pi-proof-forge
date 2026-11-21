@@ -1,12 +1,15 @@
 """语义判断的来源校验与简历覆盖计算；不执行外部 IO。"""
 from __future__ import annotations
 
+from tools.domain.assessment_support import candidate_citations, positive_citations
+from tools.engines.matching.quote_locator import locate_fact_by_quote
+
 import re
-from tools.engines.evaluation.keyword_coverage import contains_term
+from tools.domain.quality_text import render_fact_text
 
 STATUSES = ('supported', 'partial', 'insufficient', 'conflict')
 STATUS_LABELS = {'supported': '有证据支持', 'partial': '部分支持', 'insufficient': '证据不足',
-                 'conflict': '存在冲突', 'not_present': '简历未呈现'}
+                 'conflict': '存在冲突', 'not_present': '简历未呈现', 'unassessed': '正文覆盖未核验'}
 
 
 def _rows(response, key, identity, expected):
@@ -33,23 +36,45 @@ def _reason(row):
 
 
 def validate_citations(citations, facts, source_id=None):
-    if not isinstance(citations, list) or len(citations) > 64:
-        raise ValueError('semantic_invalid_citations')
-    for citation in citations:
-        if not isinstance(citation, dict) or set(citation) != {'fact_id', 'quote'}:
-            raise ValueError('semantic_invalid_citation')
-        fact_id, quote = citation['fact_id'], citation['quote']
-        if not isinstance(fact_id, str) or fact_id not in facts or not isinstance(quote, str):
-            detail = ':' + fact_id[:160] if isinstance(fact_id, str) else ''
-            raise ValueError('semantic_unknown_fact' + detail)
-        fact = facts[fact_id]
-        if source_id is not None and fact['source_id'] != source_id:
+    """引用核实：模型给「原文摘录」或事实编号，程序负责定位与转录。
+
+    职责分配（见 docs/reports/llm-task-contract-design-20261110.md）：
+    - 模型：判断相关性 + 摘录支撑结论的原文片段（自然语言，模型擅长）；
+    - 程序：把片段精确定位回事实编号并转录原文（精确匹配，程序擅长）。
+
+    模型不再被要求抄写 `ec_xxx:actions:1` 这类标识——实测这是整批评审失败的主因。
+    定位失败不抛异常，而是进入 `unresolved` 由上层按"该条不可核实"处理。
+    """
+    resolved: list[dict] = []
+    unresolved: list[str] = []
+    seen: set[str] = set()
+    if not isinstance(citations, list):
+        # 单条引用写坏（或整组写成字符串）只影响可核实性，不该让整批评审失败。
+        return resolved, [str(citations)[:120]]
+    for citation in citations[:64]:
+        if not isinstance(citation, dict):
+            unresolved.append(str(citation)[:120])
+            continue
+        fact_id = citation.get('fact_id')
+        fact = facts.get(fact_id) if isinstance(fact_id, str) else None
+        if fact is None:
+            quote = citation.get('quote')
+            located = locate_fact_by_quote(quote, facts) if isinstance(quote, str) else None
+            if located is None:
+                unresolved.append(str(quote if isinstance(quote, str) else fact_id)[:120])
+                continue
+            fact_id = located
+            fact = facts[fact_id]
+        if source_id is not None and fact.get('source_id') != source_id:
             raise ValueError(f'semantic_wrong_source:{fact_id[:160]}:expected={str(source_id)[:160]}')
-        if not quote.strip() or quote not in fact['text']:
-            raise ValueError('semantic_quote_not_in_source:' + fact_id)
-        if len(quote.strip()) < min(8, len(fact['text'].strip())):
-            raise ValueError('semantic_quote_too_short:' + fact_id)
-    return citations
+        if fact_id in seen:
+            continue
+        seen.add(fact_id)
+        item = {'fact_id': fact_id, 'quote': str(fact['text']).strip()[:160]}
+        if fact.get('candidate_support') is False:
+            item['candidate_support'] = False
+        resolved.append(item)
+    return resolved, unresolved
 
 
 def validate_cards(response, cards, facts, requirements):
@@ -63,7 +88,15 @@ def validate_cards(response, cards, facts, requirements):
         refs = row.get('requirement_ids')
         if not isinstance(refs, list) or any(not isinstance(r, str) or r not in allowed for r in refs):
             raise ValueError('semantic_unknown_requirement')
-        validate_citations(row.get('citations'), facts, row['id'])
+        citations, unresolved = validate_citations(row.get('citations'), facts, row['id'])
+        row['citations'] = citations
+        if unresolved:
+            # 摘录无法定位：该卡结论不可核实。局部降级为 0 分并留痕，
+            # 不再让整批评审失败——这是"复核失败"而不是"模型没按要求做"。
+            row['unresolved_quotes'] = unresolved
+            row['score'] = 0
+            row['requirement_ids'] = []
+            continue
         if (row['score'] > 0 or refs) and not row['citations']:
             missing_citations.append(row['id'])
     if missing_citations:
@@ -100,12 +133,30 @@ def validate_assessments(response, facts, requirements):
         _reason(row)
         if row.get('status') not in STATUSES:
             raise ValueError('semantic_invalid_status')
-        _validate_assessment_reason(row,by_id[row['requirement_id']]['text'])
-        validate_citations(row.get('citations'), facts)
+        try:
+            _validate_assessment_reason(row,by_id[row['requirement_id']]['text'])
+        except ValueError as exc:
+            # 单条结论的内部矛盾/加码不足以否定整批：按"不可核实"降级并留痕，
+            # 同批其他要求的结论照常生效（失败是状态，不是异常）。
+            row.update(status='insufficient', citations=[],
+                       reason=('评审结论不可核实：' + str(exc))[:1000])
+            continue
+        citations, unresolved = validate_citations(row.get('citations'), facts)
+        row['citations'] = citations
+        if unresolved:
+            # 该项的摘录无法在事实库定位：按"证据不足"处理并留痕，不整批失败。
+            row['unresolved_quotes'] = unresolved
+            if row['status'] == 'supported':
+                row['status'] = 'insufficient'
+                row['reason'] = (row['reason'] + '（引用片段无法在证据库定位，按不可核实处理）')[:1000]
         if row['status'] != 'insufficient' and not row['citations']:
             missing_citations.append(row['requirement_id'])
-        cited=[facts[c['fact_id']] for c in row['citations']]
-        quoted='；'.join([*(c['quote'] for c in row['citations']),*(q for f in cited for q in f.get('source_qualifiers',[]))])
+        usable = list(candidate_citations(row['citations']))
+        if row['status'] in {'supported', 'partial'} and len(usable) < len(row['citations']):
+            row.update(status='partial' if usable else 'insufficient',
+                       reason='复审限定的参与归属不能证明本人实践。')
+        cited=[facts[c['fact_id']] for c in usable]
+        quoted='；'.join([*(c['quote'] for c in usable),*(q for f in cited for q in f.get('source_qualifiers',[]))])
         qualified=r'参与或负责|主导或深度参与|主导或参与'
         asserted=re.sub(r'(?:不能|无法|未能|不足以|不应|尚不能|没有|缺少|缺乏|未)[^。；，,;但而\n]{0,20}(?:主导|独立完成|独立负责|全权负责)', '', row['reason'])
         if re.search(qualified,quoted) and re.search(r'主导|独立完成|独立负责|全权负责',asserted) and not re.search(qualified,row['reason']):
@@ -120,8 +171,11 @@ def validate_assessments(response, facts, requirements):
                 cautions.append('引用项目的本人职责未确认，不能直接等同个人能力')
             if cautions:
                 row.update(status='partial',cautions=cautions,reason='；'.join(cautions))
-    if missing_citations:
-        raise ValueError('semantic_support_requires_citation:requirements=' + ','.join(missing_citations))
+    for requirement_id in missing_citations:
+        for row in rows:
+            if row['requirement_id'] == requirement_id:
+                row.update(status='insufficient', citations=[],
+                           reason=(str(row.get('reason') or '') + '（缺少可核实引用，按证据不足处理）')[:1000])
     return rows
 
 
@@ -135,12 +189,16 @@ def job_requirements(terms, jd='', kind='must_have'):
             active=True;continue
         if active and re.fullmatch(r'任职要求|职位要求|任职资格|任职条件|岗位要求|背景与能力要求|加分项|加分经历|Requirements|Qualifications',line,re.I):break
         if not active or not line:continue
-        if re.match(r'^\d+[.、)）]\s*',line):
+        # 项目符号不只数字编号：英文 JD 常用 ◦ / • / - / *，之前只认数字导致
+        # 职责条目全部丢失（R2.2「语义评审未提供岗位职责条目」的直接原因）。
+        if re.match(r'^(?:\d+[.、)）]|[◦•·▪]|[-*])\s*', line):
             if current:groups.append('\n'.join(current))
             current=[line]
         elif current:current.append(line)
     if current:groups.append('\n'.join(current))
-    if len(groups)>20:raise ValueError('semantic_too_many_responsibility_groups')
+    # 职责条目过多时截断而不是拒绝：条目越多只是需要更多批，
+    # 整份评审不该因为 JD 写得更详细而失败。
+    groups = groups[:40]
     rows.extend({'id':f'd{i+1}','text':text,'kind':'responsibility'} for i,text in enumerate(groups))
     return rows
 
@@ -198,16 +256,16 @@ def support_score(statuses):
 def select_cards(reviews, assessments, facts, eligible_ids=None):
     """按逐项引用的新增事实覆盖选材，不用未引用的弱相关项目凑数。"""
     positive_sources = {facts[c['fact_id']]['source_id']
-                        for parent in assessments for row in parent.get('checks', [parent])
-                        if row['status'] in {'supported', 'partial'} for c in row['citations']}
+                        for parent in assessments for c, _ in positive_citations(parent)}
     candidates=[r for r in reviews if (r['score']>0 or r['id'] in positive_sources)
                 and (eligible_ids is None or r['id'] in eligible_ids)]
     coverage={r['id']:{} for r in candidates}
     for index,row in enumerate(assessments):
-        weight={'supported':2,'partial':1}.get(row['status'],0)
-        for citation in row['citations']:
+        for citation, status in positive_citations(row):
             ref=facts[citation['fact_id']]['source_id']
-            if weight and ref in coverage:coverage[ref][(index,citation['fact_id'])]=weight
+            if ref in coverage:
+                key = (index, citation['fact_id'])
+                coverage[ref][key] = max(coverage[ref].get(key, 0), {'supported':2,'partial':1}[status])
     if not any(coverage.values()):
         return [r['id'] for r in sorted(candidates,key=lambda r:(-r['score'],r['id']))][:(1 if assessments else 3)]
     chosen=[];seen=set()
@@ -219,34 +277,51 @@ def select_cards(reviews, assessments, facts, eligible_ids=None):
     return chosen
 
 
-def resume_assessment(review, claims):
+def resume_assessment(review, claims, *, occurrence_coverage_known=None):
+    def positions(citation):
+        fact_id = citation["fact_id"]
+        fact = review["facts"][fact_id]
+        source = fact["source_id"]
+        kind = "personal_profile" if source == "personal_profile" else "evidence"
+        return sorted({claim["render_line"] for claim in claims
+                       if claim.get("fact_id") == fact_id and claim.get("field") == fact["field"]
+                       and claim.get("source_kind") == kind
+                       and (kind != "evidence" or claim.get("evidence_id") == source)
+                       and type(claim.get("render_line")) is int and claim["render_line"] > 0
+                       and claim.get("text") == render_fact_text(fact["text"])})
+
+    if occurrence_coverage_known is None:
+        occurrence_coverage_known = any("fact_id" in c and "render_line" in c for c in claims)
     def present(citation):
-        fact = review['facts'][citation['fact_id']]
-        quote = ' '.join(citation['quote'].split())
-        return any((c.get('field') == fact['field'] and quote in ' '.join(c.get('text', '').split()) or
-                    fact['field']=='stack' and contains_term(c.get('text',''),quote)) and
-                   ((fact['source_id'] == 'personal_profile' and c.get('source_kind') == 'personal_profile') or
-                    (c.get('source_kind') == 'evidence' and c.get('evidence_id') == fact['source_id'])) for c in claims)
+        return bool(positions(citation)) if occurrence_coverage_known and citation.get('candidate_support') is not False else False
+
+    def covered(citations):
+        usable = list(candidate_citations(citations))
+        return bool(usable) and all(present(c) for c in usable)
 
     requirements = {r['id']: r for r in review['requirements']}
     rows = []
     for assessment in review['assessments']:
-        visible = bool(assessment['citations']) and all(present(c) for c in assessment['citations'])
+        visible = covered(assessment['citations'])
         resume_status = assessment['status']
         if resume_status in {'supported', 'partial'} and not visible:
             resume_status = 'not_present'
-        citations = [{**c, **review['facts'][c['fact_id']], 'in_resume': present(c)} for c in assessment['citations']]
+        citations = [{**c, **review['facts'][c['fact_id']], 'in_resume': present(c), 'render_lines': positions(c) if present(c) else []} for c in assessment['citations']]
         children=[]
         for child in assessment.get('checks',[]):
             state=child['status']
-            if state in {'supported','partial'} and not all(present(c) for c in child['citations']):state='not_present'
+            if state in {'supported','partial'} and not covered(child['citations']):state='not_present'
             children.append({**child,'resume_status':state})
         if children:
             resume_status=combined_status(c['resume_status'] for c in children)
             if resume_status=='insufficient' and any(c['resume_status']=='not_present' for c in children):resume_status='not_present'
+        if not occurrence_coverage_known:
+            resume_status = 'unassessed'
+            children = [{**c, 'resume_status': 'unassessed'} for c in children]
         rows.append({**assessment, 'text': requirements[assessment['requirement_id']]['text'],
                      'kind':requirements[assessment['requirement_id']].get('kind','must_have'),
                      'resume_status': resume_status, 'citations': citations, 'checks':children})
     return {'mode': 'semantic', 'fit_score': support_score(r['status'] for r in rows),
-            'resume_score': support_score(r['resume_status'] for r in rows), 'requirements': rows,
+            'resume_score': support_score(r['resume_status'] for r in rows) if occurrence_coverage_known else None,
+            'occurrence_coverage_known': occurrence_coverage_known, 'requirements': rows,
             'all_requirements_supported': bool(rows) and all(r['resume_status'] == 'supported' for r in rows)}

@@ -64,13 +64,14 @@ def test_ownership_calibration_never_increases_support(status):
     assert result['status']==status
 
 
-def test_stack_can_be_visible_in_same_project_action_but_not_other_project():
+def test_stack_requires_exact_rendered_occurrence_not_mention_in_sibling_action():
     fact={'source_id':'e','field':'stack','text':'Java'}
     review={'facts':{'f':fact},'requirements':[{'id':'r','text':'Java实践'}], 'assessments':[{'requirement_id':'r','status':'supported','reason':'有实践','citations':[{'fact_id':'f','quote':'Java'}]}]}
-    claim={'source_kind':'evidence','evidence_id':'e','field':'actions','text':'使用Java实现接口。'}
+    claim={'source_kind':'evidence','evidence_id':'e','field':'stack','text':'Java','fact_id':'f','render_line':7}
     assert engine.resume_assessment(review,[claim])['resume_score']==100
     assert engine.resume_assessment(review,[{**claim,'evidence_id':'other'}])['resume_score']==0
-    assert engine.resume_assessment(review,[{**claim,'text':'使用JavaScript实现接口。'}])['resume_score']==0
+    assert engine.resume_assessment(review,[{**claim,'text':'JavaScript'}])['resume_score']==0
+    assert engine.resume_assessment(review,[{**claim,'fact_id':'e:actions:0','field':'actions','text':'使用Java实现接口。'}])['resume_score']==0
 
 
 def test_warning_against_ownership_escalation_is_allowed():
