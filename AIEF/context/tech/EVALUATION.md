@@ -54,9 +54,11 @@
 
 - 正式 Quick Run 沿 matching_flow → generation_flow → evaluation_flow 消费同一正式语义报告、当前来源与精确正文，使用已有四层质量判项；不能以 preparation 的有限 advisory 结果替代。
 - L6 已将正式质量判项接共同 TaskRunner/LLMClient：实际完整 Request 限 24,000 逻辑 JSON 字符、输出 6,000，修复仅补未完成组。缓存绑定实际 URL/body 与原输入版本并当前重验；稳定有效命中零 HTTP，坏/部分缓存无权威。修复预算/构造/传输失败保已核完整组，其余 pending、不缓存；协议 length 即使 JSON 闭合也不采纳。TaskRun 诊断沿 stdout，原 quality_judge.error 使用稳定原因，不增 API 字段；来源发布 fence 保持。
+- L7 的 judge 输入保完整角色/provenance、原卡背景/行动/结果与当前 fact_scope_review；实际 trace.claims 是唯一采用身份，actions/results 保原 index/value 与 render_line，result_reviews 仅含实际采用的当前原 row。完整语境只核已经表达的内容，不补正文信用；合法时间降精度保留，无字符/前 N 裁剪，完整输入超限沿 L6 pending。没有新增持久状态或业务脚本。
 - M1 的 guided Agent 已复用同次 SHA 读取和共同四层计算，通过现 Scorecard、固定候选、getPendingReview/submitReview 与 QualityReportPanel 消费。报告版本绑定正文 SHA，候选版本仍是入口标签；目标矛盾、实际读取 ABA 和末端来源变化拒绝。没有语义/judge/PDF 裁切结果时明确待判，零模型，不以关键词分或旧 LLM 覆盖度补绿。
 - Store.create 显式接本次已有 Scorecard，在唯一 PDF 导出后完成现 quality_snapshot/quality_sha256 与 manifest；报告预捕获，失败不改调用方。Store.load 对当前/跨队列 API、native PDF 与批准恢复共用 payload、实际正文/PDF和目标校验。无报告的既有其他能力显示未记录；新 guided 缺实际报告拒绝，不能回退数字分。
 - 线索没有单独岗位关联时，审核候选传递本轮真实目标，不覆盖非空矛盾、不补造 JD 状态/来源/批准；原线索不被改写。质量未通过/待判仍是建议层，合法人工批准沿原授权；guided 检查结果不冒称实际投递。
-- Agent 的显式旧 LLM 引擎目前仅由 CLI 向 Composer 注入，保传四层报告不等于 App 已有正式 Agent 语义执行。独立 CLI 的参考指标或解释不能替代上述产品链。下一片核现质量 judge 摘要对实际已呈现事实、完整职责/环境限定的遗漏；只看完整正文不足以证明自身事实，仍需原职责与当前结果依据。L6 的完整请求预算不能等同全部原卡原文无裁剪。
+- Agent 的显式旧 LLM 引擎目前仅由 CLI 向 Composer 注入，保传四层报告不等于 App 已有正式 Agent 语义执行。独立 CLI 的参考指标或解释不能替代上述产品链。L7 已补 judge 完整来源与实际采用范围；实际模型仍遗漏一条本人职责，R1.4 消费者报缺项而判项元数据/缓存视为完整，下一片对齐逐项覆盖与完成合同，不用词表增加语义特例。
 - M1 最终全量 3016 passed、1 skipped、101 subtests passed；TypeScript/工程门禁通过。合成实际应用最终 9 RPC、真实 PDF、零模型/应用网络请求，报告篡改拒绝、合法待判报告批准仅为 checked_not_submitted。Node 执行真实组件的行为证据不等同原生页面深验；详细计数与范围见 Project Ledger。
 - L6 最终全量 3036 passed、1 skipped、101 subtests passed（56.90 秒），工程门禁通过；既有 API 核定的合成资料完成实际 App 11 RPC/5 次本机 Splash，质量请求 1 次/5580 字符/五组完成，量化 0.5、auto_pass=false。来源及生产字节保持；原生、真实 JD/正式件/投递仍未验收。
+- L7 最终全量 3040 passed、1 skipped、101 subtests passed（56.96 秒），新鲜合成 App 22 RPC/6 次本机 Splash，质量一次/13664 字符。结果5、长句限定及来源原 row 完整，非量化/未选同事37%不借证，R4为空；R1.4合法主导仅部分完成，遗漏行与错误完成状态保留。量化0、auto_pass=false，不宣称所有语义判项或真实验收通过。

@@ -147,6 +147,17 @@ Last updated: 2026-11-22
 - 实际请求为 3086 个逻辑 JSON 字符、10656 个 wire 字节，明确关闭沿 shared client 发为 reasoning_effort=none，无 thinking/chat_template_kwargs，finish_reason=stop。实际请求 SHA 为 5a3298daeebfe76df2757baed47ab365523cfa5184e185aeafc48414812c01f5，运行记录 SHA 为 d1d0408e5fe3726284f066e5fc0fde84803ec9897223452a98bedb5c12e8dd8f，均已独立重算。此直接调用计量不冒称 TaskRunner 预算。
 - 原卡前后字节完全一致，时间/职责仍空、candidate_pool_eligible=false，没有确认候选。真实招聘站、正式生成与投递均为零；原生 UI、quality judge 真实模型链及 confirmInference 的末端来源复核未由本片验收。下一片核定候选接受的原始依据与连续确认版本接续，P0-026 继续进行。
 
+## 2026-11-22 质量判项的完整输入与实际采用事实（切片 L7，限定工程与合成输入验收完成）
+
+- 先查原质量 loader、标准 trace/claims、matches_fact_occurrence、current_result_reviews 与证据详情 project_fact_scope；复用现职责，不重建生成 FactIndex、不增 RPC、持久字段、来源账本或业务脚本。现 quality_report/llm_judge 保完整角色/provenance、背景、原行动/成果及当前范围语境，去掉字符与前 N 条裁剪；原语境可以核验已表达职责，不能补正文未写的成果或岗位信用。
+- 唯一 claims 投影保原身份和实际行，actions/results 从精确原数组位置取得完整 index/value；bullets 仅补 render_line。cards.result_reviews 仅含本次实际采用且完整匹配的当前原 row；fact_scope_review 用同次 doc/documents 投影，不另读来源或接受陈旧核定。合法日期降精度保持，头部联系方式不加入判项；原 cards/trace 不变，prompt version 升至 6，L6 的 24k/6000/两次尝试、缓存身份及 H/strong 保持。
+- 独立 RED 共四例：真实生成→标准 trace→当前评测→最终 HTTP 的第六条成果非量化/实测两例为 2 failed / 85 deselected（0.16 秒），同文 action/未采用同事 result 一例为 1 failed / 87 deselected（0.14 秒），完整责任/环境/行动的纯 prompt 一例为 1 failed / 9 deselected（0.02 秒）。初次两例因夹具漏 artifacts 在 matching 准入失败，补回后才取得上述业务 RED，不混计。首失败前真实结果资格与来源围栏已成立，不能称 R3 门禁绕过。
+- 冻结的四例修复后 4 passed / 94 deselected（0.16 秒），两测试文件 98 passed（0.40 秒），测试、夹具与业务预期未放宽；全部后置身份、原 row、尾部条件与来源不变断言实际执行。实测/非量化/同文负控 R3.2 分别保持 0.3333/0/0，均 auto_pass=false。最终全量 3040 passed、1 skipped、101 subtests passed（56.96 秒），架构 v2 通过。
+- 新鲜合成资料通过真实材料上传/文档读取、saveDraft 结果复审、档案确认、岗位保存和 Quick Run API 完成 22 RPC（含状态观察）、6 次本机 Splash HTTP：结果核定一次、匹配两次、背景两次、质量一次。质量实际请求 13664 逻辑 JSON 字符/42019 bytes、输出预算 6000、明确关闭推理模式，响应 stop。完整 role 118 字、context 186 字、result 255 字进入请求；六条原结果留作核验语境，实际结果身份仅为原 results:5，当前同 row 为 established/无实测引文/test/not_released，A/B 正文均在第 22 行完整呈现。
+- 独立语义审查保留部分失败：行动 bullet#2 的本人模块主导获支持；结果 bullet#3 末尾也有合法本人主导，却被 R1.4 遗漏，最终报告已记该行缺少角色判定。元数据仍声称五组完成、llm_pending 为空、没有修复且写入缓存，故不宣称 R1.4 整体通过；下一片核逐项覆盖与完成状态。R4 空列表符合完整 JD/档案/正文，没有超出岗位维度，也没有借未采用的 37%、平台架构或生产发布。模型给行动行 result=true，strong 仍按实际结果身份撤回；非量化成果保留，量化为 0、auto_pass=false。
+- 运行记录 SHA 为 08b6968ecc4b4d2ffd1391e77119c0ff815a2eda58b5190c9662928953454ceb，质量请求/响应 SHA 分别为 40e9fd96aeb61804ae21b4fca9ad756d943127d05d8cd07fb2225b6203919830 / 405ab793872e987db0d0b11676e85e1567c5b59a178f8b862fe5e503baba01f6，A/B 正文 SHA 同为 16b8ae009e55726ec8faa9a4361ac9be80667831d2e850eaddd96807bf598db7。六对 wire、7 项 trace 输入、5 项原始来源和 241 个生产文件均独立核验；不调用生产 key 函数重算的缓存身份一致，缓存内容保留上述缺项，没有隐藏失败。父/实际 pipeline 子进程均加载 loopback 限制，无外部连接或拒绝事件。
+- 本片完成输入与限定采用职责，不证明 R1/R4 全语义正确；真实 JD/正式件/投递、原生页面及全部来源语境仍待验收，P0-026 保持唯一 next/in_progress。matching 的短引用另经实际 HTTP 核对，results:5 与职责在请求中完整，160 字 quote 只是报告简写，不能误报成模型输入截断。
+
 ## 2026-11-22 正式质量判项请求、缓存与有界修复（切片 L6，限定工程与合成应用验收完成）
 
 - 查重沿现 Quick Run 正式 pipeline、quality_report/llm_judge、唯一质量缓存、TaskContract/TaskRunner 和共享 LLMClient 补齐实际消费者。登记 quality_judge，保输出 6,000 tokens 与完整已准备请求 24,000 逻辑 JSON 字符，同一 Request 决定预算、身份和发送；不另建 Agent 模型入口、RPC、业务脚本或平行账本，guided 仍零模型。
@@ -240,7 +251,7 @@ Last updated: 2026-11-22
 
 ## 当前未完成项
 
-1. P0-026 仍为唯一 next 且在进行：F/G/H/I/J 已按各自范围完成共同生成、来源等级、来源依赖、评测版本、结果核定及当前集合共同消费；K1 完成精确引用增量与正文预算，L1 完成共享 schema 传递和合成准备 RPC 验证。K2 完成当前任职摘要与精确来源。K3 完成完整补充成果精确选材。L2 完成注入后的完整请求预算、缓存身份和合成应用复验。L3a 完成两业务入口的重复协议注入清理和限定 inferFields 合成应用验收。L3b 完成既有三态配置、全调用链与页面传播，退役共享客户端部署/型号模式特例，并复验同一合成准备预览应用链。L4 完成应用内索引准备、实际来源版本与整批候选发布，并通过无 bootstrap 的合成 API + Splash 验收。下一步核定推断候选接受时的原始依据及连续确认版本；场景完整陈述语境去重与 Agent 四层接入继续推进。有限合成覆盖不代表全部语义完成，不新增业务脚本、平行账本或关键词分类，自动批量调度仍未产品化。
+1. P0-026 仍为唯一 next 且在进行；已完成工程切片的边界与证据见上文。L7 已补齐正式质量判项的完整来源语境和精确采用身份，实际合成流程保住非量化与不借同事成果，R1.4 合法职责正控仅部分完成。下一片处理逐项覆盖、完成状态与缓存/修复一致性；不能由组名齐全推断全部所需判项齐全。有限模型失败记录保持，不新增业务脚本、平行账本或关键词分类；自动批量调度和正式模型 Agent 语义仍未产品化。
 2. 继续原生页面验收，核对已接通的引文扩充、显式采纳/撤销、兄弟事实保留与错误恢复；不以组件测试替代实际窗口结果。
 3. 在另行授权范围内完成真实 JD + Splash 的内部预览、正式简历与实际投递验收；当前工程验证不能代替这些结果。
 4. 保持自动匹配的语义判断职责，不把每日岗位判断转交为逐岗位人工代审，也不以投递数量替代合适性与可追问的事实质量。
