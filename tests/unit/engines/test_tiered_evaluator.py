@@ -340,7 +340,8 @@ def test_quality_report_auto_pass_requires_all_tiers_and_no_pending_llm_rules():
     report = build()
     assert report["tiers"]["eligible"]["passed"] is True
     assert report["auto_pass"] is False
-    assert set(report["llm_pending"]) >= {"R1.4", "R2.1", "R3.1", "R3.5", "R4.1"}
+    assert "R1.4" not in report["llm_pending"]
+    assert set(report["llm_pending"]) >= {"R2.1", "R3.1", "R3.5", "R4.1"}
     assert report["legacy_scores"] == {"rule_total": None, "llm_expression": None}
 
 
@@ -570,6 +571,160 @@ def test_three_nominations_are_ranked_to_two_not_rejected_as_three_chosen():
     result = te.evaluate_distinct(resume="- 完成平台\n<!-- first-screen-end -->",
                                  candidates=candidates, config=te.load_quality_config())
     assert result.passed and len(result.highlights) == 2
+
+
+@pytest.fixture
+def l8_role_inputs():
+    text = "主导接口模块对接，并完成固定样例验收。"
+    profile = career_profile()
+    profile["career"]["skills"][0]["description"] = text
+    return {
+        "resume": "## 核心能力\n- " + text,
+        "trace": {
+            "status": "verified",
+            "occurrence_lineage_version": 1,
+            "evidence_card_ids": [],
+            "claims": [{
+                "source_kind": "personal_profile",
+                "field": "career.skills.s1.description",
+                "fact_id": "personal_profile:career.skills.s1.description:0",
+                "evidence_id": "", "text": text, "render_line": 2,
+            }],
+        },
+        "career_profile": profile,
+        "cards": {"ec_00000001": card(actions=[text])},
+        "semantic_review": None,
+        "job_context": job_context(),
+        "pdf_check": {"pages": 2, "clipped": False},
+        "judgments": None,
+    }
+
+
+@pytest.mark.parametrize("case", ["confirmed-profile", "no-role-assertion"])
+def test_l8_empty_role_review_set_does_not_require_model(l8_role_inputs, case):
+    inputs = l8_role_inputs
+    if case == "no-role-assertion":
+        text = "完成接口模块对接，并记录固定样例验收结果。"
+        inputs["resume"] = "## 核心能力\n- " + text
+        inputs["career_profile"]["career"]["skills"][0]["description"] = text
+        inputs["trace"]["claims"][0]["text"] = text
+
+    report = te.build_quality_report(**inputs)
+
+    assert "R1.4" not in rules(report, "eligible")
+    assert "R1.4" not in report["llm_pending"]
+    assert set(report["llm_pending"]) == {"R2.1", "R2.3", "R3.1", "R3.5", "R4.1", "R4.4"}
+    assert report["auto_pass"] is False
+
+
+@pytest.mark.parametrize("case", ["evidence", "mixed", "unreviewed", "rewritten", "incomplete-trace"])
+def test_l8_profile_bypass_requires_current_verbatim_exclusive_complete_source(l8_role_inputs, case):
+    inputs = l8_role_inputs
+    claim = inputs["trace"]["claims"][0]
+    if case == "evidence":
+        claim.update(source_kind="evidence", field="actions", fact_id="ec_00000001:actions:0",
+                     evidence_id="ec_00000001")
+        inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+    elif case in {"mixed", "incomplete-trace"}:
+        prefix, suffix = "主导接口模块对接，", "并完成固定样例验收。"
+        inputs["career_profile"]["career"]["work"][0]["contributions"] = [prefix]
+        claim.update(field="career.work.w1.contributions",
+                     fact_id="personal_profile:career.work.w1.contributions:0", text=prefix)
+        if case == "mixed":
+            inputs["cards"]["ec_00000001"]["actions"] = [suffix]
+            inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+            inputs["trace"]["claims"].append({
+                "source_kind": "evidence", "field": "actions", "fact_id": "ec_00000001:actions:0",
+                "evidence_id": "ec_00000001", "text": suffix, "render_line": 2,
+            })
+    elif case == "unreviewed":
+        inputs["career_profile"]["career_status"]["reviewed"] = False
+    elif case == "rewritten":
+        inputs["resume"] = "## 核心能力\n- 独立" + claim["text"]
+
+    report = te.build_quality_report(**inputs)
+
+    assert "R1.4" in report["llm_pending"]
+    assert "R1.4" not in rules(report, "eligible")
+    assert set(report["llm_pending"]) - {"R1.4"} == {"R2.1", "R2.3", "R3.1", "R3.5", "R4.1", "R4.4"}
+    assert report["auto_pass"] is False
+
+
+@pytest.mark.parametrize("level", ["L5", "L3"])
+def test_l8_deterministic_role_failure_remains_without_model_pending(l8_role_inputs, level):
+    inputs = l8_role_inputs
+    claim = inputs["trace"]["claims"][0]
+    claim.update(source_kind="evidence", field="actions", fact_id="ec_00000001:actions:0",
+                 evidence_id="ec_00000001")
+    inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+    inputs["cards"]["ec_00000001"]["role_scope_provenance"] = {"level": level, "evidence": []}
+
+    report = te.build_quality_report(**inputs)
+
+    failures = [item for item in report["tiers"]["eligible"]["failures"] if item["rule"] == "R1.4"]
+    assert len(failures) == 1
+    assert "bullet#1" in failures[0]["target"] and "ec_00000001" in failures[0]["target"]
+    assert level in failures[0]["reason"]
+    assert report["tiers"]["eligible"]["passed"] is False
+    assert "R1.4" not in report["llm_pending"]
+    assert set(report["llm_pending"]) == {"R2.1", "R2.3", "R3.1", "R3.5", "R4.1", "R4.4"}
+    assert report["auto_pass"] is False
+
+
+def test_l8_confirmed_sourced_l3_still_requires_semantic_review(l8_role_inputs):
+    inputs = l8_role_inputs
+    claim = inputs["trace"]["claims"][0]
+    claim.update(source_kind="evidence", field="actions", fact_id="ec_00000001:actions:0",
+                 evidence_id="ec_00000001")
+    inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+    inputs["cards"]["ec_00000001"]["role_scope_provenance"] = {
+        "level": "L3", "confirmed_by_user": True,
+        "evidence": [{"material_id": "m", "document_id": "d", "excerpt": claim["text"]}],
+    }
+
+    report = te.build_quality_report(**inputs)
+
+    assert "R1.4" not in rules(report, "eligible")
+    assert "R1.4" in report["llm_pending"]
+    assert set(report["llm_pending"]) - {"R1.4"} == {"R2.1", "R2.3", "R3.1", "R3.5", "R4.1", "R4.4"}
+    assert report["auto_pass"] is False
+
+
+@pytest.mark.parametrize("case", ["missing-second", "false-true", "true-false"])
+def test_l8_direct_report_rechecks_role_coverage_and_rejects_duplicate_judgments(l8_role_inputs, case):
+    inputs = l8_role_inputs
+    first = inputs["trace"]["claims"][0]["text"]
+    second = "负责接口错误码映射与回放记录归档。"
+    inputs["resume"] = "## 核心能力\n- " + first + "\n- " + second
+    inputs["cards"]["ec_00000001"]["actions"] = [first, second]
+    inputs["trace"]["evidence_card_ids"] = ["ec_00000001"]
+    inputs["trace"]["claims"] = [
+        {"source_kind": "evidence", "field": "actions", "fact_id": f"ec_00000001:actions:{index}",
+         "evidence_id": "ec_00000001", "text": text, "render_line": index + 2}
+        for index, text in enumerate([first, second])
+    ]
+    valid_first = {"bullet": 1, "supported": True, "citations": ["ec_00000001"], "reason": "模块责任有据"}
+    valid_second = {"bullet": 2, "supported": True, "citations": ["ec_00000001"], "reason": "归档责任有据"}
+    rejected_first = {**valid_first, "supported": False, "reason": "该职责没有依据"}
+    if case == "missing-second":
+        rows = [valid_first]
+    elif case == "false-true":
+        rows = [rejected_first, valid_first, valid_second]
+    else:
+        rows = [valid_first, rejected_first, valid_second]
+    inputs["judgments"] = judged_payload(r1_4=rows, r2_1=[], r3_1=[], r4_1=[])
+
+    report = te.build_quality_report(**inputs)
+
+    assert report["llm_pending"] == ["R1.4"]
+    assert report["auto_pass"] is False
+    if case != "missing-second":
+        reversed_inputs = {**inputs, "judgments": {**inputs["judgments"], "r1_4": list(reversed(rows))}}
+        reversed_report = te.build_quality_report(**reversed_inputs)
+        assert reversed_report["llm_pending"] == ["R1.4"]
+        failures = [item for item in report["tiers"]["eligible"]["failures"] if item["rule"] == "R1.4"]
+        reversed_failures = [item for item in reversed_report["tiers"]["eligible"]["failures"] if item["rule"] == "R1.4"]
+        assert failures == reversed_failures
 
 
 def test_verbatim_confirmed_profile_role_does_not_need_duplicate_model_confirmation():

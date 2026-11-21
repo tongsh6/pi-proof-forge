@@ -94,10 +94,6 @@ def extract_bullets(resume: str) -> list[dict[str, object]]:
     return rows
 
 
-def strong_wording_bullets(resume: str) -> list[dict[str, object]]:
-    return [row for row in extract_bullets(resume) if _STRONG_ROLE_RE.search(str(row.get("text", "")))]
-
-
 def _split_first_screen(resume: str) -> tuple[str, str, str]:
     index = resume.find(FIRST_SCREEN_MARKER)
     if index >= 0:
@@ -332,4 +328,4 @@ def load_quality_config(root: Path | None = None) -> QualityConfig:
 
 
 
-__all__ = ["split_first_screen", "extract_bullets", "strong_wording_bullets", "_split_first_screen", "_normalize", "_compact", "_ym", "_now_ym", "_period_bounds", "_title_period", "_bullet_rows", "_entries", "inspect_bullet_trace", "_failure", "_short", "_report_metrics", "_unique", "_pdf_check_pending", "_advice_recomputable", "load_quality_config", "ROOT", "DEFAULT_THRESHOLDS", "FALLBACK_FILLER_TERMS", "PHASE_A_LLM_PENDING", "QualityConfig", "_ENTRY_SECTIONS", "_CONTACT_RE", "_INTERNAL_TRACE_RE", "_STRONG_ROLE_RE", "_DEGREE_RANK", "_FLAT_KEYS"]
+__all__ = ["split_first_screen", "extract_bullets", "_split_first_screen", "_normalize", "_compact", "_ym", "_now_ym", "_period_bounds", "_title_period", "_bullet_rows", "_entries", "inspect_bullet_trace", "_failure", "_short", "_report_metrics", "_unique", "_pdf_check_pending", "_advice_recomputable", "load_quality_config", "ROOT", "DEFAULT_THRESHOLDS", "FALLBACK_FILLER_TERMS", "PHASE_A_LLM_PENDING", "QualityConfig", "_ENTRY_SECTIONS", "_CONTACT_RE", "_INTERNAL_TRACE_RE", "_STRONG_ROLE_RE", "_DEGREE_RANK", "_FLAT_KEYS"]

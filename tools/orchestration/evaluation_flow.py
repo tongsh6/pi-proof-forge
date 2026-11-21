@@ -246,6 +246,7 @@ def run_evaluation_flow(config: EvaluationFlowConfig) -> int:
         resume_text=resume_text,
         trace=quality_trace,
         cards=cards,
+        career_profile=career,
         semantic_review=semantic_review,
         job_profile_path=str(job_profile_path) if job_profile_path else None,
         use_llm=config.use_llm,

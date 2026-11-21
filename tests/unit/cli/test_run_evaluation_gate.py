@@ -24,6 +24,7 @@ def _gate_kwargs() -> dict:
     return {
         "resume_text": "# 张三\n## 项目经历\n- 负责平台交付\n",
         "trace": {},
+        "career_profile": {},
         "cards": {},
         "semantic_review": {
             "mode": "semantic",

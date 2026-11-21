@@ -27,6 +27,7 @@ from tools.infra.llm.task_runner import execute
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 from . import llm_judge, tiered_evaluator
+from .tiers.eligible import r1_4_requirements
 
 
 def _read_quality_input(meta: dict) -> bytes:
@@ -122,6 +123,7 @@ def _run_quality_judge(
     resume_text: str,
     trace: dict,
     cards: dict[str, dict],
+    career_profile: dict,
     semantic_review: dict | None,
     job_profile_path: str | None,
     use_llm: bool,
@@ -133,6 +135,10 @@ def _run_quality_judge(
     """同份完整请求决定准入和缓存；只修未完成组，失败保留已核 partial。"""
     resume_sha256 = hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
     decisions = quality_judge_cache.load_decisions(Path.cwd(), resume_sha256)
+    _failures, r1_4_required_bullets = r1_4_requirements(
+        trace_result=tiered_evaluator.inspect_bullet_trace(resume_text, trace),
+        career_profile=career_profile, cards=cards,
+    )
     if isinstance(trace.get("claims"), list):
         rendered_ids = {str(claim.get("evidence_id", "")) for claim in trace["claims"] if isinstance(claim, dict)}
         cards = {key: card for key, card in cards.items() if key in rendered_ids}
@@ -146,13 +152,18 @@ def _run_quality_judge(
     bullets = tiered_evaluator.extract_bullets(resume_text)
     job_profile_id = Path(job_profile_path).stem if job_profile_path else ""
     all_sections = tuple(llm_judge._RULES)
-    requested = all_sections
+    requested = tuple(
+        section for section in all_sections if section != "r1_4" or r1_4_required_bullets
+    )
     merged: dict[str, Any] = {
         "schema_version": llm_judge.JUDGE_SCHEMA_VERSION,
         "prompt_version": llm_judge.PROMPT_VERSION,
         "judged_sections": [],
         "rejected_items": 0,
     }
+    if not r1_4_required_bullets:
+        merged["r1_4"] = []
+        merged["judged_sections"] = ["r1_4"]
     meta = {
         "cache": "miss", "model": model, "prompt_version": llm_judge.PROMPT_VERSION,
         "model_calls": 0, "repair_calls": 0,
@@ -161,7 +172,7 @@ def _run_quality_judge(
     def parse_current(value):
         return llm_judge.parse_judgments(
             json.dumps(value, ensure_ascii=False), bullets=bullets, jd_items=jd_items,
-            cards=cards, resume_text=resume_text,
+            cards=cards, resume_text=resume_text, r1_4_required_bullets=r1_4_required_bullets,
         )
 
     def validated_cache(cached):
@@ -199,7 +210,8 @@ def _run_quality_judge(
                     {"role": "system", "content": "You are a strict judge. Return ONLY the JSON object."},
                     {"role": "user", "content": llm_judge.build_judge_prompt(
                         bullets=bullets, cards=cards, jd_items=jd_items,
-                        resume_text=resume_text, trace=trace, sections=sections)},
+                        resume_text=resume_text, trace=trace, sections=sections,
+                        r1_4_required_bullets=r1_4_required_bullets)},
                 ],
             },
         )
@@ -210,7 +222,7 @@ def _run_quality_judge(
             base_url=base_url, api_key=api_key, timeout=llm_timeout_from_env(),
             provider=os.getenv("LLM_PROVIDER", ""),
         )
-        prepared = prepare_sections(all_sections)
+        prepared = prepare_sections(requested)
         key = quality_judge_cache.judge_cache_key(
             prepared_request=prepared, trace_inputs=trace.get("inputs", {}),
             resume_sha256=resume_sha256, job_profile_id=job_profile_id,

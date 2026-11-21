@@ -16,13 +16,13 @@ from tools.infra.persistence.yaml_io import parse_simple_yaml
 from .common import *
 
 
-def _pending_rules(judgments: dict | None) -> list[str]:
+def _pending_rules(judgments: dict | None, *, r1_4_complete: bool) -> list[str]:
     if not isinstance(judgments, dict):
-        return list(PHASE_A_LLM_PENDING)
+        return [rule for rule in PHASE_A_LLM_PENDING if rule != "R1.4" or not r1_4_complete]
     sections = set(judgments.get("judged_sections") or [])
-    pending: list[str] = []
-    for section, rule in (("r1_4", "R1.4"), ("r2_1", "R2.1"), ("r3_1", "R3.1"),
-                          ("r3_5", "R3.5"), ("r4_1", "R4.1")):
+    pending: list[str] = [] if r1_4_complete else ["R1.4"]
+    for section, rule in (("r2_1", "R2.1"), ("r3_1", "R3.1"),
+                           ("r3_5", "R3.5"), ("r4_1", "R4.1")):
         if section not in sections:
             pending.append(rule)
     return pending

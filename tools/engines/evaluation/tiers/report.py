@@ -10,12 +10,12 @@ from pathlib import Path
 
 from tools.domain.models import QualityFailure, TierResult
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
-from tools.engines.evaluation.llm_judge import resume_lines
+from tools.engines.evaluation.llm_judge import validate_role_judgments
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 from .common import *
 from .distinct import evaluate_distinct
-from .eligible import PDF_CHECK_PENDING, evaluate_eligible, pdf_artifact_check
+from .eligible import PDF_CHECK_PENDING, evaluate_eligible, pdf_artifact_check, r1_4_requirements
 from .fit import _judge_candidates, _pending_rules, evaluate_fit
 from .strong import evaluate_strong
 
@@ -261,7 +261,17 @@ def build_quality_report(
     if blocked_by:
         for tier in ("fit", "strong", "distinct"):
             evaluated[tier]["blocked_by"] = blocked_by
-    llm_pending = _pending_rules(judgments)
+    _role_failures, required_bullets = r1_4_requirements(
+        trace_result=inspect_bullet_trace(resume, trace), career_profile=career_profile, cards=cards,
+    )
+    _role_items, role_complete, _rejected = validate_role_judgments(
+        judgments.get("r1_4") if isinstance(judgments, dict) else None,
+        required_bullets=required_bullets, bullets=extract_bullets(resume),
+        cards=cards, resume_text=resume,
+    )
+    llm_pending = _pending_rules(
+        judgments, r1_4_complete=not required_bullets or role_complete,
+    )
     all_passed = all(bool(tier["passed"]) for tier in evaluated.values())
     report: dict[str, object] = {
         "schema_version": 1,

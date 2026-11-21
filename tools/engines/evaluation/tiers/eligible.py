@@ -10,7 +10,7 @@ from pathlib import Path
 
 from tools.domain.models import QualityFailure, TierResult
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
-from tools.engines.evaluation.llm_judge import resume_lines
+from tools.engines.evaluation.llm_judge import validate_role_judgments
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 
 from .common import *
@@ -128,6 +128,53 @@ def _structure_failures(resume: str, career: dict) -> list[QualityFailure]:
     if visibility != "omit" and not any(token in headings for token in ("教育经历", "教育背景")):
         failures.append(_failure("R1.8", "教育", "缺少教育经历章节（未声明不展示）"))
     return failures
+
+
+def r1_4_requirements(
+    *, trace_result: dict, career_profile: dict, cards: dict[str, dict],
+) -> tuple[list[QualityFailure], set[int]]:
+    """保留确定性职责失败，返回其余仍需语义判定的原 bullet 身份。"""
+    strong_rows = [
+        row for row in trace_result["bullets"]
+        if _STRONG_ROLE_RE.search(str(row.get("text", "")))
+    ]
+    confirmed_profile_texts: set[str] = set()
+    if career_profile.get("career_status", {}).get("reviewed"):
+        career = career_profile.get("career", {})
+        for group, label in (("skills", "category"), ("extras", "title")):
+            for entry in career.get(group, []):
+                description = str(entry.get("description", ""))
+                confirmed_profile_texts.update((
+                    _normalize(description),
+                    _normalize(str(entry.get(label, "")) + "：" + description),
+                ))
+        confirmed_profile_texts.update(
+            _normalize(text) for entry in career.get("work", [])
+            for text in entry.get("contributions", [])
+        )
+    failures: list[QualityFailure] = []
+    required: set[int] = set()
+    for row in strong_rows:
+        for evidence_id in row.get("evidence_ids", []):
+            source = cards.get(evidence_id, {})
+            level = _provenance_level(source, "role_scope")
+            role = _provenance(source, "role_scope")
+            confirmed = role.get("confirmed_by_user") is True and bool(role.get("evidence"))
+            if level == "L5" or (level == "L3" and not confirmed):
+                failures.append(_failure(
+                    "R1.4", f"bullet#{row['number']} / {evidence_id}",
+                    f"角色措辞“{_short(row['text'], 20)}”缺少已确认的职责依据（{level}）",
+                ))
+                break
+        else:
+            if (
+                row.get("verified")
+                and _normalize(row["text"]) in confirmed_profile_texts
+                and all(source.get("source_kind") == "personal_profile" for source in row.get("sources", []))
+            ):
+                continue
+            required.add(int(row["number"]))
+    return failures, required
 
 
 def evaluate_eligible(
@@ -251,59 +298,26 @@ def evaluate_eligible(
                 _failure("R1.3", f"工作经历「{_short(entry['title'])}」", "经历缺少时间（至少到年）")
             )
 
-    # R1.4 核对职责是否已采纳；有出处且已确认的 L3 不因来源等级自动降低责任。
-    strong_rows = [row for row in trace_result["bullets"] if _STRONG_ROLE_RE.search(str(row.get("text", "")))]
-    confirmed_profile_texts: set[str] = set()
-    if career_profile.get("career_status", {}).get("reviewed"):
-        career = career_profile.get("career", {})
-        for group, label in (("skills", "category"), ("extras", "title")):
-            for entry in career.get(group, []):
-                description = str(entry.get("description", ""))
-                confirmed_profile_texts.update((_normalize(description),
-                    _normalize(str(entry.get(label, "")) + "：" + description)))
-        confirmed_profile_texts.update(_normalize(text) for entry in career.get("work", [])
-                                       for text in entry.get("contributions", []))
-    flagged_bullets: set[int] = set()
-    for row in strong_rows:
-        for evidence_id in row.get("evidence_ids", []):
-            source = cards.get(evidence_id, {})
-            level = _provenance_level(source, "role_scope")
-            role = _provenance(source, "role_scope")
-            confirmed = role.get("confirmed_by_user") is True and bool(role.get("evidence"))
-            if level == "L5" or (level == "L3" and not confirmed):
-                failures.append(
-                    _failure(
-                        "R1.4",
-                        f"bullet#{row['number']} / {evidence_id}",
-                        f"角色措辞“{_short(row['text'], 20)}”缺少已确认的职责依据（{level}）",
-                    )
-                )
-                flagged_bullets.add(int(row["number"]))
-                break
-    if isinstance(judgments, dict) and "r1_4" in (judgments.get("judged_sections") or []):
-        judged = {
-            int(item["bullet"]): item
-            for item in judgments.get("r1_4", []) or []
-            if isinstance(item, dict) and isinstance(item.get("bullet"), int)
-        }
-        for row in strong_rows:
-            number = int(row["number"])
-            if number in flagged_bullets:
-                continue
-            if (row.get("verified") and _normalize(row["text"]) in confirmed_profile_texts
-                    and all(source.get("source_kind") == "personal_profile" for source in row.get("sources", []))):
-                continue
+    # R1.4 的目标、确定失败与模型完成条件分别沿同一职责核对。
+    role_failures, required_bullets = r1_4_requirements(
+        trace_result=trace_result, career_profile=career_profile, cards=cards,
+    )
+    failures.extend(role_failures)
+    if isinstance(judgments, dict):
+        role_items, _complete, _rejected = validate_role_judgments(
+            judgments.get("r1_4"), required_bullets=required_bullets,
+            bullets=trace_result["bullets"], cards=cards, resume_text=resume,
+        )
+        judged = {item["bullet"]: item for item in role_items}
+        for number in sorted(required_bullets):
             item = judged.get(number)
             if item is None:
                 failures.append(_failure("R1.4", f"bullet#{number}", "缺少带引用的角色措辞判定"))
-            elif item.get("supported") is False:
-                failures.append(
-                    _failure(
-                        "R1.4",
-                        f"bullet#{number} / {'、'.join(item.get('citations') or [])}",
-                        f"角色措辞缺少已引用证据支持：{item.get('reason', '')}",
-                    )
-                )
+            elif item["supported"] is False:
+                failures.append(_failure(
+                    "R1.4", f"bullet#{number} / {'、'.join(item['citations'])}",
+                    f"角色措辞缺少已引用证据支持：{item['reason']}",
+                ))
 
     # R1.5 篇幅/首屏/裁切。
     pdf_failures, pdf_metrics = pdf_artifact_check(pdf_check, thresholds)

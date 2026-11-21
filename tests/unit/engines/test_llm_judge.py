@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from tools.engines.evaluation import llm_judge
 
 
 def test_quality_judge_receives_action_responsibility_boundary():
     action="参与售后服务联调，由平台组负责总体架构设计"
     prompt=llm_judge.build_judge_prompt(
-        bullets=[],jd_items=[],cards={"ec1":{"title":"售后服务","role_scope":"技术负责人","actions":[action],
+        bullets=[], r1_4_required_bullets=set(),jd_items=[],cards={"ec1":{"title":"售后服务","role_scope":"技术负责人","actions":[action],
                                            "role_scope_provenance":{"level":"L3","confirmed_by_user":True}}})
     data=json.loads(prompt.split("INPUT JSON:\n",1)[1])
     assert data["cards"][0]["actions"]==[action]
@@ -39,7 +41,7 @@ JD_ITEMS = [
 
 
 def test_prompt_contains_bullets_cards_and_jd_items():
-    prompt = llm_judge.build_judge_prompt(bullets=BULLETS, cards=CARDS, jd_items=JD_ITEMS)
+    prompt = llm_judge.build_judge_prompt(bullets=BULLETS, r1_4_required_bullets={3}, cards=CARDS, jd_items=JD_ITEMS)
     assert "r1_4" in prompt and "r4_1" in prompt
     assert "完成平台抽象" in prompt and "ec_00000001" in prompt and "负责核心平台交付" in prompt
     assert "citations" in prompt
@@ -67,7 +69,7 @@ def valid_payload():
 def test_parse_valid_payload_marks_all_sections_covered():
     judgments = llm_judge.parse_judgments(
         "```json\n" + json.dumps(valid_payload(), ensure_ascii=False) + "\n```",
-        bullets=BULLETS,
+        bullets=BULLETS, r1_4_required_bullets={3},
         jd_items=JD_ITEMS,
         cards=CARDS,
     )
@@ -84,7 +86,7 @@ def test_items_without_citations_are_discarded_and_incomplete_coverage_stays_pen
     payload["r3_1"][0]["citations"] = []
     payload["r4_1"][0]["citations"] = []
     judgments = llm_judge.parse_judgments(
-        json.dumps(payload, ensure_ascii=False), bullets=BULLETS, jd_items=JD_ITEMS, cards=CARDS
+        json.dumps(payload, ensure_ascii=False), bullets=BULLETS, r1_4_required_bullets={3}, jd_items=JD_ITEMS, cards=CARDS
     )
     assert judgments is not None
     assert "r2_1" not in judgments["judged_sections"]  # 未逐条覆盖 → 仍需 pending
@@ -94,13 +96,13 @@ def test_items_without_citations_are_discarded_and_incomplete_coverage_stays_pen
 
 
 def test_invalid_json_and_unknown_references_return_none_or_empty():
-    assert llm_judge.parse_judgments("not json", bullets=BULLETS, jd_items=JD_ITEMS, cards=CARDS) is None
+    assert llm_judge.parse_judgments("not json", bullets=BULLETS, r1_4_required_bullets={3}, jd_items=JD_ITEMS, cards=CARDS) is None
     payload = valid_payload()
     payload["r2_1"][0]["jd_item_id"] = "unknown"
     payload["r4_1"][0]["level"] = "L3"
     payload["r3_5"]["citations"] = []
     judgments = llm_judge.parse_judgments(
-        json.dumps(payload, ensure_ascii=False), bullets=BULLETS, jd_items=JD_ITEMS, cards=CARDS
+        json.dumps(payload, ensure_ascii=False), bullets=BULLETS, r1_4_required_bullets={3}, jd_items=JD_ITEMS, cards=CARDS
     )
     assert judgments is not None
     assert "r2_1" not in judgments["judged_sections"]
@@ -110,7 +112,7 @@ def test_invalid_json_and_unknown_references_return_none_or_empty():
 
 def test_judge_sees_summary_education_and_project_context_without_contacts():
     resume = "# 张三\n13800000000\n## 职业概述\n负责平台交付\n## 项目经历\n### 平台\n场景：多租户\n- 完成平台抽象\n## 教育经历\n软件工程 · 本科\n"
-    prompt = llm_judge.build_judge_prompt(bullets=BULLETS, cards=CARDS, jd_items=JD_ITEMS, resume_text=resume)
+    prompt = llm_judge.build_judge_prompt(bullets=BULLETS, r1_4_required_bullets={3}, cards=CARDS, jd_items=JD_ITEMS, resume_text=resume)
     data = json.loads(prompt.split("INPUT JSON:\n", 1)[1])
     lines = data["resume_lines"]
     assert any(r["text"] == "软件工程 · 本科" for r in lines)
@@ -123,25 +125,25 @@ def test_absence_can_cite_reviewed_resume_but_support_requires_visible_reference
     payload = valid_payload()
     payload["r2_1"][0].update(status="absent", bullet_ref="", citations=["resume"], reason="全文未出现对应能力")
     payload["r2_1"][1].update(bullet_ref="line#2", citations=["line#2"])
-    judgments = llm_judge.parse_judgments(json.dumps(payload), bullets=BULLETS, cards=CARDS,
+    judgments = llm_judge.parse_judgments(json.dumps(payload), bullets=BULLETS, r1_4_required_bullets={3}, cards=CARDS,
                                          jd_items=JD_ITEMS, resume_text="## 核心技能\nJava\n")
     assert "r2_1" in judgments["judged_sections"]
     payload["r2_1"][1].update(bullet_ref="bullet#999", citations=["ec_00000001"])
-    judgments = llm_judge.parse_judgments(json.dumps(payload), bullets=BULLETS, cards=CARDS,
+    judgments = llm_judge.parse_judgments(json.dumps(payload), bullets=BULLETS, r1_4_required_bullets={3}, cards=CARDS,
                                          jd_items=JD_ITEMS, resume_text="## 核心技能\nJava\n")
     assert "r2_1" not in judgments["judged_sections"]
 
 
 def test_judge_does_not_drop_tail_conditions_of_long_jd():
     jd = "负责平台开发。" * 70 + "必须掌握 Python。"
-    prompt = llm_judge.build_judge_prompt(bullets=[], cards={}, jd_items=[{"id": "r1", "text": jd}])
+    prompt = llm_judge.build_judge_prompt(bullets=[], r1_4_required_bullets=set(), cards={}, jd_items=[{"id": "r1", "text": jd}])
     assert jd in prompt
 
 
 def test_visible_citation_can_fill_omitted_duplicate_bullet_ref():
     payload = valid_payload()
     payload["r2_1"][1].update(bullet_ref="", citations=["line#2"])
-    judged = llm_judge.parse_judgments(json.dumps(payload), bullets=BULLETS, cards=CARDS,
+    judged = llm_judge.parse_judgments(json.dumps(payload), bullets=BULLETS, r1_4_required_bullets={3}, cards=CARDS,
                                       jd_items=JD_ITEMS, resume_text="## 核心技能\nJava\n")
     assert "r2_1" in judged["judged_sections"]
     assert judged["r2_1"][1]["bullet_ref"] == "line#2"
@@ -155,7 +157,7 @@ def test_judge_preserves_complete_card_verification_context():
         "已交付接口验收记录，结论仅适用于上述冷启动测试条件。"]
     assert len(role) > 60 and len(context) > 160 and len(action) > 160
     prompt = llm_judge.build_judge_prompt(
-        bullets=[], jd_items=[], cards={"ec-boundary": {
+        bullets=[], r1_4_required_bullets=set(), jd_items=[], cards={"ec-boundary": {
             "title": "接口对接", "role_scope": role, "context": context,
             "actions": [action], "results": results,
         }})
@@ -164,3 +166,27 @@ def test_judge_preserves_complete_card_verification_context():
     assert {key: card[key] for key in ("role_scope", "context", "actions", "results")} == {
         "role_scope": role, "context": context, "actions": [action], "results": results,
     }
+
+@pytest.mark.parametrize("values", [(True, True), (True, False), (False, True)],
+                         ids=["same", "true-then-false", "false-then-true"])
+def test_role_judge_repeated_target_never_completes_the_group(values):
+    payload = valid_payload()
+    original = payload["r1_4"][0]
+    payload["r1_4"] = [{**original, "supported": value} for value in values]
+    judged = llm_judge.parse_judgments(
+        json.dumps(payload), bullets=BULLETS, r1_4_required_bullets={3}, cards=CARDS, jd_items=JD_ITEMS)
+    assert judged is not None
+    assert "r1_4" not in judged["judged_sections"], "one required identity cannot be judged twice"
+    assert set(judged["judged_sections"]) == {"r2_1", "r3_1", "r3_5", "r4_1"}
+
+
+def test_role_judge_does_not_grant_authority_to_an_unrequested_bullet():
+    payload = valid_payload()
+    payload["r1_4"].append({
+        "bullet": 1, "supported": False, "citations": ["bullet#1"],
+        "reason": "这是不在职责待判集合中的额外回答。",
+    })
+    judged = llm_judge.parse_judgments(
+        json.dumps(payload), bullets=BULLETS, r1_4_required_bullets={3}, cards=CARDS, jd_items=JD_ITEMS)
+    assert judged is not None and "r1_4" in judged["judged_sections"]
+    assert judged["r1_4"] == [payload["r1_4"][0]]

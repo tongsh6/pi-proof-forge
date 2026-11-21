@@ -25,7 +25,6 @@ from .tiers.common import (
 from .tiers.common import (
     split_first_screen,
     extract_bullets,
-    strong_wording_bullets,
     _split_first_screen,
     _normalize,
     _compact,

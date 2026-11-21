@@ -349,6 +349,7 @@ def test_quality_judge_request_uses_shared_provider_adapter(tmp_path, monkeypatc
 
     monkeypatch.setattr("tools.infra.llm.client.request.urlopen", open_response)
     judgments, meta, _decisions = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="synthetic-model", api_key="synthetic", base_url=base_url,
     )
@@ -366,6 +367,7 @@ def test_quality_judge_cache_hit_avoids_second_model_call(tmp_path, monkeypatch)
     resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient(content)
     first, meta_first, _decisions = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
@@ -373,6 +375,7 @@ def test_quality_judge_cache_hit_avoids_second_model_call(tmp_path, monkeypatch)
     assert first is not None and meta_first["cache"] == "miss" and client.calls == 1
     assert "遵守" not in meta_first.get("error", "")
     second, meta_second, _ = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
@@ -386,6 +389,7 @@ def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path
     resume, semantic, _content, cards = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient("not-json")
     judgments, meta, _ = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
@@ -393,6 +397,7 @@ def test_quality_judge_invalid_response_keeps_pending_and_is_not_cached(tmp_path
     assert judgments is None
     assert meta["cache"] == "miss" and meta.get("error", "").split(":", 1)[0] == "invalid_json"
     _judgments2, meta2, _ = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
@@ -421,6 +426,7 @@ def test_quality_judge_retries_only_missing_sections_in_second_call(tmp_path, mo
     second = json.dumps({key: payload[key] for key in ("r2_1", "r3_1", "r3_5", "r4_1")}, ensure_ascii=False)
     client = _SequencedJudgeClient([first, second])
     judgments, meta, _ = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: client,
@@ -435,6 +441,7 @@ def test_quality_judge_retries_only_missing_sections_in_second_call(tmp_path, mo
 def test_quality_judge_disabled_without_llm_or_semantic_review(tmp_path, monkeypatch):
     resume, semantic, _content, cards = _judge_fixture(tmp_path, monkeypatch)
     judgments, meta, decisions = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=None, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient("{}"),
@@ -442,6 +449,7 @@ def test_quality_judge_disabled_without_llm_or_semantic_review(tmp_path, monkeyp
     assert judgments is None and meta["cache"] == "disabled"
     assert decisions == {"rejected": [], "selected": []}
     judgments, meta, _ = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=False, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient("{}"),
@@ -456,6 +464,7 @@ def test_quality_judge_loads_user_highlight_decisions(tmp_path, monkeypatch):
     resume_sha = hashlib.sha256(resume.encode("utf-8")).hexdigest()
     quality_judge_cache.save_highlight_decision(Path.cwd(), resume_sha, "hl_b1_d1", "reject")
     _judgments, _meta, decisions = quality_report._run_quality_judge(
+        career_profile={},
         resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
         use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
         client_factory=lambda: _FakeJudgeClient(content),
@@ -466,7 +475,7 @@ def test_quality_judge_loads_user_highlight_decisions(tmp_path, monkeypatch):
 def test_quality_cache_invalidates_when_same_job_content_changes(tmp_path, monkeypatch):
     resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     client = _FakeJudgeClient(content)
-    args = dict(resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
+    args = dict(career_profile={}, resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
                 use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
                 client_factory=lambda: client)
     quality_report._run_quality_judge(**args)
@@ -480,7 +489,7 @@ def test_quality_missing_jd_coverage_repairs_once_and_does_not_cache_pending(tmp
     payload = json.loads(content)
     payload["r2_1"] = []
     client = _FakeJudgeClient(json.dumps(payload))
-    args = dict(resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
+    args = dict(career_profile={}, resume_text=resume, trace={}, cards=cards, semantic_review=semantic, job_profile_path="job.yaml",
                 use_llm=True, model="fake-model", api_key="k", base_url="http://fake/v1",
                 client_factory=lambda: client)
     judgments, meta, _ = quality_report._run_quality_judge(**args)
@@ -495,7 +504,7 @@ def test_quality_judge_uses_configured_provider_adapter(tmp_path, monkeypatch):
     created = []
     monkeypatch.setenv("LLM_PROVIDER", "lm_studio")
     monkeypatch.setattr(quality_report, "LLMClient", lambda **kwargs: created.append(kwargs) or client)
-    quality_report._run_quality_judge(resume_text=resume, trace={}, cards=cards, semantic_review=semantic,
+    quality_report._run_quality_judge(career_profile={}, resume_text=resume, trace={}, cards=cards, semantic_review=semantic,
         job_profile_path="job.yaml", use_llm=True, model="m", api_key="k", base_url="http://localhost/v1")
     assert created[0]["provider"] == "lm_studio"
 
@@ -504,7 +513,7 @@ def test_quality_judge_only_receives_evidence_used_in_actual_resume(tmp_path, mo
     resume, semantic, content, cards = _judge_fixture(tmp_path, monkeypatch)
     cards = {**cards, "unused": {"results": ["未呈现的百万级成果"]}}
     client = _FakeJudgeClient(content)
-    quality_report._run_quality_judge(resume_text=resume, cards=cards,
+    quality_report._run_quality_judge(career_profile={}, resume_text=resume, cards=cards,
         trace={"claims": [{"evidence_id": "ec_1", "text": "负责完成平台抽象"}]},
         semantic_review=semantic, job_profile_path="job.yaml", use_llm=True, model="m", api_key="k",
         base_url="http://fake/v1", client_factory=lambda: client)
@@ -1099,7 +1108,7 @@ def _quality_wire_transport(tmp_path, monkeypatch):
     monkeypatch.setattr(LLMClient, "prepare_request", observe_prepare)
     monkeypatch.setattr("tools.infra.llm.client.request.urlopen", respond)
     args = dict(
-        resume_text=resume, trace={}, cards=cards, semantic_review=semantic,
+        career_profile={}, resume_text=resume, trace={}, cards=cards, semantic_review=semantic,
         job_profile_path="job.yaml", use_llm=True, model="synthetic-quality-model",
         api_key="synthetic-key", base_url="http://127.0.0.1:9000/v1")
     return args, state
@@ -1301,7 +1310,8 @@ def test_quality_normalized_partial_cache_cannot_gain_default_empty_sections(tmp
     assert second == first
     assert second["r1_4"], "freshly validated ownership judgment must survive cache replacement"
 
-def _evaluate_generated_judge_request(tmp_path, monkeypatch, generation, cited_fact):
+def _evaluate_generated_judge_request(tmp_path, monkeypatch, generation, cited_fact, *,
+                                      judge_reply=None, expected_calls=1):
     """Actual shared generation, current source reads and evaluation; only HTTP is replaced."""
     import io
     from tools.engines.generation import resume_renderer
@@ -1344,6 +1354,8 @@ def _evaluate_generated_judge_request(tmp_path, monkeypatch, generation, cited_f
                            "citations": [reference], "reason": "合成协议响应。"},
                 "r4_1": [],
             }
+            if judge_reply is not None:
+                answer = judge_reply(data, answer, len(quality_requests), content)
         else:
             data = json.loads(content)
             if data["stage"] == "recall":
@@ -1398,9 +1410,9 @@ def _evaluate_generated_judge_request(tmp_path, monkeypatch, generation, cited_f
     result = json.loads(config.output_path.with_suffix(".json").read_text())
     assert result["traceability"]["status"] == "verified"
     assert result["quality_report"]["auto_pass"] is False
-    assert result["quality_judge"]["model_calls"] == 1
-    request, = quality_requests
-    return markdown, trace, views[0], request, result
+    assert result["quality_judge"]["model_calls"] == expected_calls
+    assert len(quality_requests) == expected_calls
+    return markdown, trace, views[0], quality_requests[0], result
 
 @pytest.mark.parametrize("measured", [False, True], ids=["nonquantified", "measured"])
 def test_quality_request_keeps_selected_sixth_result_and_complete_source_boundary(
@@ -1498,3 +1510,133 @@ def test_quality_request_does_not_promote_same_text_unused_result(
     assert source["results"] == [value]
     assert source["result_reviews"] == {}
     assert source["fact_scope_review"] == original_scopes
+
+def _role_coverage_generation(generation):
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+
+    paths = generation[3]
+    action = "主导本人负责的接口模块对接与异常分支验收。"
+    value = ("本人负责的接口模块已通过联调验收；在隔离测试环境中，固定负载的 P95 从 200ms 降至 120ms。"
+             "本人主导范围仅为接口对接与固定样例验收。")
+    doc = parse_simple_yaml(paths["card"].read_text())
+    doc["lists"]["actions"] = ["完成队列输入输出映射与固定样例回放记录。", action]
+    doc["lists"]["results"] = [value]
+    lines = [key + ": " + json.dumps(item, ensure_ascii=False) for key, item in doc["scalars"].items()]
+    for key, values in doc["lists"].items():
+        lines += [key + ":"] + ["  - " + json.dumps(item, ensure_ascii=False) for item in values]
+    paths["card"].write_text("\n".join(lines) + "\n")
+    write_reviewed_result_sources(paths["card"], {0: value}, material_dir=paths["card"].parent.parent / "materials")
+    return action, value
+
+
+@pytest.mark.parametrize("initial_complete", [False, True], ids=["repair-missing", "already-complete"])
+@pytest.mark.parametrize("supported", [True, False], ids=["supported", "unsupported"])
+def test_quality_role_coverage_requires_each_actual_responsibility(
+        tmp_path, monkeypatch, generation, initial_complete, supported):
+    action, value = _role_coverage_generation(generation)
+    seen = []
+
+    def reply(data, complete, attempt, prompt):
+        required = {row["bullet"] for row in data["bullets"] if row["text"] in {action, value}}
+        assert required == {2, 3}, "actual generated responsibility positions are the independent targets"
+        rows = [{**row, "supported": supported if row["bullet"] == 3 else True}
+                for row in complete["r1_4"] if row["bullet"] in required]
+        seen.append(prompt)
+        if attempt == 1 and not initial_complete:
+            return {**complete, "r1_4": [row for row in rows if row["bullet"] != 3]}
+        if attempt == 2:
+            return {"r1_4": rows}
+        return {**complete, "r1_4": rows}
+
+    _markdown, _trace, _view, _data, result = _evaluate_generated_judge_request(
+        tmp_path, monkeypatch, generation, "ec-engine:results:0", judge_reply=reply,
+        expected_calls=1 if initial_complete else 2)
+    meta, quality = result["quality_judge"], result["quality_report"]
+    assert meta["repair_calls"] == (0 if initial_complete else 1)
+    assert set(meta["judged_sections"]) == {"r1_4", "r2_1", "r3_1", "r3_5", "r4_1"}
+    assert quality["llm_pending"] == []
+    failure = [row for row in quality["tiers"]["eligible"]["failures"]
+               if row["rule"] == "R1.4" and row["target"].startswith("bullet#3")]
+    assert bool(failure) is (not supported), "a complete false judgment is a failure, not missing coverage"
+    if not initial_complete:
+        assert "EXACTLY these keys: r1_4\n" in seen[1]
+    cache, = (tmp_path / "judge-cache").glob("*.json")
+    cached = json.loads(cache.read_text())["judgments"]
+    assert {row["bullet"] for row in cached["r1_4"]} == {2, 3}
+    assert next(row for row in cached["r1_4"] if row["bullet"] == 3)["supported"] is supported
+
+
+@pytest.mark.parametrize("fault", ["missing", "invalid-citation"])
+def test_quality_role_coverage_remains_pending_after_one_group_repair(
+        tmp_path, monkeypatch, generation, fault):
+    action, value = _role_coverage_generation(generation)
+    seen = []
+
+    def reply(data, complete, attempt, prompt):
+        required = {row["bullet"] for row in data["bullets"] if row["text"] in {action, value}}
+        assert required == {2, 3}
+        rows = [row for row in complete["r1_4"] if row["bullet"] in required]
+        if fault == "missing":
+            rows = [row for row in rows if row["bullet"] != 3]
+        else:
+            rows = [{**row, "citations": ["unknown-card"]} if row["bullet"] == 3 else row for row in rows]
+        seen.append(prompt)
+        return {**complete, "r1_4": rows} if attempt == 1 else {"r1_4": rows}
+
+    _markdown, _trace, _view, _data, result = _evaluate_generated_judge_request(
+        tmp_path, monkeypatch, generation, "ec-engine:results:0", judge_reply=reply, expected_calls=2)
+    meta, quality = result["quality_judge"], result["quality_report"]
+    assert meta["repair_calls"] == 1
+    assert set(meta["judged_sections"]) == {"r2_1", "r3_1", "r3_5", "r4_1"}
+    assert quality["llm_pending"] == ["R1.4"]
+    assert quality["tiers"]["strong"]["metrics"]["judged_r3_1"] is True
+    assert quality["tiers"]["strong"]["metrics"]["quant_total"] == 0.3333
+    assert "EXACTLY these keys: r1_4\n" in seen[1]
+    assert not list((tmp_path / "judge-cache").glob("*.json")), "partial groups must not become complete cache"
+
+def test_quality_role_coverage_rechecks_a_normalized_cache_missing_a_required_row(tmp_path, monkeypatch):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    first, _meta, _ = quality_report._run_quality_judge(**args)
+    assert first is not None and {row["bullet"] for row in first["r1_4"]} == {1}
+    cache, = (tmp_path / "judge-cache").glob("*.json")
+    stored = json.loads(cache.read_text())
+    stored["judgments"]["r1_4"] = []
+    assert set(stored["judgments"]["judged_sections"]) == {"r1_4", "r2_1", "r3_1", "r3_5", "r4_1"}
+    cache.write_text(json.dumps(stored))
+    second, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 2, "self-reported completion cannot replace the missing required row"
+    assert meta["cache"] == "miss" and second["r1_4"] == first["r1_4"]
+    third, stable, _ = quality_report._run_quality_judge(**args)
+    assert stable["cache"] == "hit" and len(state["sent"]) == 2 and third == second
+
+
+def test_quality_role_coverage_empty_need_does_not_request_a_role_repair(tmp_path, monkeypatch):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    args["resume_text"] = args["resume_text"].replace("负责完成平台抽象", "完成平台接口验收")
+    answer = json.loads(state["default_content"])
+    answer.pop("r1_4")
+    state["default_content"] = json.dumps(answer)
+    judgments, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 1, "there are no role targets to ask the model to judge or repair"
+    assert meta["model_calls"] == 1 and meta["repair_calls"] == 0
+    assert judgments is not None and judgments["r1_4"] == []
+    assert set(judgments["judged_sections"]) == {"r1_4", "r2_1", "r3_1", "r3_5", "r4_1"}
+    prompt = json.loads(state["sent"][0].data)["messages"][-1]["content"]
+    assert "EXACTLY these keys: r2_1, r3_1, r3_5, r4_1\n" in prompt
+
+
+def test_quality_role_coverage_empty_need_does_not_fill_a_missing_raw_cache_group(tmp_path, monkeypatch):
+    args, state = _quality_wire_transport(tmp_path, monkeypatch)
+    args["resume_text"] = args["resume_text"].replace("负责完成平台抽象", "完成平台接口验收")
+    answer = json.loads(state["default_content"])
+    answer["r1_4"] = []
+    state["default_content"] = json.dumps(answer)
+    first, _meta, _ = quality_report._run_quality_judge(**args)
+    assert first is not None and first["r1_4"] == [] and len(state["sent"]) == 1
+    cache, = (tmp_path / "judge-cache").glob("*.json")
+    stored = json.loads(cache.read_text())
+    stored["judgments"].pop("r1_4")
+    cache.write_text(json.dumps(stored))
+    second, meta, _ = quality_report._run_quality_judge(**args)
+    assert len(state["sent"]) == 2 and meta["cache"] == "miss"
+    assert second is not None and second["r1_4"] == []

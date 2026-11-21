@@ -73,7 +73,9 @@ const button=label=>nodes(tree).find(n=>n.type==='button'&&text(n).trim()===labe
   const displayed=text(tree);
   for(const tier of ['eligible','fit','strong','distinct'])assert.ok(displayed.includes('quality.report.tier.'+tier),'实际Agent页面缺少'+tier+'层报告');
   assert.ok(displayed.includes('quality.failed')&&!displayed.includes('quality.passed'),'旧分99不能冒充自动质量通过');
-  assert.ok(displayed.includes('quality.report.llmPending')&&displayed.includes('R1.4'),'未判项必须展示');
+  const pending=quality.quality_report.llm_pending;
+  assert.ok(pending.length>0&&!pending.includes('R1.4'),'纯标题夹具没有待判职责，仍有其他未判项');
+  assert.ok(displayed.includes('quality.report.llmPending '+pending.join('、')),'实际未判项必须完整展示');
   assert.ok(displayed.includes('quality.report.legacyValue 99'),'旧总分作为参考展示');
   assert.ok(displayed.includes('quality.report.advice.advisory'),'质量结果是建议');
  }

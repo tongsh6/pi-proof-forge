@@ -10,7 +10,7 @@ from typing import Any
 from tools.domain.quality_text import matches_fact_occurrence
 from tools.infra.evidence_provenance import parse_provenance
 
-PROMPT_VERSION = 6
+PROMPT_VERSION = 7
 JUDGE_SCHEMA_VERSION = 1
 
 _RULES = ("r1_4", "r2_1", "r3_1", "r3_5", "r4_1")
@@ -86,6 +86,7 @@ def build_judge_prompt(
     bullets: list[dict[str, object]],
     cards: dict[str, dict],
     jd_items: list[dict[str, str]],
+    r1_4_required_bullets: set[int],
     resume_text: str = "",
     trace: dict | None = None,
     sections: tuple[str, ...] | None = None,
@@ -123,6 +124,7 @@ def build_judge_prompt(
         "resume_lines": lines,
         "bullets": bullet_lines,
         "claims": claims,
+        "r1_4_required_bullets": sorted(r1_4_required_bullets),
         "cards": summarize_cards(cards, claims=claims),
         "jd_items": [
             {"id": item.get("id", ""), "kind": item.get("kind", "must_have"), "text": str(item.get("text", ""))}
@@ -156,7 +158,8 @@ def build_judge_prompt(
         "时间等结构 claims 可能按已核来源降低显示精度，不把完整日期未展示当作事实冲突。\n"
         "Return ONLY a JSON object (no markdown fence) with EXACTLY these keys: " + ", ".join(selected) + "\n"
         + schema_text
-        + "Rules: r1_4 covers every bullet whose wording claims ownership (负责/主导/独立负责/全权负责/设计并落地); "
+        + "Rules: when r1_4 is requested, cover exactly INPUT r1_4_required_bullets, "
+        "each once with a cited boolean judgment; no omissions, duplicates or extra targets. "
         "判断责任强度要结合卡内已审核职责与具体行动；不要求简历或证据句反复出现“我”，"
         "已经用户确认的 L3 职责可以保留主导/负责人，不因等级自动否定；仍须核对行动与职责范围，"
         "也不能将团队成果、系统功能或限定参与提升为独立负责。"
@@ -209,11 +212,56 @@ def _clean_string(value: object, limit: int) -> str:
     return " ".join(value.split())[:limit]
 
 
+def validate_role_judgments(
+    value: object,
+    *,
+    required_bullets: set[int],
+    bullets: list[dict[str, object]],
+    cards: dict[str, dict] | None,
+    resume_text: str,
+) -> tuple[list[dict[str, Any]], bool, int]:
+    """原目标先核唯一性；坏引用或值不能把重复回答洗成唯一。"""
+    if not isinstance(value, list):
+        return [], False, 0
+    bullet_numbers = {int(row["number"]) for row in bullets if type(row.get("number")) is int}
+    card_ids = set(cards or {}) | {str(row["id"]) for row in resume_lines(resume_text)}
+    seen: set[int] = set()
+    duplicated: set[int] = set()
+    accepted: list[dict[str, Any]] = []
+    rejected = 0
+    for item in value:
+        if not isinstance(item, dict):
+            rejected += 1
+            continue
+        bullet = _as_int(item.get("bullet"))
+        if bullet not in required_bullets or bullet not in bullet_numbers:
+            rejected += 1
+            continue
+        if bullet in seen:
+            duplicated.add(bullet)
+            rejected += 1
+            continue
+        seen.add(bullet)
+        cites = _citations(item.get("citations"), bullet_numbers, card_ids)
+        if not cites or type(item.get("supported")) is not bool:
+            rejected += 1
+            continue
+        accepted.append({
+            "bullet": bullet, "supported": item["supported"], "citations": cites,
+            "reason": _clean_string(item.get("reason"), 300),
+        })
+    rejected += sum(item["bullet"] in duplicated for item in accepted)
+    accepted = [item for item in accepted if item["bullet"] not in duplicated]
+    complete = not duplicated and {item["bullet"] for item in accepted} == required_bullets
+    return accepted, complete, rejected
+
+
 def parse_judgments(
     content: str,
     *,
     bullets: list[dict[str, object]],
     jd_items: list[dict[str, str]],
+    r1_4_required_bullets: set[int],
     cards: dict[str, dict] | None = None,
     resume_text: str = "",
 ) -> dict[str, Any] | None:
@@ -239,19 +287,13 @@ def parse_judgments(
     result: dict[str, Any] = {"schema_version": JUDGE_SCHEMA_VERSION, "prompt_version": PROMPT_VERSION,
                               "judged_sections": judged_sections, "rejected_items": 0}
 
-    r1_4: list[dict[str, Any]] = []
-    if isinstance(loaded.get("r1_4"), list):
+    r1_4, role_complete, rejected = validate_role_judgments(
+        loaded.get("r1_4"), required_bullets=r1_4_required_bullets,
+        bullets=bullets, cards=cards, resume_text=resume_text,
+    )
+    if role_complete:
         judged_sections.append("r1_4")
-        for item in loaded["r1_4"]:
-            if not isinstance(item, dict):
-                continue
-            bullet = _as_int(item.get("bullet"))
-            cites = _citations(item.get("citations"), bullet_numbers, card_ids)
-            if bullet not in bullet_numbers or not cites or not isinstance(item.get("supported"), bool):
-                result["rejected_items"] += 1
-                continue
-            r1_4.append({"bullet": bullet, "supported": item["supported"], "citations": cites,
-                         "reason": _clean_string(item.get("reason"), 300)})
+    result["rejected_items"] += rejected
     result["r1_4"] = r1_4
 
     r2_1: list[dict[str, Any]] = []
