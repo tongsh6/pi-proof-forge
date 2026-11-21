@@ -500,6 +500,7 @@ def test_formal_generation_shares_indirect_career_source_capture(career_generati
         assert "evidence_material:m1" in trace["inputs"]
 
 
+@pytest.mark.parametrize("source_sample", [(["完成统一预约平台复用能力的接口设计与联调。"], ["模块验收通过。"])], indirect=True)
 def test_direct_and_career_sources_share_relative_and_absolute_paths(career_generation, monkeypatch):
     generation, materials_dir, indirect_card, _, _ = career_generation
     _, identity, report, paths = generation

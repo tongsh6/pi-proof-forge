@@ -121,7 +121,7 @@ def build_template_resume(version: str, cards: list[CardView], *,
     """唯一选材/计划/排版组合；不改写字段，也不把卡级引用伪装为事实引用。"""
     from dataclasses import replace
     from tools.engines.generation.fact_index import build_fact_index
-    from tools.engines.generation.fact_selector import VARIANTS, SelectionBudget, select_facts
+    from tools.engines.generation.fact_selector import SelectionBudget, select_facts
     from tools.engines.generation.resume_plan import build_resume_plan
     from tools.engines.generation.plan_renderer import render_plan
 
@@ -146,14 +146,13 @@ def build_template_resume(version: str, cards: list[CardView], *,
             role_level == "L3" and (role_source.get("confirmed_by_user") is not True or not role_source.get("evidence")))
         plan_cards.append({**card, "role_scope": ""} if hidden_role else card)
     groups = {str(card["id"]): str(card["project_key"]) for card in plan_cards if card.get("project_key")}
-    index = build_fact_index(plan_cards, career, semantic_report,
-                             preferred_card_ids=(semantic_report or {}).get("selected_card_ids") or ())
+    index = build_fact_index(plan_cards, career, semantic_report)
     # Fact.text keeps original source values. Only the existing display-period context changes.
     facts = tuple(replace(fact, time_range=periods[fact.source_id])
                   if fact.kind == "evidence" else fact for fact in index.facts)
     index = replace(index, facts=facts, by_id={fact.fact_id: fact for fact in facts})
-    selection = select_facts(index, weights=VARIANTS.get(version, VARIANTS["A"]),
-                             budget=SelectionBudget(), project_groups=groups)
+    selection = select_facts(index, budget=SelectionBudget(), project_groups=groups,
+                             semantic_report=semantic_report)
     plan = build_resume_plan(index, selection, career, job_context=target,
                              variant=version, project_groups=groups)
     if not plan.projects and not plan.work:

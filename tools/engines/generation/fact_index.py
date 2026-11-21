@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
@@ -35,12 +34,6 @@ PROFILE_GROUPS: dict[str, tuple[str, ...]] = {
 
 PLACEHOLDER_VALUES = frozenset({"", "[]", "{}", "null", "none"})
 
-_OWNER_RE = re.compile(r"独立负责|全权负责|总体技术负责人|总体负责人|独立完成")
-_LEAD_RE = re.compile(r"主导|牵头|负责人|带团队|带领")
-_PARTICIPATE_RE = re.compile(r"参与|协作|配合|协助")
-
-
-
 @dataclass(frozen=True)
 class Fact:
     """最小事实单元；`text` 必须逐字来自来源（证据卡字段或已确认档案字段）。"""
@@ -53,7 +46,6 @@ class Fact:
     work_id: str = ""
     time_range: str = ""
     has_quant: bool = False
-    role_strength: str = "unknown"  # owner | lead | participate | unknown
     requirement_ids: tuple[str, ...] = ()
     support_weight: int = 0
     card_title: str = ""
@@ -102,18 +94,6 @@ def _clean(value: object) -> str:
     return "" if text.casefold() in PLACEHOLDER_VALUES else text
 
 
-def role_strength_of(text: str) -> str:
-    """责任强度只看已确认原文措辞，不从技术相似度推断。"""
-    value = str(text or "")
-    if _OWNER_RE.search(value):
-        return "owner"
-    if _LEAD_RE.search(value):
-        return "lead"
-    if _PARTICIPATE_RE.search(value):
-        return "participate"
-    return "unknown"
-
-
 def _requirement_map(semantic_report: dict | None) -> dict[str, tuple[tuple[str, int], ...]]:
     """fact_id → ((requirement_id, 支持权重), ...)；只接受已定义的 requirement。"""
     if not isinstance(semantic_report, dict):
@@ -131,7 +111,7 @@ def _requirement_map(semantic_report: dict | None) -> dict[str, tuple[tuple[str,
                 or key in known):
             raise ValueError("semantic_requirement_identity_invalid")
         known.add(key)
-    rows: dict[str, list[tuple[str, int]]] = {}
+    rows: dict[str, dict[str, int]] = {}
     for assessment in semantic_report.get("assessments") or []:
         if not isinstance(assessment, dict):
             continue
@@ -143,10 +123,9 @@ def _requirement_map(semantic_report: dict | None) -> dict[str, tuple[tuple[str,
             fact_id = str(citation.get("fact_id") or "")
             if not fact_id:
                 continue
-            rows.setdefault(fact_id, [])
-            if (requirement_id, weight) not in rows[fact_id]:
-                rows[fact_id].append((requirement_id, weight))
-    return {fact_id: tuple(sorted(values)) for fact_id, values in rows.items()}
+            parents = rows.setdefault(fact_id, {})
+            parents[requirement_id] = max(weight, parents.get(requirement_id, 0))
+    return {fact_id: tuple(sorted(values.items())) for fact_id, values in rows.items()}
 
 
 def _first_screen_priority(
@@ -216,10 +195,8 @@ def _append(
     kind: str,
     work_id: str,
     time_range: str,
-    role_text: str,
     requirements: dict[str, tuple[tuple[str, int], ...]],
     card_title: str,
-    preferred: bool = False,
     has_quant: bool = False,
 ) -> None:
     cleaned = _clean(text)
@@ -236,11 +213,8 @@ def _append(
             work_id=work_id,
             time_range=time_range,
             has_quant=has_quant,
-            role_strength=role_strength_of(role_text),
             requirement_ids=tuple(requirement_id for requirement_id, _weight in hit),
-            # 语义选中的岗位相关卡：整卡事实给强权重，否则岗位定向会被
-            # 「量化/规模」类事实压过去，不同 JD 生成几乎相同（实测差 2 行）。
-            support_weight=max(3 if preferred else 0, max((weight for _requirement_id, weight in hit), default=0)),
+            support_weight=max((weight for _requirement_id, weight in hit), default=0),
             card_title=card_title,
             order=len(out),
         )
@@ -251,25 +225,10 @@ def build_fact_index(
     cards: Iterable[dict],
     career: dict | None = None,
     semantic_report: dict | None = None,
-    preferred_card_ids: Iterable[str] | None = None,
 ) -> FactIndex:
-    """展开证据卡与职业档案事实；同一 fact_id 只保留首次出现（输入顺序稳定）。
-
-    `preferred_card_ids` 是语义评审选中的项目卡：这些卡是岗位对位后的
-    高相关项目，未被仅作为非支持证据引用的事实获得优先权重——否则语义只影响被引用的少数
-    事实，岗位定向在简历上几乎看不出来（实测两个不同 JD 仅差 2 行）。
-    """
+    """展开证据卡与职业档案事实；同一 fact_id 只保留首次出现（输入顺序稳定）。"""
     career_data = career if isinstance(career, dict) else {}
     requirements = _requirement_map(semantic_report)
-    # Parent audit citations are the union of all child references. Negative-only
-    # references cannot acquire artificial support through a preferred card.
-    audit_citations = {
-        c["fact_id"] for row in (semantic_report or {}).get("assessments", [])
-        if isinstance(row, dict) for c in row.get("citations") or []
-        if isinstance(c, dict) and isinstance(c.get("fact_id"), str)
-    } if isinstance(semantic_report, dict) else set()
-    non_supporting = audit_citations - requirements.keys()
-    preferred_cards = {str(card_id) for card_id in (preferred_card_ids or ())}
     work_by_card = _work_by_card(career_data)
     facts: list[Fact] = []
     seen: set[str] = set()
@@ -283,7 +242,6 @@ def build_fact_index(
             continue
         evidence_hashes.setdefault(source_id, str(doc.get("source_sha256") or ""))
         time_range = _clean(doc.get("time_range"))
-        role_text = _clean(doc.get("role_scope"))
         for field in FACT_FIELDS:
             for index, value in enumerate(_values_for(doc, field)):
                 fact_id = f"{source_id}:{field}:{index}"
@@ -306,10 +264,8 @@ def build_fact_index(
                     kind="evidence",
                     work_id=work_by_card.get(source_id, ""),
                     time_range=time_range,
-                    role_text=role_text,
                     requirements=requirements,
                     card_title=_clean(doc.get("title")),
-                    preferred=source_id in preferred_cards and fact_id not in non_supporting,
                     has_quant=field == "results" and bool(reviewed["result_review"].get("measurement_quote")),
                 )
 
@@ -324,7 +280,6 @@ def build_fact_index(
             kind="profile",
             work_id="",
             time_range="",
-            role_text="",
             requirements=requirements,
             card_title="",
         )
@@ -339,7 +294,6 @@ def build_fact_index(
             if not row_id:
                 continue
             work_id = row_id if group == "work" else ""
-            role_text = _clean(row.get("title")) if group == "work" else ""
             for field in fields:
                 for index, value in enumerate(_values_for(row, field)):
                     fact_id = f"personal_profile:career.{group}.{row_id}.{field}:{index}"
@@ -355,7 +309,6 @@ def build_fact_index(
                         kind="profile",
                         work_id=work_id,
                         time_range="",
-                        role_text=role_text,
                         requirements=requirements,
                         card_title="",
                     )

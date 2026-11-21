@@ -189,6 +189,7 @@ def test_source_fingerprints_invalidate_confirmed_career(sample):
     assert current['revision'] != old['revision']
 
 
+@pytest.mark.parametrize("sample", [(["完成统一预约平台复用能力的接口设计与联调。"], ["模块验收通过。"])], indirect=True)
 def test_generation_trace_binds_original_materials_for_staged_cards(sample, monkeypatch):
     root, path, params = sample
     evidence.handle_evidence_save_draft(params)

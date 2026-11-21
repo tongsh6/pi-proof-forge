@@ -497,8 +497,8 @@ def test_quick_run_two_page_pdf_has_lead_and_usable_tail(tmp_path, monkeypatch):
         pytest.skip("Physical page fixture requires macOS PDFKit and a Chromium renderer")
     # Physical expectations are independent of the logical first-screen Markdown marker.
     lead = ["Designed Java inventory APIs for peak traffic", "Reduced inventory lookup retries through versioned stock events"]
-    tail = ["Warehouse allocation safeguards", "Wrote a routing guard for stale warehouse reservations",
-            "Warehouse staff confirmed the route recovery checklist", "Synthetic Institute of Computing"]
+    tail = ["Inventory reliability platform", "Built Java Kafka inventory sync",
+            "Inventory incidents dropped 42%", "Synthetic Institute of Computing"]
 
     shutil.copytree(ROOT / "tools", tmp_path / "tools", ignore=shutil.ignore_patterns("__pycache__"))
     _write_active_job_profile(tmp_path)
@@ -525,8 +525,8 @@ def test_quick_run_two_page_pdf_has_lead_and_usable_tail(tmp_path, monkeypatch):
     traced = {
         lead[0]: "personal_profile:career.work.w-new.contributions:0",
         lead[1]: "personal_profile:career.work.w-new.contributions:1",
-        tail[1]: "ec_routing:actions:0",
-        tail[2]: "ec_routing:results:1",
+        tail[1]: "ec_quick_acceptance:actions:0",
+        tail[2]: "ec_quick_acceptance:results:1",
     }
     for literal, fact_id in traced.items():
         entry, = [claim for claim in claims if claim.get("text") == literal]

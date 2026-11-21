@@ -1,92 +1,28 @@
-"""事实级选材：按 JD 需求覆盖与事实价值分配，替代"按卡硬截断"。
+"""按精确正向引用与正文预算选择事实；未提供细粒度评审时保持输入顺序。
 
-旧机制的两个结构性缺陷在这里被替换：
-1. 选材单元从"证据卡"变为"事实"，卡不再决定 bullet 数量上限；
-2. 排序发生在分配之前——先给每段经历/每个项目保留最低配额，再按边际价值补充，
-   不会出现"先截断到 3 张卡、再排序"导致的高价值事实永远进不来。
-
-本模块只做选择，不改写事实；`SelectedFacts` 里的每个 fact_id 都能回到
-`FactIndex` 的原始文本与来源。
+选择与去重先于覆盖计算。选中的每个身份只对应自身原文，不能由同卡、
+同父要求或同文兄弟事实代替；计划层直接保留本模块交付的正文事实。
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from tools.engines.generation.fact_index import Fact, FactIndex
+from tools.engines.generation.fact_index import Fact, FactIndex, _requirement_map
 from tools.engines.generation.fact_quality import judge_fact_text
 
-# 开发任务清单/技术待办：事实为真，但不是简历语言，选材时降权而非硬拒绝。
-_TASK_LIKE_RE = re.compile(
-    r"可参考|未考虑|需要添加|需要修改|需要补充|逐步形成|推广使用|统一使用接口|"
-    r"添加参数|改为调用|去掉易误导|按需调整|封装\w{0,20}参数|检查\w{0,20}事务|"
-    r"番茄钟|工时|打卡|日报|周报|初步完成|待验证|进行中|"
-    r"内存达到|占用率|查询SQL|监控指标|统一使用|状态为待|调用.*的.*接口"
-)
-# 类/方法级标识符（GetInfoTypesAction、SaveInfoTypeAction 等）：只在非标题字段降权。
-_METHOD_IDENT_RE = re.compile(
-    r"[A-Z][a-zA-Z0-9]*(?:Action|Service|Manager|Handler|Controller|Repository|DTO|Impl|Task)(?![a-z])"
-)
-
-_SCALE_RE = re.compile(
-    r"\d[\d,.]*\s*(?:[–-]\s*\d+\s*)?(?:\+|以上|余)?\s*(?:人|个|家|款|项|条|套|台|次|万|亿|品牌|系统|模块|服务|文件)"
-)
-_ROLE_WEIGHT = {"owner": 1.0, "lead": 0.7, "participate": 0.4, "unknown": 0.2}
-_FIELD_WEIGHT = {
-    "results": 1.0,
-    "actions": 0.8,
-    "title": 0.5,
-    "context": 0.45,
-    "role_scope": 0.35,
-    "stack": 0.2,
-    "time_range": 0.1,
-    "tags": 0.0,
-}
+MAX_PROJECTS = 3
+PROJECT_FIELD_LIMITS = {"actions": 3, "results": 2}
 
 
 @dataclass(frozen=True)
 class SelectionBudget:
-    """章节配额；min 是保底，max 是单块上限，max_total 是全篇上限。"""
+    """章节配额；min 是希望保留的下限，所有选择仍受全篇与正文上限约束。"""
 
     min_work_facts: int = 3
     max_work_facts: int = 8
-    min_project_facts: int = 2
     max_project_facts: int = 8
     max_total_facts: int = 36
-
-
-_TECHNICAL_TERMS = (
-    "架构", "设计", "性能", "存储", "索引", "分布式", "重构", "协议",
-    "并发", "一致性", "容量", "改造", "状态机", "策略", "领域事件", "锁",
-    "迁移", "查询", "接口", "缓存", "事务",
-)
-_DELIVERY_TERMS = (
-    "团队", "交付", "协作", "品牌", "规模", "迭代", "上线", "运营", "客户",
-    "流程", "治理", "Feature", "跨职能", "从 0 到 1", "带", "推动", "组织",
-)
-
-
-@dataclass(frozen=True)
-class VariantWeights:
-    """A/B 变体的差异来自事实打分权重与领域词偏好，而不是措辞替换。"""
-
-    requirement: float = 3.0
-    quant: float = 2.0
-    scale: float = 1.2
-    role: float = 1.0
-    terms: tuple[str, ...] = ()
-    term_bonus: float = 2.0
-
-
-# 技术深度版：架构、机制、性能、存储类事实优先。
-# requirement 权重高于 quant：岗位相关性优先于"数字漂亮"的事实，否则
-# 与 JD 无关的量化内容会挤进来（评估层 R2.4「未映射到任何 JD 条目」）。
-TECHNICAL_DEPTH = VariantWeights(requirement=4.5, quant=4.0, scale=0.8, role=0.8, terms=_TECHNICAL_TERMS)
-# 业务交付版：规模、团队、治理、交付闭环类事实优先。
-DELIVERY_OWNER = VariantWeights(requirement=4.5, quant=2.2, scale=2.6, role=2.2, terms=_DELIVERY_TERMS)
-
-VARIANTS: dict[str, VariantWeights] = {"A": TECHNICAL_DEPTH, "B": DELIVERY_OWNER}
 
 
 @dataclass(frozen=True)
@@ -98,204 +34,191 @@ class SelectedFacts:
     total: int = 0
 
 
-def _scale_signal(text: str) -> float:
-    return 1.0 if _SCALE_RE.search(text) else 0.0
-
-
-def task_like_penalty(text: str) -> float:
-    """开发任务清单/类方法标识符的降权值；正常职责描述不受影响。"""
-    value = str(text or "")
-    penalty = 0.0
-    if _TASK_LIKE_RE.search(value):
-        penalty += 1.8
-    if _METHOD_IDENT_RE.search(value):
-        penalty += 2.2
-    return penalty
-
-
-def score_fact(fact: Fact, weights: VariantWeights) -> float:
-    if fact.field == "results":
-        # 完整结果及测量资格已由同一当前核定确定；原文中的目标数字/词语不再加减分。
-        return (weights.requirement * fact.support_weight
-                + weights.quant * float(fact.has_quant) + _FIELD_WEIGHT["results"])
-    term_hit = 1.0 if any(term in fact.text for term in weights.terms) else 0.0
-    structural = fact.field.rsplit(".", 1)[-1] in {"title", "stack", "time_range", "role_scope", "tags"}
-    penalty = 0.0 if structural else task_like_penalty(fact.text)
-    return (
-        weights.requirement * fact.support_weight
-        + weights.scale * _scale_signal(fact.text)
-        + weights.role * _ROLE_WEIGHT.get(fact.role_strength, 0.2)
-        + weights.term_bonus * term_hit
-        + _FIELD_WEIGHT.get(fact.field.rsplit(".", 1)[-1], 0.0)
-        - penalty
-    )
-
-
-def _ordered(facts: list[Fact], scores: Mapping[str, float]) -> list[Fact]:
-    """引用事实优先，其次价值分，最后来源顺序（稳定）。"""
-    return sorted(
-        facts,
-        key=lambda fact: (
-            -fact.support_weight,
-            -scores.get(fact.fact_id, 0.0),
-            fact.order,
-        ),
-    )
+def _support_value(
+    facts: list[Fact],
+    requirements: Mapping[str, tuple[tuple[str, int], ...]],
+) -> int:
+    """同一候选每父项取最大值；没有全局已覆盖父项/子项状态。"""
+    parents: dict[str, int] = {}
+    for fact in facts:
+        for parent, weight in requirements.get(fact.fact_id, ()):
+            parents[parent] = max(weight, parents.get(parent, 0))
+    return sum(parents.values())
 
 
 def _take(
     facts: list[Fact],
-    minimum: int,
     maximum: int,
-    scores: Mapping[str, float],
+    requirements: Mapping[str, tuple[tuple[str, int], ...]],
     *,
-    floor: float = 0.6,
-) -> list[str]:
-    """取事实：引用事实优先、价值降序；低于 floor 的事实不选（宁缺毋滥）。
-
-    `minimum` 只表达"希望保留的下限"，不能靠低价值事实凑数——工作经历宁可
-    少一条成果，也不该写"内存达到 85% 占用""查询 SQL：xxx"这类日志痕迹。
-    """
-
-    ordered = [fact for fact in _ordered(facts, scores) if scores.get(fact.fact_id, 0.0) >= floor]
-    return [fact.fact_id for fact in ordered[:maximum]]
+    chosen: list[Fact] | None = None,
+    field_limits: Mapping[str, int] | None = None,
+) -> list[Fact]:
+    """在单块预算内按父项边际选择，互补正引用先于未引用补充。"""
+    result = list(chosen or ())
+    while len(result) < maximum:
+        used = {fact.fact_id for fact in result}
+        visible = {(fact.field, " ".join(fact.text.split())) for fact in result}
+        candidates = [
+            fact for fact in facts
+            if fact.fact_id not in used
+            and (fact.field, " ".join(fact.text.split())) not in visible
+            and (field_limits is None
+                 or sum(row.field == fact.field for row in result) < field_limits[fact.field])
+        ]
+        if not candidates:
+            break
+        current = _support_value(result, requirements)
+        best = min(candidates, key=lambda fact: (
+            -(_support_value([*result, fact], requirements) - current),
+            -bool(requirements.get(fact.fact_id)),
+            fact.order,
+        ))
+        result.append(best)
+    return result
 
 
 def select_facts(
     index: FactIndex,
     *,
     budget: SelectionBudget | None = None,
-    weights: VariantWeights | None = None,
-    max_projects: int = 4,
+    max_projects: int = MAX_PROJECTS,
     project_groups: dict[str, str] | None = None,
+    semantic_report: dict | None = None,
 ) -> SelectedFacts:
     budget = budget or SelectionBudget()
-    weights = weights or TECHNICAL_DEPTH
     if not index.facts:
         return SelectedFacts()
 
+    requirements = _requirement_map(semantic_report)
+    granular = (
+        isinstance(semantic_report, dict)
+        and isinstance(semantic_report.get("requirements"), list)
+        and isinstance(semantic_report.get("assessments"), list)
+    )
+    total_limit = max(0, budget.max_total_facts)
+    project_limit = max(0, min(max_projects, MAX_PROJECTS))
+    block_limit = max(0, budget.max_project_facts)
     verdicts = {
-        fact.fact_id: judge_fact_text(fact.text, field=fact.field,
-                                      strict=fact.kind != "profile" and fact.field != "results")
+        fact.fact_id: judge_fact_text(
+            fact.text, field=fact.field,
+            strict=fact.kind != "profile" and fact.field != "results",
+        )
         for fact in index.facts
     }
-    allowed = {fact_id for fact_id, verdict in verdicts.items() if verdict.presentable}
-    scores = {fact.fact_id: score_fact(fact, weights) for fact in index.facts if fact.fact_id in allowed}
+    allowed = {fid for fid, verdict in verdicts.items() if verdict.presentable}
 
-    work_selected: dict[str, tuple[str, ...]] = {}
-    for work_id in index.work_ids:
-        facts = [fact for fact in index.by_work(work_id) if fact.fact_id in allowed]
-        if not facts:
-            continue
-        chosen = _take(facts, budget.min_work_facts, budget.max_work_facts, scores)
-        if chosen:
-            work_selected[work_id] = tuple(chosen)
-
-    card_rank: list[tuple[float, int, str]] = []
-    for position, card_id in enumerate(index.card_ids):
-        facts = [fact for fact in index.by_card(card_id) if fact.fact_id in allowed]
-        if not facts:
-            continue
-        coverage = sum(weights.requirement * fact.support_weight for fact in facts)
-        best = max(scores.get(fact.fact_id, 0.0) for fact in facts)
-        card_rank.append((-(coverage + best), position, card_id))
-    card_rank.sort()
-
-    # 同一 project_key 的多张卡共享一个项目名额：先合并事实，再按项目切分，
-    # 避免"feature 级卡挤掉项目级卡"。
+    # 合并同一项目后才分配 3 行动 / 2 成果。结构上下文由 plan 读取，
+    # 不产生 occurrence，因而既不占正文名额也不授引用覆盖。
     groups = project_groups or {}
-    grouped: dict[str, list[str]] = {}
+    grouped: dict[str, list[Fact]] = {}
     for card_id in index.card_ids:
         key = groups.get(card_id) or card_id
-        grouped.setdefault(key, []).append(card_id)
-
-    ranked_groups: list[tuple[float, int, str, list[str]]] = []
-    for position, (key, card_ids) in enumerate(grouped.items()):
-        group_facts = [
-            fact
-            for cid in card_ids
-            for fact in index.by_card(cid)
-            if fact.fact_id in allowed
-        ]
-        if not group_facts:
-            continue
-        coverage = sum(weights.requirement * fact.support_weight for fact in group_facts)
-        best = max(scores.get(fact.fact_id, 0.0) for fact in group_facts)
-        # 项目簇内卡越多说明该项目的证据越厚，优先给项目名额。
-        ranked_groups.append((-(coverage + best + 0.6 * len(card_ids)), position, key, card_ids))
-    ranked_groups.sort()
-
-    projects: dict[str, tuple[str, ...]] = {}
-    for _neg_score, _position, key, card_ids in ranked_groups[:max_projects]:
-        group_facts = [
-            fact for cid in card_ids for fact in index.by_card(cid) if fact.fact_id in allowed
-        ]
-        chosen = _take(group_facts, budget.min_project_facts, budget.max_project_facts, scores)
-        if chosen:
-            projects[key] = tuple(chosen)
-
-    # 全篇预算：先保护每块的最低配额，再按价值从低到高裁掉可选项。
-    protected: set[str] = set()
-    for work_id, fact_ids in work_selected.items():
-        protected.update(fact_ids[: budget.min_work_facts])
-    for card_id, fact_ids in projects.items():
-        protected.update(fact_ids[: budget.min_project_facts])
-
-    used: list[str] = []
-    for fact_ids in [*work_selected.values(), *projects.values()]:
-        for fact_id in fact_ids:
-            if fact_id not in used:
-                used.append(fact_id)
-
-    if len(used) > budget.max_total_facts:
-        order_of = {fact.fact_id: fact.order for fact in index.facts}
-        removable = sorted(
-            (fact_id for fact_id in used if fact_id not in protected),
-            key=lambda fact_id: (scores.get(fact_id, 0.0), -order_of.get(fact_id, 0)),
+        grouped.setdefault(key, []).extend(
+            fact for fact in index.by_card(card_id)
+            if fact.fact_id in allowed and fact.field in PROJECT_FIELD_LIMITS
         )
-        while len(used) > budget.max_total_facts and removable:
-            drop = removable.pop(0)
-            used.remove(drop)
+    remaining = dict(grouped)
+    projects: dict[str, list[Fact]] = {}
+    used: set[str] = set()
 
-    kept = set(used)
-    work_final = {
-        work_id: tuple(fact_id for fact_id in fact_ids if fact_id in kept)
-        for work_id, fact_ids in work_selected.items()
-    }
-    projects_final = {
-        card_id: tuple(fact_id for fact_id in fact_ids if fact_id in kept)
-        for card_id, fact_ids in projects.items()
-    }
-    work_final = {key: value for key, value in work_final.items() if value}
-    projects_final = {key: value for key, value in projects_final.items() if value}
+    # 先选真正新增的正引用；未引用补充不能先耗尽其他项目的引用预算。
+    while remaining and len(projects) < project_limit and len(used) < total_limit:
+        proposals = []
+        capacity = min(block_limit, total_limit - len(used))
+        for position, (key, facts) in enumerate(remaining.items()):
+            candidates = [
+                fact for fact in facts
+                if fact.fact_id not in used and (not granular or requirements.get(fact.fact_id))
+            ]
+            chosen = _take(candidates, capacity, requirements,
+                           field_limits=PROJECT_FIELD_LIMITS)
+            if chosen:
+                proposals.append((_support_value(chosen, requirements), position, key, chosen))
+        if not proposals:
+            break
+        gain, _position, key, chosen = min(proposals, key=lambda row: (-row[0], row[1]))
+        if granular and gain == 0:
+            break
+        projects[key] = chosen
+        used.update(fact.fact_id for fact in chosen)
+        del remaining[key]
 
+    # 工作块先取得希望保留的最小份额；只会新增当前剩余预算容许的身份，
+    # 已在项目中选择的事实不重复计费。后续装配仍按原章节职责处理。
+    work: dict[str, list[Fact]] = {}
+    work_candidates = {
+        work_id: [fact for fact in index.by_work(work_id) if fact.fact_id in allowed]
+        for work_id in index.work_ids
+    }
+
+    def fill_work(maximum: int) -> None:
+        for work_id, facts in work_candidates.items():
+            current = work.get(work_id, [])
+            candidates = [
+                fact for fact in facts
+                if fact.fact_id in used or len(used) < total_limit
+            ]
+            ordered = _take(candidates, max(0, maximum), requirements, chosen=current)
+            kept = list(current)
+            kept_ids = {fact.fact_id for fact in kept}
+            for fact in ordered:
+                if fact.fact_id in kept_ids:
+                    continue
+                if fact.fact_id not in used and len(used) >= total_limit:
+                    continue
+                kept.append(fact)
+                kept_ids.add(fact.fact_id)
+                used.add(fact.fact_id)
+            if kept:
+                work[work_id] = kept
+
+    fill_work(min(budget.min_work_facts, budget.max_work_facts))
+
+    # 对已选项目补足可读的原文，仍沿同一预算、去重与稳定顺序。
+    for key, chosen in projects.items():
+        capacity = min(block_limit, len(chosen) + total_limit - len(used))
+        expanded = _take(grouped[key], capacity, requirements, chosen=chosen,
+                         field_limits=PROJECT_FIELD_LIMITS)
+        projects[key] = expanded
+        used.update(fact.fact_id for fact in expanded)
+
+    # 无直接引用背景最多一项，不制造任何要求支持；无报告的显式输入
+    # 已在上面的同一选择循环中按原顺序处理，无另一套词表评分路径。
+    if granular and len(projects) < project_limit and len(used) < total_limit:
+        for key, facts in remaining.items():
+            if any(requirements.get(fact.fact_id) for fact in facts):
+                continue
+            chosen = _take(facts, min(block_limit, total_limit - len(used)),
+                           requirements, field_limits=PROJECT_FIELD_LIMITS)
+            if chosen:
+                projects[key] = chosen
+                used.update(fact.fact_id for fact in chosen)
+                break
+
+    fill_work(budget.max_work_facts)
     highlights = tuple(
-        fact.fact_id
-        for fact in index.facts
-        if fact.kind == "profile"
-        and fact.fact_id in kept
+        fact.fact_id for fact in index.facts
+        if fact.kind == "profile" and fact.fact_id in used
         and fact.field.endswith((".scope", ".contributions", ".summary"))
     )
-
     excluded: dict[str, str] = {}
     for fact in index.facts:
-        if fact.fact_id in kept:
+        if fact.fact_id in used:
             continue
-        verdict = verdicts.get(fact.fact_id)
-        if verdict is not None and not verdict.presentable:
+        verdict = verdicts[fact.fact_id]
+        if not verdict.presentable:
             excluded[fact.fact_id] = f"not_presentable:{verdict.reason}"
-            continue
-        if len(used) >= budget.max_total_facts:
+        elif len(used) >= total_limit:
             excluded[fact.fact_id] = "budget_exhausted"
         elif fact.support_weight == 0 and fact.field in {"tags", "time_range", "stack"}:
             excluded[fact.fact_id] = "structural_field_not_selected"
         else:
             excluded[fact.fact_id] = "below_block_quota"
-
     return SelectedFacts(
-        work=work_final,
-        projects=projects_final,
+        work={key: tuple(fact.fact_id for fact in facts) for key, facts in work.items()},
+        projects={key: tuple(fact.fact_id for fact in facts) for key, facts in projects.items()},
         profile_highlights=highlights,
         excluded=excluded,
-        total=len(kept),
+        total=len(used),
     )

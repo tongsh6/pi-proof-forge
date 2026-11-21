@@ -128,7 +128,7 @@ def test_explicit_conflict_parent_is_not_a_positive_selection_even_with_supporte
     assert build_fact_index([card()], {}, report).get(fact_id).support_weight == 0
 
 
-def test_preferred_card_promotion_does_not_turn_negative_only_fact_into_support():
+def test_selected_card_report_does_not_promote_negative_or_uncited_occurrences():
     first, second, neutral = [f"ec_0:results:{i}" for i in range(3)]
     report = {
         "requirements": [{"id": "r1"}],
@@ -138,10 +138,11 @@ def test_preferred_card_promotion_does_not_turn_negative_only_fact_into_support(
                                     {"status": "insufficient", "citations": [{"fact_id": first},
                                                                                 {"fact_id": second}]}]}],
     }
-    index = build_fact_index([card(results=["first", "second", "neutral"])],
-                             {}, report, preferred_card_ids=["ec_0"])
+    report["selected_card_ids"] = ["ec_0"]
+    index = build_fact_index([card(results=["first", "second", "neutral"])], {}, report)
     assert index.get(first).requirement_ids == ("r1",)
-    assert index.get(first).support_weight > 0
+    assert index.get(first).support_weight == 1
     assert index.get(second).requirement_ids == ()
     assert index.get(second).support_weight == 0
-    assert index.get(neutral).support_weight == 3
+    assert index.get(neutral).requirement_ids == ()
+    assert index.get(neutral).support_weight == 0

@@ -287,15 +287,25 @@ def test_actions_without_lexical_result_match_are_not_paired_as_bullets():
     assert checked['verified_bullets'] == checked['total_bullets']
 
 
-def test_targeted_generation_preserves_measured_improvement_over_repeated_scale():
+def test_targeted_generation_keeps_cited_measured_and_nonquant_results_within_budget():
     card = {'id': 'ec-1', 'title': '平台', 'time_range': '2024', 'role_scope': '负责人', 'context': '多品牌',
-            'actions': ['开发工具'], 'results': ['交付 15 个系统', '服务 6 个品牌', '查询从 2 秒降至 300 毫秒'],
+            'actions': ['开发工具'],
+            'results': ['交付 15 个系统', '服务 6 个品牌', '隔离测试中查询从 2 秒降至 300 毫秒'],
             'stack': [], 'artifacts': ['报告']}
-    refs = [{'source_id': 'ec-1', 'field': 'results', 'text': r, 'requirement_id': 'r1', 'support_weight': 2}
-            for r in card['results'][:2]]
     card = reviewed_card_results(card, measurement_quotes={2: card['results'][2]})
-    text = build_template_resume('A', [card], semantic_report={'requirements':[{'id':'r1'}], 'assessments':[{'requirement_id':'r1','status':'supported','citations':[{'fact_id':'ec-1:results:0'},{'fact_id':'ec-1:results:1'}]}]})
-    assert card['results'][2] in text
+    claims = []
+    text = build_template_resume('A', [card], claims=claims, semantic_report={
+        'requirements': [{'id': 'r1'}], 'assessments': [{
+            'requirement_id': 'r1', 'status': 'supported', 'citations': [
+                {'fact_id': 'ec-1:results:1'}, {'fact_id': 'ec-1:results:2'},
+            ],
+        }],
+    })
+    assert card['results'][1] in text and card['results'][2] in text
+    assert card['results'][0] not in text
+    assert {claim['fact_id'] for claim in claims if claim.get('field') == 'results'} == {
+        'ec-1:results:1', 'ec-1:results:2',
+    }
 
 
 def test_untimed_evidence_cannot_publish_a_complete_resume(monkeypatch, generation_inputs):
@@ -476,3 +486,289 @@ def test_semantic_binding_uses_consumed_input_version(monkeypatch, generation_in
     monkeypatch.setattr(resume_renderer, hook, change_after_initial_binding)
     assert run_generation_cli(monkeypatch, generation_inputs, "--use-llm", "--require-llm") == 1
     assert not list(output.glob("*.md"))
+
+
+def _selection_project(card_id, *, actions=(), results=(), measurement_quotes=None):
+    """Explicit established synthetic facts; no reviewer or matching model is stubbed."""
+    return reviewed_card_results({
+        "id": card_id, "title": "合成项目 " + card_id.removeprefix("ec-").replace("-", " "),
+        "time_range": "2024-01 ~ 2024-06", "role_scope": "负责接口联调",
+        "context": "隔离环境中的合成业务流程验收",
+        "actions": list(actions),
+        "results": list(results) or ["在隔离环境中完成合成流程验收"],
+        "stack": [], "artifacts": ["合成验收报告"],
+    }, measurement_quotes=measurement_quotes)
+
+
+def _selection_sources(tmp_path, cards):
+    """Use J's actual source/basis fixture, then the production card loader."""
+    from tools.engines.generation.resume_renderer import load_cards
+    from tools.engines.matching.semantic_matching import _facts
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+
+    evidence = tmp_path / "selection-evidence"
+    evidence.mkdir()
+    for card in cards:
+        path = evidence / (card["id"] + ".yaml")
+        lines = []
+        for key, value in card.items():
+            if key == "result_reviews":
+                continue
+            if isinstance(value, list):
+                lines.append(key + ":")
+                lines.extend("  - " + json.dumps(item, ensure_ascii=False) for item in value)
+            else:
+                lines.append(key + ": " + json.dumps(value, ensure_ascii=False))
+        path.write_text("\n".join(lines) + "\n")
+        measurements = {
+            row["index"]: row["result_review"]["measurement_quote"]
+            for row in card["result_reviews"].values()
+        }
+        write_reviewed_result_sources(path, measurements, material_dir=tmp_path / "materials")
+    views = load_cards(evidence, [card["id"] for card in cards], tmp_path / "materials",
+                       require_saved_eligible=True)
+    facts = {}
+    inputs = {}
+    for view in views:
+        path = evidence / (view["id"] + ".yaml")
+        facts.update(_facts(view["id"], parse_simple_yaml(path.read_text())))
+        inputs[view["id"]] = {"path": str(path), "sha256": view["source_sha256"]}
+    return views, {"facts": facts, "inputs": inputs, "advisory_scope": False}
+
+
+def _selection_report(base, assessments, *, preferred=()):
+    """Declare support independently; fill exact quotes from captured synthetic sources."""
+    from copy import deepcopy
+
+    rows = deepcopy(assessments)
+    for parent in rows:
+        children = parent.get("checks", [parent])
+        for child in children:
+            for citation in child["citations"]:
+                citation["quote"] = base["facts"][citation["fact_id"]]["text"]
+        if "checks" in parent:
+            parent["citations"] = [citation for child in children for citation in child["citations"]]
+    return {**base,
+        "requirements": [{"id": row["requirement_id"], "kind": "must_have",
+                          "text": "合成岗位要求 " + row["requirement_id"]} for row in rows],
+        "assessments": rows, "selected_card_ids": list(preferred)}
+
+
+def _render_selection(views, report):
+    from tools.engines.matching.semantic_review import resume_assessment
+
+    claims = []
+    markdown = build_template_resume("A", views, semantic_report=report, claims=claims)
+    lines = markdown.splitlines()
+    for claim in claims:
+        if claim.get("fact_id"):
+            assert claim["text"] in lines[claim["render_line"] - 1]
+    assessment = resume_assessment(report, claims, occurrence_coverage_known=True)
+    return markdown, claims, assessment
+
+
+def _claimed_projects(claims):
+    return list(dict.fromkeys(
+        claim["evidence_id"] for claim in claims
+        if claim.get("source_kind") == "evidence" and claim.get("field") in {"actions", "results"}
+    ))
+
+
+def test_semantic_budget_keeps_cited_nonquant_result_after_final_quant_order(tmp_path):
+    actions = [
+        "实现交易事件的断点恢复", "建立接口错误的幂等处理",
+        "构建发布失败后的回滚流程", "完成跨系统一致性核对",
+    ]
+    results = [
+        "隔离测试中请求延迟降低 20%", "隔离测试中恢复耗时降低 30%",
+        "隔离测试中回滚耗时降低 40%", "跨系统数据核对已经通过独立验收",
+    ]
+    source = _selection_project("ec-budget", actions=actions, results=results,
+                                measurement_quotes={i: results[i] for i in range(3)})
+    views, base = _selection_sources(tmp_path, [source])
+    report = _selection_report(base, [
+        {"requirement_id": "r-action", "status": "supported",
+         "citations": [{"fact_id": "ec-budget:actions:3"}]},
+        {"requirement_id": "r-result", "status": "supported",
+         "citations": [{"fact_id": "ec-budget:results:3"}]},
+    ], preferred=["ec-budget"])
+
+    markdown, claims, assessment = _render_selection(views, report)
+    statuses = {row["requirement_id"]: row["resume_status"] for row in assessment["requirements"]}
+    assert statuses == {"r-action": "supported", "r-result": "supported"}
+    assert results[3] in markdown
+    action_claims = [c for c in claims if c.get("fact_id", "").startswith("ec-budget:actions:")]
+    result_claims = [c for c in claims if c.get("fact_id", "").startswith("ec-budget:results:")]
+    assert len(action_claims) <= 3
+    assert len(result_claims) <= 2
+    assert any(c["fact_id"] == "ec-budget:results:3" and c["text"] == results[3] for c in result_claims)
+
+
+def test_semantic_selection_does_not_lock_to_initial_cards_or_fill_background_slots(tmp_path):
+    preferred = ["ec-early-a", "ec-early-b", "ec-early-c"]
+    cards = [_selection_project(card_id, actions=[
+        "设计并发事务的处理边界", "构建分布式状态恢复机制", "建立容量测试与性能复核流程",
+    ]) for card_id in preferred]
+    exact = "实现外部结算回执的独立核对"
+    cards.append(_selection_project("ec-later", actions=[exact]))
+    views, base = _selection_sources(tmp_path, cards)
+    report = _selection_report(base, [
+        {"requirement_id": "r1", "status": "supported",
+         "citations": [{"fact_id": "ec-later:actions:0"}]},
+    ], preferred=preferred)
+
+    markdown, claims, assessment = _render_selection(views, report)
+    assert assessment["requirements"][0]["resume_status"] == "supported"
+    assert _claimed_projects(claims)[0] == "ec-later"
+    assert len(_claimed_projects(claims)) <= 2  # One cited project and at most one background.
+    assert markdown.count("\n### ") <= 3
+    exact_claim, = [c for c in claims if c.get("fact_id") == "ec-later:actions:0"]
+    assert exact_claim["text"] == exact
+
+
+@pytest.mark.parametrize("same_check", [False, True], ids=["different-children", "joint-citations"])
+def test_semantic_selection_keeps_required_fact_complements(tmp_path, same_check):
+    values = ["在隔离环境中完成恢复机制验收", "在隔离环境中完成一致性核对验收"]
+    cards = [_selection_project(card_id, results=[value])
+             for card_id, value in zip(("ec-left", "ec-right"), values)]
+    views, base = _selection_sources(tmp_path, cards)
+    citations = [{"fact_id": "ec-left:results:0"}, {"fact_id": "ec-right:results:0"}]
+    checks = ([{"requirement_id": "r1.c1", "status": "supported", "citations": citations}]
+              if same_check else [
+                  {"requirement_id": "r1.c1", "status": "supported", "citations": citations[:1]},
+                  {"requirement_id": "r1.c2", "status": "supported", "citations": citations[1:]},
+              ])
+    report = _selection_report(base, [
+        {"requirement_id": "r1", "status": "supported", "checks": checks},
+    ])
+
+    markdown, claims, assessment = _render_selection(views, report)
+    assert assessment["requirements"][0]["resume_status"] == "supported"
+    assert all(row["resume_status"] == "supported" for row in assessment["requirements"][0]["checks"])
+    assert set(_claimed_projects(claims)) == {"ec-left", "ec-right"}
+    for citation, value in zip(citations, values):
+        assert value in markdown
+        assert any(c.get("fact_id") == citation["fact_id"] and c["text"] == value for c in claims)
+
+def test_semantic_selection_caps_each_parent_despite_distinct_child_references(tmp_path):
+    dense = _selection_project("ec-dense", actions=[
+        "实现事务事件的恢复机制", "建立异常状态的一致性校验",
+    ])
+    broad = _selection_project("ec-broad", actions=[
+        "完成结算回执的独立核对", "建立跨系统验收的交付流程",
+    ])
+    views, base = _selection_sources(tmp_path, [dense, broad])
+    report = _selection_report(base, [
+        {"requirement_id": "r1", "status": "supported", "checks": [
+            {"requirement_id": "r1.c1", "status": "supported",
+             "citations": [{"fact_id": "ec-dense:actions:0"}]},
+            {"requirement_id": "r1.c2", "status": "supported",
+             "citations": [{"fact_id": "ec-dense:actions:1"}]},
+        ]},
+        {"requirement_id": "r2", "status": "supported",
+         "citations": [{"fact_id": "ec-broad:actions:0"}]},
+        {"requirement_id": "r3", "status": "supported",
+         "citations": [{"fact_id": "ec-broad:actions:1"}]},
+    ])
+
+    _, claims, assessment = _render_selection(views, report)
+    assert _claimed_projects(claims)[0] == "ec-broad"  # Two parents contribute 2 + 2; r1 contributes at most 2.
+    assert assessment["all_requirements_supported"] is True
+
+
+def test_semantic_selection_uses_each_parent_strength_not_fact_global_maximum(tmp_path):
+    text = "实现业务回执的独立核对机制"
+    views, base = _selection_sources(tmp_path, [
+        _selection_project("ec-mixed", actions=[text]),
+        _selection_project("ec-full", actions=[text]),
+    ])
+    report = _selection_report(base, [
+        {"requirement_id": "r1", "status": "supported", "citations": [{"fact_id": "ec-mixed:actions:0"}]},
+        {"requirement_id": "r2", "status": "partial", "citations": [{"fact_id": "ec-mixed:actions:0"}]},
+        {"requirement_id": "r3", "status": "supported", "citations": [{"fact_id": "ec-full:actions:0"}]},
+        {"requirement_id": "r4", "status": "supported", "citations": [{"fact_id": "ec-full:actions:0"}]},
+    ])
+
+    _, claims, assessment = _render_selection(views, report)
+    assert _claimed_projects(claims)[0] == "ec-full"  # 2 + 2 outranks 2 + 1, despite equal Fact maxima.
+    assert {row["requirement_id"]: row["resume_status"] for row in assessment["requirements"]} == {
+        "r1": "supported", "r2": "partial", "r3": "supported", "r4": "supported",
+    }
+
+
+def test_semantic_selection_limits_projects_without_claiming_omitted_requirement(tmp_path):
+    card_ids = ["ec-first", "ec-second", "ec-third", "ec-fourth"]
+    views, base = _selection_sources(tmp_path, [
+        _selection_project(card_id, actions=[text]) for card_id, text in zip(card_ids, [
+            "实现事件恢复的处理流程", "建立异常回执的核对机制",
+            "完成发布状态的独立验收", "构建跨系统交付的复核流程",
+        ])
+    ])
+    report = _selection_report(base, [
+        {"requirement_id": f"r{index}", "status": "supported",
+         "citations": [{"fact_id": card_id + ":actions:0"}]}
+        for index, card_id in enumerate(card_ids)
+    ])
+
+    markdown, claims, assessment = _render_selection(views, report)
+    assert _claimed_projects(claims) == card_ids[:3]
+    assert markdown.count("\n### ") == 3
+    assert [row["resume_status"] for row in assessment["requirements"]] == [
+        "supported", "supported", "supported", "not_present",
+    ]
+
+
+@pytest.mark.parametrize("both_required", [False, True], ids=["cited-identity", "missing-joint-proof"])
+def test_semantic_selection_deduplicates_text_without_borrowing_occurrence_credit(tmp_path, both_required):
+    text = "实现外部回执的独立核对流程"
+    cards = [_selection_project(card_id, actions=[text]) for card_id in ("ec-source-a", "ec-source-b")]
+    for card in cards:
+        card["project_key"] = "共同验证项目"
+    views, base = _selection_sources(tmp_path, cards)
+    required = (["ec-source-a:actions:0", "ec-source-b:actions:0"]
+                if both_required else ["ec-source-b:actions:0"])
+    report = _selection_report(base, [
+        {"requirement_id": "r1", "status": "supported", "checks": [
+            {"requirement_id": "r1.c1", "status": "supported",
+             "citations": [{"fact_id": fact_id} for fact_id in required]},
+        ]},
+    ])
+
+    markdown, claims, assessment = _render_selection(views, report)
+    actual = [claim for claim in claims if claim.get("field") == "actions"]
+    assert len(actual) == 1
+    assert actual[0]["text"] == text
+    assert text in markdown.splitlines()[actual[0]["render_line"] - 1]
+    if both_required:
+        assert actual[0]["fact_id"] in required
+        assert assessment["requirements"][0]["resume_status"] == "not_present"
+    else:
+        assert actual[0]["fact_id"] == "ec-source-b:actions:0"
+        assert assessment["requirements"][0]["resume_status"] == "supported"
+
+
+def test_semantic_action_budget_keeps_new_parent_before_more_same_parent_quotes(tmp_path):
+    actions = [
+        "实现事件恢复的处理流程", "建立异常状态的校验机制",
+        "构建回执重试的隔离流程", "完成跨系统验收的独立核对",
+    ]
+    views, base = _selection_sources(tmp_path, [_selection_project("ec-parent-budget", actions=actions)])
+    report = _selection_report(base, [
+        {"requirement_id": "r1", "status": "supported", "checks": [
+            {"requirement_id": f"r1.c{index}", "status": "supported",
+             "citations": [{"fact_id": f"ec-parent-budget:actions:{index}"}]}
+            for index in range(3)
+        ]},
+        {"requirement_id": "r2", "status": "partial",
+         "citations": [{"fact_id": "ec-parent-budget:actions:3"}]},
+    ])
+
+    _, claims, assessment = _render_selection(views, report)
+    chosen = {claim["fact_id"] for claim in claims if claim.get("field") == "actions"}
+    assert chosen == {"ec-parent-budget:actions:0", "ec-parent-budget:actions:1", "ec-parent-budget:actions:3"}
+    assert {row["requirement_id"]: row["resume_status"] for row in assessment["requirements"]} == {
+        "r1": "partial", "r2": "partial",
+    }
+    assert [check["resume_status"] for check in assessment["requirements"][0]["checks"]] == [
+        "supported", "supported", "not_present",
+    ]

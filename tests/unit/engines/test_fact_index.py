@@ -112,7 +112,6 @@ def test_expands_card_fields_in_stable_order():
         work_id="w1",
         time_range="2024-01 ~ 2024-06",
         has_quant=False,  # 行动中的规模数字不是已核结果测量
-        role_strength="lead",
         requirement_ids=(),
         support_weight=0,
         card_title="门店预约与排队系统",
@@ -138,7 +137,7 @@ def test_links_facts_to_work_by_evidence_ids():
     assert all(fact.work_id == "" for fact in index.by_card("ec_b"))
 
 
-def test_marks_reviewed_measurement_and_preserves_role_strength():
+def test_marks_reviewed_measurement_and_preserves_original_responsibility_scope():
     current = card()
     current["result_reviews"]["ec_a:results:0"]["result_review"]["measurement_quote"] = current["results"][0]
     index = build_fact_index([current], career())
@@ -147,13 +146,10 @@ def test_marks_reviewed_measurement_and_preserves_role_strength():
     # 只有同一核定结果的测量命题授予量化，行动/角色不借数字授信。
     assert index.get("ec_a:actions:0").has_quant is False
     assert index.get("ec_a:role_scope:0").has_quant is False
-    assert index.get("ec_a:role_scope:0").role_strength == "lead"
-    assert build_fact_index([card(role_scope="独立完成总体架构")], career()).get(
-        "ec_a:role_scope:0"
-    ).role_strength == "owner"
-    assert build_fact_index([card(role_scope="参与联调")], career()).get(
-        "ec_a:role_scope:0"
-    ).role_strength == "participate"
+    for role in ("独立完成总体架构", "负责接口联调", "参与或负责接口联调"):
+        fact = build_fact_index([card(role_scope=role)], career()).get("ec_a:role_scope:0")
+        assert fact.text == role
+        assert (fact.source_id, fact.field, fact.fact_id) == ("ec_a", "role_scope", "ec_a:role_scope:0")
 
 
 def test_maps_semantic_requirements_and_support_weight():
@@ -219,16 +215,21 @@ def test_changed_result_cannot_reuse_another_occurrence_review():
     assert build_fact_index([item]).get("ec_a:results:0") is None
 
 
-def test_result_score_uses_reviewed_measurement_not_future_scale_or_words():
-    from dataclasses import replace
-    from tools.engines.generation.fact_selector import TECHNICAL_DEPTH, score_fact
-
-    measured = Fact("ec_a:results:0", "ec_a", "results", "隔离测试中响应时间减半",
-                    "evidence", has_quant=True)
-    mixed = replace(measured, text=measured.text + "；生产架构交付目标覆盖 100 万个用户")
-    unmeasured = replace(measured, has_quant=False)
-    assert score_fact(measured, TECHNICAL_DEPTH) == score_fact(mixed, TECHNICAL_DEPTH)
-    assert score_fact(measured, TECHNICAL_DEPTH) > score_fact(unmeasured, TECHNICAL_DEPTH)
+def test_result_measurement_uses_same_review_and_preserves_future_qualifier():
+    measured = "隔离测试中响应时间减半"
+    mixed = measured + "；交付方案的生产目标覆盖 100 万个用户"
+    nonquant = "故障切换无需人工介入即可完成"
+    item = card(results=[measured, mixed, nonquant], result_reviews={
+        "ec_a:results:0": reviewed_result("ec_a", 0, measured, measurement_quote=measured),
+        "ec_a:results:1": reviewed_result("ec_a", 1, mixed, measurement_quote=measured),
+        "ec_a:results:2": reviewed_result("ec_a", 2, nonquant),
+    })
+    index = build_fact_index([item])
+    assert index.get("ec_a:results:0").has_quant is True
+    assert index.get("ec_a:results:1").has_quant is True
+    assert index.get("ec_a:results:1").text == mixed
+    assert index.get("ec_a:results:2").has_quant is False
+    assert index.get("ec_a:results:2").text == nonquant
 
 
 def test_established_nonquant_results_keep_full_project_budget_and_work_achievements():
@@ -241,6 +242,39 @@ def test_established_nonquant_results_keep_full_project_budget_and_work_achievem
     })
     index = build_fact_index([item], career())
     project_plan = build_resume_plan(index, select_facts(index), career())
-    assert [fact.text for fact in project_plan.projects[0].outcomes] == values
+    assert [fact.text for fact in index.by_card("ec_a") if fact.field == "results"] == values
+    assert [fact.text for fact in project_plan.projects[0].outcomes] == values[:2]
     work_plan = build_resume_plan(index, select_facts(index, max_projects=0), career())
     assert [fact.text for fact in work_plan.work[0].achievements] == values[:2]
+
+
+def test_selected_card_report_does_not_grant_uncited_occurrence_requirement_support():
+    index = build_fact_index([card()], {}, semantic())
+
+    cited = index.get("ec_a:actions:0")
+    assert cited.requirement_ids == ("r1",)
+    assert cited.support_weight == 2
+    for fact in index.by_card("ec_a"):
+        if fact.fact_id != cited.fact_id:
+            assert fact.requirement_ids == ()
+            assert fact.support_weight == 0
+
+
+def test_repeated_child_citations_preserve_one_parent_support_weight():
+    citation = {"fact_id": "ec_a:actions:0", "quote": "引入 8 个分布式锁键控制并发"}
+    report = {
+        "requirements": [{"id": "r1", "text": "负责并发边界与一致性保障"}],
+        "assessments": [{
+            "requirement_id": "r1", "status": "supported", "citations": [citation, citation],
+            "checks": [
+                {"requirement_id": "r1.c1", "status": "supported", "citations": [citation, citation]},
+                {"requirement_id": "r1.c2", "status": "supported", "citations": [citation]},
+            ],
+        }],
+    }
+    index = build_fact_index([card()], {}, report)
+
+    assert index.get("ec_a:actions:0").requirement_ids == ("r1",)
+    assert index.get("ec_a:actions:0").support_weight == 2
+    assert index.get("ec_a:actions:1").requirement_ids == ()
+    assert index.get("ec_a:actions:1").support_weight == 0

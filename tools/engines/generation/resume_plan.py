@@ -2,11 +2,11 @@
 
 分层意图：
 - `FactIndex` 提供事实；`fact_selector` 决定用哪些事实；
-- 本模块只决定"这些事实放在哪个章节、按什么顺序、每块展示多少"；
+- 本模块装配已选项目原文，仅按既有首屏引用在组内前置，不改变事实集合或裁剪篇幅；
 - 渲染器只把计划排版为 Markdown，不再做选材与截断。
 
 因此"每段工作经历只有 2 条职责""无时间整卡丢弃""配对失败即丢弃"这三个旧缺陷
-在这一层被消除：事实已经由选材层决定，计划层只做章节归属与展示上限。
+在这一层被消除：项目事实已经由选材层决定，计划层保留其身份与完整原文。
 """
 from __future__ import annotations
 
@@ -21,8 +21,6 @@ from tools.engines.generation.fact_selector import SelectedFacts
 # 展示上限只控制单块可读性（比旧版每段 2 条职责宽），完整事实仍留在证据卡与 trace。
 MAX_WORK_DUTIES = 4
 MAX_WORK_ACHIEVEMENTS = 2
-MAX_PROJECT_WORK_ITEMS = 4
-MAX_PROJECT_OUTCOMES = 3
 MAX_CAPABILITIES = 4
 MAX_EXTRAS = 2
 MAX_STACK = 12
@@ -51,7 +49,6 @@ class ProjectBlock:
     key_work: tuple[Fact, ...] = ()
     outcomes: tuple[Fact, ...] = ()
     work_company: str = ""
-    stack: tuple[str, ...] = ()
     fact_ids: tuple[str, ...] = ()
 
 
@@ -119,22 +116,6 @@ def _texts(index: FactIndex, fact_ids: tuple[str, ...], field_name: str) -> list
     ]
 
 
-def _quant_first(values: list[Fact], *, limit: int) -> list[Fact]:
-    """按同一已核测量资格排序；非量化成果共用章节预算。"""
-    quantified = [value for value in values if value.has_quant]
-    others = [value for value in values if not value.has_quant]
-    return (quantified + others)[:limit]
-
-
-def _dedupe(values: list[str]) -> list[str]:
-    seen: list[str] = []
-    for value in values:
-        cleaned = _squash(value)
-        if cleaned and cleaned not in seen:
-            seen.append(cleaned)
-    return seen
-
-
 def _dedupe_facts(values: list[Fact]) -> list[Fact]:
     # A duplicate visible string retains exactly the selected first occurrence.
     result: dict[str, Fact] = {}
@@ -192,7 +173,7 @@ def build_resume_plan(
         group_cards = {fact.source_id for fact in facts if fact.kind == "evidence"}
         merged_card = len(group_cards) > 1
         title = next((fact.text for fact in facts if fact.field == "title"), "")
-        if merged_card and group_key:
+        if (is_group or merged_card) and group_key:
             title = group_key
         if not title:
             title = facts[0].card_title or group_key
@@ -209,15 +190,15 @@ def build_resume_plan(
         )
         role_text = structured.get("role_scope", "")
         period_text = next((fact.time_range for fact in facts if fact.kind == "evidence" and fact.time_range), "")
-        actions = [fact for fact in facts if fact.field == "actions" and presentable(fact.text, field="actions")]
-        results = [fact for fact in facts if fact.field == "results" and presentable(fact.text, field="results", strict=False)]
-        stacks = [fact.text for fact in facts if fact.field == "stack"]
+        actions = [fact for fact in facts if fact.field == "actions"]
+        results = [fact for fact in facts if fact.field == "results"]
         work_id = facts[0].work_id
         company = _squash((work_by_id.get(work_id) or {}).get("company"))
         period = period_text
         if not period:
             untimed.append(card_id)
-        push(tuple(fact.fact_id for fact in facts))
+        rendered_ids = tuple(fact.fact_id for fact in (*actions, *results))
+        push(rendered_ids)
         projects.append(
             ProjectBlock(
                 card_id=card_id,
@@ -225,16 +206,10 @@ def build_resume_plan(
                 period=period,
                 role=role_text,
                 background=_truncate(context, MAX_BACKGROUND_CHARS) if presentable(context, field="context") else "",
-                key_work=prioritized(_dedupe_facts(actions)[:MAX_PROJECT_WORK_ITEMS]),
-                outcomes=prioritized(
-                    _quant_first(
-                        _dedupe_facts(results),
-                        limit=MAX_PROJECT_OUTCOMES,
-                    )
-                ),
+                key_work=prioritized(actions),
+                outcomes=prioritized(results),
                 work_company=company,
-                stack=tuple(_dedupe(stacks)),
-                fact_ids=tuple(fact.fact_id for fact in facts),
+                fact_ids=rendered_ids,
             )
         )
     # 跨章节去重：项目已呈现的事实不再在工作经历重复。
@@ -271,19 +246,18 @@ def build_resume_plan(
             and presentable(fact.text, field="actions")
         ][:2]
         duties = (primary + supplement)[:MAX_WORK_DUTIES]
-        achievements = _quant_first([
+        achievements = [
             fact for fact in _dedupe_facts(_texts(index, result_fact_ids, "results"))
             if _squash(fact.text) not in project_texts
             and presentable(fact.text, field="results", strict=False)
-        ], limit=MAX_WORK_ACHIEVEMENTS)
+        ][:MAX_WORK_ACHIEVEMENTS]
         scope = scope_fact.text if scope_fact else ""
         fact_ids = tuple(
             dict.fromkeys(
                 (
                     *((scope_fact.fact_id,) if scope_fact else ()),
-                    *(fact.fact_id for fact in contribution_facts),
-                    *action_fact_ids,
-                    *result_fact_ids,
+                    *(fact.fact_id for fact in duties),
+                    *(fact.fact_id for fact in achievements),
                 )
             )
         )

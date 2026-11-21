@@ -58,13 +58,11 @@ def career(**over):
     return base
 
 
-def plan_for(cards=None, career_data=None, variant="A", weights=None, budget=None):
-    from tools.engines.generation.fact_selector import TECHNICAL_DEPTH
-
+def plan_for(cards=None, career_data=None, variant="A", budget=None):
     cards = cards or [card()]
     career_data = career_data or career()
     index = build_fact_index(cards, career_data)
-    selected = select_facts(index, weights=weights or TECHNICAL_DEPTH, budget=budget or SelectionBudget())
+    selected = select_facts(index, budget=budget or SelectionBudget())
     return build_resume_plan(
         index,
         selected,
@@ -144,7 +142,7 @@ def test_every_block_fact_id_resolves_back_to_index():
             assert index.get(fact_id) is not None
 
 
-def test_variants_change_project_order_or_selection():
+def test_variants_share_explicit_facts_without_invented_semantic_preference():
     cards = [
         card(id="ec_tech", title="存储架构改造", actions=["重构查询链路并建立索引边界"], results=["查询 P95 降至 32ms"]),
         card(id="ec_team", title="跨品牌交付治理", actions=["带领 5–8 人团队按品牌线交付", "建立交付机制覆盖 57 个 Feature"], results=["服务 6+ 品牌持续迭代"]),
@@ -152,14 +150,13 @@ def test_variants_change_project_order_or_selection():
     career_data = career()
     career_data["work"][0]["evidence_ids"] = ["ec_tech", "ec_team"]
 
-    from tools.engines.generation.fact_selector import DELIVERY_OWNER, TECHNICAL_DEPTH
+    plan_a = plan_for(cards=cards, career_data=career_data, variant="A")
+    plan_b = plan_for(cards=cards, career_data=career_data, variant="B")
 
-    plan_a = plan_for(cards=cards, career_data=career_data, weights=TECHNICAL_DEPTH)
-    plan_b = plan_for(cards=cards, career_data=career_data, weights=DELIVERY_OWNER)
-
-    assert [p.card_id for p in plan_a.projects] != [p.card_id for p in plan_b.projects] or (
-        [p.fact_ids for p in plan_a.projects] != [p.fact_ids for p in plan_b.projects]
-    )
+    assert [p.card_id for p in plan_a.projects] == ["ec_tech", "ec_team"]
+    assert [p.fact_ids for p in plan_a.projects] == [p.fact_ids for p in plan_b.projects]
+    assert plan_a.projects[0].role == cards[0]["role_scope"]
+    assert plan_b.projects[1].role == cards[1]["role_scope"]
 
 
 def test_rendered_project_occurrences_not_inferred_from_sibling_or_merged_heading():
@@ -182,8 +179,10 @@ def test_rendered_project_occurrences_not_inferred_from_sibling_or_merged_headin
           Fact(c2+":actions:0",c2,"actions",duplicate,"evidence"),
           Fact(c2+":results:0",c2,"results","降低事故误报 25%", "evidence")]
     index=FactIndex(tuple(rows))
-    plan=build_resume_plan(index,SelectedFacts(projects={"共同项目":tuple(x.fact_id for x in rows)}),
-                           {},project_groups={c1:"共同项目",c2:"共同项目"})
+    groups = {c1: "共同项目", c2: "共同项目"}
+    chosen = select_facts(index, project_groups=groups)
+    plan = build_resume_plan(index, chosen, {}, project_groups=groups)
+    assert set(plan.projects[0].fact_ids) == {c1 + ":actions:1", c1 + ":actions:2", c2 + ":results:0"}
     claims=[]
     doc=render_plan(plan,index,profile={},job_context={},claims=claims)
     source={x.fact_id:{"source_id":x.source_id,"field":x.field,"text":x.text} for x in rows}
@@ -260,7 +259,7 @@ def _targeted_priority_fixture(mode):
             "checks": [{"status": "supported", "citations": [citation]}],
         })
     index = build_fact_index(cards, career_data, report)
-    selected = select_facts(index)
+    selected = select_facts(index, semantic_report=report)
     return index, selected, career_data
 
 
@@ -291,14 +290,9 @@ def test_optional_capabilities_do_not_move_without_relative_support():
                 assert row["text"] in md.splitlines()[row["render_line"] - 1]
 
 
-def test_exact_supported_facts_reorder_inside_selected_existing_work_and_project():
-    from dataclasses import replace
+def test_exact_supported_facts_are_selected_before_plan_and_keep_their_order():
     idx, selected, data = _targeted_priority_fixture("project")
-    # Keep the selected occurrence set and a deliberately earlier distractor,
-    # as can happen with preferred-card/current weighted selection.
-    ids = tuple(f.fact_id for f in idx.by_card("ec_a"))
-    chosen = replace(selected, projects={"ec_a": ids})
-    plan = build_resume_plan(idx, chosen, data)
+    plan = build_resume_plan(idx, selected, data)
     assert [f.fact_id for f in plan.projects[0].key_work] == ["ec_a:actions:1", "ec_a:actions:0"]
 
     data = dict(data, work=[dict(data["work"][0], contributions=["维护普通文档", "主持岗位所需质量评审"])])
@@ -309,5 +303,5 @@ def test_exact_supported_facts_reorder_inside_selected_existing_work_and_project
               "assessments": [{"requirement_id": "d1", "status": "supported",
                               "citations": [{"fact_id": exact, "quote": fact["text"]}]}]}
     idx = build_fact_index([card()], data, report)
-    plan = build_resume_plan(idx, select_facts(idx), data)
+    plan = build_resume_plan(idx, select_facts(idx, semantic_report=report), data)
     assert [f.fact_id for f in plan.work[0].duties][:2] == [exact, exact[:-1] + "0"]
