@@ -13,6 +13,7 @@ from uuid import uuid4
 from tools.infra import evidence_inference as inference
 from tools.infra import evidence_provenance as provenance
 from tools.infra.llm.client import LLMClient
+from tools.infra.persistence.atomic_io import atomic_write_text
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.infra.evidence_sources import (SOURCE_FIELDS, field_values, read_source_documents,
     validate_field_sources, source_fingerprints, validated_source_inputs)
@@ -241,7 +242,7 @@ def _preserved_blocks(text: str) -> list[list[str]]:
 
 def _write_evidence_file(
     path: Path, fields: dict[str, Any], preserved_blocks: list[list[str]] | None = None
-) -> None:
+) -> str:
     lines = [
         f"id: {_quote(fields['id'])}",
         f"title: {_quote(fields['title'])}",
@@ -279,8 +280,9 @@ def _write_evidence_file(
     if preserved_blocks:
         for block in preserved_blocks:
             lines.extend(block)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    text = "\n".join(lines) + "\n"
+    atomic_write_text(path, text)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _running_submission_profile_ids() -> set[str]:

@@ -547,7 +547,7 @@ export async function inferEvidenceFields(cardIds?:string[]):Promise<import('./t
 }
 
 export async function confirmEvidenceInference(input:{
-  evidence_id:string;card_sha256:string;field:"time_range"|"role_scope";action:"accept"|"reject";value?:string;
+  evidence_id:string;card_sha256:string;candidate_hash:string;field:"time_range"|"role_scope";action:"accept"|"reject";value?:string;
 }):Promise<import('./types').EvidenceInferenceConfirmResult> {
   return client.call("evidence.confirmInference", input);
 }

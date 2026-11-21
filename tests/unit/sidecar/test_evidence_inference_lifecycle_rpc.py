@@ -508,6 +508,7 @@ def test_candidate_rejected_during_model_is_not_restored_by_old_inference_state(
     def reject():
         result = _rpc(
             app, "evidence.confirmInference", evidence_id=card["id"], card_sha256=card_sha,
+            candidate_hash=rejected_candidate["candidate_hash"],
             field="time_range", action="reject", value=rejected_candidate["value"],
         )
         assert result["status"] == "rejected"

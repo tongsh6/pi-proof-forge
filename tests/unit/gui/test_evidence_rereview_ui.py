@@ -23,7 +23,7 @@ const card=id=>{
       {field:'results',value:'已交付排障手册',quote:'已交付排障手册',material_id:id,document_id:id+'-doc'}],
     fact_scope_review:[{...base.fact_scope_review[0],fact_id:id+':results:1',index:1,value:'已交付排障手册'}]};
 };
-const calls=[],api={listEvidence:async()=>({items:[{...card('A'),status:'needs_review',score:0,updated_at:''},{...card('B'),status:'needs_review',score:0,updated_at:''}]}),listEvidenceMaterialSources:async()=>({items:[]}),getEvidence:async id=>id==='A'?{evidence:card('A')}:new Promise(r=>resolveB=r),saveEvidenceDraft:async p=>{calls.push(p);return{evidence_id:p.evidence_id}}};
+const calls=[],api={getSettings:async()=>({evidence_inference:{enabled:true}}),listEvidence:async()=>({items:[{...card('A'),status:'needs_review',score:0,updated_at:''},{...card('B'),status:'needs_review',score:0,updated_at:''}]}),listEvidenceMaterialSources:async()=>({items:[]}),getEvidence:async id=>id==='A'?{evidence:card('A')}:new Promise(r=>resolveB=r),saveEvidenceDraft:async p=>{calls.push(p);return{evidence_id:p.evidence_id}}};
 const jsx=(type,props)=>typeof type==='function'?type(props||{}):({type,props:props||{}}),runtime={jsx,jsxs:jsx},exports={};
 const baseRequire=n=>n==='react'?react:n==='react/jsx-runtime'?runtime:n==='react-i18next'?{useTranslation:()=>({t:k=>k})}:n==='lucide-react'?new Proxy({},{get:(_,k)=>k}):n==='@/lib/errors'?{getErrorMessage:String}:n==='@/lib/ui'?{notify:()=>{},confirmAction:async()=>true,buttonClass:new Proxy({},{get:()=>''})}:n==='react-router-dom'?{useSearchParams:()=>[{get:()=>null}],useNavigate:()=>()=>{}}:n==='@/lib/sidecar/api'?api:n==='./material-document-picker'?{MaterialDocumentPicker:()=>null}:undefined;
 const nodePath=require('node:path'),moduleCache={};

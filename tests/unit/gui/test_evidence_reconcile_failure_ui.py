@@ -29,7 +29,7 @@ def _run(script: str) -> None:
 def test_auto_reconcile_failure_requests_once_and_manual_retry_works():
     _run(r'''
 let reconcileCalls=0,fail=true;
-const api={listEvidence:async()=>({items:[card('A')],next_cursor:null}),listEvidenceMaterialSources:async()=>({items:[]}),getEvidence:async()=>{throw Error('unused')},
+const api={getSettings:async()=>({evidence_inference:{enabled:true}}),listEvidence:async()=>({items:[card('A')],next_cursor:null}),listEvidenceMaterialSources:async()=>({items:[]}),getEvidence:async()=>{throw Error('unused')},
 reconcileEvidence:async()=>{reconcileCalls++;if(fail)throw Error('sidecar down');return{summary:{total:1,eligible:1,incomplete:0,legacy:0,untraceable_cards:0,missing_time_range:0,missing_role_scope:0,duplicate_cards:0,triaged_out:0,needs_fill:0,untriaged:1},items:[]}}};
 const {EvidencePage}=load(api);
 (async()=>{await settle(EvidencePage);await settle(EvidencePage);
@@ -44,7 +44,7 @@ assert.ok(!text(tid('evidence-summary-hint')).includes('sidecar down'),'成功�
 
 def test_truncated_list_shows_notice():
     _run(r'''
-const api={listEvidence:async()=>({items:[card('A'),card('B')],next_cursor:'2'}),listEvidenceMaterialSources:async()=>({items:[]}),getEvidence:async()=>{throw Error('unused')},
+const api={getSettings:async()=>({evidence_inference:{enabled:true}}),listEvidence:async()=>({items:[card('A'),card('B')],next_cursor:'2'}),listEvidenceMaterialSources:async()=>({items:[]}),getEvidence:async()=>{throw Error('unused')},
 reconcileEvidence:async()=>({summary:{total:150,eligible:150,incomplete:0,legacy:0,untraceable_cards:0,missing_time_range:0,missing_role_scope:0,duplicate_cards:0,triaged_out:0,needs_fill:0,untriaged:0},items:[]})};
 const {EvidencePage}=load(api);
 (async()=>{await settle(EvidencePage);
@@ -56,7 +56,7 @@ assert.ok(text(note).includes('pages.evidence.listTruncated'),'使用 listTrunca
 
 def test_full_list_has_no_truncation_notice():
     _run(r'''
-const api={listEvidence:async()=>({items:[card('A')],next_cursor:null}),listEvidenceMaterialSources:async()=>({items:[]}),getEvidence:async()=>{throw Error('unused')},
+const api={getSettings:async()=>({evidence_inference:{enabled:true}}),listEvidence:async()=>({items:[card('A')],next_cursor:null}),listEvidenceMaterialSources:async()=>({items:[]}),getEvidence:async()=>{throw Error('unused')},
 reconcileEvidence:async()=>({summary:{total:1,eligible:1,incomplete:0,legacy:0,untraceable_cards:0,missing_time_range:0,missing_role_scope:0,duplicate_cards:0,triaged_out:0,needs_fill:0,untriaged:0},items:[]})};
 const {EvidencePage}=load(api);
 (async()=>{await settle(EvidencePage);assert.equal(tid('evidence-list-truncated'),undefined,'未截断时不显示提示');})().catch(e=>{console.error(e);process.exitCode=1});

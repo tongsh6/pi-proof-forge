@@ -126,7 +126,6 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
                 "title": str(document.get("title", "")),
                 "sha256": str(document.get("sha256", "")),
                 "material_label": label,
-                "material_filename": str(material.get("filename", "")),
                 "document_dates": document.get("dates") or {},
             }))
     scored.sort(key=lambda item: (-item[0], -item[1], -item[2],
@@ -135,7 +134,7 @@ def select_documents(index: dict, card_fields: dict, card_lists: dict, *, limit:
 
 
 def read_document_texts(
-    root: Path, documents: list[dict[str, Any]], *, index: dict,
+    root: Path, documents: list[dict[str, Any]], *, asset_inventory: dict[str, str],
     card_fields: dict, card_lists: dict,
 ) -> ValidatedSourcePaths:
     """从当前登记材料核对所选三元引用，保留实际读取的文本与版本。"""
@@ -170,15 +169,14 @@ def read_document_texts(
                 raise ValueError("material_source_changed")
             meta_raw = meta_path.read_bytes()
             meta_sha = hashlib.sha256(meta_raw).hexdigest()
-            if meta_sha != (index.get("asset_inventory") or {}).get(f"materials/{mid}.meta.yaml"):
+            if meta_sha != asset_inventory.get(f"materials/{mid}.meta.yaml"):
                 raise ValueError("material_source_changed")
             item = parse_simple_yaml(meta_raw.decode("utf-8"))["scalars"]
             filename = str(item.get("filename") or "")
             path = materials_dir / filename
             if (item.get("material_id") != mid or not filename or Path(filename).is_absolute()
                     or path.is_symlink() or not path.is_file()
-                    or not path.resolve().is_relative_to(materials_dir.resolve())
-                    or any(document.get("material_filename") != filename for document in selected)):
+                    or not path.resolve().is_relative_to(materials_dir.resolve())):
                 raise ValueError("material_source_changed")
             refs = [{"material_id": mid, "document_id": document["document_id"], "sha256": document["sha256"]}
                     for document in selected]
@@ -480,23 +478,9 @@ def rules_only_candidates(
     return candidates[:limit]
 
 
-def attempt_fingerprint(card_sha256: str, aggregates: list[dict[str, Any]], windows: list[tuple[int, int]],
-                        work_context: list[dict[str, Any]] | None = None, *,
-                        captured_sources: ValidatedSourcePaths) -> str:
-    canonical = json.dumps(
-        {
-            "card": card_sha256,
-            "documents": sorted((item["material_id"], item["document_id"], item.get("sha256", "")) for item in aggregates),
-            "inputs": sorted((key, str(path.absolute()), digest)
-                             for key, (path, digest) in captured_sources.snapshots.items()),
-            "windows": [list(item) for item in windows],
-            "prompt": INFERENCE_PROMPT_VERSION,
-            "task_context": context_fingerprint(),
-            "confirmed_work_context": work_context or [],
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+def attempt_fingerprint(input_basis: dict[str, Any]) -> str:
+    """绑定完整原始依据；保留文档顺序，派生语境由来源版本和现协议确定。"""
+    canonical = json.dumps(input_basis, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -521,21 +505,22 @@ def _assert_state_version(path: Path, expected: str) -> None:
         raise ValueError("evidence_inference_state_changed")
 
 
-def assert_current_inputs(
-    *, root: Path, index: dict, card_fields: dict, card_lists: dict,
-    captured_sources: ValidatedSourcePaths,
+def _assert_selected_inputs(
+    *, root: Path, documents: list[dict[str, Any]], asset_inventory: dict[str, str],
+    card_fields: dict, card_lists: dict, captured_sources: ValidatedSourcePaths,
 ) -> None:
-    """发布前复核累计输入及现行来源许可；当前版本不能替换原捕获。"""
+    """推断与确认共用原文、历史依赖和当前来源许可的复核。"""
     snapshots = {key: value for key, value in captured_sources.snapshots.items() if key != "inference_state"}
     assert_source_snapshot(snapshots)
     current = read_document_texts(
-        root, select_documents(index, card_fields, card_lists), index=index,
+        root, documents, asset_inventory=asset_inventory,
         card_fields=card_fields, card_lists=card_lists)
     for key, (path, digest) in current.snapshots.items():
         original = snapshots.get(key)
         if original is None or original[0].resolve() != path.resolve() or original[1] != digest:
             raise ValueError("material_source_changed")
-    if any(captured_sources.documents.get(key) != text for key, text in current.documents.items()):
+    if any(key in captured_sources.documents and captured_sources.documents[key] != text
+           for key, text in current.documents.items()):
         raise ValueError("material_source_changed")
     # 职业档案可能采用没有进入本卡召回集合的材料，沿原卡依赖复核当前许可。
     for key, (path, expected) in snapshots.items():
@@ -553,6 +538,100 @@ def assert_current_inputs(
     state_snapshot = captured_sources.snapshots.get("inference_state")
     if state_snapshot is not None:
         _assert_state_version(*state_snapshot)
+
+
+def assert_current_inputs(
+    *, root: Path, index: dict, card_fields: dict, card_lists: dict,
+    captured_sources: ValidatedSourcePaths,
+) -> None:
+    """当前推断使用同次已冻结的导航集合；不替换原输入版本。"""
+    _assert_selected_inputs(
+        root=root, documents=select_documents(index, card_fields, card_lists),
+        asset_inventory=index.get("asset_inventory") or {},
+        card_fields=card_fields, card_lists=card_lists, captured_sources=captured_sources,
+    )
+
+
+def _assert_basis_contract(basis: dict[str, Any]) -> None:
+    if (type(basis.get("prompt_version")) is not int
+            or basis["prompt_version"] != INFERENCE_PROMPT_VERSION
+            or basis.get("task_context") != context_fingerprint()):
+        raise ValueError("evidence_inference_stale")
+
+
+def assert_confirmation_inputs(
+    root: Path, *, card_id: str, card_path: Path, card_sha256: str,
+    card_fields: dict, card_lists: dict, stored: dict,
+) -> None:
+    """确认只复核原推断集合；服务端游标只承认目标文件的受控接续。"""
+    basis = stored.get("input_basis")
+    if (not isinstance(basis, dict)
+            or basis.keys() != {"prompt_version", "task_context", "documents", "snapshots"}
+            or stored.get("card_sha256") != card_sha256):
+        raise ValueError("evidence_inference_stale")
+    _assert_basis_contract(basis)
+    documents, saved = basis["documents"], basis["snapshots"]
+    if (not isinstance(documents, list) or len(documents) > MAX_DOCUMENTS
+            or not isinstance(saved, dict) or not saved or "inference_state" in saved):
+        raise ValueError("evidence_inference_stale")
+    identities = set()
+    for document in documents:
+        if (not isinstance(document, dict)
+                or document.keys() != {"material_id", "document_id", "sha256"}
+                or not isinstance(document["material_id"], str)
+                or not re.fullmatch(r"[A-Za-z0-9_-]+", document["material_id"])
+                or any(not isinstance(document[key], str)
+                       or not re.fullmatch(r"[0-9a-f]{64}", document[key])
+                       for key in ("document_id", "sha256"))):
+            raise ValueError("evidence_inference_stale")
+        identity = tuple(document[key] for key in ("material_id", "document_id", "sha256"))
+        if identity in identities:
+            raise ValueError("evidence_inference_stale")
+        identities.add(identity)
+    snapshots = {}
+    for key, value in saved.items():
+        if (not isinstance(key, str) or not isinstance(value, dict)
+                or value.keys() != {"path", "sha256"}
+                or not isinstance(value["path"], str) or not value["path"]
+                or not Path(value["path"]).is_absolute()
+                or not isinstance(value["sha256"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", value["sha256"])):
+            raise ValueError("evidence_inference_stale")
+        snapshots[key] = (Path(value["path"]), value["sha256"])
+    if stored.get("attempt_fingerprint") != attempt_fingerprint(basis):
+        raise ValueError("evidence_inference_stale")
+    target_key = f"evidence_card:{card_id}"
+    original_target = snapshots.get(target_key)
+    target = Path(card_path).absolute()
+    if (original_target is None or original_target[0].resolve() != target.resolve()
+            or not re.fullmatch(r"[0-9a-f]{64}", card_sha256)):
+        raise ValueError("evidence_inference_stale")
+    for key, (path, digest) in list(snapshots.items()):
+        if path.resolve() != target.resolve():
+            continue
+        if (key != target_key and not key.startswith("career_evidence:")) or digest != original_target[1]:
+            raise ValueError("evidence_inference_stale")
+        snapshots[key] = (path, card_sha256)
+    for candidate in stored.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            raise ValueError("evidence_inference_stale")
+        for ref in candidate.get("evidence") or []:
+            if (not isinstance(ref, dict)
+                    or tuple(ref.get(key) for key in ("material_id", "document_id", "sha256")) not in identities):
+                raise ValueError("evidence_inference_stale")
+    inventory = {}
+    for document in documents:
+        mid = document["material_id"]
+        meta = snapshots.get(f"evidence_meta:{mid}")
+        if meta is None or meta[0].resolve() != (Path(root) / "materials" / f"{mid}.meta.yaml").resolve():
+            raise ValueError("evidence_inference_stale")
+        inventory[f"materials/{mid}.meta.yaml"] = meta[1]
+    _assert_selected_inputs(
+        root=root, documents=documents, asset_inventory=inventory,
+        card_fields=card_fields, card_lists=card_lists,
+        captured_sources=ValidatedSourcePaths(snapshots),
+    )
+    _assert_basis_contract(basis)
 
 
 def state_path(root: Path) -> Path:
@@ -609,14 +688,24 @@ def infer_card(
     windows, window_labels = employment_windows(profile, card_id)
     work_context = confirmed_work_context(profile, card_id)
     documents = select_documents(index, card_fields, card_lists)
-    sources = read_document_texts(root, documents, index=index, card_fields=card_fields, card_lists=card_lists)
+    sources = read_document_texts(root, documents, asset_inventory=index.get("asset_inventory") or {},
+                                  card_fields=card_fields, card_lists=card_lists)
     _merge_sources(card_sources, sources)
     _merge_sources(captured_sources, card_sources)
     texts = sources.documents
     aggregates = aggregate_documents(documents, texts)
-    fingerprint = attempt_fingerprint(card_sha256, aggregates, windows, work_context, captured_sources=card_sources)
+    input_basis = {
+        "prompt_version": INFERENCE_PROMPT_VERSION,
+        "task_context": context_fingerprint(),
+        "documents": [{key: document[key] for key in ("material_id", "document_id", "sha256")}
+                      for document in documents],
+        "snapshots": {key: {"path": str(path.absolute()), "sha256": digest}
+                      for key, (path, digest) in card_sources.snapshots.items()},
+    }
+    fingerprint = attempt_fingerprint(input_basis)
     assert_current_inputs(root=root, index=index, card_fields=card_fields, card_lists=card_lists,
                           captured_sources=captured_sources)
+    _assert_basis_contract(input_basis)
     stored = state["cards"].get(card_id)
     rejected = set((stored or {}).get("rejected") or [])
     rules_only = not enabled or llm_call is None
@@ -624,6 +713,7 @@ def infer_card(
         isinstance(stored, dict)
         and stored.get("card_sha256") == card_sha256
         and stored.get("attempt_fingerprint") == fingerprint
+        and stored.get("input_basis") == input_basis
         and bool(stored.get("rules_only")) == rules_only
     ):
         candidates = [
@@ -649,11 +739,13 @@ def infer_card(
             error = str(exc)[:300]
     assert_current_inputs(root=root, index=index, card_fields=card_fields, card_lists=card_lists,
                           captured_sources=captured_sources)
+    _assert_basis_contract(input_basis)
     candidates = [candidate for candidate in candidates if candidate.get("candidate_hash") not in rejected]
     if status != "llm_error":
         state["cards"][card_id] = {
             "card_sha256": card_sha256,
             "attempt_fingerprint": fingerprint,
+            "input_basis": input_basis,
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "rules_only": rules_only,
             "candidates": candidates,

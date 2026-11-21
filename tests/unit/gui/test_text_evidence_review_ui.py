@@ -9,7 +9,7 @@ const hooks=[];let index=0,effects=[],tree;const same=(a,b)=>a&&b&&a.length===b.
 const react={useState(v){const i=index++;if(!hooks[i])hooks[i]={v:typeof v==='function'?v():v};return[hooks[i].v,n=>{hooks[i].v=typeof n==='function'?n(hooks[i].v):n}]},
 useMemo(fn,deps){const i=index++;if(!hooks[i]||!same(hooks[i].deps,deps))hooks[i]={v:fn(),deps};return hooks[i].v},useCallback(fn,deps){return react.useMemo(()=>fn,deps)},useRef(v){return react.useMemo(()=>({current:v}),[])},
 useEffect(fn,deps){const i=index++;if(!hooks[i]||!same(hooks[i].deps,deps)){hooks[i]={deps};effects.push(fn)}}};
-const calls=[];const api={listEvidence:async()=>({items:[]}),listEvidenceMaterialSources:async()=>({items:[{material_id:'work',filename:'work.txt',label:'实际工作材料',extension:'.txt',preview:''}]}),
+const calls=[];const api={getSettings:async()=>({evidence_inference:{enabled:true}}),listEvidence:async()=>({items:[]}),listEvidenceMaterialSources:async()=>({items:[{material_id:'work',filename:'work.txt',label:'实际工作材料',extension:'.txt',preview:''}]}),
  generateEvidenceDraft:async()=>{throw Error('手工审核不可调用模型')},saveEvidenceDraft:async payload=>{calls.push(payload);return{evidence_id:'reviewed'}}};
 const exports={};
 const jsx=(type,props)=>typeof type==='function'?type(props||{}):({type,props:props||{}});

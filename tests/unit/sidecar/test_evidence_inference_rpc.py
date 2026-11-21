@@ -67,7 +67,7 @@ def test_infer_fields_produces_candidates_and_confirms_keeps_l3(tmp_path, monkey
     time_candidate = next(item for item in result["cards"][0]["candidates"] if item["field"] == "time_range")
     accepted = evidence.handle_evidence_confirm_inference({
         "meta": {"correlation_id": "c"}, "evidence_id": "ec_1", "card_sha256": card_sha,
-        "field": "time_range", "action": "accept"})
+        "candidate_hash": time_candidate["candidate_hash"], "field": "time_range", "action": "accept"})
     assert accepted["status"] == "accepted"
     assert accepted["provenance"]["level"] == "L3" and accepted["provenance"]["confirmed_by_user"] is True
     detail = evidence._load_evidence_detail("ec_1")
@@ -89,7 +89,7 @@ def test_reject_prevents_renomination_and_modified_accept_becomes_l4(tmp_path, m
     card_sha = hashlib.sha256((tmp_path / "evidence_cards" / "ec_1.yaml").read_bytes()).hexdigest()
     rejected = evidence.handle_evidence_confirm_inference({
         "meta": {"correlation_id": "c"}, "evidence_id": "ec_1", "card_sha256": card_sha,
-        "field": "role_scope", "action": "reject"})
+        "candidate_hash": role_candidate["candidate_hash"], "field": "role_scope", "action": "reject"})
     assert rejected["status"] == "rejected"
     second = evidence.handle_evidence_infer_fields({"meta": {"correlation_id": "c"}, "card_ids": ["ec_1"]})
     role_after = [item for item in second["cards"][0]["candidates"] if item["field"] == "role_scope"]
@@ -100,7 +100,7 @@ def test_reject_prevents_renomination_and_modified_accept_becomes_l4(tmp_path, m
     time_candidate = next(item for item in state["cards"]["ec_1"]["candidates"] if item["field"] == "time_range")
     accepted = evidence.handle_evidence_confirm_inference({
         "meta": {"correlation_id": "c"}, "evidence_id": "ec_1", "card_sha256": card_sha,
-        "field": "time_range", "action": "accept", "value": "2023-01 ~ 2023-06"})
+        "candidate_hash": time_candidate["candidate_hash"], "field": "time_range", "action": "accept", "value": "2023-01 ~ 2023-06"})
     assert accepted["provenance"]["level"] == "L4"
     assert accepted["value"] == "2023-01 ~ 2023-06"
     assert time_candidate["level"] == "L3"
@@ -110,15 +110,16 @@ def test_confirm_rejects_stale_card_and_invalid_field(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     monkeypatch.setattr(evidence, "_inference_llm_call", _fake_llm)
     monkeypatch.setattr(evidence, "load_evidence_inference_enabled", lambda: True)
-    evidence.handle_evidence_infer_fields({"meta": {"correlation_id": "c"}, "card_ids": ["ec_1"]})
+    inferred = evidence.handle_evidence_infer_fields({"meta": {"correlation_id": "c"}, "card_ids": ["ec_1"]})
+    candidate = next(item for item in inferred["cards"][0]["candidates"] if item["field"] == "time_range")
     with pytest.raises(ValueError, match="evidence_inference_stale"):
         evidence.handle_evidence_confirm_inference({
             "meta": {"correlation_id": "c"}, "evidence_id": "ec_1", "card_sha256": "0" * 64,
-            "field": "time_range", "action": "accept"})
+            "candidate_hash": candidate["candidate_hash"], "field": "time_range", "action": "accept"})
     with pytest.raises(ValueError, match="evidence_inference_field_invalid"):
         evidence.handle_evidence_confirm_inference({
             "meta": {"correlation_id": "c"}, "evidence_id": "ec_1", "card_sha256": "0" * 64,
-            "field": "results", "action": "accept"})
+            "candidate_hash": candidate["candidate_hash"], "field": "results", "action": "accept"})
 
 
 @pytest.mark.parametrize("order", [("time_range","role_scope"),("role_scope","time_range")])
@@ -126,11 +127,13 @@ def test_sequential_field_confirmation_preserves_both_provenance_records(tmp_pat
     path=_setup(tmp_path,monkeypatch)
     monkeypatch.setattr(evidence,"_inference_llm_call",_fake_llm)
     monkeypatch.setattr(evidence,"load_evidence_inference_enabled",lambda:True)
-    evidence.handle_evidence_infer_fields({"meta":{"correlation_id":"c"},"card_ids":["ec_1"]})
+    inferred=evidence.handle_evidence_infer_fields({"meta":{"correlation_id":"c"},"card_ids":["ec_1"]})
+    candidates={item["field"]: item for item in inferred["cards"][0]["candidates"]}
     sha=hashlib.sha256(path.read_bytes()).hexdigest()
     for field in order:
         result=evidence.handle_evidence_confirm_inference({
-            "meta":{"correlation_id":"c"},"evidence_id":"ec_1","card_sha256":sha,"field":field,"action":"accept"})
+            "meta":{"correlation_id":"c"},"evidence_id":"ec_1","card_sha256":sha,
+            "candidate_hash":candidates[field]["candidate_hash"],"field":field,"action":"accept"})
         assert result["card_sha256"]!=sha
         sha=result["card_sha256"]
     detail=evidence._load_evidence_detail("ec_1")

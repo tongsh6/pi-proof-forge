@@ -94,20 +94,7 @@ CASES = {
 }
 
 
-# Kept in this test: it serves only a temporary component document, not an App entry.
-NODE_DRIVER = r"""
-import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { createServer } from "vite";
-import react from "@vitejs/plugin-react";
-
-const cases = __CASES__;
-const chrome = __CHROME__;
-const temporary = await mkdtemp(path.join(tmpdir(), "ppf-settings-ui-"));
-const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const entry = `
+SETTINGS_ENTRY = r"""
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -224,7 +211,24 @@ window.runSettingsCase = async ({config, operations}) => {
     savedNoticeVisible: document.body.innerText.includes("Model configuration saved"),
   };
 };
-`;
+"""
+
+
+# The two real component consumers share only browser setup, not their business fixtures.
+NODE_DRIVER = r"""
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createServer } from "vite";
+import react from "@vitejs/plugin-react";
+
+const cases = __CASES__;
+const chrome = __CHROME__;
+const entry = __ENTRY__;
+const runFunction = __RUN_FUNCTION__;
+const temporary = await mkdtemp(path.join(tmpdir(), "ppf-component-ui-"));
+const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 let server;
 let browser;
 let socket;
@@ -237,15 +241,15 @@ try {
     plugins: [
       react(),
       {
-        name: "settings-component-test",
-        resolveId(id) { if (id === "/__settings_test__.js") return "\0settings-component-test"; },
-        load(id) { if (id === "\0settings-component-test") return entry; },
+        name: "component-test",
+        resolveId(id) { if (id === "/__component_test__.js") return "\0component-test"; },
+        load(id) { if (id === "\0component-test") return entry; },
         configureServer(vite) {
           vite.middlewares.use(async (request, response, next) => {
-            if (request.url !== "/__settings_test__") return next();
+            if (request.url !== "/__component_test__") return next();
             response.setHeader("Content-Type", "text/html");
             response.end(await vite.transformIndexHtml(request.url,
-              '<html><body><div id="root"></div><script type="module" src="/__settings_test__.js"></script></body></html>'));
+              '<html><body><div id="root"></div><script type="module" src="/__component_test__.js"></script></body></html>'));
           });
         },
       },
@@ -310,11 +314,11 @@ try {
     return result.result.value;
   };
   await call("Fetch.enable", {patterns: [{urlPattern: "*"}]});
-  await call("Page.navigate", {url: "http://127.0.0.1:" + port + "/__settings_test__"});
+  await call("Page.navigate", {url: "http://127.0.0.1:" + port + "/__component_test__"});
   let ready = false;
   for (let i = 0; i < 300; i++) {
     try {
-      if (await evaluate("typeof window.runSettingsCase === 'function'")) { ready = true; break; }
+      if (await evaluate("typeof window[" + JSON.stringify(runFunction) + "] === 'function'")) { ready = true; break; }
     } catch (reason) {
       if (!/context|navigated|closed/.test(String(reason))) throw reason;
     }
@@ -323,10 +327,10 @@ try {
   if (!ready) throw new Error("Component entry did not load: " + await evaluate("document.body.innerText"));
   const observations = {};
   for (const [name, fixture] of Object.entries(cases)) {
-    observations[name] = await evaluate("window.runSettingsCase(" + JSON.stringify(fixture) + ")");
+    observations[name] = await evaluate("window[" + JSON.stringify(runFunction) + "](" + JSON.stringify(fixture) + ")");
   }
   if (forbidden.length) throw new Error("Non-test network blocked: " + forbidden.join(", "));
-  console.log("SETTINGS_BEHAVIOR=" + JSON.stringify(observations));
+  console.log("COMPONENT_BEHAVIOR=" + JSON.stringify(observations));
 } finally {
   socket?.close();
   if (browser && browser.exitCode === null) {
@@ -340,21 +344,28 @@ try {
 """
 
 
-@pytest.fixture(scope="module")
-def settings_behavior():
+def run_component_cases(entry, cases, run_function):
     node = shutil.which("node")
     chrome = shutil.which("google-chrome") or "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     if not node or not Path(chrome).is_file():
-        pytest.skip("Settings component behavior requires the installed Node and Chrome runtimes")
-    driver = NODE_DRIVER.replace("__CASES__", json.dumps(CASES)).replace("__CHROME__", json.dumps(chrome))
+        pytest.skip("Component behavior requires the installed Node and Chrome runtimes")
+    driver = (NODE_DRIVER.replace("__CASES__", json.dumps(cases))
+              .replace("__CHROME__", json.dumps(chrome))
+              .replace("__ENTRY__", json.dumps(entry))
+              .replace("__RUN_FUNCTION__", json.dumps(run_function)))
     result = subprocess.run(
         [node, "--input-type=module"],
         input=driver, cwd=ROOT / "ui", text=True, capture_output=True, timeout=90,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    prefix = "SETTINGS_BEHAVIOR="
+    prefix = "COMPONENT_BEHAVIOR="
     output = next(line[len(prefix):] for line in result.stdout.splitlines() if line.startswith(prefix))
     return json.loads(output)
+
+
+@pytest.fixture(scope="module")
+def settings_behavior():
+    return run_component_cases(SETTINGS_ENTRY, CASES, "runSettingsCase")
 
 
 def _case(observations, name):

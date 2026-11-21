@@ -362,11 +362,11 @@ def _l4_reply(prompt, calls):
 
 
 def test_l4_attempt_fingerprint_keeps_material_identity():
-    left = [{"material_id": "mat_a", "document_id": "same_doc", "sha256": "same_sha"}]
-    right = [{**left[0], "material_id": "mat_b"}]
-    sources = inference.ValidatedSourcePaths()
-    assert inference.attempt_fingerprint("card", left, [], captured_sources=sources) != inference.attempt_fingerprint(
-        "card", right, [], captured_sources=sources)
+    left = {"snapshots": {}, "documents": [
+        {"material_id": "mat_a", "document_id": "same_doc", "sha256": "same_sha"},
+    ], "prompt_version": inference.INFERENCE_PROMPT_VERSION, "task_context": inference.context_fingerprint()}
+    right = {**left, "documents": [{**left["documents"][0], "material_id": "mat_b"}]}
+    assert inference.attempt_fingerprint(left) != inference.attempt_fingerprint(right)
 
 
 @pytest.mark.parametrize("cited_material", ["mat_a", "mat_b", "unselected"])
@@ -546,3 +546,80 @@ def test_l4_unbound_recall_is_not_limited_to_eight_card_bindings(current_inferen
     assert result["status"] == "ok" and result["candidates"]
     assert len(calls) == 1
     assert len(calls[0]["documents"]) == 10
+
+
+@pytest.mark.parametrize("changed_contract", ["stable", "protocol", "context", "pruned_basis"])
+def test_l5_confirmation_requires_the_original_inference_contract(
+    current_inference_inputs, monkeypatch, changed_contract,
+):
+    from tools.prompts import context
+    from tools.sidecar.handlers import evidence
+    from tools.sidecar.server import process_request
+
+    case = current_inference_inputs
+    monkeypatch.setattr(evidence, "_EVIDENCE_DIR", case["card"].parent)
+    configured = process_request({
+        "jsonrpc": "2.0", "id": "l5-contract-config", "method": "settings.update",
+        "params": {"meta": {"correlation_id": "l5-contract-config"},
+                   "section": "evidence_inference", "payload": {"enabled": True}},
+    })
+    assert "error" not in configured
+    calls = []
+    result = _infer_once(**case["args"], llm_call=lambda prompt: _l4_reply(prompt, calls))
+    assert result["status"] == "ok" and len(calls) == 1
+    candidate = result["candidates"][0]
+    state = inference.load_state(case["args"]["root"])
+    stored = state["cards"]["ec_1"]
+    assert stored["candidates"] == result["candidates"]
+    original_card = case["card"].read_bytes()
+    original_state = inference.state_path(case["args"]["root"]).read_bytes()
+    original_context = inference.context_fingerprint()
+    if changed_contract == "protocol":
+        monkeypatch.setattr(inference, "INFERENCE_PROMPT_VERSION", inference.INFERENCE_PROMPT_VERSION + 1)
+    elif changed_contract == "context":
+        monkeypatch.setattr(context, "JOB_SEARCH_CONTEXT", context.JOB_SEARCH_CONTEXT + "\n合成协议更新。")
+        assert inference.context_fingerprint() != original_context
+    elif changed_contract == "pruned_basis":
+        snapshots = stored["input_basis"]["snapshots"]
+        assert "personal_profile" in snapshots and "career_evidence:ec_1" in snapshots
+        stored["input_basis"]["snapshots"] = {
+            key: value for key, value in snapshots.items()
+            if key != "personal_profile" and not key.startswith("career_evidence:")
+        }
+        inference.save_state(case["args"]["root"], state)
+        original_state = inference.state_path(case["args"]["root"]).read_bytes()
+    params = {
+        "meta": {"correlation_id": "l5-contract-confirm"}, "evidence_id": "ec_1",
+        "card_sha256": hashlib.sha256(original_card).hexdigest(), "field": candidate["field"],
+        "candidate_hash": candidate["candidate_hash"], "action": "accept",
+    }
+    if changed_contract == "stable":
+        accepted = evidence.handle_evidence_confirm_inference(params)
+        assert accepted["status"] == "accepted" and accepted["provenance"]["level"] == "L3"
+    else:
+        with pytest.raises(ValueError, match="evidence_inference|material_source"):
+            evidence.handle_evidence_confirm_inference(params)
+        assert case["card"].read_bytes() == original_card
+        assert inference.state_path(case["args"]["root"]).read_bytes() == original_state
+
+
+@pytest.mark.parametrize("basis_state", ["missing", "damaged"])
+def test_l5_unbound_inference_state_cannot_supply_a_cache_hit(
+    current_inference_inputs, basis_state,
+):
+    case = current_inference_inputs
+    calls = []
+    args = {**case["args"], "llm_call": lambda prompt: _l4_reply(prompt, calls)}
+    first = _infer_once(**args)
+    assert first["cache"] == "miss" and len(calls) == 1 and first["candidates"]
+    state = inference.load_state(case["args"]["root"])
+    stored = state["cards"]["ec_1"]
+    if basis_state == "missing":
+        stored.pop("input_basis", None)
+    else:
+        stored["input_basis"] = {"snapshots": "not a source snapshot"}
+    stored["rejected"] = ["0" * 64]
+    inference.save_state(case["args"]["root"], state)
+    second = _infer_once(**args)
+    assert second["cache"] == "miss" and len(calls) == 2
+    assert inference.load_state(case["args"]["root"])["cards"]["ec_1"]["rejected"] == ["0" * 64]

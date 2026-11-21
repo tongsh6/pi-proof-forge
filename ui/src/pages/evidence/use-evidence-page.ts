@@ -10,6 +10,7 @@ import {
   deleteEvidence,
   generateEvidenceDraft,
   getEvidence,
+  getSettings,
   importEvidence,
   inferEvidenceFields,
   listEvidenceMaterialSources,
@@ -25,6 +26,7 @@ import type {
   EvidenceDetail,
   EvidenceFilters,
   EvidenceInferenceCandidate,
+  EvidenceInferenceConfirmResult,
   EvidenceInferenceResult,
   EvidenceListItem,
   EvidenceReconcileItem,
@@ -49,6 +51,24 @@ import type {
 } from "./evidence-helpers";
 import { hasSourceAppend } from "./source-merge";
 
+
+function withCandidateCounts(result: EvidenceInferenceResult): EvidenceInferenceResult {
+  const candidates = result.cards.flatMap((card) => card.candidates);
+  return { ...result, summary: { ...result.summary,
+    candidates: candidates.length,
+    cards_with_candidates: result.cards.filter((card) => card.candidates.length > 0).length,
+    time_candidates: candidates.filter((candidate) => candidate.field === "time_range").length,
+    role_candidates: candidates.filter((candidate) => candidate.field === "role_scope").length,
+  } };
+}
+
+function withInferenceMode(result: EvidenceInferenceResult, enabled: boolean | null): EvidenceInferenceResult {
+  return withCandidateCounts({ ...result, enabled: enabled ?? result.enabled,
+    cards: enabled === true ? result.cards : result.cards.map((card) => ({ ...card,
+      candidates: card.candidates.filter((candidate) => candidate.level === "L2"),
+    })),
+  });
+}
 
 export function useEvidencePage() {
   const { t } = useTranslation();
@@ -88,6 +108,8 @@ export function useEvidencePage() {
     useState<EvidenceDraftPayload | null>(null);
   const [previewArtifact, setPreviewArtifact] = useState<ArtifactSummary | null>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const settingsReadSequence = useRef(0);
+  const inferenceMode = useRef<boolean | null>(null);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -164,29 +186,27 @@ export function useEvidencePage() {
   );
   const runInference = useCallback(async () => {
     setInferenceState("running");
-    setInferenceError(null);
+    setInferenceError((current) => inferenceMode.current === null ? current : null);
     try {
-      setInference(await inferEvidenceFields());
+      const result = await inferEvidenceFields();
+      setInference(withInferenceMode(result, inferenceMode.current));
       setInferenceState("idle");
     } catch (reason) {
       setInferenceState("error");
       setInferenceError(getErrorMessage(reason));
     }
   }, []);
-  const recordInferenceDecision = useCallback((evidenceId: string, candidateHash: string, cardSha?: string) => {
+  const recordInferenceDecision = useCallback((
+    evidenceId: string, candidateHash: string, result: EvidenceInferenceConfirmResult,
+  ) => {
     setInference((current) => {
       if (!current) return current;
       const cards = current.cards.map((card) => card.card_id === evidenceId
-        ? { ...card, card_sha256: cardSha ?? card.card_sha256,
-          candidates: card.candidates.filter((entry) => entry.candidate_hash !== candidateHash) }
+        ? { ...card, card_sha256: result.card_sha256 ?? card.card_sha256,
+          candidates: result.status === "accepted" && result.provenance?.level === "L4"
+            ? [] : card.candidates.filter((entry) => entry.candidate_hash !== candidateHash) }
         : card);
-      const candidates = cards.flatMap((card) => card.candidates);
-      return { ...current, cards, summary: { ...current.summary,
-        candidates: candidates.length,
-        cards_with_candidates: cards.filter((card) => card.candidates.length > 0).length,
-        time_candidates: candidates.filter((candidate) => candidate.field === "time_range").length,
-        role_candidates: candidates.filter((candidate) => candidate.field === "role_scope").length,
-      } };
+      return withCandidateCounts({ ...current, cards });
     });
   }, []);
   const handleInferenceDecision = useCallback(async (
@@ -202,17 +222,18 @@ export function useEvidencePage() {
       const result = await confirmEvidenceInference({
         evidence_id: item.evidence_id,
         card_sha256: cardSha,
+        candidate_hash: candidate.candidate_hash,
         field: candidate.field,
         action,
-        ...(value ? { value } : {}),
+        ...(value !== undefined ? { value } : {}),
       });
-      recordInferenceDecision(item.evidence_id, candidate.candidate_hash, result.card_sha256);
+      recordInferenceDecision(item.evidence_id, candidate.candidate_hash, result);
       setInferenceNotice(t(action === "accept" ? "pages.evidence.reconcile.inference.accepted" : "pages.evidence.reconcile.inference.rejected"));
-      await runReconcile();
-      if (selectedIdRef.current === item.evidence_id) await loadDetail(item.evidence_id).catch(() => null);
     } catch (reason) {
       setInferenceError(getErrorMessage(reason));
     } finally {
+      await runReconcile();
+      if (selectedIdRef.current === item.evidence_id) await loadDetail(item.evidence_id);
       setInferenceBusy(false);
     }
   }, [loadDetail, runReconcile, recordInferenceDecision, t]);
@@ -221,20 +242,20 @@ export function useEvidencePage() {
     setInferenceBusy(true);
     setInferenceError(null);
     setInferenceNotice("");
-    const updatedIds = new Set<string>();
+    const attemptedIds = new Set<string>();
     try {
       for (const card of inference.cards) {
         const item = reconcile?.items.find((entry) => entry.evidence_id === card.card_id);
         if (!item) continue;
         let cardSha = card.card_sha256;
         for (const candidate of card.candidates.filter((entry) => (entry.confidence ?? 0) >= 0.5)) {
+          attemptedIds.add(card.card_id);
           const result = await confirmEvidenceInference({
             evidence_id: card.card_id, card_sha256: cardSha,
-            field: candidate.field, action: "accept",
+            candidate_hash: candidate.candidate_hash, field: candidate.field, action: "accept",
           });
           cardSha = result.card_sha256 ?? cardSha;
-          recordInferenceDecision(card.card_id, candidate.candidate_hash, cardSha);
-          updatedIds.add(card.card_id);
+          recordInferenceDecision(card.card_id, candidate.candidate_hash, result);
         }
       }
       setInferenceNotice(t("pages.evidence.reconcile.inference.batchAccepted"));
@@ -243,7 +264,7 @@ export function useEvidencePage() {
     } finally {
       await runReconcile();
       const currentId = selectedIdRef.current;
-      if (currentId && updatedIds.has(currentId)) await loadDetail(currentId).catch(() => null);
+      if (currentId && attemptedIds.has(currentId)) await loadDetail(currentId);
       setInferenceBusy(false);
     }
   }, [inference, reconcile, recordInferenceDecision, runReconcile, loadDetail, t]);
@@ -311,14 +332,24 @@ export function useEvidencePage() {
   // 首次加载显示占位；保存/删除后的重载保留列表与详情面板，不整页回到 loading。
   const loadEvidence = useCallback(
     async (preferredEvidenceId?: string | null) => {
+      const settingsSequence = ++settingsReadSequence.current;
       if (hasLoadedRef.current) setRefreshing(true);
       else setLoadState("loading");
       setError(null);
       try {
-        const [result, materialResult] = await Promise.all([
+        const [result, materialResult, settings] = await Promise.all([
           listEvidence(evidenceFilters, { pageSize: 100 }),
           listEvidenceMaterialSources(),
+          getSettings().then(
+            (value) => ({ enabled: value.evidence_inference?.enabled !== false, error: null }),
+            (reason) => ({ enabled: null, error: getErrorMessage(reason) }),
+          ),
         ]);
+        if (settingsSequence === settingsReadSequence.current) {
+          inferenceMode.current = settings.enabled;
+          setInferenceError(settings.error);
+          setInference((current) => current ? withInferenceMode(current, settings.enabled) : current);
+        }
         setItems(result.items);
         setListTruncated(Boolean(result.next_cursor));
         setMaterialSources(materialResult.items);
