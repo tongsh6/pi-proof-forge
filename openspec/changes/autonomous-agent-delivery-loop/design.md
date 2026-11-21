@@ -420,7 +420,6 @@ tools/
       report_builder.py
     generation/
       template_assembler.py # TemplateAssembler（evidence-first）
-      llm_rewriter.py       # LLMRewriter（受控改写）
       exporter.py           # 格式导出（md/pdf）
     evaluation/
       rule_evaluator.py     # RuleEvaluationEngine
@@ -532,6 +531,15 @@ class GenerationEngine(Protocol):
 #   company_context: CompanyContext（company_name, industry, company_signals）
 # 无对应证据的内容禁止生成，违反时抛 FabricationGuardError
 ```
+
+P0-026 切片 F 接线约束（2026-11-21，限定工程范围已完成）：
+- 复用 `build_template_resume` 作为共同事实计划与渲染入口；`generation_flow` 与 `TemplateAssembler` 调用同一实现，内部共用 FactIndex → 事实选择 → ResumePlan → 正文/claims，不保留旧字段拼接 renderer。
+- `TemplateAssembler` 不把传入 domain card 当来源权威；按明确选中 ID 从现有证据加载器读取当前卡、来源修订及范围，保留选择边界。Composer 只组装上下文与策略，不重新判断归属、环境或测量真实性。
+- 移除 `llm_rewrite` 自由正文生成策略及其独占实现；已有模型选材/排序沿共同事实计划消费，不能通过引擎选择切回旧正文路径。
+- `ResumeOutput.generation_trace` 承载现有 trace 载荷，不另建追溯模型；`RuleEvaluationEngine` 消费有效的精确正文追溯，`ReviewSnapshotStore` 持久化同一载荷并在复核时验证正文和输入指纹。缺 trace、来源失效或失配不能降级为卡 ID 存在即可信。
+- 共同生成、精确 trace、来源与快照字节以及现有来源等级合同已通过工程验收。正式/guided 入口选材前排除无时间/L5 时间卡，L2 按获证年或年月精度、L3 按年，L1/L4 保留原精度；L5 角色省略且不丢合法动作/结果，已采纳 L3 主导与限定保留，trace 保留实际呈现及 provenance。此规则不扩到 Jobs 内部片段或全局 FactIndex。
+- 当前 trace 覆盖直接采用卡及实际 profile/JD 文件；职业档案依赖的未直接采用关联卡材料尚待切片 G 接入。父要求覆盖、摘要代表贡献、补充成果引用选择及同项目成果去重是另列的共享选材契约缺口；不增加平行追溯载体，也不将 F 视为所有产品规范已覆盖。
+- Agent 规则评测未接入四层 R3.2，R5 实测语义核定及真实 Splash/正式件验收尚未完成；guided batch 的 dry run、零外部投递边界保持。独立案例见既有简历质量设计 §4.3.1。
 
 ### 9.4 EvaluationEngine
 ```python
@@ -739,7 +747,7 @@ class RunStore(Protocol):
 - 实现 `tools/engines/registry.py`（EngineRegistry）
 - 实现 `tools/engines/evidence/`（RuleExtractor + LLMExtractor + Validator + Store）
 - 实现 `tools/engines/matching/`（RuleScorer + LLMScorer + ReportBuilder）
-- 实现 `tools/engines/generation/`（TemplateAssembler + LLMRewriter + Exporter）
+- 实现 `tools/engines/generation/`（共享 FactIndex/plan/正文/trace、TemplateAssembler 适配与 Exporter）
 - 实现 `tools/engines/evaluation/`（RuleEvaluator + LLMEvaluator + ScorecardBuilder）
 - 实现 `tools/engines/discovery/`（DiscoveryEngine）
 - 目标：所有策略通过注册表创建；各引擎完整单元测试覆盖，不依赖 IO
