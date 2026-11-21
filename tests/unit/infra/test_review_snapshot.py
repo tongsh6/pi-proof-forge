@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -157,4 +158,186 @@ def test_supplied_invalid_generation_trace_never_falls_back_to_bare_content(snap
     trace['resume_sha256'] = '0' * 64
     with pytest.raises(ValueError, match='review_snapshot'):
         snapshots.create('run-1', candidate(), content, dry_run=True, generation_trace=trace)
+    assert not list(snapshots.root.rglob('manifest.json'))
+
+def quality_candidate(content='# 仅使用已有事实', pdf=b'%PDF-test-only'):
+    """真实四层构建器给出未判报告；此夹具不制造通过结论。"""
+    from tools.engines.evaluation.tiered_evaluator import build_quality_report
+    from tools.infra.persistence.review_snapshot import quality_digest
+
+    item = candidate()
+    body_sha = hashlib.sha256(content.encode('utf-8')).hexdigest()
+    report = build_quality_report(
+        resume=content, trace={}, career_profile={}, cards={},
+        semantic_review=None, job_context={}, resume_version=body_sha,
+        job_profile_id=item['job_profile_id'],
+        legacy_scores={'rule_total': 99, 'llm_expression': None},
+    )
+    item['quality_snapshot'] = {
+        'status': 'bound', 'resume_sha256': body_sha,
+        'pdf_sha256': hashlib.sha256(pdf).hexdigest(),
+        'auto_pass': report['auto_pass'], 'quality_report': report,
+        'legacy_scores': report['legacy_scores'], 'gap_tasks': report['gap_tasks'],
+    }
+    item['quality_sha256'] = quality_digest(item['quality_snapshot'])
+    return item
+
+
+def test_m1_quality_snapshot_reopens_same_report_and_real_artifacts(snapshots):
+    from tools.infra.persistence.review_snapshot import ReviewSnapshotStore
+
+    text = '# 仅使用已有事实'
+    item = quality_candidate(text)
+    report = item['quality_snapshot']['quality_report']
+    assert report['resume_version'] != item['resume_version']
+    assert report['auto_pass'] is False and report['llm_pending']
+    item['snapshot'] = snapshots.create('run-1', item, text, dry_run=True)
+    loaded = ReviewSnapshotStore(snapshots.root).load('run-1', item)
+    assert loaded['candidate']['quality_sha256'] == item['quality_sha256']
+    assert loaded['markdown_sha256'] == report['resume_version']
+    assert loaded['pdf_sha256'] == item['quality_snapshot']['pdf_sha256']
+    assert item['quality_snapshot']['quality_report'] == report
+    assert item['quality_snapshot']['legacy_scores']['rule_total'] == 99
+
+
+@pytest.mark.parametrize('mutation', [
+    'payload', 'digest', 'report_body', 'snapshot_body', 'report_job', 'pdf',
+])
+def test_m1_quality_snapshot_rejects_wrong_binding_before_publication(snapshots, mutation):
+    from tools.infra.persistence.review_snapshot import quality_digest
+
+    text = '# 仅使用已有事实'
+    item = quality_candidate(text)
+    quality = item['quality_snapshot']
+    if mutation == 'payload':
+        quality['quality_report']['gap_tasks'].append('未经本次评测新增的结论')
+    elif mutation == 'digest':
+        item['quality_sha256'] = '0' * 64
+    elif mutation == 'report_body':
+        quality['quality_report']['resume_version'] = '1' * 64
+    elif mutation == 'snapshot_body':
+        quality['resume_sha256'] = '2' * 64
+    elif mutation == 'report_job':
+        quality['quality_report']['job_profile_id'] = 'another-profile'
+    else:
+        quality['pdf_sha256'] = '3' * 64
+    if mutation not in ('payload', 'digest'):
+        item['quality_sha256'] = quality_digest(quality)
+    before = json.dumps(item, ensure_ascii=False, sort_keys=True)
+    with pytest.raises(ValueError, match='review_snapshot'):
+        snapshots.create('run-1', item, text, dry_run=True)
+    assert json.dumps(item, ensure_ascii=False, sort_keys=True) == before
+    assert not list(snapshots.root.rglob('manifest.json'))
+
+
+@pytest.mark.parametrize('mutation', ['payload_only', 'remove_payload', 'payload_and_digest'])
+def test_m1_quality_snapshot_rejects_report_tamper_with_body_and_pdf_unchanged(snapshots, mutation):
+    from tools.infra.persistence.review_snapshot import quality_digest
+
+    item = quality_candidate()
+    item['snapshot'] = snapshots.create('run-1', item, '# 仅使用已有事实', dry_run=True)
+    sealed = snapshots.load('run-1', item)
+    md = Path(sealed['resume_markdown_path'])
+    pdf = Path(sealed['resume_path'])
+    original_md, original_pdf = md.read_bytes(), pdf.read_bytes()
+    if mutation == 'remove_payload':
+        del item['quality_snapshot']
+    else:
+        item['quality_snapshot']['quality_report']['gap_tasks'].append('替换后的审核依据')
+        if mutation == 'payload_and_digest':
+            item['quality_sha256'] = quality_digest(item['quality_snapshot'])
+    with pytest.raises(ValueError, match='review_snapshot'):
+        snapshots.load('run-1', item)
+    assert md.read_bytes() == original_md
+    assert pdf.read_bytes() == original_pdf
+
+def guided_scorecard(content='# 仅使用已有事实'):
+    from tools.domain.models import Scorecard
+
+    item = quality_candidate(content)
+    return Scorecard(
+        resume_version=item['resume_version'], job_profile_id=item['job_profile_id'],
+        total_score=.99, dimension_scores={},
+        quality_report=item['quality_snapshot']['quality_report'],
+    )
+
+
+def test_m1_scorecard_capture_is_bound_after_one_pdf_export(snapshots, monkeypatch):
+    from tools.infra.persistence import review_snapshot
+
+    text = '# 仅使用已有事实'
+    item, scorecard = candidate(), guided_scorecard(text)
+    expected = json.loads(json.dumps(scorecard.quality_report))
+    exports = []
+    def export(md, pdf):
+        exports.append(md.read_text())
+        assert 'quality_snapshot' not in item and 'quality_sha256' not in item
+        scorecard.quality_report['gap_tasks'].append('导出后改写的非原报告内容')
+        pdf.write_bytes(b'%PDF-test-only')
+    monkeypatch.setattr(review_snapshot, '_render_pdf', export)
+    monkeypatch.setattr('urllib.request.urlopen', lambda *_a, **_k: pytest.fail('固定报告不调用模型'))
+    item['snapshot'] = snapshots.create('run-1', item, text, dry_run=True, scorecard=scorecard)
+    assert exports == [text]
+    assert item['quality_snapshot']['quality_report'] == expected
+    assert scorecard.quality_report != expected
+    restored = snapshots.load('run-1', item)
+    assert restored['candidate']['quality_sha256'] == item['quality_sha256']
+    assert item['quality_snapshot']['resume_sha256'] == restored['markdown_sha256']
+    assert item['quality_snapshot']['pdf_sha256'] == restored['pdf_sha256']
+
+
+@pytest.mark.parametrize('failure', ['export', 'manifest'])
+def test_m1_scorecard_snapshot_failure_does_not_publish_or_mutate_candidate(snapshots, monkeypatch, failure):
+    from tools.infra.persistence import review_snapshot
+
+    item, scorecard = candidate(), guided_scorecard()
+    before = json.loads(json.dumps(item))
+    if failure == 'export':
+        def fail(*_args):
+            raise RuntimeError('synthetic export failure')
+        monkeypatch.setattr(review_snapshot, '_render_pdf', fail)
+    else:
+        write = Path.write_bytes
+        def fail_manifest(path, data):
+            if path.name == 'manifest.json':
+                raise OSError('synthetic manifest failure')
+            return write(path, data)
+        monkeypatch.setattr(Path, 'write_bytes', fail_manifest)
+    with pytest.raises(ValueError, match='review_snapshot'):
+        snapshots.create('run-1', item, '# 仅使用已有事实', dry_run=True, scorecard=scorecard)
+    assert item == before
+    assert not list(snapshots.root.rglob('manifest.json'))
+
+
+@pytest.mark.parametrize('mutation', ['version', 'job', 'missing_report', 'invalid_report'])
+def test_m1_scorecard_identity_and_report_required_before_export(snapshots, monkeypatch, mutation):
+    from dataclasses import replace
+    from tools.infra.persistence import review_snapshot
+
+    scorecard = guided_scorecard()
+    changes = {
+        'version': {'resume_version': 'another-version'},
+        'job': {'job_profile_id': 'another-profile'},
+        'missing_report': {'quality_report': None},
+        'invalid_report': {'quality_report': ['not a report']},
+    }
+    scorecard = replace(scorecard, **changes[mutation])
+    item = candidate()
+    monkeypatch.setattr(review_snapshot, '_render_pdf', lambda *_: pytest.fail('身份不符不能先导出'))
+    with pytest.raises(ValueError, match='review_snapshot'):
+        snapshots.create('run-1', item, '# 仅使用已有事实', dry_run=True, scorecard=scorecard)
+    assert 'quality_snapshot' not in item and 'quality_sha256' not in item
+    assert not list(snapshots.root.rglob('manifest.json'))
+
+
+def test_m1_scorecard_cannot_overwrite_conflicting_bound_quality(snapshots):
+    from tools.infra.persistence.review_snapshot import quality_digest
+
+    item = quality_candidate()
+    item['quality_snapshot']['pdf_sha256'] = '0' * 64
+    item['quality_sha256'] = quality_digest(item['quality_snapshot'])
+    before = json.loads(json.dumps(item))
+    with pytest.raises(ValueError, match='review_snapshot'):
+        snapshots.create('run-1', item, '# 仅使用已有事实', dry_run=True, scorecard=guided_scorecard())
+    assert item == before
     assert not list(snapshots.root.rglob('manifest.json'))

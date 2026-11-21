@@ -23,12 +23,11 @@ from tools.sidecar.handlers._shared.pdf_attachment import (
 )
 from tools.sidecar.handlers._shared.pdf_quality import (
     local_file as _local_file,
-    quality_digest as _quality_digest,
     quality_snapshot as _quality_snapshot,
 )
 from tools.infra.ai_disclosure import AI_DISCLOSURE_TEXT, disclosure_sha256
 from tools.infra.persistence.review_queue import locked_review_queue, atomic_write_json
-from tools.infra.persistence.review_snapshot import ReviewSnapshotStore, read_generation_trace
+from tools.infra.persistence.review_snapshot import ReviewSnapshotStore, read_generation_trace, quality_digest as _quality_digest
 from tools.infra.persistence.job_lead_binding import reviewed_official_profile
 from tools.infra.persistence.delivery_attempt_store import DeliveryAttemptStore
 from tools.orchestration.approved_delivery import _job_key
@@ -224,11 +223,7 @@ def _pre_send_reupload_allowed(queue):
 def _public(queue):
     c=queue['candidates'][0]
     sealed=ReviewSnapshotStore(agent_state.agent_run_dir()).load(queue['run_id'],c)
-    quality=c.get('quality_snapshot')
-    if c.get('quality_sha256') and not isinstance(quality,dict):raise ValueError('quality_snapshot_changed')
-    if quality is not None and (c.get('quality_sha256')!=_quality_digest(quality)
-            or quality.get('pdf_sha256')!=sealed['pdf_sha256'] or quality.get('resume_sha256')!=sealed['markdown_sha256']):
-        raise ValueError('quality_snapshot_changed')
+    quality=sealed['quality_snapshot']
     recovery_only=bool(queue.get('daily_interruption') and queue.get('pdf_delivery',{}).get('state')!='success')
     upload=queue.get('pdf_upload') if isinstance(queue.get('pdf_upload'),dict) else {}
     upload_state=_upload_effective_state(queue)

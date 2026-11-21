@@ -44,7 +44,7 @@ def test_public_quality_cannot_be_replaced_after_snapshot_and_legacy_is_unknown(
     changed['candidates'][0]['quality_sha256']=flow._quality_digest(changed['candidates'][0]['quality_snapshot'])
     with pytest.raises(ValueError):flow._public(changed)
     missing=copy.deepcopy(queue);missing['candidates'][0].pop('quality_snapshot')
-    with pytest.raises(ValueError,match='quality_snapshot_changed'):flow._public(missing)
+    with pytest.raises(ValueError,match='review_snapshot_invalid'):flow._public(missing)
     legacy={k:v for k,v in c.items() if k not in ('quality_snapshot','quality_sha256','snapshot')}
     legacy['snapshot']=store.create('legacy',legacy,md.decode(),dry_run=False,pdf_content=pdf)
     assert flow._public({'run_id':'legacy','candidates':[legacy]})['quality']=={'status':'unrecorded'}
@@ -75,6 +75,6 @@ def test_missing_bound_quality_cannot_enter_upload_or_change_queue(tmp_path,monk
     c['snapshot']=ReviewSnapshotStore(agent._AGENT_RUN_DIR).create('run',c,md.decode(),dry_run=False,pdf_content=pdf)
     c.pop('quality_snapshot')
     path=agent._get_queue_file('run');agent._save_queue(path,{'run_id':'run','quick_run_id':'quick','candidates':[c]});before=path.read_bytes()
-    with pytest.raises(ValueError,match='quality_snapshot_changed'):
+    with pytest.raises(ValueError,match='review_snapshot_invalid'):
         flow.handle_begin_upload({'meta':{'correlation_id':'t'},'run_id':'run','accept_account_effects':True})
     assert path.read_bytes()==before

@@ -9,6 +9,8 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Any
 
+from tools.domain.models import Scorecard
+
 
 _IDENTITY_FIELDS = (
     'job_lead_id', 'company', 'position', 'resume_version', 'job_url', 'platform',
@@ -34,6 +36,30 @@ def _identity(candidate: dict) -> dict:
     return fields
 
 
+def quality_digest(value: dict) -> str:
+    return _digest(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8'))
+
+
+def _validate_quality_report(report: object, markdown_sha256: str, job_profile_id: str) -> None:
+    if (not isinstance(report, dict) or report.get('resume_version') != markdown_sha256
+            or report.get('job_profile_id') != job_profile_id):
+        raise ValueError('review_snapshot_quality_report_invalid')
+
+
+def _validate_quality_snapshot(candidate: dict, markdown_sha256: str, pdf_sha256: str) -> dict | None:
+    if 'quality_snapshot' not in candidate and 'quality_sha256' not in candidate:
+        return None
+    quality = candidate.get('quality_snapshot')
+    if (not isinstance(quality, dict) or candidate.get('quality_sha256') != quality_digest(quality)
+            or quality.get('resume_sha256') != markdown_sha256
+            or quality.get('pdf_sha256') != pdf_sha256):
+        raise ValueError('review_snapshot_quality_changed')
+    report = quality.get('quality_report')
+    if report is not None:
+        _validate_quality_report(report, markdown_sha256, candidate.get('job_profile_id', ''))
+    return quality
+
+
 class ReviewSnapshotStore:
     def __init__(self, root: Path = Path('outputs/agent_runs')) -> None:
         self.root = root.resolve()
@@ -47,9 +73,22 @@ class ReviewSnapshotStore:
         return base
 
     def create(self, run_id: str, candidate: dict, content: str, *, dry_run: bool,
-               pdf_content: bytes | None = None, generation_trace: dict | None = None) -> dict:
+               pdf_content: bytes | None = None, generation_trace: dict | None = None,
+               scorecard: Scorecard | None = None) -> dict:
+        """成功导出后回填 candidate 的固定质量字段；失败不修改调用方对象。"""
         if not content.strip() or type(dry_run) is not bool:
             raise ValueError('review_snapshot_invalid_input')
+        try:
+            completed_candidate = json.loads(json.dumps(candidate, ensure_ascii=False))
+            report = None
+            if scorecard is not None:
+                if (scorecard.resume_version != completed_candidate.get('resume_version')
+                        or scorecard.job_profile_id != completed_candidate.get('job_profile_id')):
+                    raise ValueError('review_snapshot_scorecard_identity_invalid')
+                report = json.loads(json.dumps(scorecard.quality_report, ensure_ascii=False))
+                _validate_quality_report(report, _digest(content.encode('utf-8')), scorecard.job_profile_id)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError('review_snapshot_quality_input_invalid') from exc
         trace_bytes = None
         if generation_trace is not None:
             # 捕获同一份标准 trace；导出期间调用方改字典不能替换其来源身份。
@@ -70,9 +109,9 @@ class ReviewSnapshotStore:
             trace_path = md.with_suffix('.trace.json')
             if trace_bytes is not None:
                 trace_path.write_bytes(trace_bytes)
-            platform_default = candidate.get('delivery_kind') == 'platform_default'
+            platform_default = completed_candidate.get('delivery_kind') == 'platform_default'
             if platform_default:
-                if candidate.get('platform_resume_sha256') != _digest(md.read_bytes()):
+                if completed_candidate.get('platform_resume_sha256') != _digest(md.read_bytes()):
                     raise ValueError('platform resume changed')
             else:
                 if pdf_content is not None:
@@ -84,9 +123,22 @@ class ReviewSnapshotStore:
                     _render_pdf(md, pdf)
                 if not pdf.read_bytes().startswith(b'%PDF-'):
                     raise ValueError('invalid pdf')
+            markdown_sha = _digest(md.read_bytes())
+            pdf_sha = '' if platform_default else _digest(pdf.read_bytes())
+            has_bound_quality = ('quality_snapshot' in completed_candidate or 'quality_sha256' in completed_candidate)
+            if report is not None and not has_bound_quality:
+                completed_candidate['quality_snapshot'] = {
+                    'status': 'bound', 'resume_sha256': markdown_sha, 'pdf_sha256': pdf_sha,
+                    'quality_report': report, 'auto_pass': report['auto_pass'],
+                    'gap_tasks': report['gap_tasks'], 'legacy_scores': report['legacy_scores'],
+                }
+                completed_candidate['quality_sha256'] = quality_digest(completed_candidate['quality_snapshot'])
+            quality = _validate_quality_snapshot(completed_candidate, markdown_sha, pdf_sha)
+            if report is not None and quality['quality_report'] != report:
+                raise ValueError('review_snapshot_quality_report_changed')
             manifest = {
-                'run_id': run_id, 'candidate': _identity(candidate), 'dry_run': dry_run,
-                'markdown_sha256': _digest(md.read_bytes()), 'pdf_sha256': '' if platform_default else _digest(pdf.read_bytes()),
+                'run_id': run_id, 'candidate': _identity(completed_candidate), 'dry_run': dry_run,
+                'markdown_sha256': markdown_sha, 'pdf_sha256': pdf_sha,
             }
             if trace_bytes is not None:
                 if (md.read_bytes() != content.encode('utf-8')
@@ -102,13 +154,16 @@ class ReviewSnapshotStore:
                 artifacts.append(trace_path)
             for path in artifacts:
                 path.chmod(0o444)
+            if quality is not None:
+                candidate.update(quality_snapshot=quality, quality_sha256=completed_candidate['quality_sha256'])
             return {'id': snapshot_id, 'sha256': _digest(encoded)}
-        except (OSError, RuntimeError, ValueError):
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
             shutil.rmtree(directory, ignore_errors=True)
         raise ValueError('review_snapshot_export_failed')
 
     def load(self, run_id: str, candidate: dict) -> dict:
         try:
+            candidate = json.loads(json.dumps(candidate, ensure_ascii=False))
             ref = candidate['snapshot']
             if not isinstance(ref, dict) or not re.fullmatch(r'[0-9a-f]{32}', str(ref.get('id', ''))):
                 raise ValueError('invalid reference')
@@ -136,6 +191,7 @@ class ReviewSnapshotStore:
                     or (not platform_default and (_digest(contents['resume.pdf']) != manifest.get('pdf_sha256')
                         or not contents['resume.pdf'].startswith(b'%PDF-')))):
                 raise ValueError('snapshot changed')
+            quality = _validate_quality_snapshot(candidate, manifest['markdown_sha256'], manifest['pdf_sha256'])
             if 'generation_trace_sha256' in manifest:
                 trace_path = directory / 'resume.trace.json'
                 if (trace_path.is_symlink() or not trace_path.is_file()
@@ -145,13 +201,12 @@ class ReviewSnapshotStore:
                 if (_digest(trace_bytes) != manifest['generation_trace_sha256']
                         or not validate_generation_trace(contents['resume.md'].decode('utf-8'), json.loads(trace_bytes))):
                     raise ValueError('generation trace changed')
-            return {**manifest, 'resume_markdown': contents['resume.md'].decode('utf-8'),
+            return {**manifest, 'quality_snapshot': quality, 'resume_markdown': contents['resume.md'].decode('utf-8'),
                     'resume_path': '' if platform_default else str(directory / 'resume.pdf'),
                     'resume_markdown_path': str(directory / 'resume.md')}
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             pass
         raise ValueError('review_snapshot_invalid')
-
 
 def validate_generation_trace(text: str, trace: object) -> bool:
     """内存与文件产物使用同一份正文、事实位置及当前来源校验。"""

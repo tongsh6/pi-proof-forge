@@ -16,10 +16,6 @@ def local_file(value, suffix):
     return path
 
 
-def quality_digest(value):
-    return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-
-
 def quality_snapshot(saved,markdown,pdf):
     try:
         path=local_file(saved['artifacts']['scorecard'],'.md').with_suffix('.json')
@@ -31,7 +27,8 @@ def quality_snapshot(saved,markdown,pdf):
         number=lambda v:v if type(v) in (int,float) and 0<=v<=100 else None
         expression=number(score.get('expression_score'))
         gaps=list(dict.fromkeys(str(s) for s in score.get('gap_tasks',[])))
-        report=score.get('quality_report') if isinstance(score.get('quality_report'),dict) else None
+        report=score.get('quality_report')
+        if report is not None and not isinstance(report,dict):raise ValueError('invalid quality report')
         auto_pass=bool(report.get('auto_pass')) if report else False
         legacy=score.get('legacy_scores') if isinstance(score.get('legacy_scores'),dict) else {
             'rule_total':number(score.get('total_score')),'llm_expression':expression}
