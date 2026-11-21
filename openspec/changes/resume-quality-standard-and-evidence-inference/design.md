@@ -306,7 +306,13 @@ J 的纯合成应用链沿原 Router 材料上传、saveDraft/详情、本机 Sp
 
 **K4a 完整场景呈现（限定工程范围已完成）**：查重已定位共同 builder → ResumePlan → render_plan；正式与 guided 使用同一核心，ProjectBlock.background 已有真实 renderer 消费者。当前 plan 的固定 120 字裁剪与完整事实规范冲突；独立对照另复现合法否定背景被成果词表整段过滤。删除背景处裁剪及该词表准入调用，沿既有 FactIndex 来源/范围准入保留完整场景及空白呈现；不增加措辞例外，原 renderer 内部追溯信息拒绝与质量评估职责保留；成果继续以自己的完整 Fact 输出。此片不增字段、模型任务或业务脚本，不改项目/行动/成果预算，也不顺带改工作段跨章节去重。背景当前仍属 presentation，上游来源版本与结果精确 trace 沿原职责；不宣称已新增背景逐 Fact occurrence 或修复背景篡改校验。独立验收核超过原边界的尾部条件、同文行动/成果与未采用结果的信用边界、非量化成果、共同/Agent 正文及真实 trace，不能仅看 plan 中登记 ID。内部 preparation preview 的责任限定片段保持原契约。
 
-**K4b 完整语义去重（pending）**：现 current_result_reviews 核定结果命题，不核背景是否冗余；JD supported 核岗位支撑，事后 quality judge 核质量，均不能借作去重权威。同一来源的提问/目标背景可以与后来真实结果同时成立；即便背景等于核定 source.quote，仍可能只是在问结果是否成立。下一片先在现生成用例核实有界呈现判断的生产者、完整实际输入与消费者，再实现；不新增平行来源账本，不用关键词或字符串关系替代语义。判断未知/不可用保留双方，省背景不得删去任何未被其余实际正文完整表达的条件。
+**K4b1 背景精确来源（限定工程范围已完成）**：查重已核原 ProjectBlock.fact_ids、ResumePlan.fact_ids、FactIndex、from_fact、标准 trace 及 resume_assessment，均有实际生产者/消费者，无需新增字段或对象。当前 structured 字符串投影丢失背景来源，计划装配应保住真实 Fact 后同次取得全文及身份，将唯一 context 记入 block 与 plan 的原 IDs。renderer 拒绝显式登记中不可解析、多 context、非证据 context、空背景挂 ID、完整展示值不符及两处登记不一致，合法绑定调用原 from_fact；完整值相等只验证已声明绑定，不用于寻源或语义推断。正式与 guided 复用同一 producer；来源仍由原 trace 版本校验承担，背景自己的实际行可支持原精确 context 引用，不借成果同文替背景定位或抬量化。
+
+内部 preview 已查实只把 actions/results 放入索引及 IDs，其范围说明具有实际 presentation 消费者，继续保持原用途。当前 shape 无法区分“全部身份被手工删掉的任意对象”与合法无 context 绑定的范围说明；由正式唯一 producer 保证成套登记，不为这种不可区分对象增模式字段或按措辞猜用途，也不宣称通用防篡改框架。独立反例使用完整背景与成果同文、背景限定被剪但全文仍在成果 bullet 的强对照；原 context claim 留在错误行时标准 trace 须拒绝。语义任务暂未接入。
+
+K4b1 真实链独立 `5 failed / 25 passed`（0.11 秒），renderer 独立 `8 failed / 9 passed`（0.07 秒），共 13 个业务 RED。冻结原断言后分别 `30 passed`（0.10 秒）、`17 passed`（0.04 秒）；合法绑定先前被挡住的来源/完整值/行号断言全部执行。共同与 guided 原 source/trace/评测对照、同文未采用结果无信用、preview 范围说明保持；背景原句即使仍在成果 bullet 也不能替被改的背景行授信。最终全量 `2946 passed、1 skipped、101 subtests passed`（54.83 秒），架构 v2 通过，含既有两页合成 PDF。没有新字段、接口、模型调用或业务脚本，不冒称原生/真人正式件/语义去重完成。
+
+**K4b2 完整语义去重（pending）**：现 current_result_reviews 核定结果命题，不核背景是否冗余；JD supported 核岗位支撑，事后 quality judge 核质量，均不能借作去重权威。同一来源的提问/目标背景可以与后来真实结果同时成立；即便背景等于核定 source.quote，仍可能只是在问结果是否成立。查重已确认现选卡任务、匹配报告和事后 judge 没有该职责；后续在共同 builder 完成实际选材与计划之后、渲染之前，以现 TaskContract/TaskRunner 的完整请求预算承接有界判断。被精确正向岗位引用的背景保留，不能把其身份等同于另一结果；无能力或未知保留原全文；不新增平行来源账本，不用关键词或字符串关系替代语义。判断未知/不可用保留双方，省背景不得删去任何未被其余实际正文完整表达的条件。
 
 K4a 独立有效对照先得到 `3 failed / 7 passed`（0.07 秒）：共同与 guided 正文丢失长背景尾部条件、合法否定背景被整段过滤。首轮两项夹具/精度错误不计业务 RED；保留原否定句，未以改措辞绕过词表。原三项转绿，五个生成相关文件 `99 passed`（1.56 秒），来源/生命周期及合成 Quick Run/PDF 三文件 `107 passed`（3.61 秒），架构 v2 通过。既有两页 PDF、首屏/尾页完整文字、边界和 trace 对照通过；本片未新增模型调用，不冒称全量重跑、原生深验或语义去重已完成。
 
