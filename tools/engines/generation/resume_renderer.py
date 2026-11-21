@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.infra import evidence_provenance as provenance
-from tools.infra.evidence_fact_scope import personal_claim_exclusions
+from tools.infra.evidence_fact_scope import current_result_reviews, personal_claim_exclusions
 from tools.infra.evidence_pool import pool_eligible_scalars
 from tools.infra.evidence_sources import ValidatedSourcePaths, assert_captured_source, validated_source_inputs
 from tools.infra.persistence.yaml_io import parse_simple_yaml
@@ -46,6 +46,8 @@ def _card_view(file_path: Path, raw: bytes, doc: dict, material_root: Path) -> C
         "source_sha256": hashlib.sha256(raw).hexdigest(),
         "material_inputs": material_inputs,
         "personal_claim_exclusions": exclusions,
+        "result_reviews": current_result_reviews(doc, material_root, card_id=file_path.stem,
+                                                 validated_sources=material_inputs),
         "title": scalars.get("title", file_path.stem),
         "raw_source": scalars.get("raw_source", ""),
         "time_range": scalars.get("time_range", ""),

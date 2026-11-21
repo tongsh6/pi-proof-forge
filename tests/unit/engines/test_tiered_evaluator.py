@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tools.engines.evaluation import tiered_evaluator as te
+from tests.unit.engines.test_fact_index import reviewed_card_results, reviewed_result
 
 
 def career_profile(**overrides):
@@ -424,7 +425,8 @@ def test_judged_r3_1_and_r3_5_and_r1_4_failures_are_reported():
     report = build(resume=RESUME.replace("- 完成平台抽象", "- 负责完成平台抽象"), claims=claims, judgments=payload)
     all_rules = rules(report, "eligible") + rules(report, "strong")
     assert all_rules.count("R1.4") == 1
-    assert all_rules.count("R3.1") == 1
+    # 此旧 trace 未核验精确结果 occurrence；judge 的 True 不能为第二条另授结果信用。
+    assert all_rules.count("R3.1") == 2
     assert all_rules.count("R3.5") >= 2
 
 
@@ -451,10 +453,13 @@ def test_project_relevance_uses_mapped_bullets_instead_of_title_words():
 
 
 def test_quantification_requires_result_text_not_version_number_coincidence():
-    assert not te._has_verifiable_quant("采用 Java 8", ["响应延迟降至 80ms"])
-    assert not te._has_verifiable_quant("采用 Java 8", ["覆盖 8 个品牌"])
-    assert te._has_verifiable_quant("改造查询 · 响应延迟降至 80ms", ["响应延迟降至 80ms"])
-    assert not te._has_verifiable_quant("2023 年完成升级 Java 8", ["2023 年完成升级 Java 8"])
+    measured = reviewed_result("ec", 0, "响应延迟降至 80ms", measurement_quote="响应延迟降至 80ms")
+    coverage = reviewed_result("ec", 1, "覆盖 8 个品牌", measurement_quote="覆盖 8 个品牌")
+    version = reviewed_result("ec", 2, "2023 年完成升级 Java 8")
+    assert not te._has_verifiable_quant("采用 Java 8", [measured])
+    assert not te._has_verifiable_quant("采用 Java 8", [coverage])
+    assert te._has_verifiable_quant("改造查询 · 响应延迟降至 80ms", [measured])
+    assert not te._has_verifiable_quant("2023 年完成升级 Java 8", [version])
 
 
 @pytest.mark.parametrize(("rendered_field", "expected_ratio"), [("actions", 0.0), ("results", 1.0)])
@@ -469,7 +474,8 @@ def test_r3_2_counts_only_the_result_fact_actually_rendered(rendered_field, expe
         "text": sentence, "source_kind": "evidence", "field": rendered_field,
         "evidence_id": "ec_same", "fact_id": f"ec_same:{rendered_field}:0", "render_line": 3,
     }]
-    evidence = {"ec_same": {"actions": [sentence], "results": [sentence]}}
+    evidence = {"ec_same": reviewed_card_results(
+        {"id": "ec_same", "actions": [sentence], "results": [sentence]}, measurement_quotes={0: sentence})}
     actual_trace = {"occurrence_lineage_version": 1, "claims": claims}
     rows = inspect_bullet_trace(resume, actual_trace)["bullets"]
     assert rows[0]["verified"] is True
@@ -496,10 +502,35 @@ def test_r3_2_requires_exact_result_occurrence_not_legacy_word_match(version, fa
     provenance = {"claims": [claim]}
     if version is not None:
         provenance["occurrence_lineage_version"] = version
-    result = te.evaluate_strong(resume=resume, cards={"ec_1": {"results": [sentence]}},
+    evidence = reviewed_card_results({"id": "ec_1", "results": [sentence]}, measurement_quotes={0: sentence})
+    result = te.evaluate_strong(resume=resume, cards={"ec_1": evidence},
                                 trace=provenance, config=te.load_quality_config())
     assert result.metrics["quant_total"] == expected_ratio
     assert result.metrics["quant_first_screen"] == expected_ratio
+
+
+@pytest.mark.parametrize("review_kind,expected_result,expected_quant", [
+    ("missing", False, 0.0), ("nonquant", True, 0.0), ("measured", True, 1.0), ("stale", False, 0.0),
+])
+def test_r3_consumes_one_current_result_review_instead_of_judge_or_digits(review_kind, expected_result, expected_quant):
+    value = "隔离测试中响应时间减半，生产吞吐目标仍为每秒 100 万次"
+    quote = "隔离测试中响应时间减半"
+    resume = f"## 项目经历\n- {value}\n<!-- first-screen-end -->\n"
+    claim = {"text": value, "source_kind": "evidence", "evidence_id": "ec_1",
+             "field": "results", "fact_id": "ec_1:results:0", "render_line": 2}
+    reviews = {}
+    if review_kind != "missing":
+        reviews["ec_1:results:0"] = reviewed_result(
+            "ec_1", 0, value if review_kind != "stale" else "另一份结果",
+            measurement_quote=quote if review_kind == "measured" else None)
+    judgments = judged_payload(r3_1=[{"bullet": 1, "scene": True, "action": True,
+        "result": not expected_result, "citations": ["ec_1"], "reason": "独立表达判项不能另授结果信用"}])
+    result = te.evaluate_strong(
+        resume=resume, cards={"ec_1": {"results": [value], "result_reviews": reviews}},
+        trace={"occurrence_lineage_version": 1, "claims": [claim]},
+        config=te.load_quality_config(), judgments=judgments)
+    assert any(f.rule == "R3.1" for f in result.failures) is (not expected_result)
+    assert result.metrics["quant_total"] == expected_quant
 
 
 def test_project_mapping_accepts_visible_context_line():
@@ -525,7 +556,8 @@ def test_verified_result_text_is_an_outcome_without_numeric_metric():
                "field": "results", "fact_id": "ec_1:results:0", "render_line": 3}]
     judged = judged_payload(r3_1=[{"bullet": 1, "scene": True, "action": True, "result": False,
                                    "citations": ["ec_1"], "reason": "没有量化指标"}])
-    result = te.evaluate_strong(resume=resume, cards={"ec_1": {"results": ["实现用友 NC 接口集成"]}},
+    evidence = reviewed_card_results({"id": "ec_1", "results": ["实现用友 NC 接口集成"]})
+    result = te.evaluate_strong(resume=resume, cards={"ec_1": evidence},
         trace={"occurrence_lineage_version": 1, "claims": claims},
         config=te.load_quality_config(), judgments=judged)
     assert not any(f.rule == "R3.1" for f in result.failures)

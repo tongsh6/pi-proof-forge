@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pytest
+from tests.unit.engines.test_fact_index import reviewed_card_results
 
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.generation.resume_renderer import build_template_resume, load_cards
@@ -37,7 +38,7 @@ def card(card_id, *, title, time_range, role_scope, time_level=None, role_level=
                 "level": "L3", "confidence": 0.6, "confirmed_by_user": True,
                 "evidence": [{"material_id": "mat_1", "document_id": "doc_1", "excerpt": "我推动改造"}],
                 "first_person_hits": {"owner": 2, "participant": 3}}
-    return value
+    return reviewed_card_results(value)
 
 
 @pytest.mark.parametrize("role", [

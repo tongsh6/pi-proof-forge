@@ -1,5 +1,6 @@
 """共享正文入口使用现行FactIndex/plan，不保留preferred_facts第二通道。"""
 from copy import deepcopy
+from tests.unit.engines.test_fact_index import reviewed_card_results
 
 from tools.engines.generation.resume_renderer import build_template_resume
 from tools.engines.generation.fact_index import build_fact_index
@@ -18,7 +19,7 @@ def inputs():
             "actions": ["完成消费端与平台订阅接口接入", "设计合成请求回归用例"],
             "results": ["在本机测试环境中，1000 条请求处理耗时由 38 秒降到 6 秒。"],
             "stack": ["Java", "Docker Swarm"], "artifacts": ["合成验收记录"]}
-    return profile, card
+    return profile, reviewed_card_results(card, measurement_quotes={0: card["results"][0]})
 
 
 def test_shared_body_preserves_ownership_and_environment():

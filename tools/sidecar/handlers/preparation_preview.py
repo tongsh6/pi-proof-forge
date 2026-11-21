@@ -9,7 +9,8 @@ from tools.engines.generation.preparation_preview import build_targeted_excerpt
 from tools.engines.matching.semantic_matching import _facts, _profile_facts, VERSION
 from tools.engines.matching.semantic_review import requirement_checks, validate_assessments, aggregate_assessments
 from tools.infra.persistence.yaml_io import parse_simple_yaml
-from tools.infra.evidence_fact_scope import personal_claim_exclusions
+from tools.infra.evidence_fact_scope import current_result_reviews, personal_claim_exclusions
+from tools.infra.evidence_sources import validated_source_inputs
 from tools.infra.material_paths import materials_dir_for
 from tools.sidecar.handlers import preparation_semantic as semantic
 
@@ -66,16 +67,28 @@ def render_reviewed_excerpt(profile_id, inputs, raw):
     flags = SimpleNamespace(model_calls=0, budget_exhausted=False, provider_timeout=False)
     summary = semantic._safe_summary(profile_id, inputs, flags, safe_raw, "")
     current_facts = _profile_facts(inputs["personal_profile"])
-    excluded = set()
+    excluded, result_reviews = set(), {}
     material_dir = materials_dir_for(inputs["personal_profile"])
     for path in inputs["evidence_files"]:
-        doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
-        excluded.update(personal_claim_exclusions(doc, material_dir, card_id=path.stem))
+        raw_card = path.read_bytes()
+        if hashlib.sha256(raw_card).hexdigest() != inputs["snapshot"].get(str(path.resolve())):
+            raise ValueError("preview_inputs_changed")
+        doc = parse_simple_yaml(raw_card.decode("utf-8"))
+        sources = validated_source_inputs(doc, material_dir)
+        if any(inputs["snapshot"].get(str(source.resolve())) != digest
+               for source, digest in sources.snapshots.values()):
+            raise ValueError("preview_inputs_changed")
+        excluded.update(personal_claim_exclusions(doc, material_dir, card_id=path.stem, validated_sources=sources))
+        result_reviews.update(current_result_reviews(doc, material_dir, card_id=path.stem, validated_sources=sources))
         current_facts.update(_facts(path.stem, doc))
-    fields = parse_simple_yaml(inputs["job_path"].read_text(encoding="utf-8"))["scalars"]
+    raw_job = inputs["job_path"].read_bytes()
+    if hashlib.sha256(raw_job).hexdigest() != inputs["snapshot"].get(str(inputs["job_path"].resolve())):
+        raise ValueError("preview_inputs_changed")
+    fields = parse_simple_yaml(raw_job.decode("utf-8"))["scalars"]
     target = {key:fields.get(key, "") for key in ("company", "target_role")}
     excerpt = build_targeted_excerpt(assessments=summary["assessments"], requirements=raw["requirements"],
-                audit_facts=raw["facts"], current_facts=current_facts, target=target, personal_claim_exclusions=excluded)
+                audit_facts=raw["facts"], current_facts=current_facts, target=target,
+                personal_claim_exclusions=excluded, result_reviews=result_reviews)
     legacy_count = inputs.get("pool", {}).get("source_freshness_unverified_count", 0)
     if legacy_count:
         excerpt["markdown"] = (f"> 当前证据池有 {legacy_count} 条沿用旧审核兼容口径，来源版本未重验；不代表本预览全部来源已重新核验。\n\n" + excerpt["markdown"])

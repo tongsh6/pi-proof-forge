@@ -1,5 +1,6 @@
 """事实级选材契约：先满足 JD 需求覆盖，再按价值与配额分配，不再按"卡"硬截断。"""
 from tools.engines.generation.fact_index import build_fact_index
+from tests.unit.engines.test_fact_index import reviewed_card_results
 from tools.engines.generation.fact_selector import (
     DELIVERY_OWNER,
     TECHNICAL_DEPTH,
@@ -10,7 +11,7 @@ from tools.engines.generation.fact_selector import (
 
 
 def card(cid, title, time_range="2024-01 ~ 2024-06", actions=(), results=(), role_scope="主导方案设计"):
-    return {
+    return reviewed_card_results({
         "id": cid,
         "title": title,
         "raw_source": "materials:mat_x",
@@ -22,7 +23,7 @@ def card(cid, title, time_range="2024-01 ~ 2024-06", actions=(), results=(), rol
         "stack": ["Java"],
         "artifacts": ["mat_x"],
         "tags": [],
-    }
+    })
 
 
 def career(cards_by_work):

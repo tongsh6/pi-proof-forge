@@ -6,7 +6,6 @@ LEARN → DONE) when built via Composer with real rule-mode engines.
 """
 
 import json
-import hashlib
 import os
 import unittest
 from importlib import import_module
@@ -121,7 +120,9 @@ def _make_candidates() -> tuple[Candidate, ...]:
 
 
 def _generation_paths() -> dict[str, Path]:
-    """Persist the same synthetic fixture as current card/material/profile inputs."""
+    """Persist the same explicitly reviewed synthetic facts and their current sources."""
+    from tests.unit.engines.test_generation_engines import write_reviewed_result_sources
+
     root = Path.cwd()
     evidence_dir, material_dir = root / "evidence_cards", root / "materials"
     evidence_dir.mkdir(exist_ok=True)
@@ -134,18 +135,21 @@ def _generation_paths() -> dict[str, Path]:
             rows.extend("  - " + json.dumps(value, ensure_ascii=False) for value in values)
         path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
+    # These are explicit positive inputs to orchestration, not a reviewer stub.
+    measurement_quotes = {
+        "ec-test-001": {0: "Reduced p99 latency by 60%", 1: "Handled 50k QPS"},
+        "ec-test-002": {0: "100% service coverage", 1: "MTTR reduced by 40%"},
+        "ec-test-003": {0: None, 1: "Storage cost reduced 35%"},
+    }
     for card in _make_evidence_cards():
-        material = material_dir / (card.id + ".txt")
-        material.write_text("\n".join((card.title, *card.results, *card.artifacts)), encoding="utf-8")
-        fingerprints = {card.id: {"filename": material.name,
-                                 "sha256": hashlib.sha256(material.read_bytes()).hexdigest()}}
-        write_yaml(evidence_dir / (card.id + ".yaml"), {
-            "id": card.id, "title": card.title, "raw_source": material.name,
+        card_path = evidence_dir / (card.id + ".yaml")
+        write_yaml(card_path, {
+            "id": card.id, "title": card.title,
             "status": "saved_eligible", "candidate_pool_eligible": "true",
             "time_range": "2024-01 ~ 2024-06",
-            "source_material_fingerprints_json": json.dumps(fingerprints),
         }, {"results": list(card.results), "artifacts": list(card.artifacts),
-            "tags": list(card.tags), "source_material_ids": [card.id]})
+            "tags": list(card.tags)})
+        write_reviewed_result_sources(card_path, measurement_quotes[card.id], material_dir=material_dir)
 
     profile = root / "personal_profile.yaml"
     write_yaml(profile, {"name": "Synthetic Candidate", "current_position": "Backend Engineer",

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.unit.engines.test_generation_engines import write_reviewed_result_sources
 
 from tools.cli.commands import evaluate as evaluate_cli
 from tools.engines.evaluation import quality_report
@@ -137,11 +138,12 @@ def test_agent_empty_keywords_keep_neutral_score():
 @pytest.mark.parametrize("changed_input", ["card", "material", "resume", "during_trace_read"])
 def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypatch, changed_input):
     source = tmp_path / "e1.yaml"
-    source.write_text('results:\n  - "接口延迟降低 30%"\n')
-    material = tmp_path / "source.txt"
-    material.write_text("测试环境的接口延迟降低 30%。\n")
+    value = "测试环境中接口延迟降低 30%"
+    source.write_text("results:\n  - " + json.dumps(value) + "\n")
+    sources = write_reviewed_result_sources(source, {0: value}, material_dir=tmp_path / "materials")
+    material = next(iter(sources.values()))
     resume = tmp_path / "resume.md"
-    resume.write_text("## 项目经历\n### 接口服务（2025）\n- 接口延迟降低 30%\n<!-- first-screen-end -->\n")
+    resume.write_text(f"## 项目经历\n### 接口服务（2025）\n- {value}\n<!-- first-screen-end -->\n")
     trace = {
         "schema_version": 1,
         "occurrence_lineage_version": 1,
@@ -150,10 +152,10 @@ def test_cli_validates_trace_inputs_before_awarding_citations(tmp_path, monkeypa
         "evidence_card_ids": ["e1"],
         "inputs": {
             key: {"path": str(path), "exists": True, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-            for key, path in (("e1", source), ("material:m1", material))
+            for key, path in (("e1", source), *sources.items())
         },
         "claims": [{
-            "text": "接口延迟降低 30%", "source_kind": "evidence",
+            "text": value, "source_kind": "evidence",
             "evidence_id": "e1", "field": "results", "fact_id": "e1:results:0", "render_line": 3,
         }],
     }
@@ -491,6 +493,10 @@ def _bound_quality_fixture(tmp_path):
     trace = json.loads(trace_path.read_text())
     trace["occurrence_lineage_version"] = 1
     trace["inputs"]["job_description"] = {"path": str(jd), "exists": True}
+    sources = write_reviewed_result_sources(Path(trace["inputs"]["ec-1"]["path"]),
+                                            {0: "请求延迟降低 20%"}, material_dir=tmp_path / "materials")
+    trace["inputs"].update({key: {"path": str(path), "exists": True, "sha256": digest}
+                           for key, (path, digest) in sources.snapshots.items()})
     for meta in trace["inputs"].values():
         meta["sha256"] = hashlib.sha256(Path(meta["path"]).read_bytes()).hexdigest()
     for claim in trace["claims"]:
@@ -598,7 +604,7 @@ def test_evaluation_rejects_different_job_path_with_same_bytes(tmp_path):
     assert not config.output_path.with_suffix(".json").exists()
 
 
-def _bind_quality_career_card(config, trace, card_id, raw):
+def _bind_quality_career_card(config, trace, card_id, raw, *, measurement_quotes=None):
     from tools.infra.persistence.review_snapshot import read_generation_trace
 
     profile = Path(trace["inputs"]["personal_profile"]["path"])
@@ -606,6 +612,11 @@ def _bind_quality_career_card(config, trace, card_id, raw):
     evidence_dir.mkdir(exist_ok=True)
     card = evidence_dir / (card_id + ".yaml")
     card.write_bytes(raw)
+    if measurement_quotes is not None:
+        sources = write_reviewed_result_sources(card, measurement_quotes, material_dir=profile.parent / "materials")
+        trace["inputs"].update({key: {"path": str(path), "exists": True, "sha256": digest}
+                               for key, (path, digest) in sources.snapshots.items()})
+        raw = card.read_bytes()
     career = {"schema_version": 1, "education_visibility": "omit",
               "skills": [{"id": "linked", "category": "接口开发", "description": "已关联事实",
                           "evidence_ids": [card_id]}]}
@@ -626,7 +637,8 @@ def test_evaluation_uses_direct_card_version_instead_of_same_id_career_card(tmp_
     config, trace = _bound_quality_fixture(tmp_path)
     direct = Path(trace["inputs"]["ec-1"]["path"]).read_bytes()
     career = direct if same_bytes else direct.replace("请求延迟降低 20%".encode(), "完成接口验收".encode())
-    _bind_quality_career_card(config, trace, "ec-1", career)
+    _bind_quality_career_card(config, trace, "ec-1", career,
+                             measurement_quotes=None if same_bytes else {0: None})
     assert run_evaluation_flow(config) == 0
     result = json.loads(config.output_path.with_suffix(".json").read_text())
     assert result["traceability"]["verified_bullets"] == 1

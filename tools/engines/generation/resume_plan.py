@@ -15,9 +15,7 @@ from dataclasses import dataclass, field
 from typing import Mapping
 
 from tools.engines.generation.fact_index import Fact, FactIndex
-from tools.domain.quality_text import has_quant_metric
 from tools.engines.generation.fact_quality import presentable
-from tools.engines.generation.fact_selector import has_impact_signal
 from tools.engines.generation.fact_selector import SelectedFacts
 
 # 展示上限只控制单块可读性（比旧版每段 2 条职责宽），完整事实仍留在证据卡与 trace。
@@ -121,10 +119,10 @@ def _texts(index: FactIndex, fact_ids: tuple[str, ...], field_name: str) -> list
     ]
 
 
-def _quant_first(values: list[Fact], *, limit: int, other_limit: int) -> list[Fact]:
-    """量化成果优先展示，非量化最多 other_limit 条：避免技术细节稀释成果密度。"""
-    quantified = [value for value in values if has_quant_metric(value.text)]
-    others = [value for value in values if not has_quant_metric(value.text)][:other_limit]
+def _quant_first(values: list[Fact], *, limit: int) -> list[Fact]:
+    """按同一已核测量资格排序；非量化成果共用章节预算。"""
+    quantified = [value for value in values if value.has_quant]
+    others = [value for value in values if not value.has_quant]
     return (quantified + others)[:limit]
 
 
@@ -212,7 +210,7 @@ def build_resume_plan(
         role_text = structured.get("role_scope", "")
         period_text = next((fact.time_range for fact in facts if fact.kind == "evidence" and fact.time_range), "")
         actions = [fact for fact in facts if fact.field == "actions" and presentable(fact.text, field="actions")]
-        results = [fact for fact in facts if fact.field == "results" and presentable(fact.text, field="results")]
+        results = [fact for fact in facts if fact.field == "results" and presentable(fact.text, field="results", strict=False)]
         stacks = [fact.text for fact in facts if fact.field == "stack"]
         work_id = facts[0].work_id
         company = _squash((work_by_id.get(work_id) or {}).get("company"))
@@ -232,7 +230,6 @@ def build_resume_plan(
                     _quant_first(
                         _dedupe_facts(results),
                         limit=MAX_PROJECT_OUTCOMES,
-                        other_limit=2,
                     )
                 ),
                 work_company=company,
@@ -277,8 +274,8 @@ def build_resume_plan(
         achievements = _quant_first([
             fact for fact in _dedupe_facts(_texts(index, result_fact_ids, "results"))
             if _squash(fact.text) not in project_texts
-            and presentable(fact.text, field="results") and has_impact_signal(fact.text)
-        ], limit=MAX_WORK_ACHIEVEMENTS, other_limit=2)
+            and presentable(fact.text, field="results", strict=False)
+        ], limit=MAX_WORK_ACHIEVEMENTS)
         scope = scope_fact.text if scope_fact else ""
         fact_ids = tuple(
             dict.fromkeys(

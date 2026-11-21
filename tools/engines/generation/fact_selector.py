@@ -29,12 +29,6 @@ _METHOD_IDENT_RE = re.compile(
     r"[A-Z][a-zA-Z0-9]*(?:Action|Service|Manager|Handler|Controller|Repository|DTO|Impl|Task)(?![a-z])"
 )
 
-# 量化成果必须同时表达"变化/影响"，否则"内存达到 85% 占用"这类监控数据
-# 会被当成成果。
-_IMPACT_RE = re.compile(
-    r"提升|降低|减少|缩短|降至|提升至|从.+?到|→|覆盖|支撑|节约|节省|下降|增长|不超过|降低到"
-)
-
 _SCALE_RE = re.compile(
     r"\d[\d,.]*\s*(?:[–-]\s*\d+\s*)?(?:\+|以上|余)?\s*(?:人|个|家|款|项|条|套|台|次|万|亿|品牌|系统|模块|服务|文件)"
 )
@@ -108,12 +102,6 @@ def _scale_signal(text: str) -> float:
     return 1.0 if _SCALE_RE.search(text) else 0.0
 
 
-def has_impact_signal(text: str) -> bool:
-    """成果必须表达变化/规模，否则"查询 SQL：xxx"这类日志痕迹不能当成果。"""
-    value = str(text or "")
-    return bool(_IMPACT_RE.search(value) or _SCALE_RE.search(value))
-
-
 def task_like_penalty(text: str) -> float:
     """开发任务清单/类方法标识符的降权值；正常职责描述不受影响。"""
     value = str(text or "")
@@ -126,13 +114,15 @@ def task_like_penalty(text: str) -> float:
 
 
 def score_fact(fact: Fact, weights: VariantWeights) -> float:
+    if fact.field == "results":
+        # 完整结果及测量资格已由同一当前核定确定；原文中的目标数字/词语不再加减分。
+        return (weights.requirement * fact.support_weight
+                + weights.quant * float(fact.has_quant) + _FIELD_WEIGHT["results"])
     term_hit = 1.0 if any(term in fact.text for term in weights.terms) else 0.0
     structural = fact.field.rsplit(".", 1)[-1] in {"title", "stack", "time_range", "role_scope", "tags"}
     penalty = 0.0 if structural else task_like_penalty(fact.text)
-    quant_hit = 1.0 if (fact.has_quant and _IMPACT_RE.search(fact.text)) else 0.0
     return (
         weights.requirement * fact.support_weight
-        + weights.quant * quant_hit
         + weights.scale * _scale_signal(fact.text)
         + weights.role * _ROLE_WEIGHT.get(fact.role_strength, 0.2)
         + weights.term_bonus * term_hit
@@ -185,7 +175,8 @@ def select_facts(
         return SelectedFacts()
 
     verdicts = {
-        fact.fact_id: judge_fact_text(fact.text, field=fact.field, strict=fact.kind != "profile")
+        fact.fact_id: judge_fact_text(fact.text, field=fact.field,
+                                      strict=fact.kind != "profile" and fact.field != "results")
         for fact in index.facts
     }
     allowed = {fact_id for fact_id, verdict in verdicts.items() if verdict.presentable}

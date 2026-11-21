@@ -2,6 +2,7 @@
 import pytest
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.generation.fact_index import build_fact_index
+from tests.unit.engines.test_fact_index import reviewed_card_results
 from tools.engines.generation.fact_selector import SelectionBudget, select_facts
 from tools.engines.generation.plan_renderer import render_plan
 from tools.engines.generation.resume_plan import build_resume_plan
@@ -22,7 +23,7 @@ def card(**over):
         "tags": [],
     }
     base.update(over)
-    return base
+    return reviewed_card_results(base, measurement_quotes={i: value for i, value in enumerate(base["results"])})
 
 
 def career():

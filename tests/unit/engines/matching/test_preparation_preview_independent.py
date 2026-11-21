@@ -26,6 +26,40 @@ def build(**kwargs):
     return m.build_targeted_excerpt(**kwargs)
 
 
+def test_unreviewed_result_citation_cannot_enter_excerpt():
+    kw = fixture()
+    value = "隔离测试 P95 从 200ms 降至 120ms"
+    fact = {"source_id": "ec", "field": "results", "text": value, "source_role": "负责后端开发"}
+    for facts in (kw["audit_facts"], kw["current_facts"]):
+        facts["ec:results:0"] = dict(fact)
+    kw["assessments"][0]["citations"].append({"fact_id": "ec:results:0", "quote": value})
+    result = build(**kw)
+    assert value not in result["markdown"]
+    assert "实现订单状态校验" in result["markdown"]
+    assert not any(c["fact_id"] == "ec:results:0" for c in result["claims"])
+
+
+@pytest.mark.parametrize("current_review", [True, False])
+def test_reviewed_nonquant_result_keeps_full_scope_and_sibling_action(current_review):
+    from tests.unit.engines.test_fact_index import reviewed_result
+
+    kw = fixture()
+    value = "隔离回归环境中，故障切换无需人工介入即可完成；生产自动切换不在本次职责范围内。"
+    fact = {"source_id": "ec", "field": "results", "text": value, "source_role": "负责后端开发"}
+    for facts in (kw["audit_facts"], kw["current_facts"]):
+        facts["ec:results:0"] = dict(fact)
+    kw["assessments"][0]["citations"].append({"fact_id": "ec:results:0", "quote": value})
+    kw["result_reviews"] = {"ec:results:0": reviewed_result(
+        "ec", 0, value if current_review else "故障切换无需人工介入即可完成")}
+    result = build(**kw)
+    assert (value in result["markdown"]) is current_review
+    assert "实现订单状态校验" in result["markdown"]
+    rendered = [c for c in result["claims"] if c["fact_id"] == "ec:results:0"]
+    assert len(rendered) == int(current_review)
+    if current_review:
+        assert rendered[0]["quote"] == value
+
+
 def test_only_cited_action_and_explicit_context_are_rendered():
     kw=fixture();result=build(**kw)
     assert "实现订单状态校验" in result["markdown"]

@@ -4,6 +4,8 @@ from threading import Thread
 from pathlib import Path
 
 import pytest
+from tests.unit.engines.test_fact_index import reviewed_card_results
+from tests.unit.engines.test_generation_engines import write_reviewed_result_sources
 
 from tools.cli.commands import generate as generate_cli
 from tools.engines.generation.resume_renderer import build_template_resume, load_generation_context
@@ -32,6 +34,7 @@ def generation_inputs(tmp_path):
         'results:\n  - "请求延迟降低 20%"\nstack:\n  - "Java"\n'
         'artifacts:\n  - "性能报告.pdf"\n', encoding="utf-8",
     )
+    write_reviewed_result_sources(evidence / "ec-1.yaml", {0: "请求延迟降低 20%"}, material_dir=tmp_path / "materials")
     report = tmp_path / "mr-target.yaml"
     report.write_text('score_total: 85\ntop_cards:\n  - id: "ec-1"\n', encoding="utf-8")
     return profile, job, evidence, report, tmp_path / "resumes"
@@ -271,6 +274,7 @@ def test_actions_without_lexical_result_match_are_not_paired_as_bullets():
             'stack': ['Java'], 'artifacts': ['报告']}
     profile = {'career': {'skills': [{'id': 's1', 'category': '技术', 'description': '后端开发'}]}}
     claims = []
+    card = reviewed_card_results(card, measurement_quotes={2: card['results'][2]})
     text = build_template_resume('A', [card],
              personal_profile=profile, claims=claims)
     bullets = [line for line in text.splitlines() if line.startswith('- ')]
@@ -289,6 +293,7 @@ def test_targeted_generation_preserves_measured_improvement_over_repeated_scale(
             'stack': [], 'artifacts': ['报告']}
     refs = [{'source_id': 'ec-1', 'field': 'results', 'text': r, 'requirement_id': 'r1', 'support_weight': 2}
             for r in card['results'][:2]]
+    card = reviewed_card_results(card, measurement_quotes={2: card['results'][2]})
     text = build_template_resume('A', [card], semantic_report={'requirements':[{'id':'r1'}], 'assessments':[{'requirement_id':'r1','status':'supported','citations':[{'fact_id':'ec-1:results:0'},{'fact_id':'ec-1:results:1'}]}]})
     assert card['results'][2] in text
 

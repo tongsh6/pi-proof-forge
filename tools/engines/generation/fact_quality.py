@@ -62,8 +62,8 @@ def _count_identifiers(text: str) -> int:
 def judge_fact_text(text: str, *, field: str = "actions", strict: bool = True) -> QualityVerdict:
     """按字段语义判定可否呈现。
 
-    `strict=False` 用于已确认职业档案事实：用户确认过的职责即使很短也应保留，
-    只拦截内部自指与代码标识符；证据卡（模型/文档抽取）走严格模式。
+    `strict=False` 用于已确认职业档案及当前核定成立的完整结果：
+    保留内部元数据/代码/表格/路径等结构限制，不以词形重新否决语义核定。
     """
     value = " ".join(str(text or "").split())
     if not value:
@@ -118,5 +118,5 @@ def judge_fact_text(text: str, *, field: str = "actions", strict: bool = True) -
     return QualityVerdict(True)
 
 
-def presentable(text: str, *, field: str = "actions") -> bool:
-    return judge_fact_text(text, field=field).presentable
+def presentable(text: str, *, field: str = "actions", strict: bool = True) -> bool:
+    return judge_fact_text(text, field=field, strict=strict).presentable

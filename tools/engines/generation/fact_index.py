@@ -13,7 +13,6 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from tools.domain.assessment_support import positive_citations
-from tools.domain.quality_text import has_quant_metric
 
 # 与语义评审的事实展开口径保持一致：字段顺序决定 index，不能随意调整。
 FACT_FIELDS: tuple[str, ...] = (
@@ -221,6 +220,7 @@ def _append(
     requirements: dict[str, tuple[tuple[str, int], ...]],
     card_title: str,
     preferred: bool = False,
+    has_quant: bool = False,
 ) -> None:
     cleaned = _clean(text)
     if not cleaned:
@@ -235,7 +235,7 @@ def _append(
             kind=kind,
             work_id=work_id,
             time_range=time_range,
-            has_quant=has_quant_metric(cleaned),
+            has_quant=has_quant,
             role_strength=role_strength_of(role_text),
             requirement_ids=tuple(requirement_id for requirement_id, _weight in hit),
             # 语义选中的岗位相关卡：整卡事实给强权重，否则岗位定向会被
@@ -289,6 +289,13 @@ def build_fact_index(
                 fact_id = f"{source_id}:{field}:{index}"
                 if fact_id in seen or fact_id in doc.get("personal_claim_exclusions", ()):
                     continue
+                reviewed = (doc.get("result_reviews") or {}).get(fact_id, {})
+                if field == "results" and (
+                    reviewed.get("field") != field or reviewed.get("index") != index
+                    or reviewed.get("value") != value
+                    or reviewed.get("result_review", {}).get("outcome") != "established"
+                ):
+                    continue
                 seen.add(fact_id)
                 _append(
                     facts,
@@ -303,6 +310,7 @@ def build_fact_index(
                     requirements=requirements,
                     card_title=_clean(doc.get("title")),
                     preferred=source_id in preferred_cards and fact_id not in non_supporting,
+                    has_quant=field == "results" and bool(reviewed["result_review"].get("measurement_quote")),
                 )
 
     summary_text = _clean(career_data.get("summary"))

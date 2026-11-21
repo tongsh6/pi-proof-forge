@@ -61,7 +61,8 @@ def handler_case(tmp_path, monkeypatch):
     monkeypatch.setattr(historical.preview,'_profile_facts',lambda _: {})
     fields, _=records()
     preferences={'items':[{'kind':'primary','text':'业务接口'}]}
-    inputs={'snapshot':{'test':'same'},'job_path':job,'personal_profile':tmp_path/'personal.yaml',
+    snapshot={str(path.resolve()):hashlib.sha256(path.read_bytes()).hexdigest() for path in (job,card)}
+    inputs={'snapshot':snapshot,'job_path':job,'personal_profile':tmp_path/'personal.yaml',
             'evidence_files':[card],'preferences':preferences,'job_fields':fields,
             'pool':{'source_freshness_unverified_count':0},'requirement_section_bindings':[]}
     req=job_requirements(fields['must_have'])

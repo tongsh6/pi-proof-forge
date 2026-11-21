@@ -413,6 +413,7 @@ def test_quick_run_real_pipeline_generates_pdf_and_independent_trace(tmp_path, m
 
 
 def _write_two_page_career(project: Path) -> list[str]:
+    from tests.unit.engines.test_generation_engines import write_reviewed_result_sources
     from tools.infra.career_profile import inspect_career
     from tools.infra.persistence.yaml_io import dump_yaml, parse_simple_yaml
 
@@ -443,6 +444,12 @@ def _write_two_page_career(project: Path) -> list[str]:
                   "raw_source": str(source), "time_range": f"{year}-01 ~ {year}-12", "role_scope": "Backend Engineer"}
         lists = {**seed["lists"], "actions": actions, "results": results, "source_material_ids": [material_id]}
         (cards / f"{card_id}.yaml").write_text(dump_yaml(fields, lists), encoding="utf-8")
+    # This physical layout fixture supplies explicit reviewed outcomes, without claiming model verification.
+    for card_id in selected:
+        card_path = cards / f"{card_id}.yaml"
+        doc = parse_simple_yaml(card_path.read_text(encoding="utf-8"))
+        write_reviewed_result_sources(card_path, {index: None for index in range(len(doc["lists"]["results"]))},
+                                      material_dir=project / "materials")
     work = [
         {"id": "w-new", "company": "Synthetic Retail Labs", "department": "Commerce systems",
          "title": "Backend Tech Lead", "start": "2024-01", "end": "2025-12", "current": False,

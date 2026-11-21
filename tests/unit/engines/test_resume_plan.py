@@ -3,6 +3,7 @@
 计划层只做分组与取舍，不生成新句子；每条 `fact_ids` 都必须能回到 FactIndex。
 """
 from tools.engines.generation.fact_index import build_fact_index
+from tests.unit.engines.test_fact_index import reviewed_card_results
 from tools.engines.generation.fact_selector import SelectionBudget, select_facts
 from tools.engines.generation.resume_plan import (
     ProjectBlock,
@@ -27,7 +28,7 @@ def card(**over):
         "tags": ["预约"],
     }
     base.update(over)
-    return base
+    return reviewed_card_results(base)
 
 
 def career(**over):

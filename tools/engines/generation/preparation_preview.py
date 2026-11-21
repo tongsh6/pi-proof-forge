@@ -9,7 +9,9 @@ from tools.domain.assessment_support import positive_citations
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 
 
-def build_targeted_excerpt(*, assessments, requirements, audit_facts, current_facts, target, personal_claim_exclusions=frozenset()):
+def build_targeted_excerpt(*, assessments, requirements, audit_facts, current_facts, target,
+                           personal_claim_exclusions=frozenset(), result_reviews=None):
+    result_reviews = result_reviews or {}
     requirements_by_id = {r["id"]:r for r in requirements}
     claims, selected, usage = [], {}, {}
     assessed_ids = {row.get("requirement_id") for row in assessments}
@@ -47,7 +49,14 @@ def build_targeted_excerpt(*, assessments, requirements, audit_facts, current_fa
             role = str(fact.get("source_role") or "").strip()
             if not role or role.casefold() in {"none", "null", "{}", "[]"}:
                 continue
-            if not judge_fact_text(fact.get("text", ""), field=field).presentable:
+            reviewed = result_reviews.get(fact_id, {})
+            if field == "results" and (
+                reviewed.get("field") != field or fact_id != f"{source_id}:results:{reviewed.get('index')}"
+                or reviewed.get("value") != fact.get("text")
+                or reviewed.get("result_review", {}).get("outcome") != "established"
+            ):
+                continue
+            if not judge_fact_text(fact.get("text", ""), field=field, strict=field != "results").presentable:
                 continue
             selected[fact_id] = fact
             usage.setdefault(fact_id, []).append((requirement_id, support_status))
@@ -92,7 +101,8 @@ def build_targeted_excerpt(*, assessments, requirements, audit_facts, current_fa
                            "quote":qualifier, "usage":"context", "requirement_ids":[], "support_statuses":[]})
         rendered_facts = []
         for fact_id, fact in chosen:
-            item = Fact(fact_id=fact_id, source_id=source_id, field=fact["field"], text=fact["text"], kind="evidence")
+            item = Fact(fact_id=fact_id, source_id=source_id, field=fact["field"], text=fact["text"], kind="evidence",
+                        has_quant=fact["field"] == "results" and bool(result_reviews[fact_id]["result_review"].get("measurement_quote")))
             facts_for_index.append(item)
             rendered_facts.append(item)
             claims.append({"fact_id":fact_id, "source_id":source_id, "field":fact["field"], "quote":fact["text"],

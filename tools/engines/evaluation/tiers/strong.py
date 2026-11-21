@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tools.domain.models import QualityFailure, TierResult
-from tools.domain.quality_text import matches_fact_occurrence
+from tools.domain.quality_text import matches_fact_occurrence, render_fact_text
 from tools.domain.value_objects import FIRST_SCREEN_MARKER
 from tools.engines.evaluation.llm_judge import resume_lines
 from tools.infra.persistence.yaml_io import parse_simple_yaml
@@ -17,13 +17,18 @@ from tools.infra.persistence.yaml_io import parse_simple_yaml
 from .common import *
 
 
-def _has_verifiable_quant(body: str, results: list[str]) -> bool:
-    # 数字必须属于实际呈现的成果片段，技术版本或年份恰好相同不算量化成果。
-    from tools.domain.quality_text import compact, has_quant_metric
+def _has_verifiable_quant(body: str, results: list[dict]) -> bool:
+    # 完整结果与实测命题来自同一已核原行，不按数字词形重新判定测量发生性。
+    from tools.domain.quality_text import compact
 
     normalized = compact(body)
-    return any(has_quant_metric(result) and compact(result) in normalized
-               for result in results if str(result).strip())
+    return any(
+        row.get("result_review", {}).get("outcome") == "established"
+        and isinstance(quote := row["result_review"].get("measurement_quote"), str) and quote
+        and compact(str(row["value"])) in normalized
+        and quote in row["value"] and quote in row["source"]["quote"]
+        for row in results
+    )
 
 
 def evaluate_strong(
@@ -45,20 +50,26 @@ def evaluate_strong(
         quant_total = quant_first = 0.0
     else:
         quant_flags: list[bool] = []
-        verified_results_by_bullet: dict[int, list[str]] = {}
+        verified_results_by_bullet: dict[int, list[dict]] = {}
         for bullet in experience:
             number = int(bullet["number"])
             row = verified_rows.get(number, {})
             # 只有此行实际采用的 results Fact 能证明成果，不能借同卡其他结果取分。
-            pool: list[str] = []
+            pool: list[dict] = []
             if trace.get("occurrence_lineage_version") == 1 and row.get("verified"):
                 for source in row.get("sources", []):
                     if source.get("source_kind") != "evidence" or source.get("field") != "results":
                         continue
                     evidence_id = source.get("evidence_id", "")
-                    stored_results = cards.get(evidence_id, {}).get("results", []) or []
-                    if matches_fact_occurrence(evidence_id, "results", stored_results, source):
-                        pool.append(str(source["text"]))
+                    card = cards.get(evidence_id, {})
+                    stored_results = card.get("results", []) or []
+                    reviewed = (card.get("result_reviews") or {}).get(source.get("fact_id"), {})
+                    if (matches_fact_occurrence(evidence_id, "results", stored_results, source)
+                            and reviewed.get("field") == "results"
+                            and source.get("fact_id") == f"{evidence_id}:results:{reviewed.get('index')}"
+                            and render_fact_text(reviewed.get("value", "")) == source["text"]
+                            and reviewed.get("result_review", {}).get("outcome") == "established"):
+                        pool.append(reviewed)
             verified_results_by_bullet[number] = pool
             quant_flags.append(_has_verifiable_quant(str(bullet["body"]), pool))
         quant_total = sum(quant_flags) / len(quant_flags)
@@ -125,9 +136,8 @@ def evaluate_strong(
             if item is None:
                 failures.append(_failure("R3.1", f"bullet#{bullet['number']}", "缺少带引用的三段判定"))
                 continue
-            if verified_results_by_bullet.get(int(bullet["number"])):
-                # 与 R3.2 共用已核实、已呈现的结果事实，非数值交付同样算结果段。
-                item = {**item, "result": True}
+            # 与 R3.2 共用同一现行结果核定；独立 judge 的 True 不能洗白缺失证明。
+            item = {**item, "result": bool(verified_results_by_bullet.get(int(bullet["number"])))}
             missing = [label for label, key in (("场景", "scene"), ("动作", "action"), ("结果", "result")) if not item.get(key)]
             if missing:
                 failures.append(

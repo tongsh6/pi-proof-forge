@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.unit.sidecar.test_evidence_source_merge import sample as source_sample
+from tests.unit.sidecar.test_evidence_source_merge import result_review_model, sample as source_sample
 
 
 @pytest.fixture(autouse=True)

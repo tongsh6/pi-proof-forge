@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from tests.unit.sidecar.test_evidence_source_merge import _scoped_review, sample as source_sample
+from tests.unit.sidecar.test_evidence_source_merge import _scoped_review, result_review_model, sample as source_sample
 from tools.infra.persistence.review_snapshot import ReviewSnapshotStore, read_generation_trace
 from tools.sidecar.handlers import agent, evidence
 
@@ -248,7 +249,7 @@ def test_agent_run_guided_batch_l1_acceptance_writes_report(tmp_path: Path) -> N
     ["完成 Java 接口对接并提交联调清单。"],
     ["在隔离测试环境中将队列延迟降低 37%。", "完成 Java 接口验收并提交可追溯的交接清单。"],
 )], indirect=True)
-def test_guided_api_preserves_reviewed_fact_scope_and_generation_trace(source_sample, monkeypatch):
+def test_guided_api_preserves_reviewed_fact_scope_and_generation_trace(source_sample, result_review_model, monkeypatch):
     """同卡被排除成果不借用为本人业绩；其余原始事实与来源身份保持可验证。"""
     materials_dir, card_path, params, scope = _scoped_review(source_sample)
     excluded, retained = params["draft"]["results"]
@@ -260,6 +261,21 @@ def test_guided_api_preserves_reviewed_fact_scope_and_generation_trace(source_sa
     params["review"]["fact_scope"] = {
         **scope, "field": "results", "index": 0, "value": excluded,
         "source": {**scope["source"], "quote": excluded}, "attribution": "teammate",
+    }
+    evidence.handle_evidence_save_draft(params)
+    # Keep the original positive assertion, now produced through the shared review API.
+    params["expected_sha256"] = hashlib.sha256(card_path.read_bytes()).hexdigest()
+    params["draft"]["field_sources"].append({
+        "field": "results", "value": retained, "quote": retained,
+        "material_id": source["material_id"], "document_id": source["document_id"],
+    })
+    params["review"]["fact_scope"] = {
+        **scope, "field": "results", "index": 1, "value": retained,
+        "source": {**scope["source"], "quote": retained}, "attribution": "self",
+    }
+    result_review_model["reply"] = {
+        "outcome": "established", "measurement_quote": None,
+        "rationale": "此合成案例明确给定已完成、可核验的非量化交接清单。",
     }
     evidence.handle_evidence_save_draft(params)
     outside_title = "未选择的合成项目"

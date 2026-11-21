@@ -37,6 +37,10 @@ def _read_quality_input(meta: dict) -> bytes:
 
 def _load_quality_cards(trace: dict) -> dict[str, dict]:
     """只解析生成 trace 所绑定的本次来源版本。"""
+    from tools.infra.evidence_fact_scope import current_result_reviews
+    from tools.infra.evidence_sources import validated_source_inputs
+    from tools.infra.material_paths import materials_dir_for
+
     cards: dict[str, dict] = {}
     inputs = trace.get("inputs") if isinstance(trace, dict) else None
     ids = trace.get("evidence_card_ids") if isinstance(trace, dict) else None
@@ -46,8 +50,18 @@ def _load_quality_cards(trace: dict) -> dict[str, dict]:
     for card_id in ids:
         if not isinstance(card_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", card_id):
             continue
+        path = Path(inputs[card_id]["path"])
         doc = parse_simple_yaml(_read_quality_input(inputs[card_id]).decode("utf-8"))
-        cards[card_id] = {**doc["scalars"], **doc["lists"]}
+        profile_path = Path(inputs.get("personal_profile", {}).get("path") or path)
+        material_dir = materials_dir_for(profile_path, fallback=path.parent.parent / "materials")
+        sources = validated_source_inputs(doc, material_dir)
+        for key, (source_path, digest) in sources.snapshots.items():
+            expected = inputs.get(key, {})
+            if (not expected.get("path") or Path(expected["path"]).resolve() != source_path.resolve()
+                    or expected.get("sha256") != digest):
+                raise ValueError("quality_input_changed")
+        reviews = current_result_reviews(doc, material_dir, card_id=card_id, validated_sources=sources)
+        cards[card_id] = {**doc["scalars"], **doc["lists"], "result_reviews": reviews}
     return cards
 
 

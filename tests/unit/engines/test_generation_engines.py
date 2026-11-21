@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 
 from tests.unit.engines.test_complete_resume import complete_profile
-from tests.unit.sidecar.test_evidence_source_merge import sample as source_sample
+from tests.unit.sidecar.test_evidence_source_merge import sample as source_sample, result_review_model
 from tools.sidecar.handlers import evidence, profile as profile_api
 
 from tools.domain.models import EvidenceCard, MatchingReport, ResumeOutput
@@ -17,6 +17,47 @@ from tools.engines.generation.exporter import ResumeExporter
 from tools.infra.persistence.review_snapshot import validate_generation_trace
 
 RESULT = "在隔离测试环境中，1000 条合成请求的 P95 从 200ms 降至 120ms。"
+
+
+def write_reviewed_result_sources(card_path, measurement_quotes, *, material_dir):
+    """Persist explicit synthetic reviewed inputs; this does not exercise or replace the reviewer."""
+    from tests.unit.engines.test_fact_index import reviewed_result
+    from tools.infra.material_documents import split_material_documents
+    from tools.infra.persistence.yaml_io import parse_simple_yaml
+    from tools.infra.evidence_sources import validated_source_inputs
+
+    doc = parse_simple_yaml(card_path.read_text())
+    card_id = card_path.stem
+    material_dir.mkdir(parents=True, exist_ok=True)
+    material_id = "review-" + hashlib.sha256(str(card_path.absolute()).encode()).hexdigest()[:12]
+    source_path = material_dir / (material_id + ".txt")
+    values = doc["lists"].get("results", [])
+    source_text = "# Source: synthetic-review.md\n" + "\n\n".join(values[index] for index in measurement_quotes)
+    source_path.write_text(source_text)
+    document, = split_material_documents(source_text, source_path.name)
+    reference = {"material_id": material_id, "document_id": document["document_id"], "sha256": document["sha256"]}
+    rows = []
+    for index, quote in measurement_quotes.items():
+        row = reviewed_result(card_id, index, values[index], measurement_quote=quote)
+        rows.append({**row, "source": {**reference, "quote": values[index]}})
+    doc["scalars"].update({
+        "id": card_id, "status": "saved_eligible", "candidate_pool_eligible": "true", "review_decision": "approved",
+        "source_documents_json": json.dumps([reference]),
+        "source_whole_material_ids_json": "[]",
+        "source_material_fingerprints_json": json.dumps({material_id: {
+            "filename": source_path.name, "sha256": hashlib.sha256(source_path.read_bytes()).hexdigest()}}),
+        "field_sources_json": json.dumps([
+            {"field": "results", "value": row["value"], "material_id": material_id,
+             "document_id": document["document_id"], "quote": row["source"]["quote"]} for row in rows]),
+        "reviewed_facts_json": json.dumps({"fact_scope_v1": rows}),
+    })
+    doc["lists"]["source_material_ids"] = [material_id]
+    lines = [key + ": " + json.dumps(value, ensure_ascii=False) for key, value in doc["scalars"].items()]
+    for key, values in doc["lists"].items():
+        lines.append(key + ":")
+        lines.extend("  - " + json.dumps(value, ensure_ascii=False) for value in values)
+    card_path.write_text("\n".join(lines) + "\n")
+    return validated_source_inputs(doc, material_dir)
 
 
 @pytest.fixture
@@ -32,6 +73,7 @@ def generation(tmp_path):
         'results:\n  - ' + json.dumps(RESULT, ensure_ascii=False) +
         '\nstack:\n  - "Java"\nartifacts:\n  - "合成测试报告"\n'
     )
+    write_reviewed_result_sources(card_path, {0: RESULT}, material_dir=tmp_path / "materials")
     profile = tmp_path / "personal_profile.yaml"
     profile.write_text('name: "合成候选人"\ncurrent_position: "工程师"\n')
     job = tmp_path / "jp-engine.yaml"
@@ -149,6 +191,61 @@ def test_engine_omits_unproven_role_but_keeps_valid_source_facts(generation, mod
     assert "角色：" not in resume.content
     assert "实现消费接口并完成测试联调" in resume.content and RESULT in resume.content
     assert validate_generation_trace(resume.content, resume.generation_trace)
+
+
+@pytest.mark.parametrize("source_sample,outcome,measured", [
+    ((["实现预约请求幂等校验与消息重试机制。"],
+      ["隔离测试中，固定负载下接口响应时间减半。"]), "established", True),
+    ((["实现预约请求幂等校验与消息重试机制。"],
+      ["完成容量评估报告，报告列出的下期目标是承载 100 万请求，尚未上线。"]), "established", False),
+    ((["实现预约请求幂等校验与消息重试机制。"],
+      ["待核记录声称隔离测试接口耗时降低一半，缺少当次测量条件。"]), "unknown", False),
+], indirect=["source_sample"])
+def test_saved_result_review_reaches_generated_trace_and_actual_quality_flow(
+        source_sample, result_review_model, outcome, measured):
+    from tests.unit.sidecar.test_evidence_source_merge import _scoped_review
+    from tools.infra.persistence.review_snapshot import read_generation_trace
+    from tools.orchestration.evaluation_flow import EvaluationFlowConfig, run_evaluation_flow
+
+    material_dir, card, params, scope = _scoped_review(source_sample, field="results")
+    value = scope["value"]
+    result_review_model["reply"] = {"outcome": outcome,
+        "measurement_quote": value if measured else None,
+        "rationale": "独立合成来源：报告交付与计划指标分开，实测保留固定负载和隔离范围。"}
+    params["review"]["fact_scope"] = scope
+    evidence.handle_evidence_save_draft(params)
+    detail = evidence.handle_evidence_get({"meta": params["meta"], "evidence_id": card.stem})["evidence"]
+    stored = detail["fact_scope_review"][0]["sources"][0]["result_review"]
+    assert stored["outcome"] == outcome and stored["measurement_quote"] == (value if measured else None)
+
+    profile = material_dir.parent / "personal_profile.yaml"
+    profile.write_text('name: "合成结果候选人"\ncurrent_position: "工程师"\n')
+    job = material_dir.parent / "jp-result.yaml"
+    job.write_text('target_role: "工程师"\ncompany: "合成公司"\nsource_jd: "负责接口开发与回归验证"\n')
+    assembler = TemplateAssembler(evidence_dir=card.parent, personal_profile_path=profile, job_profile_path=job)
+    identity = EvidenceCard(card.stem, "仅作选择边界", "", ("禁止采用领域DTO正文",), ("证据",))
+    resume = assembler.generate(MatchingReport(job.stem, (card.stem,), {}, ()), [identity], "reviewed")
+    action = params["draft"]["actions"][0]
+    assert action in resume.content
+    assert (value in resume.content) is (outcome == "established")
+    assert "禁止采用领域DTO正文" not in resume.content
+    claims = [claim for claim in resume.generation_trace["claims"] if claim.get("fact_id") == card.stem + ":results:0"]
+    assert len(claims) == int(outcome == "established")
+    if claims:
+        assert claims[0]["text"] == value
+
+    resume_path = material_dir.parent / "synthetic-resume.md"
+    resume_path.write_text(resume.content)
+    resume_path.with_suffix(".trace.json").write_text(json.dumps(resume.generation_trace))
+    assert read_generation_trace(resume_path)[1]
+    output = material_dir.parent / "synthetic-quality.md"
+    assert run_evaluation_flow(EvaluationFlowConfig(
+        input_path=resume_path, output_path=output, job_profile_path=job)) == 0
+    result = json.loads(output.with_suffix(".json").read_text())
+    assert result["traceability"]["status"] == "verified"
+    assert result["quality_report"]["tiers"]["strong"]["metrics"]["quant_total"] == (0.5 if measured else 0.0)
+    assert result["quality_report"]["auto_pass"] is False
+    assert len(result_review_model["calls"]) == 1
 
 
 @pytest.fixture

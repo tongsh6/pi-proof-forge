@@ -3,12 +3,13 @@ import copy
 import pytest
 from tools.engines.matching import semantic_matching as m
 from tools.engines.generation.fact_index import build_fact_index
+from tests.unit.engines.test_fact_index import reviewed_card_results
 from test_advisory_budget_counterexamples import _fixture, _client
 
 
-def card():
-    return {"id":"ec_0","title":"Service","role_scope":"Developer",
-            "results":["Built Java services"],"artifacts":["Report"]}
+def card(card_id="ec_0", *, results=None):
+    return reviewed_card_results({"id":card_id,"title":"Service","role_scope":"Developer",
+            "results":results if results is not None else ["Built Java services"],"artifacts":["Report"]})
 
 
 def test_real_semantic_producer_write_load_maps_citations(tmp_path):
@@ -100,7 +101,7 @@ def test_insufficient_child_citation_has_no_formal_positive_weight_or_priority(t
     parent = loaded["assessments"][0]
     assert parent["status"] == "partial"
     assert parent["checks"][1]["citations"][0]["fact_id"] == "ec_1:results:0"
-    rows = [card(), {**card(), "id": "ec_1"}]
+    rows = [card(), card("ec_1")]
     index = build_fact_index(rows, {}, loaded)
     assert index.get("ec_0:results:0").support_weight == 1
     assert index.get("ec_1:results:0").support_weight == 0
@@ -137,7 +138,7 @@ def test_preferred_card_promotion_does_not_turn_negative_only_fact_into_support(
                                     {"status": "insufficient", "citations": [{"fact_id": first},
                                                                                 {"fact_id": second}]}]}],
     }
-    index = build_fact_index([{**card(), "results": ["first", "second", "neutral"]}],
+    index = build_fact_index([card(results=["first", "second", "neutral"])],
                              {}, report, preferred_card_ids=["ec_0"])
     assert index.get(first).requirement_ids == ("r1",)
     assert index.get(first).support_weight > 0

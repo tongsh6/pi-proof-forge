@@ -21,7 +21,7 @@ def card(**over):
         "tags": ["预约"],
     }
     base.update(over)
-    return base
+    return reviewed_card_results(base)
 
 
 def career(**over):
@@ -71,6 +71,30 @@ def semantic(**over):
     return report
 
 
+def reviewed_result(card_id, index, value, *, measurement_quote=None):
+    """Explicit already-verified consumer input; API tests exercise the producer."""
+    return {
+        "field": "results", "index": index, "value": value,
+        "source": {"material_id": "material-" + card_id, "document_id": "report",
+                   "sha256": "a" * 64, "quote": value},
+        "attribution": "self", "target": "完整结果", "environment": "test",
+        "implementation": "implemented", "release": "not_released",
+        "result_review": {"outcome": "established", "measurement_quote": measurement_quote,
+                          "rationale": "合成用例明确给定的当前完整结果核定"},
+    }
+
+
+def reviewed_card_results(card, *, measurement_quotes=None):
+    """A pure consumer fixture with explicitly established complete result rows."""
+    if "result_reviews" in card:
+        return card
+    quotes = measurement_quotes or {}
+    return {**card, "result_reviews": {
+        f'{card["id"]}:results:{i}': reviewed_result(card["id"], i, value, measurement_quote=quotes.get(i))
+        for i, value in enumerate(card.get("results", []))
+    }}
+
+
 def test_expands_card_fields_in_stable_order():
     index = build_fact_index([card()], career())
 
@@ -87,7 +111,7 @@ def test_expands_card_fields_in_stable_order():
         kind="evidence",
         work_id="w1",
         time_range="2024-01 ~ 2024-06",
-        has_quant=True,  # "8 个" 属既有量化口径的规模单位
+        has_quant=False,  # 行动中的规模数字不是已核结果测量
         role_strength="lead",
         requirement_ids=(),
         support_weight=0,
@@ -114,12 +138,14 @@ def test_links_facts_to_work_by_evidence_ids():
     assert all(fact.work_id == "" for fact in index.by_card("ec_b"))
 
 
-def test_marks_quant_metrics_and_role_strength():
-    index = build_fact_index([card()], career())
+def test_marks_reviewed_measurement_and_preserves_role_strength():
+    current = card()
+    current["result_reviews"]["ec_a:results:0"]["result_review"]["measurement_quote"] = current["results"][0]
+    index = build_fact_index([current], career())
 
     assert index.get("ec_a:results:0").has_quant is True
-    # "8 个" 命中既有规模单位口径；role_scope 无数字，不含量化
-    assert index.get("ec_a:actions:0").has_quant is True
+    # 只有同一核定结果的测量命题授予量化，行动/角色不借数字授信。
+    assert index.get("ec_a:actions:0").has_quant is False
     assert index.get("ec_a:role_scope:0").has_quant is False
     assert index.get("ec_a:role_scope:0").role_strength == "lead"
     assert build_fact_index([card(role_scope="独立完成总体架构")], career()).get(
@@ -165,3 +191,56 @@ def test_requires_explicit_card_ids_and_rejects_duplicates():
     index = build_fact_index([card(), card()], career())
     ids = [fact.fact_id for fact in index.facts]
     assert len(ids) == len(set(ids))
+
+
+def test_result_index_requires_current_same_occurrence_review():
+    forecast = "生产吞吐目标为每秒 100 万次"
+    delivered = "故障切换无需人工介入即可完成"
+    measured = "隔离测试中响应时间减半"
+    item = card(results=[forecast, delivered, measured], result_reviews={
+        "ec_a:results:1": reviewed_result("ec_a", 1, delivered),
+        "ec_a:results:2": reviewed_result("ec_a", 2, measured, measurement_quote=measured),
+    })
+    index = build_fact_index([item])
+    assert index.get("ec_a:results:0") is None
+    assert index.get("ec_a:results:1").text == delivered
+    assert index.get("ec_a:results:1").has_quant is False
+    assert index.get("ec_a:results:2").text == measured
+    assert index.get("ec_a:results:2").has_quant is True
+    assert index.get("ec_a:actions:0").has_quant is False
+
+
+def test_changed_result_cannot_reuse_another_occurrence_review():
+    old = "隔离测试中响应时间减半"
+    current = "生产环境中响应时间减半"
+    item = card(results=[current], result_reviews={
+        "ec_a:results:0": reviewed_result("ec_a", 0, old, measurement_quote=old),
+    })
+    assert build_fact_index([item]).get("ec_a:results:0") is None
+
+
+def test_result_score_uses_reviewed_measurement_not_future_scale_or_words():
+    from dataclasses import replace
+    from tools.engines.generation.fact_selector import TECHNICAL_DEPTH, score_fact
+
+    measured = Fact("ec_a:results:0", "ec_a", "results", "隔离测试中响应时间减半",
+                    "evidence", has_quant=True)
+    mixed = replace(measured, text=measured.text + "；生产架构交付目标覆盖 100 万个用户")
+    unmeasured = replace(measured, has_quant=False)
+    assert score_fact(measured, TECHNICAL_DEPTH) == score_fact(mixed, TECHNICAL_DEPTH)
+    assert score_fact(measured, TECHNICAL_DEPTH) > score_fact(unmeasured, TECHNICAL_DEPTH)
+
+
+def test_established_nonquant_results_keep_full_project_budget_and_work_achievements():
+    from tools.engines.generation.fact_selector import select_facts
+    from tools.engines.generation.resume_plan import build_resume_plan
+
+    values = ["故障切换无需人工介入即可完成", "服务恢复无需值班人员操作即可完成", "跨系统数据核对已经通过独立验收"]
+    item = card(results=values, actions=[], result_reviews={
+        f"ec_a:results:{i}": reviewed_result("ec_a", i, value) for i, value in enumerate(values)
+    })
+    index = build_fact_index([item], career())
+    project_plan = build_resume_plan(index, select_facts(index), career())
+    assert [fact.text for fact in project_plan.projects[0].outcomes] == values
+    work_plan = build_resume_plan(index, select_facts(index, max_projects=0), career())
+    assert [fact.text for fact in work_plan.work[0].achievements] == values[:2]

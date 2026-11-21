@@ -3,6 +3,8 @@ from importlib.util import find_spec
 from types import SimpleNamespace
 import pytest
 import json
+import hashlib
+from pathlib import Path
 from tools.engines.matching.semantic_review import job_requirements, requirement_checks, aggregate_assessments
 from tools.engines.matching.semantic_matching import _facts
 from tools.infra.persistence.yaml_io import parse_simple_yaml
@@ -39,7 +41,8 @@ def context(tmp_path,monkeypatch):
          "requirement_checks":checks,"criterion_assessments":criteria,
          "assessments":aggregate_assessments(requirements,checks,criteria),"completed_check_ids":[checks[0]["id"]],
          "facts":facts,"card_reviews":[],"degraded_card_ids":[],"degraded_check_ids":[]}
-    inputs={"snapshot":{"fixture":"same","contract":"v2"},"job_path":job,"personal_profile":tmp_path/"personal.yaml",
+    inputs={"snapshot":{str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in (job, card)},
+            "job_path":job,"personal_profile":tmp_path/"personal.yaml",
             "evidence_files":[card],"direction":{"status":"needs_review"},"pool":{}}
     record={"schema_version":1,"snapshot":inputs["snapshot"],"summary":{"scope":"advisory_partial","job_profile_id":"jp_test","input_fresh":True},"result":raw}
     path=tmp_path/"audit.json"
@@ -51,6 +54,34 @@ def context(tmp_path,monkeypatch):
     monkeypatch.setattr(m.semantic,"_audit_path",lambda _:path)
     monkeypatch.setattr(m,"_profile_facts",lambda _: {})
     return m,inputs,raw,record,path,save
+
+
+@pytest.mark.parametrize("changed_input", ["card", "job"])
+def test_preview_rejects_changed_review_bytes_even_if_restored_before_final_check(context, monkeypatch, changed_input):
+    m, inputs, _, _, _, _ = context
+    card = inputs["evidence_files"][0] if changed_input == "card" else inputs["job_path"]
+    original = card.read_bytes()
+    changed = (original + b'reviewed_facts_json: "{}"\n' if changed_input == "card"
+               else original.replace(b"Engineer", b"OtherRole"))
+    read_bytes, read_text = Path.read_bytes, Path.read_text
+    state = {"consumed": False}
+
+    def read_changed(path, read, *args, **kwargs):
+        if path == card and not state["consumed"]:
+            state["consumed"] = True
+            path.write_bytes(changed)
+            try:
+                return read(path, *args, **kwargs)
+            finally:
+                path.write_bytes(original)
+        return read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", lambda p: read_changed(p, read_bytes))
+    monkeypatch.setattr(Path, "read_text", lambda p, *a, **kw: read_changed(p, read_text, *a, **kw))
+    result = m.handle_preview_preparation({"meta": {}, "job_profile_id": "jp_test"})
+    assert state["consumed"] and card.read_bytes() == original
+    assert result["status"] == "blocked" and result["code"] == "preview_inputs_changed"
+    assert not result["markdown"] and not result["claims"]
 
 
 def test_actual_handler_returns_partial_excerpt_without_writes(context):
