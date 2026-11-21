@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.infra.material_documents import split_material_documents
+from tools.infra.persistence.atomic_io import atomic_write_text
 from tools.infra.persistence.yaml_io import parse_simple_yaml
 from tools.infra.career_profile import company_aliases, parse_project_period
 from tools.infra import referenced_materials as rm
@@ -76,7 +77,21 @@ def short_company(company: str) -> str:
 def _file_sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[str, dict[str, Any]], dict[tuple[str, str], list[str] | None]]:
+
+def _read_asset(path: Path, root: Path, inventory: dict[str, str]) -> bytes:
+    key = path.relative_to(root).as_posix()
+    try:
+        resolved = path.resolve()
+        if not resolved.is_relative_to(root.resolve()) or not resolved.is_relative_to(path.parent.resolve()):
+            raise ValueError("asset_path_outside_library")
+        raw = path.read_bytes()
+    except (OSError, ValueError):
+        inventory[key] = "unreadable"
+        raise
+    inventory[key] = hashlib.sha256(raw).hexdigest()
+    return raw
+
+def _build_materials(root: Path, skipped: list[dict[str, str]], inventory: dict[str, str]) -> tuple[dict[str, dict[str, Any]], dict[tuple[str, str], list[str] | None]]:
     materials: dict[str, dict[str, Any]] = {}
     windows: dict[tuple[str, str], list[str] | None] = {}
     meta_dir = root / "materials"
@@ -84,7 +99,7 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
         return materials, windows
     for meta_path in sorted(meta_dir.glob("*.meta.yaml")):
         try:
-            meta = parse_simple_yaml(meta_path.read_text(encoding="utf-8"))["scalars"]
+            meta = parse_simple_yaml(_read_asset(meta_path, root, inventory).decode("utf-8"))["scalars"]
         except (OSError, UnicodeDecodeError, ValueError, KeyError):
             skipped.append({"kind": "material", "file": meta_path.name, "error": "unreadable"})
             continue
@@ -94,8 +109,12 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
         if not filename or not path.is_file():
             skipped.append({"kind": "material", "file": meta_path.name, "error": "filename_missing"})
             continue
+        if not path.resolve().is_relative_to(meta_dir.resolve()):
+            skipped.append({"kind": "material", "file": meta_path.name, "error": "path_outside_library"})
+            continue
         try:
-            text = path.read_text(encoding="utf-8")
+            raw = path.read_bytes()
+            text = raw.decode("utf-8")
         except (OSError, UnicodeDecodeError):
             skipped.append({"kind": "material", "file": meta_path.name, "error": "unreadable"})
             continue
@@ -120,11 +139,6 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
                     reference_status = rm.verify_manifest(target, manifest).get("status", "changed")
                 except (OSError, ValueError):
                     reference_status = "changed"
-            if not text and reference_status == "ok" and manifest.get("files"):
-                try:
-                    text = rm.merge_text(target, manifest["files"])
-                except OSError:
-                    text = ""
         entries: list[dict[str, Any]] = []
         for doc in split_material_documents(text, Path(filename).name):
             dates = extract_dates(doc["text"])
@@ -146,8 +160,8 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
             "kind": str(meta.get("kind") or ""),
             "filename": filename,
             "source_path": str(meta.get("source_path") or ""),
-            "sha256": _file_sha(path),
-            "bytes": path.stat().st_size,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "bytes": len(raw),
             "document_count": len(entries),
             "source_mode": source_mode,
             "reference_status": reference_status,
@@ -161,12 +175,12 @@ def _build_materials(root: Path, skipped: list[dict[str, str]]) -> tuple[dict[st
     return materials, windows
 
 
-def _build_profile(root: Path) -> tuple[dict[str, Any], dict[str, str]]:
+def _build_profile(root: Path, inventory: dict[str, str]) -> tuple[dict[str, Any], dict[str, str]]:
     path = root / "personal_profile.yaml"
     if not path.is_file():
         return {}, {}
     try:
-        scalars = parse_simple_yaml(path.read_text(encoding="utf-8"))["scalars"]
+        scalars = parse_simple_yaml(_read_asset(path, root, inventory).decode("utf-8"))["scalars"]
     except (OSError, UnicodeDecodeError, ValueError):
         return {}, {}
     career: dict[str, Any] = {}
@@ -189,7 +203,7 @@ def _build_profile(root: Path) -> tuple[dict[str, Any], dict[str, str]]:
             for w in career.get("work", [])]
     profile = {
         "file": path.name,
-        "file_sha256": _file_sha(path),
+        "file_sha256": inventory[path.relative_to(root).as_posix()],
         "revision": revision,
         "work": work,
         "education_count": len(career.get("education", [])),
@@ -207,14 +221,15 @@ def _build_profile(root: Path) -> tuple[dict[str, Any], dict[str, str]]:
 
 
 def _build_cards(root: Path, windows: dict[tuple[str, str], list[str] | None],
-                 employer_by_card: dict[str, str], skipped: list[dict[str, str]]) -> dict[str, dict[str, Any]]:
+                 employer_by_card: dict[str, str], skipped: list[dict[str, str]],
+                 inventory: dict[str, str]) -> dict[str, dict[str, Any]]:
     cards: dict[str, dict[str, Any]] = {}
     cards_dir = root / "evidence_cards"
     if not cards_dir.is_dir():
         return cards
     for path in sorted(cards_dir.glob("*.yaml")):
         try:
-            doc = parse_simple_yaml(path.read_text(encoding="utf-8"))
+            doc = parse_simple_yaml(_read_asset(path, root, inventory).decode("utf-8"))
         except (OSError, UnicodeDecodeError, ValueError, KeyError) as exc:
             skipped.append({"kind": "card", "file": path.name, "error": type(exc).__name__})
             continue
@@ -234,7 +249,7 @@ def _build_cards(root: Path, windows: dict[tuple[str, str], list[str] | None],
                         for month in (windows.get((ref.get("material_id"), ref.get("document_id"))) or [])})[:6]
         cards[card_id] = {
             "file": path.name,
-            "sha256": _file_sha(path),
+            "sha256": inventory[path.relative_to(root).as_posix()],
             "title": str(scalars.get("title") or ""),
             "status": status,
             "demo": not status,
@@ -253,21 +268,21 @@ def _build_cards(root: Path, windows: dict[tuple[str, str], list[str] | None],
     return cards
 
 
-def _build_jobs(root: Path, skipped: list[dict[str, str]]) -> dict[str, dict[str, Any]]:
+def _build_jobs(root: Path, skipped: list[dict[str, str]], inventory: dict[str, str]) -> dict[str, dict[str, Any]]:
     jobs: dict[str, dict[str, Any]] = {}
     jobs_dir = root / "job_profiles"
     if not jobs_dir.is_dir():
         return jobs
     for path in sorted(jobs_dir.glob("jp*.yaml")):
         try:
-            scalars = parse_simple_yaml(path.read_text(encoding="utf-8"))["scalars"]
+            scalars = parse_simple_yaml(_read_asset(path, root, inventory).decode("utf-8"))["scalars"]
         except (OSError, UnicodeDecodeError, ValueError, KeyError) as exc:
             skipped.append({"kind": "job", "file": path.name, "error": type(exc).__name__})
             continue
         status = str(scalars.get("status") or "")
         jobs[path.stem] = {
             "file": path.name,
-            "sha256": _file_sha(path),
+            "sha256": inventory[path.relative_to(root).as_posix()],
             "job_id": path.stem,
             "target_role": str(scalars.get("target_role") or ""),
             "company": str(scalars.get("company") or ""),
@@ -283,21 +298,21 @@ def _build_jobs(root: Path, skipped: list[dict[str, str]]) -> dict[str, dict[str
     return jobs
 
 
-def _build_leads(root: Path, skipped: list[dict[str, str]]) -> dict[str, dict[str, Any]]:
+def _build_leads(root: Path, skipped: list[dict[str, str]], inventory: dict[str, str]) -> dict[str, dict[str, Any]]:
     leads: dict[str, dict[str, Any]] = {}
     leads_dir = root / "job_leads"
     if not leads_dir.is_dir():
         return leads
     for path in sorted(leads_dir.glob("jl*.yaml")):
         try:
-            scalars = parse_simple_yaml(path.read_text(encoding="utf-8"))["scalars"]
+            scalars = parse_simple_yaml(_read_asset(path, root, inventory).decode("utf-8"))["scalars"]
         except (OSError, UnicodeDecodeError, ValueError, KeyError) as exc:
             skipped.append({"kind": "lead", "file": path.name, "error": type(exc).__name__})
             continue
         status = str(scalars.get("status") or "")
         leads[path.stem] = {
             "file": path.name,
-            "sha256": _file_sha(path),
+            "sha256": inventory[path.relative_to(root).as_posix()],
             "lead_id": path.stem,
             "company": str(scalars.get("company") or ""),
             "position": str(scalars.get("position") or ""),
@@ -350,11 +365,12 @@ def _build_relations(cards: dict[str, dict[str, Any]], profile: dict[str, Any],
 def build_index(root: Path, now: str | None = None) -> dict[str, Any]:
     root = Path(root)
     skipped: list[dict[str, str]] = []
-    materials, windows = _build_materials(root, skipped)
-    profile, employer_by_card = _build_profile(root)
-    cards = _build_cards(root, windows, employer_by_card, skipped)
-    jobs = _build_jobs(root, skipped)
-    leads = _build_leads(root, skipped)
+    inventory = _asset_inventory(root)
+    materials, windows = _build_materials(root, skipped, inventory)
+    profile, employer_by_card = _build_profile(root, inventory)
+    cards = _build_cards(root, windows, employer_by_card, skipped, inventory)
+    jobs = _build_jobs(root, skipped, inventory)
+    leads = _build_leads(root, skipped, inventory)
     status_counts: dict[str, int] = {}
     for card in cards.values():
         key = card["status"] or "demo"
@@ -383,7 +399,7 @@ def build_index(root: Path, now: str | None = None) -> dict[str, Any]:
         "relations": _build_relations(cards, profile, jobs, leads),
         "nonfact_materials": nonfact,
         "skipped": skipped,
-        "asset_inventory": _asset_inventory(root),
+        "asset_inventory": inventory,
         "source_coverage": build_source_coverage(root, materials),
     }
 
@@ -394,12 +410,12 @@ def _asset_inventory(root: Path) -> dict[str, str]:
              for p in (root / folder).glob(pattern)]
     if (root / "personal_profile.yaml").is_file():
         paths.append(root / "personal_profile.yaml")
-    result = {}
+    result: dict[str, str] = {}
     for path in sorted(paths):
         try:
-            result[path.relative_to(root).as_posix()] = _file_sha(path)
-        except OSError:
-            result[path.relative_to(root).as_posix()] = "unreadable"
+            _read_asset(path, root, result)
+        except (OSError, ValueError):
+            pass
     return result
 
 
@@ -538,10 +554,11 @@ def verify_index(root: Path, index: dict[str, Any]) -> list[dict[str, str]]:
 
 def save_index(index: dict[str, Any], out_dir: Path) -> None:
     out_dir = Path(out_dir)
+    if out_dir.is_symlink():
+        raise ValueError("knowledge_index_output_symlink")
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "index.json").write_text(
-        json.dumps(index, ensure_ascii=False, indent=1, sort_keys=False), encoding="utf-8")
-    (out_dir / "INDEX.md").write_text(render_index_md(index), encoding="utf-8")
+    atomic_write_text(out_dir / "index.json", json.dumps(index, ensure_ascii=False, indent=1, sort_keys=False))
+    atomic_write_text(out_dir / "INDEX.md", render_index_md(index))
 
 
 def load_index(out_dir: Path) -> dict[str, Any]:

@@ -272,6 +272,145 @@ def test_verify_clean_then_stale(root: Path):
     assert ("card", "ec_1111aaaa") in refs
 
 
+
+
+@pytest.mark.parametrize(
+    ("relative", "digest_path"),
+    [
+        ("materials/mat_aaaa1111.meta.yaml", ()),
+        ("evidence_cards/ec_1111aaaa.yaml", ("cards", "ec_1111aaaa", "sha256")),
+        ("personal_profile.yaml", ("profile", "file_sha256")),
+        ("job_profiles/jp_abc12345.yaml", ("jobs", "jp_abc12345", "sha256")),
+        ("job_leads/jl_liepin_aaa111.yaml", ("leads", "jl_liepin_aaa111", "sha256")),
+    ],
+)
+def test_l4_inventory_and_entity_digest_bind_the_bytes_that_were_parsed(root, monkeypatch, relative, digest_path):
+    from tools.infra import knowledge_index
+
+    monkeypatch.setenv("PPF_POLICY_PATH", str(root / "policy.yaml"))
+    target = root / relative
+    original = target.read_bytes()
+    actual_parse = knowledge_index.parse_simple_yaml
+    changed = False
+
+    def parse_then_change(text):
+        nonlocal changed
+        result = actual_parse(text)
+        if not changed and text == original.decode("utf-8"):
+            changed = True
+            target.write_bytes(original + b"\nchanged_during_read: true\n")
+        return result
+
+    monkeypatch.setattr(knowledge_index, "parse_simple_yaml", parse_then_change)
+    index = _build(root)
+    assert changed
+    expected = hashlib.sha256(original).hexdigest()
+    assert index["asset_inventory"][relative] == expected
+    if digest_path:
+        actual = index
+        for part in digest_path:
+            actual = actual[part]
+        assert actual == expected
+
+
+def test_l4_material_documents_hash_and_size_use_the_same_read(root, monkeypatch):
+    from tools.infra import knowledge_index
+
+    monkeypatch.setenv("PPF_POLICY_PATH", str(root / "policy.yaml"))
+    path = root / "materials" / "mat_aaaa1111.txt"
+    original = path.read_bytes()
+    actual_split = knowledge_index.split_material_documents
+    changed = False
+
+    def split_then_change(text, filename):
+        nonlocal changed
+        documents = actual_split(text, filename)
+        if not changed and filename == path.name:
+            changed = True
+            path.write_bytes(original + b"\nA later source version.\n")
+        return documents
+
+    monkeypatch.setattr(knowledge_index, "split_material_documents", split_then_change)
+    index = _build(root)
+    material = index["materials"]["mat_aaaa1111"]
+    assert changed
+    assert material["sha256"] == hashlib.sha256(original).hexdigest()
+    assert material["bytes"] == len(original)
+    assert [doc["document_id"] for doc in material["documents"]] == [
+        doc["document_id"] for doc in actual_split(original.decode("utf-8"), path.name)
+    ]
+
+
+@pytest.mark.parametrize("filename", ["index.json", "INDEX.md"])
+def test_l4_failed_index_publication_preserves_each_previous_file(root, monkeypatch, filename):
+    from tools.infra import knowledge_index
+    from tools.infra.persistence import atomic_io
+
+    monkeypatch.setenv("PPF_POLICY_PATH", str(root / "policy.yaml"))
+    index = _build(root)
+    out = root / "knowledge-index"
+    knowledge_index.save_index(index, out)
+    previous = (out / filename).read_bytes()
+    actual_replace = atomic_io.os.replace
+
+    def fail_selected_publication(source, destination, *args, **kwargs):
+        if Path(destination) == out / filename:
+            raise OSError("synthetic publication failure")
+        return actual_replace(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(atomic_io.os, "replace", fail_selected_publication)
+    with pytest.raises(OSError, match="synthetic publication failure"):
+        knowledge_index.save_index({**index, "built_at": "later snapshot"}, out)
+    assert (out / filename).read_bytes() == previous
+
+
+@pytest.mark.parametrize("link_kind", ["directory", "index_file"])
+def test_l4_index_destination_does_not_write_through_escaping_symlinks(tmp_path, monkeypatch, link_kind):
+    from tools.infra import knowledge_index
+
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("PPF_POLICY_PATH", str(project / "policy.yaml"))
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "index.json").write_text("outside JSON must remain", encoding="utf-8")
+    (outside / "INDEX.md").write_text("outside Markdown must remain", encoding="utf-8")
+    before = {path.name: path.read_bytes() for path in outside.iterdir()}
+    out = project / "knowledge-index"
+    if link_kind == "directory":
+        out.symlink_to(outside, target_is_directory=True)
+    else:
+        out.mkdir()
+        (out / "index.json").symlink_to(outside / "index.json")
+    try:
+        knowledge_index.save_index(_build(project), out)
+    except (ValueError, OSError):
+        pass
+    assert {path.name: path.read_bytes() for path in outside.iterdir()} == before
+
+
+@pytest.mark.parametrize("escape", ["relative_parent", "symlink"])
+def test_l4_index_material_navigation_stays_inside_registered_library(tmp_path, monkeypatch, escape):
+    from tools.infra import knowledge_index
+
+    project = tmp_path / "project"
+    materials = project / "materials"
+    materials.mkdir(parents=True)
+    monkeypatch.setenv("PPF_POLICY_PATH", str(project / "policy.yaml"))
+    outside = project / "outside.txt"
+    outside.write_text("This source was not imported into the material library.", encoding="utf-8")
+    filename = "../outside.txt"
+    if escape == "symlink":
+        filename = "linked.txt"
+        (materials / filename).symlink_to(outside)
+    (materials / "mat_escape.meta.yaml").write_text(
+        _meta("mat_escape", "unavailable registered source", filename), encoding="utf-8")
+    index = knowledge_index.build_index(project)
+    assert "mat_escape" not in index["materials"]
+    assert any(item["kind"] == "material" and item["file"] == "mat_escape.meta.yaml"
+               for item in index["skipped"])
+
+
 def test_build_is_deterministic(root: Path):
     assert _build(root) == _build(root)
 
