@@ -6,9 +6,8 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlparse
 
-from tools.infra.llm.client import STRATA_UNIFIED_BASE_URL
+from tools.infra.llm.client import STRATA_UNIFIED_BASE_URL, is_loopback_base_url
 from tools.infra.llm_credentials import normalize_provider
 from tools.sidecar.handlers._shared.llm_config import (
     load_llm_config,
@@ -66,11 +65,7 @@ def handle_settings_check_llm_connection(params: dict[str, Any]) -> dict[str, An
         api_key = "lm-studio"
 
     models_endpoint = models_url(base_url)
-    try:
-        host = (urlparse(base_url).hostname or "").lower()
-    except ValueError:
-        host = ""
-    local_host = host in ("127.0.0.1", "localhost", "::1")
+    local_host = is_loopback_base_url(base_url)
     strata_local = requested_provider == "strata"
     lm_studio_compat = requested_provider == "lm_studio" or api_key == "lm-studio"
     local_endpoint = local_host and (

@@ -1,0 +1,65 @@
+name: Python Tests and Gates
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/python-tests.yml
+      - pyproject.toml
+      - tools/**
+      - tests/**
+      - scripts/**
+      - evidence_cards/**
+      - job_profiles/**
+      - matching_reports/**
+      - acceptance/**
+  push:
+    branches:
+      - develop
+      - main
+      - master
+    paths:
+      - .github/workflows/python-tests.yml
+      - pyproject.toml
+      - tools/**
+      - tests/**
+      - scripts/**
+      - evidence_cards/**
+      - job_profiles/**
+      - matching_reports/**
+      - acceptance/**
+
+permissions:
+  contents: read
+
+jobs:
+  pytest-and-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 仅检出应用源码和明确合成示例；真实工作区数据不入库。
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "pytest>=8" "pyyaml>=6"
+
+      - name: Run unit and acceptance tests
+        run: python3 -m pytest tests -q -p no:cacheprovider
+
+      - name: Check architecture layering
+        run: python3 -m tools.cli.entrypoints check arch --root .
+
+      - name: Check execution roadmap
+        run: python3 -m tools.cli.entrypoints check roadmap --root .
+
+      - name: Check AIEF L3 baseline
+        run: python3 -m tools.cli.entrypoints check aief --root . --base-dir AIEF

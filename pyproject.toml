@@ -1,0 +1,27 @@
+# 本文件不声明 build-system：PiProofForge 不从 PyPI 安装自身，
+# 源码通过 `python3 -m tools.cli.entrypoints` 直接运行。
+# 这里只声明运行时/开发依赖的真实边界与 pytest 配置，供 CI 与开发者对齐。
+
+[project]
+name = "pi-proof-forge"
+version = "0.1.0"
+description = "Evidence-first job-search engine: raw materials -> evidence cards -> explainable matching -> fact-preserving resume generation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# 核心 pipeline（extract / match / generate / evaluate / pipeline）零第三方运行时依赖。
+# 这是六边形架构下 domain/infra 自实现 YAML 解析、LLM HTTP 与文件持久化的直接结果；
+# 新增核心依赖必须先说明为什么现有能力不足（constitution 第 6 条）。
+dependencies = []
+
+[project.optional-dependencies]
+# 浏览器边界：App 投递会话、猎聘只读、页面观测。仅 sidecar/submission 通道使用。
+browser = ["playwright>=1.40", "playwright-stealth>=1.0"]
+# PDF 渲染备选；默认优先复用本机已有的 Chromium / Chrome。
+pdf = ["weasyprint>=65"]
+# 开发与测试：PyYAML 仅验收/工具层使用（产品链路用自实现 parse_simple_yaml）。
+dev = ["pytest>=8", "pyyaml>=6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -4,8 +4,6 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 
 ALLOWED_STATUSES = {
     "not_started",
@@ -210,6 +208,8 @@ def _require_step(raw: object) -> dict[str, Any]:
 def _load_mapping(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise RoadmapError(f"{path} is missing")
+    import yaml  # 延迟导入：check 子命令导入链不依赖 PyYAML（App 运行环境可能未安装）
+
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise RoadmapError(f"{path} must contain a YAML mapping")

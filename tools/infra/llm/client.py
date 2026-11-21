@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping, cast
 from urllib import request
+from urllib.parse import urlsplit
+import re
 from http.client import HTTPResponse
 from tools.prompts.context import with_job_search_context
 
@@ -35,18 +37,38 @@ def provider_is_keyless(provider: str = "") -> bool:
     return value in KEYLESS_PROVIDERS
 
 
+def is_loopback_base_url(base_url: str = "") -> bool:
+    """Only explicitly spelled HTTP(S) loopback authorities permit keyless compatible requests."""
+    if not isinstance(base_url, str) or any(c.isspace() or ord(c) < 32 for c in base_url) or "\\" in base_url:
+        return False
+    try:
+        parsed = urlsplit(base_url)
+        if parsed.scheme not in {"http", "https"} or not re.fullmatch(
+            r"(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?", parsed.netloc, re.I
+        ):
+            return False
+        return parsed.port is None or 1 <= parsed.port <= 65535
+    except ValueError:
+        return False
+
+
 def llm_request_available(
     *,
     provider: str = "",
     api_key: str = "",
     model: str = "",
+    base_url: str = "",
 ) -> bool:
     """判断当前配置能否发起 LLM 请求：必须有 model；keyless 本地 provider 无需 API Key。"""
     if not str(model or "").strip():
         return False
     if str(api_key or "").strip():
         return True
-    return provider_is_keyless(provider)
+    import os
+    value = (provider or os.getenv("LLM_PROVIDER", "")).strip().lower()
+    return provider_is_keyless(provider) or (
+        value == "openai_compatible" and is_loopback_base_url(base_url)
+    )
 
 
 def llm_timeout_from_env(default: int = 120) -> int:
@@ -162,6 +184,15 @@ class LLMClient:
         response_schema: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         payload = with_job_search_context(payload)
+        # Verified Splash service deployment, independent of model alias.
+        # Keep provider wire adaptation here, not duplicated in task handlers.
+        if (
+            self._provider == "openai_compatible"
+            and self._base_url == "http://127.0.0.1:8000/v1"
+            and payload.get("response_format") == {"type": "json_object"}
+            and "reasoning_effort" not in payload
+        ):
+            payload = {**payload, "reasoning_effort": "none"}
         if self._provider == "deepseek":
             # DeepSeek 的 json_object 请求若开启 thinking，推理会耗尽较小的输出预算，
             # 导致结构化正文为空；结构化输出默认关闭思考，显式 thinking 仍由调用方决定。
@@ -195,7 +226,11 @@ class LLMClient:
                 },
             }
             if (
-                payload.get("model") in ("qwen/qwen3.8-27b", "qwen3.8-flash-next@q2_k")
+                payload.get("model") in (
+                    "qwen/qwen3.8-27b",
+                    "qwen3.8-flash-next@q2_k",
+                    "qwen3.8-27b@q8_0",
+                )
                 and "reasoning_effort" not in payload
             ):
                 # 已定位这些型号会把结构化输出预算耗在推理中；仅调整本次请求。

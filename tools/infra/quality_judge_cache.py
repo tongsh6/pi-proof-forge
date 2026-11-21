@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+
+from tools.infra.persistence.atomic_io import atomic_write_text
 import os
 import tempfile
 from pathlib import Path
@@ -78,17 +80,9 @@ def save_judgment(cache_dir: Path, key: str, judgments: dict) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = cache_path(directory, key)
     payload = {"cache_schema_version": JUDGE_CACHE_SCHEMA_VERSION, "judgments": judgments}
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
-    handle, temporary = tempfile.mkstemp(prefix=".judge-", suffix=".json", dir=str(directory))
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(encoded)
-        os.replace(temporary, path)
-    finally:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
+    atomic_write_text(
+        path, json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+    )
     return path
 
 
@@ -143,15 +137,7 @@ def save_highlight_decision(root: Path, resume_sha256: str, highlight: str, acti
         rejected.discard(highlight)
     entry["rejected"] = sorted(rejected)
     entry["selected"] = sorted(selected)
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
-    handle, temporary = tempfile.mkstemp(prefix=".quality-decisions-", suffix=".json", dir=str(path.parent))
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(encoded)
-        os.replace(temporary, path)
-    finally:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
+    atomic_write_text(
+        path, json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+    )
     return {"rejected": entry["rejected"], "selected": entry["selected"]}

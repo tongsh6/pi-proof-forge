@@ -8,11 +8,11 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 
-from tools.tooling import aief_l3, arch_constraints, boss_agent_cli, roadmap, submission_readiness
+from tools.tooling import aief_l3, arch_constraints, boss_agent_cli, delivery_ready, roadmap, submission_readiness
 
 USAGE = (
     "Usage: python3 -m tools.cli.entrypoints check <command> [args]\n"
-    "Commands: arch | roadmap | aief | submission-readiness | boss-cli"
+    "Commands: arch | roadmap | aief | submission-readiness | delivery-ready | boss-cli"
 )
 
 COMMANDS = {
@@ -20,6 +20,7 @@ COMMANDS = {
     "roadmap": roadmap.main,
     "aief": aief_l3.main,
     "submission-readiness": submission_readiness.main,
+    "delivery-ready": delivery_ready.main,
     "boss-cli": boss_agent_cli.main,
 }
 
